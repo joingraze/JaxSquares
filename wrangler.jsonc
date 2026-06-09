@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jaxsquares",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-01-01",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    // Built SPA assets are served for any non-API route. Unknown paths fall
+    // back to index.html so client-side routing works on deep links. The
+    // binding lets the Worker delegate non-API routes to the asset server.
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jaxsquares",
+      // Replace with the id printed by `wrangler d1 create jaxsquares` before
+      // deploying. Local dev (`npm run dev`) works without a real id.
+      "database_id": "PLACEHOLDER_REPLACE_AFTER_D1_CREATE",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
