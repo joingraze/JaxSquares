@@ -17,9 +17,7 @@
     {
       "binding": "DB",
       "database_name": "jaxsquares",
-      // Replace with the id printed by `wrangler d1 create jaxsquares` before
-      // deploying. Local dev (`npm run dev`) works without a real id.
-      "database_id": "PLACEHOLDER_REPLACE_AFTER_D1_CREATE",
+      "database_id": "74a1e4ae-532c-4145-9cbf-ec3acdb3cfdb",
       "migrations_dir": "migrations"
     }
   ]

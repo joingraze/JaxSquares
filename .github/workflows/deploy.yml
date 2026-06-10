@@ -1,0 +1,43 @@
+name: Deploy
+
+# Deploys the JaxSquares Worker to Cloudflare. Runs in GitHub's cloud — no
+# local toolchain needed. Requires a repository secret CLOUDFLARE_API_TOKEN
+# (and optionally CLOUDFLARE_ACCOUNT_ID) with Workers + D1 edit permissions.
+on:
+  push:
+    branches:
+      - main
+      - claude/relaxed-meitner-0wwvuy
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify
+        run: npm run typecheck && npm run test
+
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply jaxsquares --remote
+
+      - name: Build and deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          preCommands: npm run build
