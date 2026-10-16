@@ -475,14 +475,19 @@ api.post("/games/:id/claim", requireClient, async (c) => {
   const { results, state: next } = await commitOr404(
     c,
     id,
-    [...db.claimSquares(c.env.DB, id, clientId, wanted, now), db.claimActivity(c.env.DB, id, activityId, { clientId, playerId: me }, now)],
+    [
+      ...db.claimSquares(c.env.DB, id, clientId, wanted, now),
+      db.claimActivity(c.env.DB, id, activityId, { clientId, playerId: me }, now),
+      // Only the claim that first fills the board stamps it (once per board).
+      db.markBoardFull(c.env.DB, id, totalSquares(game.format.boardSize), now),
+    ],
     now,
   );
   const claimed = results.slice(0, wanted.length).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   if (claimed > 0) {
-    const full = next.squares.length >= totalSquares(game.format.boardSize);
-    // The host hears about it, unless the host just claimed the last square.
-    publish(c, next, [activityId], full ? [{ kind: "board-full", actor: me }] : []);
+    const firstFull = (results[wanted.length + 1].meta.changes ?? 0) > 0;
+    // The host hears about it once, unless the host just claimed the last square.
+    publish(c, next, [activityId], firstFull ? [{ kind: "board-full", actor: me }] : []);
   }
   return c.json({ claimed, skipped: requested - claimed, state: next });
 });
@@ -765,7 +770,8 @@ async function invitePage(c: Ctx): Promise<Response> {
     GAME_ID_RE.test(id) ? loadState(c.env, id).catch(() => null) : Promise.resolve(null),
   ]);
   if (!state || !html.ok) return html;
-  return withInviteMeta(html, inviteMeta(state, new URL(c.req.url).origin));
+  // The board's public state rides along, so the page renders it without a second round trip.
+  return withInviteMeta(html, inviteMeta(state, new URL(c.req.url).origin), state);
 }
 
 app.get("/g/:id", invitePage);

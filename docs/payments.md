@@ -201,11 +201,23 @@ The table has no foreign key to `games`, on purpose. Deleting a board doesn't
 erase its payment, and doesn't free its Apple transaction to be used again.
 
 `status` is `pending` (a Stripe intent not paid yet), `paid`, `canceled`, or
-`unused`: an App Store purchase Apple charged that opened nothing, because the
+`unused`: a charge (App Store or Stripe) that opened nothing, because the
 board was already open (a second purchase) or was deleted before the purchase
 was confirmed. The host is told to ask Apple for a refund
 (reportaproblem.apple.com); support can find these with
-`SELECT * FROM purchases WHERE status = 'unused'`.
+`SELECT * FROM purchases WHERE status = 'unused'` (a Stripe one is refunded
+from the Stripe dashboard).
+
+A board has at most one `paid` purchase. `recordPaid` (`worker/payments/store.ts`)
+decides it inside one transaction: the reference becomes `paid` only if no
+other reference made since the board was created is already `paid` for it,
+otherwise it's kept as `unused`. So two App Store transactions, or a Stripe
+webhook and an App Store purchase, confirmed at the same instant for one draft
+can't both pay for it; only the winner opens the board, and the loser's
+`/pay/iap` gets the same `409 { unused: true, state }` as a purchase for a board
+that was already open. "Since the board was created" matters because ledger
+rows outlive deleted boards and a new board could get a deleted one's id. (That
+is also why this isn't a unique index on `game_id`.)
 
 ```sql
 -- Real revenue by method (gross, before Stripe fees / Apple commission)

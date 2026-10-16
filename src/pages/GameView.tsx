@@ -129,7 +129,16 @@ export default function GameView() {
     [me, ticker],
   );
 
-  const { state, loading, notFound, error, connection, watching, mutate, receive, refresh } = useGame(id, { onActivity });
+  const { state, loading, notFound, error, connection, watching, mutate, receive, refresh, fromPage } = useGame(id, { onActivity });
+  // Opened from an invite link, the board's state came with the page and is here on the first
+  // render. The full board is a heavy first render on a slow phone, so the skeleton paints for a
+  // frame first instead of a blank screen meanwhile.
+  const [shellFirst, setShellFirst] = useState(fromPage);
+  useEffect(() => {
+    if (!shellFirst) return;
+    const raf = requestAnimationFrame(() => setShellFirst(false));
+    return () => cancelAnimationFrame(raf);
+  }, [shellFirst]);
 
   // ---- local UI state ----
   const [selection, setSelection] = useState<Selection>(EMPTY_SELECTION);
@@ -153,6 +162,9 @@ export default function GameView() {
   const [pick, setPick] = useState<{ prompt: string } | null>(null);
   const pickResolve = useRef<((cell: Cell | null) => void) | null>(null);
   const [busy, setBusy] = useState(false);
+  // Host tapped remove on a player's row: the host tools open the confirm.
+  const [removeRequest, setRemoveRequest] = useState<string | null>(null);
+  const clearRemoveRequest = useCallback(() => setRemoveRequest(null), []);
   const [callout, setCallout] = useState<BoardCallout | null>(null);
   /** Wins being celebrated right now (the gold banner), else null. */
   const [glory, setGlory] = useState<Glory | null>(null);
@@ -653,7 +665,7 @@ export default function GameView() {
     );
   }
 
-  if (!state || !game || (hostDevice && !HostControls && !hostToolsFailed)) {
+  if (!state || !game || shellFirst || (hostDevice && !HostControls && !hostToolsFailed)) {
     return (
       <>
         <TopBar title="Board" large={false} back />
@@ -682,6 +694,8 @@ export default function GameView() {
   const hostBar = isHost && !!getAdminToken(game.id);
   // The host on another device (opened the host link) isn't invited to their own board.
   const newcomer = !joined && open && !hostBar;
+  // While squares are being picked the host can take someone off the board (confirmed in the host tools).
+  const canRemove = hostBar && !!HostControls && (game.status === "open" || game.status === "draft");
   const n = gridSize(game.format.boardSize);
   const claimN = selection.claim.size;
   const releaseN = selection.release.size;
@@ -770,7 +784,16 @@ export default function GameView() {
 
         {isHost && (
           <div className="empty:hidden">
-            {HostControls && <HostControls state={state} apply={receive} pickCell={pickCell} onInvite={share} />}
+            {HostControls && (
+              <HostControls
+                state={state}
+                apply={receive}
+                pickCell={pickCell}
+                onInvite={share}
+                removeRequest={removeRequest}
+                onRemoveRequestHandled={clearRemoveRequest}
+              />
+            )}
           </div>
         )}
 
@@ -953,6 +976,14 @@ export default function GameView() {
             leading={nowView?.ownerId ? { playerId: nowView.ownerId, label: nowView.everyScore ? "now" : nowView.label } : null}
             selectedId={playerSpot}
             onSelect={(pid) => selectPlayer(playerSpot === pid ? null : pid, true)}
+            onRemove={
+              canRemove
+                ? (pid) => {
+                    void haptic("light");
+                    setRemoveRequest(pid);
+                  }
+                : undefined
+            }
           />
         </section>
 

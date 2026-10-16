@@ -220,6 +220,12 @@ export interface ActivityData {
   final: Record<string, never>;
 }
 
+/**
+ * id of the `<script type="application/json">` holding the board's GameState on
+ * an invite page (GET /g/:id), so the client can render it before its first fetch.
+ */
+export const BOOT_STATE_ID = "jx-boot";
+
 /** Full game state returned by the API and pushed over the live socket. */
 export interface GameState {
   game: Game;

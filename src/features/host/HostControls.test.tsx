@@ -9,6 +9,7 @@ const setWinner = vi.fn();
 const finish = vi.fn();
 const updateGame = vi.fn();
 const deleteGame = vi.fn();
+const removePlayer = vi.fn();
 vi.mock("../../lib/api", async (orig) => {
   const real = await orig<typeof import("../../lib/api")>();
   return {
@@ -21,6 +22,7 @@ vi.mock("../../lib/api", async (orig) => {
       finish: (...a: unknown[]) => finish(...a),
       updateGame: (...a: unknown[]) => updateGame(...a),
       deleteGame: (...a: unknown[]) => deleteGame(...a),
+      removePlayer: (...a: unknown[]) => removePlayer(...a),
     },
   };
 });
@@ -394,6 +396,64 @@ describe("HostControls", () => {
     renderHost(makeState({ status: "draft" }), {}, "/g/hst123?checkout=1");
     expect(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+  });
+
+  describe("removing a player", () => {
+    const players = [player("host", "Jordan"), player("maya", "Maya"), player("kim", "Kim")];
+    const filling = () => makeState({}, { players, squares: [...fillSquares(6, "maya"), sq(9, 9, "kim")] });
+    const without = () => makeState({}, { players: [players[0], players[2]], squares: [sq(9, 9, "kim")], version: 2 });
+
+    it("removes someone from the sheet's players list after a plain-words confirm", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      removePlayer.mockResolvedValue({ state: without() });
+      const { apply } = renderHost(filling());
+      fireEvent.click(screen.getByTestId("host-open"));
+      fireEvent.click(await screen.findByRole("button", { name: /^Players/ }));
+      // Never offered on the host's own row.
+      expect(screen.queryByRole("button", { name: "Remove Jordan" })).not.toBeInTheDocument();
+      fireEvent.click(await screen.findByRole("button", { name: "Remove Maya" }));
+      expect(await screen.findByRole("heading", { name: /Remove Maya\?/ })).toBeInTheDocument();
+      expect(screen.getByText("Their 6 squares open up again.")).toBeInTheDocument();
+      expect(removePlayer).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId("remove-player-confirm"));
+      await waitFor(() => expect(removePlayer).toHaveBeenCalledWith("hst123", "maya"));
+      await waitFor(() => expect(apply).toHaveBeenCalledWith(without()));
+      expect(await screen.findByText("Maya removed")).toBeInTheDocument();
+      expect(screen.getByText("6 squares are open again.")).toBeInTheDocument();
+      // Back on the sheet's list, to remove someone else if needed.
+      expect(await screen.findByRole("heading", { name: /^Players/ })).toBeInTheDocument();
+    });
+
+    it("opens the confirm for a row tapped on the board, and Keep closes it without removing", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      const onRemoveRequestHandled = vi.fn();
+      renderHost(filling(), { removeRequest: "kim", onRemoveRequestHandled });
+      expect(onRemoveRequestHandled).toHaveBeenCalled();
+      expect(await screen.findByRole("heading", { name: /Remove Kim\?/ })).toBeInTheDocument();
+      expect(screen.getByText("Their square opens up again.")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Keep Kim" }));
+      await waitFor(() => expect(screen.queryByRole("heading", { name: /Remove Kim\?/ })).not.toBeInTheDocument());
+      expect(removePlayer).not.toHaveBeenCalled();
+    });
+
+    it("explains a refusal in plain words when the squares just locked", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      removePlayer.mockRejectedValue(new ApiError("Squares are locked", 409));
+      const { apply } = renderHost(filling(), { removeRequest: "maya" });
+      fireEvent.click(await screen.findByTestId("remove-player-confirm"));
+      expect(await screen.findByText("Squares are locked now, so everyone stays on the board.")).toBeInTheDocument();
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it("isn't offered once the numbers are drawn", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      const onRemoveRequestHandled = vi.fn();
+      renderHost(makeState({ status: "locked", numbers: { "*": DRAW } }, { players }), { removeRequest: "maya", onRemoveRequestHandled });
+      expect(screen.queryByRole("heading", { name: /Remove Maya\?/ })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("host-open"));
+      expect(await screen.findByRole("heading", { name: "Host tools" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Players/ })).not.toBeInTheDocument();
+    });
   });
 
   it("opens the lock & draw confirm from ?draw=1 and clears the link", async () => {

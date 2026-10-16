@@ -27,6 +27,7 @@ const MIGRATIONS = [
   "migrations/0004_push.sql",
   "migrations/0005_housekeeping.sql",
   "migrations/0006_purchases_unused.sql",
+  "migrations/0007_board_full_announced.sql",
 ];
 
 let t: TestD1;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GameState } from "../shared/types";
-import { inviteMeta } from "./og";
+import { bootScript, inlineJson, inviteMeta } from "./og";
 
 function state(over: Partial<GameState["game"]> = {}, extra: Partial<GameState> = {}): GameState {
   return {
@@ -66,3 +66,51 @@ describe("inviteMeta", () => {
     }
   });
 });
+
+describe("bootScript (the board's state embedded in the invite page)", () => {
+  // A board name and a player name chosen to break out of the script, plus the JS line separators.
+  const hostile = state(
+    { name: "</script><script>alert(1)</script><!--" },
+    {
+      players: [{ id: "a", name: "<img src=x onerror=alert(1)> & \u2028\u2029", color: "#ff6b35", emoji: "", joinedAt: 0, isHost: false }],
+      activity: [{ id: "x", type: "joined", at: 0, actor: "a", data: { name: "</SCRIPT>" } }],
+    },
+  );
+
+  it("escapes <, >, & and U+2028/2029 so nothing can close the script or open markup", () => {
+    const json = inlineJson(hostile);
+    expect(json).not.toMatch(/[<>&\u2028\u2029]/);
+    expect(json).toContain("\\u003c/script\\u003e");
+    expect(json).toContain("\\u0026");
+    expect(json).toContain("\\u2028\\u2029");
+    // Same value back.
+    expect(JSON.parse(json)).toEqual(hostile);
+
+    const html = bootScript(hostile);
+    expect(html.startsWith('<script type="application/json" id="jx-boot">')).toBe(true);
+    // The only "<" are the script's own tags.
+    expect(html.match(/</g)).toHaveLength(2);
+    expect(html.endsWith("</script>")).toBe(true);
+  });
+
+  it("parses back to the same state in a real HTML parser, with no injected element", () => {
+    const { DOMParser } = globalThis as unknown as {
+      DOMParser: new () => {
+        parseFromString(html: string, type: "text/html"): {
+          getElementById(id: string): { textContent: string | null } | null;
+          querySelectorAll(selector: string): { length: number };
+        };
+      };
+    };
+    const doc = new DOMParser().parseFromString(`<!doctype html><html><head></head><body><div id="root"></div>${bootScript(hostile)}</body></html>`, "text/html");
+    expect(doc.querySelectorAll("script")).toHaveLength(1);
+    expect(doc.querySelectorAll("img")).toHaveLength(0);
+    expect(JSON.parse(doc.getElementById("jx-boot")?.textContent ?? "null")).toEqual(hostile);
+  });
+
+  it("carries only the public GameState: public player ids, no clientId or admin token", () => {
+    const html = bootScript(state());
+    expect(html).not.toMatch(/clientId|client_id|adminToken|admin_token/);
+  });
+});
+

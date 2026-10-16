@@ -67,14 +67,13 @@ paymentsRoutes.post("/games/:id/pay/test", async (c) => {
   if (game instanceof Response) return game;
   if (game.status !== "draft") return c.json({ state: await loadState(c.env, gameId) });
 
-  const purchase = await store.recordPaid(c.env.DB, {
-    reference: `test:${gameId}`,
-    gameId,
-    provider: "test",
-    amountCents: 0,
-    currency: CURRENCY,
-    livemode: false,
-  });
+  const purchase = await store.recordPaid(
+    c.env.DB,
+    { reference: `test:${gameId}`, gameId, provider: "test", amountCents: 0, currency: CURRENCY, livemode: false },
+    game,
+  );
+  // Another purchase paid for the board at the same moment: it's open (or opening) already.
+  if (purchase.status !== "paid") return c.json({ state: await loadState(c.env, gameId) });
   return activate(c, purchase);
 });
 
@@ -88,15 +87,20 @@ const REUSABLE: ReadonlySet<PaymentIntent["status"]> = new Set([
   "processing",
 ]);
 
-function recordStripePaid(db: D1Database, gameId: string, intent: PaymentIntent): Promise<store.Purchase> {
-  return store.recordPaid(db, {
+function stripeEntry(gameId: string, intent: PaymentIntent): store.NewPurchase {
+  return {
     reference: intent.id,
     gameId,
     provider: "stripe",
     amountCents: intent.amount_received || intent.amount,
     currency: intent.currency,
     livemode: intent.livemode,
-  });
+  };
+}
+
+/** 'paid' if this intent is the one paying for the board, else kept as 'unused' (another purchase paid first). */
+function recordStripePaid(db: D1Database, game: Game, intent: PaymentIntent): Promise<store.Purchase> {
+  return store.recordPaid(db, stripeEntry(game.id, intent), game);
 }
 
 async function retrieveOrNull(secretKey: string, id: string): Promise<PaymentIntent | null> {
@@ -158,7 +162,9 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
     }
     // Paid but the webhook hasn't landed yet: activate now instead of making the host wait.
     if (intent.status === "succeeded") {
-      const state = await activatePurchase(c.env, await recordStripePaid(c.env.DB, gameId, intent));
+      const purchase = await recordStripePaid(c.env.DB, game, intent);
+      const won = purchase.gameId === gameId && purchase.status === "paid";
+      const state = won ? await activatePurchase(c.env, purchase) : await loadState(c.env, gameId);
       return c.json({ error: "This board is already active", state }, 409);
     }
     // The intent's own amount, so the page shows (and the wallet sheet itemizes) what it charges.
@@ -188,9 +194,16 @@ paymentsRoutes.post("/stripe/webhook", async (c) => {
   if (!intent || !gameId) return c.json({ received: true });
 
   if (event.type === "payment_intent.succeeded") {
-    const purchase = await recordStripePaid(c.env.DB, gameId, intent as PaymentIntent);
     // Errors propagate as a 500 so Stripe retries; activation is idempotent.
-    if (purchase.gameId === gameId) await activatePurchase(c.env, purchase);
+    const game = await getGame(c.env.DB, gameId);
+    if (!game) {
+      // Deleted before the payment landed: kept as unused (charged, opened nothing) for a refund.
+      await store.recordUnused(c.env.DB, stripeEntry(gameId, intent as PaymentIntent));
+      return c.json({ received: true });
+    }
+    const purchase = await recordStripePaid(c.env.DB, game, intent as PaymentIntent);
+    // Only the purchase that paid for the board opens it; one that lost the race stays unused.
+    if (purchase.gameId === gameId && purchase.status === "paid") await activatePurchase(c.env, purchase);
   } else if (event.type === "payment_intent.canceled" && intent.id) {
     await store.markCanceled(c.env.DB, intent.id);
   }
@@ -279,7 +292,9 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     if (row.status === "paid") return game ? activate(c, row) : boardDeleted(c);
     return unusedPurchase(c, gameId, game !== null);
   }
-  const purchase = await store.recordPaid(c.env.DB, entry);
+  const purchase = await store.recordPaid(c.env.DB, entry, game);
   if (purchase.gameId !== gameId) return usedElsewhere(c);
+  // Another purchase paid for this board at the same moment: this one is kept as unused.
+  if (purchase.status !== "paid") return unusedPurchase(c, gameId, true);
   return activate(c, purchase);
 });

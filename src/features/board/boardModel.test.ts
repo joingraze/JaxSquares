@@ -7,6 +7,7 @@ import {
   axisLabels,
   boardPhase,
   buildCells,
+  canRemovePlayer,
   cellsOf,
   decideTap,
   defaultDrawKey,
@@ -332,6 +333,21 @@ describe("periodCards", () => {
     ]);
     const done = makeState({ ...state, game: { ...state.game, status: "final" } });
     expect(periodCards(done, resolveResults(done))).toHaveLength(1);
+  });
+});
+
+describe("canRemovePlayer", () => {
+  const game = (status: GameState["game"]["status"]) => ({ status, hostPlayerId: MAYA });
+  it("lets the host remove others only while squares are being picked", () => {
+    expect(canRemovePlayer(game("open"), "kim", ME)).toBe(true);
+    expect(canRemovePlayer(game("draft"), "kim", ME)).toBe(true);
+    expect(canRemovePlayer(game("locked"), "kim", ME)).toBe(false);
+    expect(canRemovePlayer(game("final"), "kim", ME)).toBe(false);
+  });
+
+  it("never offers the host's own player or this device's row", () => {
+    expect(canRemovePlayer(game("open"), MAYA, ME)).toBe(false);
+    expect(canRemovePlayer(game("open"), ME, ME)).toBe(false);
   });
 });
 

@@ -55,6 +55,8 @@ class TestStatement {
 export interface TestD1 {
   d1: D1Database;
   query<T = Record<string, unknown>>(sql: string, ...params: unknown[]): T[];
+  /** Applies one more migration file (path relative to the repo root), e.g. to test its backfill. */
+  migrate(file: string): void;
 }
 
 /** A fresh database with the given migration files (paths relative to the repo root) applied. */
@@ -62,7 +64,8 @@ export async function createTestD1(migrations: string[]): Promise<TestD1> {
   const { DatabaseSync } = (await nodeModule("sqlite")) as { DatabaseSync: new (path: string) => SqliteDatabase };
   const { readFileSync } = (await nodeModule("fs")) as { readFileSync: (path: URL, enc: "utf8") => string };
   const db = new DatabaseSync(":memory:");
-  for (const file of migrations) db.exec(readFileSync(new URL(`../../${file}`, import.meta.url), "utf8"));
+  const migrate = (file: string) => db.exec(readFileSync(new URL(`../../${file}`, import.meta.url), "utf8"));
+  for (const file of migrations) migrate(file);
 
   const d1 = {
     prepare: (sql: string) => new TestStatement(db, sql),
@@ -85,5 +88,6 @@ export async function createTestD1(migrations: string[]): Promise<TestD1> {
   return {
     d1: d1 as unknown as D1Database,
     query: <T>(sql: string, ...params: unknown[]) => db.prepare(sql).all(...params).map((r) => ({ ...r })) as T[],
+    migrate,
   };
 }

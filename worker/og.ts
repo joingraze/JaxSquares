@@ -1,9 +1,14 @@
 // Per-game link previews: GET /g/:id serves the SPA's index.html with Open
 // Graph / Twitter tags rewritten so an invite pasted into iMessage, WhatsApp or
 // Slack shows "Join <board name> on JaxSquares" instead of a generic card.
+//
+// The same page also carries the board's GameState (the public one GET
+// /api/games/:id returns) in <script type="application/json" id="jx-boot">,
+// so a friend opening the invite sees the board without waiting for that GET
+// (src/lib/live.ts takes it once, for this board only).
 
 import { squaresLeft, totalSquares } from "../shared/squares";
-import type { GameState } from "../shared/types";
+import { BOOT_STATE_ID, type GameState } from "../shared/types";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (ch) => ESCAPES[ch]);
@@ -69,8 +74,27 @@ function metaTags(m: InviteMeta): string {
   return tags.map(([attr, key, value]) => `<meta ${attr}="${key}" content="${escapeHtml(value)}" />`).join("\n    ");
 }
 
-/** Rewrites an index.html response with the invite's title and preview tags. */
-export function withInviteMeta(html: Response, meta: InviteMeta): Response {
+/**
+ * JSON safe to inline in a `<script type="application/json">`: `<`, `>` and `&`
+ * (so nothing can close the script or open markup, e.g. a board named
+ * "</script><script>…") and U+2028/U+2029 become \u escapes. They can only
+ * occur inside JSON strings, where the escape means the same character.
+ */
+export function inlineJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[<>&\u2028\u2029]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+/**
+ * The board's state for the client to start from. Only ever the public
+ * GameState (public player ids, no clientId or admin token): the same JSON
+ * anyone gets from GET /api/games/:id.
+ */
+export function bootScript(state: GameState): string {
+  return `<script type="application/json" id="${BOOT_STATE_ID}">${inlineJson(state)}</script>`;
+}
+
+/** Rewrites an index.html response with the invite's title and preview tags, plus the board's state when given. */
+export function withInviteMeta(html: Response, meta: InviteMeta, boot?: GameState): Response {
   const rewritten = new HTMLRewriter()
     .on("title", {
       element(el) {
@@ -96,6 +120,12 @@ export function withInviteMeta(html: Response, meta: InviteMeta): Response {
     .on("head", {
       element(el) {
         el.append(`\n    ${metaTags(meta)}\n  `, { html: true });
+      },
+    })
+    // At the end of the body, so the head (and its script preloads) arrives first.
+    .on("body", {
+      element(el) {
+        if (boot) el.append(`${bootScript(boot)}\n  `, { html: true });
       },
     })
     .transform(html);

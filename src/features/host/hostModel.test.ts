@@ -25,6 +25,7 @@ import {
   pressKey,
   previewWinner,
   prizeFields,
+  removeCopy,
   resolvedKey,
   revealDraw,
   saveEndsGame,
@@ -235,6 +236,26 @@ describe("lockFacts", () => {
   it("counts empty squares and players without a square", () => {
     const s = makeState({ squares: [sq(0, 0, ME)] });
     expect(lockFacts(s)).toEqual({ claimed: 1, total: 100, empty: 99, players: 2, idle: 1 });
+  });
+});
+
+describe("removeCopy", () => {
+  it("says plainly what happens to their squares", () => {
+    expect(removeCopy("Maya", 6)).toEqual({
+      title: "Remove Maya?",
+      detail: "Their 6 squares open up again.",
+      after: "Anyone can pick them.",
+      confirm: "Remove Maya",
+      done: "Maya removed",
+      doneDetail: "6 squares are open again.",
+    });
+    expect(removeCopy("Maya", 1)).toMatchObject({ detail: "Their square opens up again.", after: "Anyone can pick it.", doneDetail: "1 square is open again." });
+    expect(removeCopy("Maya", 0)).toMatchObject({ detail: "They haven't picked a square yet.", doneDetail: "They're off the board." });
+  });
+
+  it("never prints a blank name, and never mentions money", () => {
+    expect(removeCopy("  ", 2)).toMatchObject({ title: "Remove this player?", confirm: "Remove this player", done: "This player removed" });
+    for (const n of [0, 1, 6]) expect(Object.values(removeCopy("Maya", n)).join(" ")).not.toMatch(/\$|pay|owe|bet|money/i);
   });
 });
 

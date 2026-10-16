@@ -1,3 +1,4 @@
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Activity, GameState } from "../../shared/types";
 import { ApiError } from "../lib/api";
@@ -9,9 +10,14 @@ import {
   browserLiveDeps,
   claimPatch,
   liveSocketUrl,
+  parseBootState,
   parseLiveMessage,
+  peekGame,
   releasePatch,
+  resetBootState,
   shouldAccept,
+  takeBootState,
+  useGame,
   type LiveDeps,
   type SocketLike,
 } from "../lib/live";
@@ -645,3 +651,154 @@ describe("LiveGame", () => {
     expect(h.sockets).toHaveLength(1);
   });
 });
+
+// ---- Boot state: the invite page carries the board ----
+
+/** The board's JSON as the worker inlines it (worker/og.ts inlineJson): <, >, & and U+2028/2029 escaped. */
+function inlined(state: GameState): string {
+  return JSON.stringify(state).replace(/[<>&\u2028\u2029]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`);
+}
+
+function bootElement(text: string): HTMLScriptElement {
+  const el = document.createElement("script");
+  el.type = "application/json";
+  el.id = "jx-boot";
+  el.textContent = text;
+  document.body.appendChild(el);
+  return el;
+}
+
+function bootBoard(id: string, version = 7): GameState {
+  const base = makeState(version, { activity: [activity("a1", 1)] });
+  return { ...base, game: { ...base.game, id, name: "</script> & \u2028 Squares" } };
+}
+
+describe("boot state", () => {
+  beforeEach(() => {
+    resetBootState();
+    document.getElementById("jx-boot")?.remove();
+  });
+
+  it("parses the page's JSON (escapes included) and rejects anything that isn't a board", () => {
+    const board = bootBoard("b00t01");
+    expect(parseBootState(inlined(board))).toEqual(board);
+    expect(parseBootState("")).toBeNull();
+    expect(parseBootState(null)).toBeNull();
+    expect(parseBootState("{not json")).toBeNull();
+    expect(parseBootState('{"game":{"id":"x"},"version":1}')).toBeNull(); // no arrays
+    expect(parseBootState('{"error":"Game not found"}')).toBeNull();
+  });
+
+  it("is taken once, only by its own board, and leaves the page", () => {
+    const board = bootBoard("b00t02");
+    const el = bootElement(inlined(board));
+    // Another board (e.g. one Home follows) doesn't get it and doesn't use it up.
+    expect(takeBootState("other1")).toBeNull();
+    expect(el.isConnected).toBe(false);
+    expect(takeBootState("b00t02")).toEqual(board);
+    expect(peekGame("b00t02")?.version).toBe(7);
+    // Only once: a later visit to the board doesn't start from the page's (now old) state again.
+    expect(takeBootState("b00t02")).toBeNull();
+  });
+
+  it("is ignored when the page has none or it's malformed", () => {
+    expect(takeBootState("b00t03")).toBeNull();
+    resetBootState();
+    bootElement("<html>");
+    expect(takeBootState("b00t03")).toBeNull();
+  });
+});
+
+describe("LiveGame started from the boot state", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows it at once, skips the first GET and carries on with the socket", async () => {
+    const h = harness(() => Promise.resolve(makeState(99)));
+    const live = new LiveGame("g-boot", h.deps, makeState(7, { activity: [activity("a1", 1)] }), { fresh: true });
+    const heard: string[] = [];
+    live.store.onActivity((a) => heard.push(a.id));
+    expect(live.store.getState()?.version).toBe(7);
+    expect(live.store.hasNetworkState()).toBe(true);
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).not.toHaveBeenCalled();
+    expect(h.sockets).toHaveLength(1);
+    h.sockets[0].open();
+    // Someone claimed between the page being served and the socket connecting: that's news.
+    h.sockets[0].message({ type: "state", state: makeState(8, { activity: [activity("a2", 2), activity("a1", 1)] }) });
+    expect(live.store.getState()?.version).toBe(8);
+    expect(heard).toEqual(["a2"]);
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+    expect(h.fetchState).not.toHaveBeenCalled();
+    live.stop();
+  });
+
+  it("still falls back to a GET when the socket can't connect", async () => {
+    const h = harness(() => Promise.resolve(makeState(9)));
+    const live = new LiveGame("g-boot-fallback", h.deps, makeState(7), { fresh: true });
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    h.sockets[0].drop(1006);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).toHaveBeenCalledTimes(1);
+    expect(live.store.getState()?.version).toBe(9);
+    live.stop();
+  });
+});
+
+describe("useGame on an invite page", () => {
+  class QuietSocket {
+    static opened: string[] = [];
+    readyState = 0;
+    onopen = null;
+    onmessage = null;
+    onclose = null;
+    onerror = null;
+    constructor(url: string) {
+      QuietSocket.opened.push(url);
+    }
+    send() {}
+    close() {}
+  }
+
+  beforeEach(() => {
+    resetBootState();
+    document.getElementById("jx-boot")?.remove();
+    QuietSocket.opened = [];
+    vi.stubGlobal("WebSocket", QuietSocket);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the embedded board on the first render, without GET /api/games/:id", async () => {
+    const board = bootBoard("inv001", 4);
+    bootElement(inlined(board));
+    const { result, unmount } = renderHook(() => useGame("inv001"));
+    expect(result.current.state?.game.id).toBe("inv001");
+    expect(result.current.state?.game.name).toBe("</script> & \u2028 Squares");
+    expect(result.current.loading).toBe(false);
+    expect(result.current.fromPage).toBe(true);
+    await act(async () => {});
+    expect(fetch).not.toHaveBeenCalled();
+    expect(QuietSocket.opened.some((u) => u.includes("/api/games/inv001/live"))).toBe(true);
+    unmount();
+  });
+
+  it("fetches as usual for a board the page wasn't about", async () => {
+    bootElement(inlined(bootBoard("inv002")));
+    const { result, unmount } = renderHook(() => useGame("inv003"));
+    expect(result.current.state).toBeNull();
+    expect(result.current.fromPage).toBe(false);
+    await act(async () => {});
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/games/inv003"), expect.anything());
+    unmount();
+  });
+});
+

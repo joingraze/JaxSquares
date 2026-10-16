@@ -68,6 +68,8 @@ export interface GameRow {
   payment_amount_cents: number | null;
   updated_at: number;
   version: number;
+  /** When "your board is full" was announced (migration 0007); null until then. Server-only. */
+  board_full_at?: number | null;
 }
 
 interface PlayerRow {
@@ -507,6 +509,22 @@ export function claimActivity(
        HAVING COUNT(*) > 0`,
     )
     .bind(id, gameId, now, who.clientId, who.playerId);
+}
+
+/**
+ * Stamps the board as announced full, once: changes a row only on the first
+ * claim that leaves no square open (checked inside the transaction, after the
+ * claim's inserts), so "your board is full" goes out once per board, not again
+ * after a square is given back and taken again. Never cleared.
+ */
+export function markBoardFull(db: D1Database, gameId: string, totalSquares: number, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE games SET board_full_at = ?3
+       WHERE id = ?1 AND status = 'open' AND board_full_at IS NULL
+         AND (SELECT COUNT(*) FROM squares WHERE game_id = ?1) >= ?2`,
+    )
+    .bind(gameId, totalSquares, now);
 }
 
 /** Release the client's own squares, only while the board is open. */

@@ -8,13 +8,14 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, Player } from "../../shared/types";
 
-const board: { state: GameState | null } = { state: null };
+const board: { state: GameState | null; fromPage?: boolean } = { state: null };
 vi.mock("../lib/live", async (orig) => {
   const real = await orig<typeof import("../lib/live")>();
   return {
     ...real,
     useGame: () => ({
       state: board.state,
+      fromPage: !!board.fromPage,
       loading: false,
       notFound: false,
       error: null,
@@ -78,6 +79,7 @@ function openBoard(players: Player[]): GameState {
 }
 
 beforeEach(() => {
+  board.fromPage = false;
   localStorage.clear();
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "offline in tests" }), { status: 503 })));
 });
@@ -129,3 +131,73 @@ describe("GameView for the host on another device", () => {
     expect(await screen.findByTestId("join-name")).toBeInTheDocument();
   });
 });
+
+describe("GameView players list for the host", () => {
+  const MAYA = "maya_public_id_000000";
+  const mayas = (n: number) => Array.from({ length: n }, (_, i) => ({ row: 0, col: i, playerId: MAYA, claimedAt: 0 }));
+
+  it("offers remove on everyone else's row while squares are being picked, confirmed in the host tools", async () => {
+    board.state = { ...openBoard([player(HOST, "Jordan"), player(MAYA, "Maya")]), squares: mayas(6) };
+    identity.saveAdminToken("brd123", "admin-token");
+    await renderBoard();
+
+    const remove = screen.getAllByTestId("player-remove");
+    expect(remove).toHaveLength(1);
+    expect(remove[0]).toHaveAccessibleName("Remove Maya");
+    await act(async () => {
+      fireEvent.click(remove[0]);
+    });
+    expect(await screen.findByRole("heading", { name: /Remove Maya\?/ })).toBeInTheDocument();
+    expect(screen.getByText("Their 6 squares open up again.")).toBeInTheDocument();
+    expect(screen.getByTestId("remove-player-confirm")).toHaveTextContent("Remove Maya");
+  });
+
+  it("isn't offered once the numbers are drawn, or to anyone but the host", async () => {
+    const locked = { ...openBoard([player(HOST, "Jordan"), player(MAYA, "Maya")]), squares: mayas(6) };
+    locked.game = { ...locked.game, status: "locked", numbers: { "*": { x: [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]], y: [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]] } } };
+    board.state = locked;
+    identity.saveAdminToken("brd123", "admin-token");
+    const { unmount } = render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/g/brd123"]}>
+          <Routes>
+            <Route path="/g/:id" element={<GameView />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+    await act(async () => {});
+    expect(screen.queryByTestId("player-remove")).toBeNull();
+    unmount();
+
+    localStorage.clear();
+    board.state = { ...openBoard([player(HOST, "Jordan"), player(MAYA, "Maya")]), squares: mayas(6) };
+    await renderBoard();
+    expect(within(screen.getByRole("region", { name: "Players" })).getByText("Maya")).toBeInTheDocument();
+    expect(screen.queryByTestId("player-remove")).toBeNull();
+  });
+});
+
+describe("GameView opened from an invite link", () => {
+  it("paints the skeleton for a frame, then the board the page carried (no fetch)", async () => {
+    board.state = openBoard([player(HOST, "Jordan")]);
+    board.fromPage = true;
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/g/brd123"]}>
+          <Routes>
+            <Route path="/g/:id" element={<GameView />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+    expect(screen.getByLabelText("Loading board")).toBeInTheDocument();
+    expect(screen.queryAllByTestId("cell")).toHaveLength(0);
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    });
+    expect(screen.getAllByTestId("cell")).toHaveLength(100);
+    expect(screen.queryByLabelText("Loading board")).toBeNull();
+  });
+});
+

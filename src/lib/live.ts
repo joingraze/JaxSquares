@@ -12,6 +12,11 @@
 // will deliver the state anyway; { passive: true } listens without counting
 // toward the board's "watching" (Home following your boards).
 //
+// Opened from an invite link, the page itself carries the board's state
+// (GET /g/:id embeds it as <script type="application/json" id="jx-boot">):
+// useGame starts that board from it, once, and skips the first GET; the socket
+// then takes over as usual.
+//
 // useMyGames(): the dashboard list, refetched on focus and every 30s.
 //
 // The connection logic lives in LiveGame (no React) so it can be tested with a
@@ -21,7 +26,7 @@
 // what the server puts in GameState. The secret clientId never goes in a URL.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Activity, GameState, GameSummary, LiveMessage, Square } from "../../shared/types";
+import { BOOT_STATE_ID, type Activity, type GameState, type GameSummary, type LiveMessage, type Square } from "../../shared/types";
 import { API_BASE, ApiError, api } from "./api";
 import { getPlayerId } from "./identity";
 import { onAppResume } from "./native";
@@ -146,6 +151,11 @@ export function releasePatch(playerId: string, cells: { row: number; col: number
 // GameStore: confirmed server state + pending optimistic patches
 // ---------------------------------------------------------------------------
 
+export interface GameStoreOptions {
+  /** The initial state came from the server just now (the invite page's boot state), not a cache. */
+  fresh?: boolean;
+}
+
 export class GameStore {
   private server: GameState | null;
   private pending: { id: number; apply: Patch }[] = [];
@@ -159,9 +169,11 @@ export class GameStore {
   private listeners = new Set<() => void>();
   private activityListeners = new Set<ActivityListener>();
 
-  constructor(initial: GameState | null = null) {
+  constructor(initial: GameState | null = null, options: GameStoreOptions = {}) {
     this.server = initial;
     if (initial) for (const a of initial.activity) this.seen.add(a.id);
+    // A fresh state counts as from the network: what's new after it gets announced.
+    this.confirmed = !!initial && !!options.fresh;
   }
 
   getServerState(): GameState | null {
@@ -279,6 +291,60 @@ export function primeGame(state: GameState): void {
   if (shouldAccept(cur, state)) stateCache.set(state.game.id, state);
 }
 
+// ---------------------------------------------------------------------------
+// Boot state: the board's GameState embedded in the invite page
+// ---------------------------------------------------------------------------
+
+/** A GameState from the page's boot JSON, or null when it's missing or malformed. */
+export function parseBootState(text: string | null | undefined): GameState | null {
+  if (!text) return null;
+  let s: unknown;
+  try {
+    s = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!s || typeof s !== "object") return null;
+  const st = s as Partial<GameState>;
+  const ok =
+    !!st.game &&
+    typeof st.game === "object" &&
+    typeof st.game.id === "string" &&
+    typeof st.version === "number" &&
+    [st.players, st.squares, st.scores, st.manualWinners, st.activity].every(Array.isArray);
+  return ok ? (s as GameState) : null;
+}
+
+let bootRead = false;
+let bootState: GameState | null = null;
+
+/**
+ * The state the invite page embedded, for `gameId` only and only once: the
+ * first board opened for that id starts from it instead of waiting for GET
+ * /api/games/:id. The element is read (and removed) on the first call; any
+ * other id gets null and leaves it for its own board. Also primes the cache,
+ * so a second LiveGame for the board (React StrictMode in dev) has it too.
+ */
+export function takeBootState(gameId: string, doc: Document | null = typeof document === "undefined" ? null : document): GameState | null {
+  if (!bootRead) {
+    bootRead = true;
+    const el = doc?.getElementById(BOOT_STATE_ID) ?? null;
+    bootState = parseBootState(el?.textContent);
+    el?.remove();
+  }
+  if (!bootState || bootState.game.id !== gameId) return null;
+  const state = bootState;
+  bootState = null;
+  primeGame(state);
+  return state;
+}
+
+/** Tests only: forget the boot state so the next takeBootState reads the page again. */
+export function resetBootState(): void {
+  bootRead = false;
+  bootState = null;
+}
+
 /** Warm the cache before navigating to a board (e.g. on pointerdown of a dashboard row). */
 export function prefetchGame(id: string): Promise<GameState | null> {
   const cached = stateCache.get(id);
@@ -390,13 +456,17 @@ export class LiveGame {
   private fetchAbort: AbortController | null = null;
   private inflight: Promise<void> | null = null;
   private unsubs: (() => void)[] = [];
+  /** Started from a state the server just sent (the invite page's): no first GET needed. */
+  readonly fresh: boolean;
 
   constructor(
     readonly gameId: string,
     private readonly deps: LiveDeps,
     initial: GameState | null = peekGame(gameId),
+    options: GameStoreOptions = {},
   ) {
-    this.store = new GameStore(initial);
+    this.fresh = !!initial && !!options.fresh;
+    this.store = new GameStore(initial, options);
     this.status = { connection: "connecting", watching: 0, error: null, notFound: false };
   }
 
@@ -416,7 +486,10 @@ export class LiveGame {
       this.deps.onNetwork((online) => (online ? this.wake() : this.setStatus({ connection: "offline" }))),
     );
     this.pollTimer = setInterval(() => this.pollTick(), POLL_INTERVAL_MS);
-    if (initialFetch) void this.refresh();
+    // A fresh boot state is as new as that GET would be; the socket's first message catches up
+    // (and a socket that can't connect falls back to a GET).
+    if (this.fresh) this.lastFetchAt = this.deps.now();
+    else if (initialFetch) void this.refresh();
     this.connect();
   }
 
@@ -678,6 +751,8 @@ export interface UseGameResult extends LiveStatus {
   state: GameState | null;
   /** True only while nothing is available to render yet. */
   loading: boolean;
+  /** The state came with the page (an invite link's boot state), so it was there on the very first render. */
+  fromPage: boolean;
   refresh: () => Promise<void>;
   /** Apply a `{ state }` you got from a mutation outside `mutate`. */
   receive: (state: GameState) => void;
@@ -691,7 +766,12 @@ const getNull = () => null;
 const getIdle = () => IDLE_STATUS;
 
 export function useGame(id: string | undefined, options: UseGameOptions = {}): UseGameResult {
-  const live = useMemo(() => (id ? new LiveGame(id, browserLiveDeps()) : null), [id]);
+  const live = useMemo(() => {
+    if (!id) return null;
+    // Opened from an invite link: start from the state the page carried.
+    const boot = takeBootState(id);
+    return boot ? new LiveGame(id, browserLiveDeps(), boot, { fresh: true }) : new LiveGame(id, browserLiveDeps());
+  }, [id]);
 
   // Read once per board: changing them mid-flight would mean a new connection.
   const startOptions = useRef<LiveStartOptions>({});
@@ -720,6 +800,7 @@ export function useGame(id: string | undefined, options: UseGameOptions = {}): U
     ...status,
     state,
     loading: state === null && !status.error && !status.notFound,
+    fromPage: !!live?.fresh,
     refresh,
     receive,
     mutate,

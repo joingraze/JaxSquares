@@ -81,7 +81,8 @@ the same value synchronously.) It is stable per device and one-way.
   boards still in `draft` (never paid) 7 days after creation (closing their
   rooms like a host delete), prunes activity beyond the newest 200 per game, and
   drops expired rate-limit windows. An App Store purchase for a deleted draft
-  that's confirmed later isn't lost: `/pay/iap` keeps it as `unused` (410).
+  that's confirmed later isn't lost: `/pay/iap` keeps it as `unused` (410); so
+  does the Stripe webhook for a board deleted before its payment landed.
 
 ## HTTP API
 
@@ -112,8 +113,8 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | GET | `/api/me/games` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; activates draft) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board; show and itemize its amount) |
-| POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates). A verified purchase that can't open the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already open, 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
-| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }` |
+| POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates). A verified purchase that can't open the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already open (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
+| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` opens the board only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused` |
 | POST | `/api/push/register` | C | `PushRegistration` | `{ ok: true }` |
 | POST | `/api/push/unregister` | C | `{ endpoint? , token? }` | `{ ok: true }` |
 | POST | `/api/push/test` | C | – | `{ ok: true, devices, sent, failed }` (sends "you're all set" to this device's registrations) |
@@ -142,16 +143,46 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 `maxPerPlayer` (the board's squares-per-player cap) counts per device, not per
 person: with no accounts, someone can mint more devices. The host can remove a
 player and free their squares while squares are being picked
-(`DELETE /api/games/:id/players/:playerId`).
+(`DELETE /api/games/:id/players/:playerId`; see "Removing a player (client)").
 
 Non-API routes:
 - `GET /.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
   for universal / app links on `/g/*`.
 - `GET /g/:id` serves `index.html` with per-game Open Graph tags (HTMLRewriter) so an
   invite pasted in iMessage/WhatsApp previews as "Join <board name>".
+- The same page embeds the board's state (see "Boot state on invite links").
 - `assetlinks.json` reads `ANDROID_PACKAGE` (default `com.jaxsquares.app`) and
   `ANDROID_SHA256_CERT_FINGERPRINTS` (comma-separated); the AASA file reads
   `APPLE_TEAM_ID` and `APPLE_BUNDLE_ID`.
+
+## Boot state on invite links
+
+`GET /g/:id` already reads the board for its preview tags, so it also puts that
+`GameState` at the end of the body:
+
+```html
+<script type="application/json" id="jx-boot">{"game":{"id":"k7m2px",...},...}</script>
+```
+
+- It is exactly the public `GameState` that `GET /api/games/:id` returns
+  (public player ids only; never a clientId or the admin token). `bootScript`
+  in `worker/og.ts` builds it.
+- XSS: the JSON is escaped for inline HTML (`inlineJson`): `<`, `>`, `&`,
+  U+2028 and U+2029 become `\uXXXX` (they can only occur inside JSON strings,
+  where the escape means the same character), so a board or player name like
+  `</script><script>` can't end the script or open markup.
+- Client (`src/lib/live.ts`): `takeBootState(id)` reads and removes the element
+  on its first call, validates it (`parseBootState`) and hands it out once, only
+  for the matching board id (it also primes the state cache). `useGame` starts
+  that board's `LiveGame` from it as a fresh network state (`{ fresh: true }`):
+  no first `GET /api/games/:id`, new activity after it is announced as usual,
+  and the socket takes over (a socket that can't connect falls back to a GET).
+  Any other board, a revisit, or the native app (no such element) loads as
+  before. `useGame` reports `fromPage`; `GameView` then paints its skeleton for
+  one frame before the full board (a heavy first render on a slow phone), so
+  the screen isn't blank meanwhile.
+- Measured on the production build (Slow 4G, 4x CPU, iPhone 13 viewport):
+  median time to the grid 2330 ms -> 2213 ms (p75 2754 -> 2259), LCP unchanged.
 
 ## Live socket
 
@@ -312,6 +343,18 @@ then removed from the URL (`replace`), so back/refresh doesn't repeat it.
 | `?draw=1` | Home card "Draw numbers", inbox "Your board is full" | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet |
 | `#host=<adminToken>` (fragment; the older `?host=` still works) | a host link ("Host from another phone", `hostLinkUrl`) | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar. The fragment is never sent, so the token stays out of the Worker's request logs. Only a real board code (`[a-z0-9]{4,16}`, lowercased) counts; a malformed one is ignored. A token the device already holds is never overwritten (anyone with the invite can craft `#host=x`, and the server never re-issues it): a different one is kept aside in memory, tried by the API client only after the held one gets a 403, and adopted once it works. A device holding none uses the token at once and checks it (`GET /api/games/:id/host-check`); one the server refuses is dropped again. Opened while `hydrateIdentity` is still reading the native store, the capture waits for it. The board treats this device as the host, not a newcomer (no invite hero, no join sheet on the first tap) |
 
+Removing a player (client): on the host's device (holding the admin token),
+while squares are being picked (`draft`/`open`, the API's rule), every row on
+the board's Players list except the host's and this device's own gets a remove
+button (`data-testid="player-remove"`). It asks `HostControls` (prop
+`removeRequest`) to open the host sheet on its "Remove Maya?" confirm ("Their 6
+squares open up again."); the host sheet also has a Players view (Board >
+Players) with the same list. The confirm (`remove-player-confirm`) calls
+`api.removePlayer` through `useHostActions` (the returned state is applied
+with `apply`), then a toast says it's done; refusals read plainly (409: "Squares
+are locked now, so everyone stays on the board."). The confirm closes itself if
+the board locks meanwhile.
+
 Checkout for drafts: `CheckoutSheet` (`src/features/create/CheckoutSheet.tsx`)
 is self-contained: given the board (`GET /api/games/:id`), the saved admin token
 and `PaymentConfig` (`GET /api/config`), it runs whichever checkout applies
@@ -369,10 +412,13 @@ notify(env: Env, gameId: string, event: NotifyEvent): Promise<void>   // call vi
 ```
 Core passes `actor` on host actions: `numbers-drawn` from `POST /lock`, `final`
 from `POST /final` and from a typed-in board's Final score, `player-joined`,
-and `board-full` (whoever claimed the last square). `winner` never has an actor (you hear about your own square even
+and `board-full` (whoever claimed the last square). `board-full` goes out once
+per board: the claim that first fills it stamps `games.board_full_at` in the
+same transaction (`markBoardFull`, migration 0007), and only that claim pushes;
+giving a square back and taking one again doesn't announce it again. `winner` never has an actor (you hear about your own square even
 when you typed the score); live-score events have none either. Push resolves
 public ids to devices through `getMembers()`.
 `worker/index.ts` mounts the three routers under `/api` and calls `notify` from the
-core routes. Each module owns its own migration file: core `0002_*` and
-`0005_housekeeping.sql` (rate limits, draft-cleanup index), payments `0003_*`,
-push `0004_*`.
+core routes. Each module owns its own migration file: core `0002_*`,
+`0005_housekeeping.sql` (rate limits, draft-cleanup index) and
+`0007_board_full_announced.sql`, payments `0003_*` and `0006_*`, push `0004_*`.

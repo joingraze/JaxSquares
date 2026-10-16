@@ -599,6 +599,15 @@ export interface PlayerRow {
   isMe: boolean;
 }
 
+/**
+ * Whether the host can take this player off the board (freeing their squares):
+ * only while squares are being picked (the API answers 409 once locked), never
+ * the host's own player, and never this device's own row.
+ */
+export function canRemovePlayer(game: Pick<Game, "status" | "hostPlayerId">, playerId: string, me: string): boolean {
+  return (game.status === "draft" || game.status === "open") && playerId !== game.hostPlayerId && playerId !== me;
+}
+
 /** Who's in: wins first, then squares, then who joined first. Players on the board without a record are skipped. */
 export function playerRows(state: Pick<GameState, "players" | "squares">, results: PeriodResult[], me: string): PlayerRow[] {
   const counts = new Map<string, number>();

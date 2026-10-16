@@ -28,7 +28,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 const stateOf = (game: Game) => ({ game, version: 1 }) as unknown as GameState;
 
 function draft(id: string): Game {
-  return { id, name: "Big Game", status: "draft" } as Game;
+  return { id, name: "Big Game", status: "draft", createdAt: 0 } as Game;
 }
 
 async function testPem(): Promise<string> {
@@ -311,6 +311,15 @@ describe("POST /stripe/webhook", () => {
     expect(service.activateGame).not.toHaveBeenCalled();
   });
 
+  it("keeps a payment for a board deleted before it landed as unused, and opens nothing", async () => {
+    games.delete("g1");
+    expect((await deliver(succeeded())).status).toBe(200);
+    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(purchases()).toEqual([
+      { reference: "pi_9", game_id: "g1", provider: "stripe", status: "unused", amount_cents: 499, currency: "usd", livemode: 1 },
+    ]);
+  });
+
   it("ignores intents that aren't board purchases, and other event types", async () => {
     expect((await deliver(succeeded({ game_id: "g1" }))).status).toBe(200);
     expect((await deliver(event("charge.succeeded", { id: "ch_1", object: "charge", metadata: { game_id: "g1", product: "board" } }))).status).toBe(200);
@@ -454,6 +463,68 @@ describe("POST /games/:id/pay/iap", () => {
     expect(res.status).toBe(410);
     expect(((await res.json()) as { unused?: boolean }).unused).toBeUndefined();
     expect(purchases()[0].status).toBe("paid");
+  });
+
+  describe("two payments for one draft at the same instant", () => {
+    /** Apple answers for whichever transaction is asked about. */
+    const appleAnswers = () =>
+      fetchMock.mockImplementation(async (url: string) => Response.json(signedTransaction({ transactionId: url.split("/").pop() })));
+
+    it("two App Store transactions: one opens the board, the other is kept as unused (409) for a refund", async () => {
+      appleAnswers();
+      const [a, b] = await Promise.all([
+        call("/games/g1/pay/iap", { body: { transactionId: "1001" } }),
+        call("/games/g1/pay/iap", { body: { transactionId: "1002" } }),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const lost = (await (a.status === 409 ? a : b).json()) as { error: string; unused: boolean; state: GameState };
+      expect(lost).toMatchObject({ unused: true, error: expect.stringMatching(/already open.*reportaproblem\.apple\.com/) });
+      const rows = purchases();
+      expect(rows.map((r) => r.status).sort()).toEqual(["paid", "unused"]);
+      const winner = rows.find((r) => r.status === "paid")!.reference;
+      expect(service.activateGame).toHaveBeenCalledTimes(1);
+      expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "iap", reference: winner, amountCents: 499 });
+      expect(games.get("g1")!.status).toBe("open");
+    });
+
+    it("a Stripe webhook and an App Store purchase: only one is recorded as paying for the board", async () => {
+      appleAnswers();
+      const payload = JSON.stringify({
+        id: "evt_1",
+        object: "event",
+        type: "payment_intent.succeeded",
+        livemode: true,
+        data: {
+          object: {
+            id: "pi_9",
+            object: "payment_intent",
+            amount: 499,
+            amount_received: 499,
+            currency: "usd",
+            status: "succeeded",
+            livemode: true,
+            metadata: { game_id: "g1", product: "board" },
+          },
+        },
+      });
+      const signature = await signStripePayload(payload, WEBHOOK_SECRET, Math.floor(Date.now() / 1000));
+      const [hook, iapRes] = await Promise.all([
+        paymentsRoutes.request(
+          "/stripe/webhook",
+          { method: "POST", headers: { "content-type": "application/json", "stripe-signature": signature }, body: payload },
+          makeEnv(),
+        ),
+        call("/games/g1/pay/iap", { body: { transactionId: TX } }),
+      ]);
+      expect(hook.status).toBe(200);
+      const rows = purchases();
+      expect(rows.map((r) => r.status).sort()).toEqual(["paid", "unused"]);
+      const winner = rows.find((r) => r.status === "paid")!;
+      // The App Store purchase is told when it lost, so the app finishes it and the host can ask for a refund.
+      expect(iapRes.status).toBe(winner.reference === TX ? 200 : 409);
+      expect(service.activateGame).toHaveBeenCalledTimes(1);
+      expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", expect.objectContaining({ reference: winner.reference }));
+    });
   });
 
   it("validates input and reports Apple outages as retryable", async () => {

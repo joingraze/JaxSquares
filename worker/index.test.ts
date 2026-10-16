@@ -34,6 +34,7 @@ const MIGRATIONS = [
   "migrations/0004_push.sql",
   "migrations/0005_housekeeping.sql",
   "migrations/0006_purchases_unused.sql",
+  "migrations/0007_board_full_announced.sql",
 ];
 
 let t: TestD1;
@@ -492,6 +493,60 @@ describe("board-full push", () => {
     vi.mocked(notify).mockClear();
     await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: cells(24, 25) } });
     expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "board-full", actor: pid(ANA) });
+  });
+
+  const boardFullPushes = () => vi.mocked(notify).mock.calls.filter(([, , e]) => e.kind === "board-full").length;
+
+  it("is announced once per board: giving a square back and taking one again doesn't push again", async () => {
+    const { id, admin } = await openBoard(); // Ana holds (0,0) and (0,1), Ben (1,1)
+    await call("POST", `/games/${id}/claim`, { body: { cells: cells(0, 24) } });
+    vi.mocked(notify).mockClear();
+    await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: cells(24, 25) } });
+    expect(boardFullPushes()).toBe(1);
+    expect(t.query<{ board_full_at: number | null }>(`SELECT board_full_at FROM games WHERE id = ?`, id)[0].board_full_at).toBeGreaterThan(0);
+
+    for (let i = 0; i < 3; i++) {
+      const release = await call("POST", `/games/${id}/release`, { client: ANA, body: { cells: cells(24, 25) } });
+      expect(release.status).toBe(200);
+      const again = await call<{ claimed: number }>("POST", `/games/${id}/claim`, { client: ANA, body: { cells: cells(24, 25) } });
+      expect(again.body.claimed).toBe(1);
+    }
+    // Someone else taking the freed square doesn't either.
+    await call("POST", `/games/${id}/release`, { client: ANA, body: { cells: cells(24, 25) } });
+    await call("POST", `/games/${id}/claim`, { client: BEN, body: { cells: cells(24, 25) } });
+    // Nor does the host removing a player and the board filling up again.
+    await call("DELETE", `/games/${id}/players/${encodeURIComponent(pid(BEN))}`, { admin });
+    await call("POST", `/games/${id}/claim`, { body: { cells: cells(0, 25) } });
+    expect(t.query(`SELECT COUNT(*) AS n FROM squares WHERE game_id = ?`, id)).toEqual([{ n: 25 }]);
+    expect(boardFullPushes()).toBe(1);
+  });
+
+  it("goes out once when the last squares are claimed at the same moment", async () => {
+    const { id } = await openBoard();
+    await call("POST", `/games/${id}/claim`, { body: { cells: cells(0, 23) } });
+    vi.mocked(notify).mockClear();
+    await Promise.all([
+      call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: cells(23, 25) } }),
+      call("POST", `/games/${id}/claim`, { client: BEN, body: { cells: cells(23, 25) } }),
+    ]);
+    expect(t.query(`SELECT COUNT(*) AS n FROM squares WHERE game_id = ?`, id)).toEqual([{ n: 25 }]);
+    expect(boardFullPushes()).toBe(1);
+  });
+
+  it("migration 0007 marks boards that were already full as announced", async () => {
+    const legacy = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0007")));
+    legacy.query(
+      `INSERT INTO games (id, name, team_x, team_y, format, periods, status, host_client_id, admin_token, created_at, updated_at)
+       VALUES ('full25', 'Full', '{}', '{}', '{"boardSize":25}', '[]', 'open', 'h', 't', 1, 50),
+              ('half25', 'Half', '{}', '{}', '{"boardSize":25}', '[]', 'open', 'h', 't', 1, 60)`,
+    );
+    for (let i = 0; i < 25; i++) legacy.query(`INSERT INTO squares (game_id, row, col, client_id, claimed_at) VALUES ('full25', ?, ?, 'c', 1)`, Math.floor(i / 5), i % 5);
+    legacy.query(`INSERT INTO squares (game_id, row, col, client_id, claimed_at) VALUES ('half25', 0, 0, 'c', 1)`);
+    legacy.migrate("migrations/0007_board_full_announced.sql");
+    expect(legacy.query(`SELECT id, board_full_at FROM games ORDER BY id`)).toEqual([
+      { id: "full25", board_full_at: 50 },
+      { id: "half25", board_full_at: null },
+    ]);
   });
 });
 

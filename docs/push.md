@@ -22,7 +22,7 @@ Tapping one opens `/g/<id>`.
 | A square hits | the winner | 🎉 Your square hit at Half! 🏆 *host's prize note, if any* |
 | | everyone else | Jax's square hit at Half. |
 | Last period | everyone else | 🏁 Jax's square hit at the Final. See who won each quarter. *(this replaces the separate "final" push)* |
-| Board full | host | 🔥 Your board is full. Time to draw numbers. |
+| Board full | host | 🔥 Your board is full. Time to draw numbers. *(once per board: giving a square back and taking one again doesn't send it again)* |
 | Someone joins | host | 🦊 Sam joined your board. 8 players in. *(silent, and replaces the previous join notification)* |
 | Game over | everyone | 🏁 That's a wrap. See who won each quarter. |
 

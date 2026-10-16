@@ -8,6 +8,9 @@
 //
 // Deep links (from Home): ?checkout=1 opens the checkout for an unpaid board,
 // ?draw=1 opens the lock & draw confirm. Both are cleared once handled.
+//
+// Removing a player: the board's players list asks through `removeRequest`
+// (a public player id); the sheet opens on the "Remove Maya?" confirm.
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -21,8 +24,8 @@ import { readableTeamColor } from "../../lib/format";
 import { getAdminToken, getPlayerId } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import "./host.css";
-import { claimedOf, hostSummary, revealDraw, type HostSummary } from "./hostModel";
-import { HostSheet, type HostView } from "./HostSheet";
+import { claimedOf, hostSummary, revealDraw, type HostSummary, type RemoveCopy } from "./hostModel";
+import { HostSheet, type HostView, type RemoveTarget } from "./HostSheet";
 import { NumberReveal } from "./NumberReveal";
 import { useHostActions } from "./useHostActions";
 
@@ -34,6 +37,10 @@ export interface HostControlsProps {
   pickCell: (prompt: string) => Promise<{ row: number; col: number } | null>;
   /** Open the invite sheet. */
   onInvite: () => void;
+  /** A player (public id) the host tapped remove on, on the board's players list. */
+  removeRequest?: string | null;
+  /** The request was taken (the confirm is open): clear it so the same player can be asked again. */
+  onRemoveRequestHandled?: () => void;
 }
 
 export function HostControls(props: HostControlsProps) {
@@ -55,7 +62,7 @@ interface Reveal {
   state: GameState;
 }
 
-function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
+function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onRemoveRequestHandled }: HostControlsProps) {
   const { game } = state;
   const toast = useToast();
   const navigate = useNavigate();
@@ -67,6 +74,7 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
   const [picking, setPicking] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentConfig | null>(null);
+  const [removing, setRemoving] = useState<RemoveTarget | null>(null);
   const [params, setParams] = useSearchParams();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -101,9 +109,12 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
 
   // The board moved on under an open confirm (auto-lock at kickoff, ended on another phone): back to home.
   const status = game.status;
+  const squaresOpen = status === "draft" || status === "open";
   useEffect(() => {
-    if ((view === "lock" && status !== "open") || (view === "end" && status !== "locked")) setView("home");
-  }, [view, status]);
+    if ((view === "lock" && status !== "open") || (view === "end" && status !== "locked") || ((view === "players" || view === "remove") && !squaresOpen)) {
+      setView("home");
+    }
+  }, [view, status, squaresOpen]);
 
   const openSheet = useCallback((v: HostView = "home") => {
     void haptic("light");
@@ -116,6 +127,29 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
     // Reset after the exit animation so the sheet doesn't flash the home view while leaving.
     timers.current.push(setTimeout(() => setView("home"), SHEET_EXIT_MS + 120));
   }, []);
+
+  // ---- remove a player (asked from the board's players list or the sheet's) ----
+  const askRemove = (playerId: string, from: RemoveTarget["from"]) => {
+    const player = state.players.find((p) => p.id === playerId);
+    if (!player || !squaresOpen || playerId === game.hostPlayerId) return;
+    setRemoving({ id: playerId, name: player.name, squares: state.squares.filter((s) => s.playerId === playerId).length, from });
+    if (from === "board") openSheet("remove");
+    else setView("remove");
+  };
+  const askRemoveRef = useRef(askRemove);
+  askRemoveRef.current = askRemove;
+  useEffect(() => {
+    if (!removeRequest) return;
+    onRemoveRequestHandled?.();
+    askRemoveRef.current(removeRequest, "board");
+  }, [removeRequest, onRemoveRequestHandled]);
+
+  const removed = (target: RemoveTarget, copy: RemoveCopy) => {
+    toast.show({ id: "host-saved", tone: "success", title: copy.done, description: copy.doneDetail });
+    // Back where the host started: the board, or the sheet's players list.
+    if (target.from === "board") closeSheet();
+    else setView("players");
+  };
 
   // ---- open an unpaid board ----
   const openCheckout = useCallback(() => {
@@ -256,6 +290,9 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
         onPickWinner={pickWinner}
         onEnded={ended}
         onDeleted={deleted}
+        removing={removing}
+        onAskRemove={(playerId) => askRemove(playerId, "sheet")}
+        onRemoved={removed}
       />
       {(draft || payOpen) && adminToken && (
         <Suspense fallback={null}>

@@ -229,6 +229,42 @@ export function lockReadiness(f: Pick<LockFacts, "claimed" | "total">): LockRead
   return f.claimed / f.total < LOW_FILL ? "low" : "ok";
 }
 
+// ---- Removing a player ----
+
+export interface RemoveCopy {
+  /** "Remove Maya?" */
+  title: string;
+  /** What happens to their squares, in plain words. */
+  detail: string;
+  /** The line after it. */
+  after: string;
+  /** Confirm button. */
+  confirm: string;
+  /** Success toast: "Maya removed" + "6 squares are open again." */
+  done: string;
+  doneDetail: string;
+}
+
+/** Wording for taking `name` (holding `squares`) off the board. */
+export function removeCopy(name: string, squares: number): RemoveCopy {
+  const who = name.trim() || "this player";
+  const Who = who === "this player" ? "This player" : who;
+  return {
+    title: `Remove ${who}?`,
+    detail:
+      squares === 0
+        ? "They haven't picked a square yet."
+        : squares === 1
+          ? "Their square opens up again."
+          : `Their ${squares} squares open up again.`,
+    after: squares === 0 ? "Nothing on the board changes." : squares === 1 ? "Anyone can pick it." : "Anyone can pick them.",
+    confirm: `Remove ${who}`,
+    done: `${Who} removed`,
+    doneDetail:
+      squares === 0 ? "They're off the board." : squares === 1 ? "1 square is open again." : `${squares} squares are open again.`,
+  };
+}
+
 // ---- Score entry ----
 
 export interface ScoreTarget {

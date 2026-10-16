@@ -14,6 +14,7 @@ import {
   ClockIcon,
   CrownIcon,
   FlagIcon,
+  GridIcon,
   LinkIcon,
   LockIcon,
   PencilIcon,
@@ -40,6 +41,8 @@ import { PUBLIC_ORIGIN } from "../../lib/api";
 import { kickoffLabel, pluralize, teamVars } from "../../lib/format";
 import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
+import { canRemovePlayer, playerRows } from "../board/boardModel";
+import { PlayersList } from "../board/PlayersList";
 import { EditBoard } from "./EditBoard";
 import "./host.css";
 import {
@@ -57,11 +60,13 @@ import {
   lockIsTheMove,
   lockReadiness,
   parseScore,
+  removeCopy,
   resolvedKey,
   saveEndsGame,
   scoreTargets,
   winnerRows,
   type EditDraft,
+  type RemoveCopy,
   type ScoreDraft,
 } from "./hostModel";
 import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } from "./ScorePad";
@@ -69,7 +74,15 @@ import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
 
-export type HostView = "home" | "lock" | "edit" | "end" | "delete";
+export type HostView = "home" | "lock" | "edit" | "end" | "delete" | "players" | "remove";
+
+/** The player the host asked to remove, as they were when asked; `from` is where the ask came from. */
+export interface RemoveTarget {
+  id: string;
+  name: string;
+  squares: number;
+  from: "board" | "sheet";
+}
 
 export interface HostSheetProps {
   state: GameState;
@@ -89,6 +102,12 @@ export interface HostSheetProps {
   /** The game just ended (final score saved or "End game"). */
   onEnded: () => void;
   onDeleted: () => void;
+  /** The "remove" view's player. */
+  removing: RemoveTarget | null;
+  /** From the players view: confirm removing this player (public id). */
+  onAskRemove: (playerId: string) => void;
+  /** The player is off the board (the new state is already applied). */
+  onRemoved: (target: RemoveTarget, copy: RemoveCopy) => void;
 }
 
 /** How long a "saved" line stays in the footer if the host doesn't start the next score. */
@@ -241,6 +260,22 @@ export function HostSheet(props: HostSheetProps) {
     if (await actions.remove()) props.onDeleted();
   };
 
+  // ---- removing a player (from the players view, or a row on the board) ----
+  const picking = game.status === "draft" || game.status === "open";
+  const removeTarget = props.removing;
+  const targetPlayer = removeTarget ? state.players.find((p) => p.id === removeTarget.id) ?? null : null;
+  const targetCopy = removeTarget
+    ? removeCopy(
+        targetPlayer?.name ?? removeTarget.name,
+        targetPlayer ? state.squares.filter((s) => s.playerId === removeTarget.id).length : removeTarget.squares,
+      )
+    : null;
+  const removePlayer = async () => {
+    if (!removeTarget || !targetCopy) return;
+    void haptic("medium");
+    if (await actions.removePlayer(removeTarget.id)) props.onRemoved(removeTarget, targetCopy);
+  };
+
   // ---- per view ----
 
   const back = (to: HostView = "home") => (
@@ -313,6 +348,42 @@ export function HostSheet(props: HostSheetProps) {
         </Button>
         <Button variant="ghost" block onClick={() => onView("home")}>
           Keep playing
+        </Button>
+      </div>
+    );
+  } else if (view === "players") {
+    title = <>{back()}Players</>;
+    description = picking ? "Remove someone to open up their squares." : null;
+    body = (
+      <div className="pb-2">
+        <PlayersList
+          rows={playerRows(state, [], me)}
+          total={state.players.length}
+          hostId={game.hostPlayerId}
+          stage="picking"
+          collapseAfter={Infinity}
+          onRemove={picking ? props.onAskRemove : undefined}
+        />
+      </div>
+    );
+  } else if (view === "remove" && removeTarget && targetCopy) {
+    title = <>{back("players")}{targetCopy.title}</>;
+    body = <RemoveConfirm copy={targetCopy} />;
+    footer = (
+      <div className="flex flex-col gap-1">
+        <Button
+          data-testid="remove-player-confirm"
+          variant="danger"
+          size="lg"
+          block
+          disabled={!picking}
+          loading={actions.busy === "remove-player"}
+          onClick={() => void removePlayer()}
+        >
+          {targetCopy.confirm}
+        </Button>
+        <Button variant="ghost" block onClick={() => (removeTarget.from === "board" ? onClose() : onView("players"))}>
+          Keep {targetPlayer?.name || removeTarget.name || "them"}
         </Button>
       </div>
     );
@@ -435,6 +506,16 @@ export function HostSheet(props: HostSheetProps) {
             chevron
             onClick={() => onView("edit")}
           />
+          {picking && state.players.some((p) => canRemovePlayer(game, p.id, me)) && (
+            <ListRow
+              leading={<RowIcon><UsersIcon size={18} /></RowIcon>}
+              title="Players"
+              subtitle="Remove someone from the board"
+              detail={state.players.length}
+              chevron
+              onClick={() => onView("players")}
+            />
+          )}
           <ListRow
             leading={<RowIcon><LinkIcon size={18} /></RowIcon>}
             title="Host from another phone"
@@ -778,6 +859,17 @@ function EndConfirm({ state }: { state: GameState }) {
         </Fact>
       )}
       <Fact icon={<PencilIcon size={16} />}>You can still fix a score or pick a winner by hand later.</Fact>
+    </ul>
+  );
+}
+
+function RemoveConfirm({ copy }: { copy: RemoveCopy }) {
+  return (
+    <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      <Fact icon={<GridIcon size={16} />}>
+        <b className="font-bold text-ink">{copy.detail}</b> {copy.after}
+      </Fact>
+      <Fact icon={<LinkIcon size={16} />}>They can join again with your invite link if they want back in.</Fact>
     </ul>
   );
 }

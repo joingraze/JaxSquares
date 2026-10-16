@@ -27,3 +27,5 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
 | `score-saved` | footer confirmation after a host saves a score |
+| `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
+| `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |

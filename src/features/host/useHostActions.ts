@@ -8,7 +8,17 @@ import type { GameState, UpdateGameInput } from "../../../shared/types";
 import { useToast } from "../../components/ui";
 import { ApiError, api, errorMessage } from "../../lib/api";
 
-export type HostBusy = "lock" | "score" | "remove-score" | "winner" | "clear-winner" | "finish" | "delete" | "edit" | null;
+export type HostBusy =
+  | "lock"
+  | "score"
+  | "remove-score"
+  | "winner"
+  | "clear-winner"
+  | "finish"
+  | "delete"
+  | "edit"
+  | "remove-player"
+  | null;
 
 export interface HostActions {
   busy: HostBusy;
@@ -20,6 +30,18 @@ export interface HostActions {
   finish: () => Promise<GameState | null>;
   update: (patch: UpdateGameInput) => Promise<GameState | null>;
   remove: () => Promise<boolean>;
+  /** Take a player (public id) off the board and free their squares, while squares are being picked. */
+  removePlayer: (playerId: string) => Promise<GameState | null>;
+}
+
+/** The API's refusals for removing a player, said for the host. */
+function removePlayerError(err: unknown): unknown {
+  if (!(err instanceof ApiError)) return err;
+  if (err.status === 409) return new ApiError("Squares are locked now, so everyone stays on the board.", 409, err.body);
+  if (err.status === 404 && err.message !== "Game not found") {
+    return new ApiError("They're not on this board anymore.", 404, err.body);
+  }
+  return err;
 }
 
 export function useHostActions(gameId: string, apply: (state: GameState) => void): HostActions {
@@ -75,5 +97,14 @@ export function useHostActions(gameId: string, apply: (state: GameState) => void
     finish: useCallback(() => withState("finish", () => api.finish(gameId)), [withState, gameId]),
     update: useCallback((patch: UpdateGameInput) => withState("edit", () => api.updateGame(gameId, patch)), [withState, gameId]),
     remove: useCallback(async () => (await run("delete", () => api.deleteGame(gameId))) !== null, [run, gameId]),
+    removePlayer: useCallback(
+      (playerId: string) =>
+        withState("remove-player", () =>
+          api.removePlayer(gameId, playerId).catch((err: unknown) => {
+            throw removePlayerError(err);
+          }),
+        ),
+      [withState, gameId],
+    ),
   };
 }
