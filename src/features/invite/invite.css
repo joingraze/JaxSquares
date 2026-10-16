@@ -1,0 +1,131 @@
+/* Invite + join pieces. Plain CSS on the theme's variables (the theme is
+   emitted statically, so every --color-* token exists at runtime). */
+
+/* ---- Invite ticket ---- */
+
+/* Torn-ticket perforation: a dashed rule with a half-circle bite at each end,
+   cut in the sheet's own color so it reads as a notch. */
+.invite-perf {
+  position: relative;
+  height: 1px;
+  margin: 0 18px;
+  background-image: linear-gradient(90deg, var(--color-line-strong) 55%, transparent 0);
+  background-size: 10px 1px;
+}
+.invite-perf::before,
+.invite-perf::after {
+  content: "";
+  position: absolute;
+  top: -11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px var(--color-line-strong);
+}
+.invite-perf::before {
+  left: -30px;
+  clip-path: inset(0 0 0 50%);
+}
+.invite-perf::after {
+  right: -30px;
+  clip-path: inset(0 50% 0 0);
+}
+
+/* Code tiles land one after another like a departures board. */
+.invite-tile {
+  animation: invite-tile-in 420ms var(--ease-spring) both;
+}
+@keyframes invite-tile-in {
+  from {
+    opacity: 0;
+    transform: translateY(-40%) rotateX(70deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The QR grows in place when tapped. */
+.invite-qr {
+  transition:
+    width 360ms var(--ease-spring),
+    height 360ms var(--ease-spring),
+    padding 360ms var(--ease-spring),
+    border-radius 360ms var(--ease-spring);
+}
+
+/* ---- Invite hero ---- */
+
+/* The pointing hand nudges toward the board. */
+.invite-point {
+  display: inline-block;
+  animation: invite-point 1.6s var(--ease-out-quint) infinite;
+}
+@keyframes invite-point {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(5px);
+  }
+}
+
+/* Avatars in the stack pop in one by one. */
+.invite-stagger > * {
+  animation: invite-pop 320ms var(--ease-spring) both;
+}
+@keyframes invite-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.invite-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.invite-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.invite-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.invite-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.invite-stagger > *:nth-child(6) { animation-delay: 300ms; }
+
+/* Hero enters with a short rise so it reads as "for you". */
+.invite-rise {
+  animation: invite-rise 520ms var(--ease-out-quint) both;
+}
+@keyframes invite-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- Join sheet ---- */
+
+.join-scroller {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 20px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 28px), transparent);
+}
+.join-scroller > * {
+  scroll-snap-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .invite-point,
+  .invite-tile,
+  .invite-stagger > *,
+  .invite-rise {
+    animation: none;
+  }
+}

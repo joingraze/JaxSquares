@@ -1,25 +1,188 @@
-// Placeholder profile & notifications screen (next wave).
-import { Avatar, ListGroup, ListRow, TopBar } from "../components/ui";
-import { useProfile } from "../lib/identity";
+// Profile (/me): who I am on the boards (name, sticker, color, with a live
+// preview square), my notifications, per-board mutes, host links and About.
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { GameSummary } from "../../shared/types";
+import { LockIcon, PencilIcon, TrophyIcon } from "../components/icons";
+import { Button, Card, ListGroup, ListRow, TopBar, cx, useToast } from "../components/ui";
+import { MuteToggle } from "../features/notifications/MuteToggle";
+import { appVersion, WEB_VERSION } from "../features/notifications/profile/appVersion";
+import { HostLinksSheet } from "../features/notifications/profile/HostLinksSheet";
+import { LookSheet } from "../features/notifications/profile/LookSheet";
+import { MiniMatchup } from "../features/notifications/profile/MiniMatchup";
+import { NotificationsCard } from "../features/notifications/profile/NotificationsCard";
+import { boardsToSync, lookChanged, statsOf, syncLook, tagline, type MyStats } from "../features/notifications/profile/profileSync";
+import { SquarePreview } from "../features/notifications/profile/SquarePreview";
+import { pushIsOn, usePushStatus } from "../features/notifications/usePushStatus";
+import { api } from "../lib/api";
+import { pluralize, STATUS_LABEL } from "../lib/format";
+import { getProfile, useProfile, type Profile as Look } from "../lib/identity";
+import { useMyGames } from "../lib/live";
 
 export default function Profile() {
   const profile = useProfile();
+  const toast = useToast();
+  const { games } = useMyGames();
+  const push = usePushStatus();
+  const [lookOpen, setLookOpen] = useState(false);
+  const [hostOpen, setHostOpen] = useState(false);
+  const [version, setVersion] = useState(WEB_VERSION);
+
+  useEffect(() => {
+    let alive = true;
+    void appVersion().then((v) => alive && setVersion(v));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ---- editing my look: save as you go, then update the boards I'm on ----
+  const before = useRef<Look | null>(null);
+  const gamesRef = useRef(games);
+  gamesRef.current = games;
+
+  const openLook = useCallback(() => {
+    before.current = getProfile();
+    setLookOpen(true);
+  }, []);
+
+  const closeLook = useCallback(() => {
+    setLookOpen(false);
+    const prev = before.current;
+    before.current = null;
+    const next = getProfile();
+    if (!prev || !lookChanged(prev, next) || !next.name.trim()) return;
+    const ids = boardsToSync(gamesRef.current ?? []);
+    if (ids.length === 0) return;
+    void syncLook(ids, next, (id, input) => api.join(id, input)).then(({ updated, failed }) => {
+      if (updated > 0) {
+        toast.show({ tone: "success", title: "Looking good", description: `Updated on ${pluralize(updated, "board")}.`, haptic: false });
+      } else if (failed > 0) {
+        toast.error("Couldn't update your boards", "Check your connection, then edit your look again.");
+      }
+    });
+  }, [toast]);
+
+  const stats = games ? statsOf(games) : null;
+  const named = profile.name.trim().length > 0;
+  const active = (games ?? []).filter((g) => g.status === "open" || g.status === "locked");
+  const hostsAny = (games ?? []).some((g) => g.isHost);
+
   return (
     <>
-      <TopBar title="Profile" />
-      <div className="flex flex-col gap-6 px-safe">
-        <div className="flex items-center gap-4">
-          <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="xl" />
-          <div>
-            <p className="font-display text-title-2 font-extrabold">{profile.name || "Pick a name"}</p>
-            <p className="text-subhead text-ink-muted">Shown on every board you join.</p>
-          </div>
-        </div>
-        <ListGroup title="About">
+      <TopBar title="Profile" large={false} />
+      <div className="flex flex-col gap-7 px-safe pt-3">
+        <Hero profile={profile} stats={stats} named={named} onEdit={openLook} />
+
+        <NotificationsCard status={push} quiet={!named} boardName={active[0]?.name} />
+
+        {pushIsOn(push) && active.length > 0 && (
+          <ListGroup title="Pings by board" footer="Muting a board only affects this device.">
+            {active.map((g) => (
+              <ListRow
+                key={g.id}
+                leading={<MiniMatchup teamX={g.teamX} teamY={g.teamY} />}
+                title={g.name}
+                subtitle={boardLine(g)}
+                trailing={<MuteToggle gameId={g.id} variant="switch" label={g.name} />}
+              />
+            ))}
+          </ListGroup>
+        )}
+
+        <ListGroup title="Hosting">
+          <ListRow
+            leading={
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-gold-400/12 text-gold-300 ring-1 ring-inset ring-gold-400/25">
+                <LockIcon size={17} />
+              </span>
+            }
+            title="Host links"
+            subtitle={hostsAny ? "Run your boards from another phone" : "How hosting works without an account"}
+            onClick={() => setHostOpen(true)}
+            chevron
+          />
+        </ListGroup>
+
+        <ListGroup
+          title="About"
+          footer={
+            <>
+              JaxSquares {version} · Squares for bragging rights. No money changes hands, ever.
+            </>
+          }
+        >
+          <ListRow title="Support" subtitle="Questions, bugs and ideas" to="/support" />
           <ListRow title="Privacy" to="/privacy" />
           <ListRow title="Terms" to="/terms" />
         </ListGroup>
       </div>
+
+      <LookSheet open={lookOpen} onClose={closeLook} />
+      <HostLinksSheet open={hostOpen} onClose={() => setHostOpen(false)} games={games ?? []} />
     </>
+  );
+}
+
+function boardLine(g: GameSummary): string {
+  if (g.live?.state === "in") return `Live · ${g.live.detail}`;
+  if (g.status === "open") return `${STATUS_LABEL.open} · ${pluralize(Math.max(0, g.totalSquares - g.claimed), "square")} left`;
+  return STATUS_LABEL[g.status];
+}
+
+function Hero({ profile, stats, named, onEdit }: { profile: Look; stats: MyStats | null; named: boolean; onEdit: () => void }) {
+  return (
+    <Card padding="none" className="relative">
+      {/* A wash of my color behind the board slice. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-44 opacity-30"
+        style={{ background: `radial-gradient(60% 80% at 50% 0%, ${profile.color}, transparent 75%)` }}
+      />
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label="Edit your look"
+        className="pressable relative block w-full px-5 pt-6"
+        data-testid="profile-edit"
+      >
+        <SquarePreview profile={profile} size={40} />
+      </button>
+      <div className="relative flex flex-col items-center px-5 pb-5 pt-3.5 text-center">
+        <h2 className={cx("max-w-full truncate font-display text-title-1 font-extrabold", named ? "text-ink" : "text-ink-muted")}>
+          {named ? profile.name : "Who's playing?"}
+        </h2>
+        <p className="mt-1 max-w-[19rem] text-subhead text-ink-muted">{tagline(stats, named)}</p>
+        <Button
+          variant={named ? "secondary" : "primary"}
+          size={named ? "sm" : "md"}
+          className="mt-3.5"
+          leading={<PencilIcon size={16} />}
+          onClick={onEdit}
+        >
+          {named ? "Edit look" : "Pick your name & sticker"}
+        </Button>
+      </div>
+      {named && (
+        <dl className="relative grid grid-cols-3 border-t border-line">
+          <Stat label="Boards" value={stats?.boards} />
+          <Stat label="Squares" value={stats?.squares} />
+          <Stat label="Wins" value={stats?.wins} gold />
+        </dl>
+      )}
+    </Card>
+  );
+}
+
+function Stat({ label, value, gold }: { label: string; value: number | undefined; gold?: boolean }) {
+  const lit = gold && (value ?? 0) > 0;
+  return (
+    <div className="flex flex-col items-center py-3.5 [&+&]:border-l [&+&]:border-line">
+      <dd className={cx("flex items-center gap-1 font-display text-title-3 font-extrabold tabular-nums", lit ? "text-gold-300" : "text-ink")}>
+        {lit && <TrophyIcon size={16} filled />}
+        {value === undefined ? "–" : value.toLocaleString("en-US")}
+      </dd>
+      <dt className="eyebrow mt-0.5 text-ink-subtle">{label}</dt>
+    </div>
   );
 }

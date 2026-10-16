@@ -1,0 +1,559 @@
+/*
+ * The board grid. Sizes come from CSS variables so the same markup works for
+ * 10x10, 5x5 and the zoomed (pannable) layout:
+ *   --n     squares per side
+ *   --axis  width/height of the digit headers
+ *   --gap   gap between squares
+ *   --cell  square size (fit: derived from the scroller width; zoom: fixed)
+ * Player colors arrive per square as --p (fill) and --pi (ink on it).
+ */
+
+.jx-board-scroller {
+  container-type: inline-size;
+  position: relative;
+  border-radius: 0.875rem;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.jx-board {
+  --axis: 22px;
+  --gap: 2px;
+  --cell: calc((100cqw - var(--axis) - var(--gap) * var(--n)) / var(--n));
+  display: grid;
+  grid-template-columns: var(--axis) repeat(var(--n), var(--cell));
+  grid-template-rows: var(--axis) repeat(var(--n), var(--cell));
+  gap: var(--gap);
+  width: max-content;
+}
+
+.jx-board[data-zoom="true"] {
+  --cell: 52px;
+  --axis: 28px;
+  --gap: 4px;
+}
+
+.jx-board[data-size="5"] {
+  --gap: 5px;
+  --axis: 30px;
+}
+
+/* ---------- Axis headers ---------- */
+
+.jx-axis {
+  position: sticky;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+  /* Opaque base so squares scrolling underneath (zoom) don't show through. */
+  background-color: var(--color-canvas);
+  background-image: linear-gradient(var(--tint), var(--tint));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--team) 40%, transparent);
+  font-size: calc(var(--axis) * 0.62);
+}
+
+.jx-axis[data-pair="true"] {
+  font-size: calc(var(--axis) * 0.46);
+}
+
+.jx-axis-x {
+  top: 0;
+  --team: var(--team-x, #3ab7ff);
+  --tint: color-mix(in srgb, var(--team) 26%, transparent);
+}
+
+.jx-axis-y {
+  left: 0;
+  --team: var(--team-y, #ff66a6);
+  --tint: color-mix(in srgb, var(--team) 26%, transparent);
+}
+
+.jx-axis[data-blank="true"] {
+  color: var(--color-ink-subtle);
+  --tint: color-mix(in srgb, var(--team) 14%, rgb(255 255 255 / 0.03));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--team) 30%, rgb(255 255 255 / 0.06));
+}
+
+/* The digits the live score points at: a red-zone crosshair to the live square. */
+.jx-axis[data-hot="true"] {
+  --tint: var(--color-live-500);
+  color: white;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.3),
+    0 0 14px -2px var(--color-live-500);
+}
+
+/* Zoomed: sticky headers get a canvas moat so panned squares never peek around them. */
+.jx-board[data-zoom="true"] .jx-axis,
+.jx-board[data-zoom="true"] .jx-corner {
+  outline: calc(var(--gap) + 1px) solid var(--color-canvas);
+}
+
+.jx-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--color-canvas);
+  border-radius: 7px;
+}
+
+.jx-board-intro .jx-axis {
+  animation: jx-axis-in 420ms var(--ease-out-quint) both;
+  animation-delay: calc(var(--i) * 28ms);
+}
+
+/* ---------- Squares ---------- */
+
+.jx-cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  padding: 0;
+  border: 0;
+  border-radius: calc(var(--cell) * 0.2);
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  color: var(--color-ink);
+  transition:
+    transform 260ms var(--ease-spring),
+    opacity 220ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.jx-cell:active {
+  transform: scale(0.88);
+  transition-duration: 70ms;
+}
+
+.jx-cell:focus-visible {
+  outline-offset: 1px;
+  z-index: 4;
+}
+
+/* Open squares on a board taking claims: inviting, with a faint plus. */
+.jx-board[data-open="true"] .jx-cell[data-state="empty"] {
+  background: rgb(198 249 31 / 0.045);
+  box-shadow: inset 0 0 0 1px rgb(198 249 31 / 0.13);
+}
+.jx-board[data-open="true"] .jx-cell[data-state="empty"]::before {
+  content: "";
+  width: 28%;
+  height: 28%;
+  opacity: 0.32;
+  background:
+    linear-gradient(var(--color-brand-300), var(--color-brand-300)) center / 100% 2px no-repeat,
+    linear-gradient(var(--color-brand-300), var(--color-brand-300)) center / 2px 100% no-repeat;
+}
+@media (hover: hover) {
+  .jx-board[data-open="true"] .jx-cell[data-state="empty"]:hover {
+    background: rgb(198 249 31 / 0.12);
+  }
+}
+
+/* Locked board, nobody took this one. */
+.jx-board[data-open="false"] .jx-cell[data-state="empty"] {
+  background: rgb(255 255 255 / 0.02);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.035);
+}
+
+/* Someone else's: a quiet tile so the owner's sticker (and my volt squares) lead. */
+.jx-cell[data-state="taken"] {
+  background: color-mix(in srgb, var(--p) 9%, rgb(255 255 255 / 0.035));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+.jx-cell[data-state="mine"],
+.jx-cell[data-mine="true"][data-state="selected"] {
+  background: color-mix(in srgb, var(--color-brand-400) 22%, var(--color-canvas));
+  box-shadow:
+    inset 0 0 0 2px var(--color-brand-400),
+    0 0 12px -3px rgb(198 249 31 / 0.65);
+  z-index: 1;
+}
+
+.jx-cell[data-state="selected"][data-mine="false"] {
+  background: var(--color-brand-400);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    inset 0 -2px 0 var(--color-brand-600),
+    0 0 16px -2px rgb(198 249 31 / 0.7);
+  color: var(--color-ink-inverse);
+  animation: jx-select 300ms var(--ease-spring) both;
+  z-index: 1;
+}
+
+/* Mine, picked to let go. */
+.jx-cell[data-release="true"][data-state="selected"] {
+  background: color-mix(in srgb, var(--color-danger-500) 26%, var(--color-canvas));
+  box-shadow: inset 0 0 0 2px var(--color-danger-400);
+  animation: jx-shake-sm 320ms ease-in-out both;
+}
+.jx-cell[data-release="true"] .jx-sticker {
+  opacity: 0.35;
+  filter: grayscale(0.6);
+}
+
+.jx-cell[data-state="winner"] {
+  background: linear-gradient(160deg, var(--color-gold-200), var(--color-gold-400) 50%, var(--color-gold-600));
+  box-shadow:
+    0 0 0 2px var(--color-gold-300),
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    inset 0 -2px 0 var(--color-gold-700),
+    0 0 20px 0 rgb(255 171 15 / 0.75);
+  z-index: 2;
+}
+.jx-cell[data-state="winner"][data-mine="true"] {
+  box-shadow:
+    0 0 0 2px var(--color-brand-400),
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    inset 0 -2px 0 var(--color-gold-700),
+    0 0 24px 2px rgb(255 171 15 / 0.85);
+}
+.jx-cell[data-state="winner"] .jx-sticker {
+  width: 58%;
+  height: 58%;
+  font-size: calc(var(--cell) * 0.32);
+  box-shadow:
+    0 0 0 1.5px rgb(74 44 0 / 0.6),
+    inset 0 -2px 0 rgb(0 0 0 / 0.2),
+    inset 0 2px 0 rgb(255 255 255 / 0.35);
+}
+.jx-cell[data-state="winner"] .jx-sticker[data-initials="true"] {
+  font-size: calc(var(--cell) * 0.22);
+}
+
+/* My winning square keeps glowing: the moment of glory, on the board itself. */
+.jx-cell[data-state="winner"][data-mine="true"]:not([data-spot]) {
+  animation: jx-my-win 2.2s ease-in-out infinite;
+}
+@keyframes jx-my-win {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--color-brand-400),
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      inset 0 -2px 0 var(--color-gold-700),
+      0 0 14px 0 rgb(255 171 15 / 0.6);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--color-brand-400),
+      inset 0 1px 0 rgb(255 255 255 / 0.6),
+      inset 0 -2px 0 var(--color-gold-700),
+      0 0 30px 6px rgb(255 171 15 / 0.85);
+  }
+}
+
+/* Final board: winners own the spotlight, my squares stay readable. */
+.jx-board[data-final="true"] .jx-cell:not([data-state="winner"]) {
+  opacity: 0.42;
+}
+.jx-board[data-final="true"] .jx-cell[data-state="mine"] {
+  opacity: 0.8;
+}
+
+/* Where the live score points right now: a pulsing red-zone ring. */
+.jx-cell[data-live="true"] {
+  z-index: 3;
+}
+.jx-cell[data-live="true"]::after,
+.jx-cell[data-live-reverse="true"]::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: calc(var(--cell) * 0.24);
+  box-shadow: 0 0 0 2.5px var(--color-live-500);
+  animation: jx-live 1.4s ease-out infinite;
+  pointer-events: none;
+}
+.jx-cell[data-live-reverse="true"]::after {
+  box-shadow: none;
+  border: 2px dashed var(--color-live-400);
+  opacity: 0.85;
+  animation: none;
+}
+
+/* A result card was tapped: everything else steps back. */
+.jx-board[data-spot="true"] .jx-cell:not([data-spot="true"]) {
+  opacity: 0.22;
+}
+.jx-cell[data-spot="true"] {
+  transform: scale(1.12);
+  z-index: 5;
+}
+
+/* Host is picking a square. */
+.jx-board[data-picking="true"] .jx-cell {
+  cursor: crosshair;
+}
+.jx-board[data-picking="true"] .jx-cell:hover {
+  box-shadow: inset 0 0 0 2px var(--color-gold-300);
+}
+
+/* ---------- Owner sticker ---------- */
+
+.jx-sticker {
+  display: grid;
+  place-items: center;
+  width: 74%;
+  height: 74%;
+  border-radius: 999px;
+  background: var(--p);
+  color: var(--pi);
+  font-size: calc(var(--cell) * 0.4);
+  line-height: 1;
+  box-shadow:
+    inset 0 -2px 0 rgb(0 0 0 / 0.2),
+    inset 0 2px 0 rgb(255 255 255 / 0.35);
+  user-select: none;
+  animation: jx-pop 320ms var(--ease-spring) both;
+}
+.jx-sticker[data-initials="true"] {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-size: calc(var(--cell) * 0.28);
+}
+.jx-sticker > span {
+  transform: translateY(0.04em);
+}
+
+.jx-board-intro .jx-sticker {
+  animation-delay: calc((var(--r) + var(--c)) * 22ms);
+}
+
+/* 5x5 and zoom: room for the name under the sticker. */
+.jx-cell-name {
+  position: absolute;
+  inset-inline: 2px;
+  bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--color-ink);
+  opacity: 0.9;
+}
+.jx-cell[data-state="winner"] .jx-cell-name,
+.jx-cell[data-state="selected"][data-mine="false"] .jx-cell-name {
+  color: var(--color-ink-inverse);
+}
+.jx-cell-roomy .jx-sticker {
+  width: 56%;
+  height: 56%;
+  margin-bottom: 18%;
+  font-size: calc(var(--cell) * 0.3);
+}
+.jx-cell-roomy .jx-sticker[data-initials="true"] {
+  font-size: calc(var(--cell) * 0.2);
+}
+
+.jx-check {
+  width: 52%;
+  height: 52%;
+  animation: jx-pop 260ms var(--ease-spring) both;
+}
+
+/* Tiny period tag on a winning square ("Q1"), only where there's room. */
+.jx-wintag {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: var(--color-gold-900);
+  line-height: 1;
+}
+.jx-wincount {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--color-pitch-950);
+  color: var(--color-gold-300);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px var(--color-gold-400);
+  z-index: 1;
+}
+
+.jx-livetag {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-live-500);
+  color: white;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---------- Team bands along the axes ---------- */
+
+.jx-band-x {
+  color: color-mix(in srgb, var(--team-x, #3ab7ff) 72%, white);
+}
+.jx-band-y {
+  color: color-mix(in srgb, var(--team-y, #ff66a6) 72%, white);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* ---------- Keyframes ---------- */
+
+@keyframes jx-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes jx-select {
+  0% {
+    transform: scale(0.82);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes jx-live {
+  0% {
+    box-shadow:
+      0 0 0 2.5px var(--color-live-500),
+      0 0 0 0 rgb(255 64 64 / 0.6);
+  }
+  100% {
+    box-shadow:
+      0 0 0 2.5px var(--color-live-500),
+      0 0 0 10px rgb(255 64 64 / 0);
+  }
+}
+
+@keyframes jx-shake-sm {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+  75% {
+    transform: translateX(-1px);
+  }
+}
+
+@keyframes jx-axis-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Over the limit / not yours: a quick no. */
+.jx-nope {
+  animation: jx-shake-sm 300ms ease-in-out both !important;
+}
+
+/* Results strip: snap scrolling cards. */
+.jx-strip {
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: 1rem;
+}
+.jx-strip > * {
+  scroll-snap-align: start;
+}
+
+/* Score digits roll when they change. */
+.jx-roll {
+  display: inline-block;
+  animation: tick 360ms var(--ease-out-quint) both;
+}
+
+/* The gold "you won" banner. */
+.jx-glory {
+  animation: jx-glory-in 620ms var(--ease-spring) both;
+}
+@keyframes jx-glory-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.jx-shine {
+  position: relative;
+  overflow: hidden;
+}
+.jx-shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.28) 50%, transparent 65%);
+  background-size: 250% 100%;
+  animation: jx-sheen 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes jx-sheen {
+  0% {
+    background-position: 130% 0;
+  }
+  60%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jx-cell[data-live="true"]::after {
+    animation: none;
+  }
+}

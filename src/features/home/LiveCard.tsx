@@ -1,0 +1,210 @@
+// "Live now" hero card: scoreboard, clock, and who holds the square that's
+// winning right now (gold when it's you).
+
+import { Link } from "react-router-dom";
+import type { GameState, GameSummary } from "../../../shared/types";
+import { ChevronRightIcon, TrophyIcon } from "../../components/icons";
+import { Avatar, Badge, cx, Skeleton, TeamMark } from "../../components/ui";
+import { pluralize, teamVars } from "../../lib/format";
+import { useProfile } from "../../lib/identity";
+import { prefetchGame } from "../../lib/live";
+import { haptic } from "../../lib/native";
+import { RoleBadge, TickNumber } from "./BoardBits";
+import { liveSnapshot, type LiveSnapshot } from "./sections";
+
+export interface LiveCardProps {
+  game: GameSummary;
+  state: GameState | undefined;
+  me: string;
+  /** Narrower card inside the live carousel. */
+  compact?: boolean;
+}
+
+export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
+  const snap = state ? liveSnapshot(state, me) : null;
+  const fallback = !snap && game.live ? game.live : null;
+  const inProgress = snap?.inProgress ?? fallback?.state === "in";
+  // Hosts enter scores on custom boards: once one is in, the game is on.
+  const onAir = inProgress || (snap?.hasScore ?? false);
+
+  return (
+    <Link
+      to={`/g/${game.id}`}
+      onPointerDown={() => void prefetchGame(game.id)}
+      onClick={() => void haptic("selection")}
+      aria-label={`${game.name}, ${game.teamX.name} vs ${game.teamY.name}`}
+      className="pressable block h-full rounded-card"
+    >
+      <article
+        style={teamVars(game.teamX, game.teamY)}
+        className={cx(
+          "relative h-full overflow-hidden rounded-card bg-surface-2 p-4 shadow-card ring-1 ring-inset",
+          snap?.meWinning ? "ring-gold-400/60" : "ring-line-strong",
+        )}
+      >
+        {/* Team-color floodlights from each side. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_90%_at_0%_30%,color-mix(in_srgb,var(--color-team-x)_26%,transparent),transparent_70%),radial-gradient(70%_90%_at_100%_30%,color-mix(in_srgb,var(--color-team-y)_26%,transparent),transparent_70%)]"
+        />
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            {onAir ? (
+              <Badge tone="live" icon={<span className="block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}>
+                Live
+              </Badge>
+            ) : (
+              <Badge tone="neutral">Numbers in</Badge>
+            )}
+            <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{game.name}</p>
+            <RoleBadge isHost={game.isHost} />
+          </div>
+
+          <Scoreboard game={game} snap={snap} fallback={fallback} compact={compact} />
+
+          {state ? <LeaderStrip snap={snap} /> : <Skeleton className="mt-3 h-14 w-full rounded-2xl" />}
+
+          <div className="mt-3 flex items-center gap-2 text-footnote text-ink-muted">
+            <span className="font-semibold">
+              {game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}
+            </span>
+            {game.myWins.length > 0 && (
+              <span className="inline-flex items-center gap-1 font-bold text-gold-300">
+                <TrophyIcon size={13} strokeWidth={2.4} />
+                {game.myWins.map((w) => w.label).join(", ")}
+              </span>
+            )}
+            <ChevronRightIcon size={16} className="ml-auto text-ink-subtle" />
+          </div>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function Scoreboard({
+  game,
+  snap,
+  fallback,
+  compact,
+}: {
+  game: GameSummary;
+  snap: LiveSnapshot | null;
+  fallback: GameSummary["live"];
+  compact: boolean;
+}) {
+  const scoreX = snap?.hasScore ? snap.scoreX : fallback ? fallback.scoreX : null;
+  const scoreY = snap?.hasScore ? snap.scoreY : fallback ? fallback.scoreY : null;
+  const clock = snap?.clock ?? fallback?.detail ?? "Numbers drawn";
+  const lead = scoreX !== null && scoreY !== null ? Math.sign(scoreX - scoreY) : 0;
+  return (
+    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <TeamSide team={game.teamX} score={scoreX} dim={lead < 0} compact={compact} />
+      <div className={cx("flex flex-col items-center text-center", compact ? "min-w-[4.5rem]" : "min-w-[5.5rem]")}>
+        <span className="eyebrow text-ink">{clock}</span>
+        {snap?.nextLabel && !snap.inProgress && (
+          <span className="mt-1 text-caption font-semibold text-ink-subtle">{snap.nextLabel} up next</span>
+        )}
+      </div>
+      <TeamSide team={game.teamY} score={scoreY} dim={lead > 0} compact={compact} reverse />
+    </div>
+  );
+}
+
+function TeamSide({
+  team,
+  score,
+  dim,
+  reverse,
+  compact,
+}: {
+  team: GameSummary["teamX"];
+  score: number | null;
+  dim: boolean;
+  reverse?: boolean;
+  compact: boolean;
+}) {
+  return (
+    <div className={cx("flex items-center", compact ? "gap-2" : "gap-2.5", reverse && "flex-row-reverse")}>
+      <TeamMark team={team} size={compact ? "sm" : "md"} />
+      <span
+        className={cx(
+          "font-display font-extrabold leading-none tracking-[-0.04em] tabular-nums",
+          compact ? "text-[2.25rem]" : "text-[2.75rem]",
+          dim ? "text-ink-muted" : "text-ink",
+        )}
+      >
+        {score === null ? <span className="text-ink-subtle">–</span> : <TickNumber value={score} />}
+      </span>
+    </div>
+  );
+}
+
+function LeaderStrip({ snap }: { snap: LiveSnapshot | null }) {
+  const profile = useProfile();
+  if (!snap) return null;
+  const leader = snap.leader;
+
+  if (!leader) {
+    return (
+      <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
+        <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full bg-surface-4 text-lg">
+          🎲
+        </span>
+        <p className="text-subhead font-semibold text-ink-muted">
+          Numbers are in. {snap.nextLabel ? `First score decides ${snap.nextLabel}.` : "First score wins."}
+        </p>
+      </div>
+    );
+  }
+
+  const digits = leader.digits ? `${leader.digits[0]}·${leader.digits[1]}` : null;
+  if (snap.meWinning) {
+    return (
+      <div className="mt-3 flex animate-win-glow items-center gap-3 rounded-2xl bg-[linear-gradient(100deg,rgb(255_194_51/0.28),rgb(255_171_15/0.1))] px-3 py-2.5 ring-1 ring-inset ring-gold-400/60">
+        <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="md" ring="gold" decorative />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-display text-headline font-extrabold text-foil">
+            {leader.kind === "now" ? `You're winning ${leader.periodLabel}!` : `You won ${leader.periodLabel}!`}
+          </p>
+          <p className="truncate text-caption font-semibold text-gold-200/80">
+            {leader.kind === "now" ? "Yours if it ends now" : "Your square hit"}
+          </p>
+        </div>
+        {digits && <DigitsChip digits={digits} tone="gold" />}
+      </div>
+    );
+  }
+
+  const name = leader.player?.name ?? (leader.playerId ? "Someone" : "Nobody");
+  const verb = leader.kind === "now" ? `has ${leader.periodLabel} right now` : `won ${leader.periodLabel}`;
+  return (
+    <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
+      {leader.player ? (
+        <Avatar name={leader.player.name} color={leader.player.color} emoji={leader.player.emoji} size="md" decorative />
+      ) : (
+        <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full bg-surface-4 text-ink-subtle">
+          ?
+        </span>
+      )}
+      <p className="min-w-0 flex-1 truncate text-subhead text-ink-muted">
+        <span className="font-extrabold text-ink">{name}</span> {verb}
+      </p>
+      {digits && <DigitsChip digits={digits} />}
+    </div>
+  );
+}
+
+function DigitsChip({ digits, tone = "neutral" }: { digits: string; tone?: "neutral" | "gold" }) {
+  return (
+    <span
+      aria-label={`Square ${digits.replace("·", " and ")}`}
+      className={cx(
+        "grid h-9 min-w-11 shrink-0 place-items-center rounded-xl px-2 font-display text-callout font-extrabold tabular-nums",
+        tone === "gold" ? "bg-gold-400 text-ink-inverse" : "bg-surface-4 text-ink ring-1 ring-inset ring-line-strong",
+      )}
+    >
+      {digits}
+    </span>
+  );
+}

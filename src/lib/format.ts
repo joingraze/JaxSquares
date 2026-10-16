@@ -68,13 +68,30 @@ export function withAlpha(hex: string, alpha: number): string {
  */
 export function teamVars(teamX: Pick<Team, "color">, teamY: Pick<Team, "color">): CSSProperties {
   const x = readableTeamColor(teamX.color, "#3ab7ff");
-  const y = readableTeamColor(teamY.color, "#ff66a6");
+  const y = distinctFrom(x, readableTeamColor(teamY.color, "#ff66a6"));
   return {
     "--team-x": x,
     "--team-y": y,
     "--team-x-ink": contrastText(x),
     "--team-y-ink": contrastText(y),
   } as CSSProperties;
+}
+
+/** Below this RGB distance two team colors read as the same (e.g. two navy jerseys). */
+const TEAM_MIN_DISTANCE = 90;
+
+/**
+ * Team Y's color, swapped for a contrasting fallback when it's too close to
+ * team X's (Cowboys vs Giants are both navy), so the axes stay tellable apart.
+ */
+export function distinctFrom(x: string, y: string): string {
+  const distance = (a: string, b: string) => {
+    const [ar, ag, ab] = rgbOf(a) ?? [0, 0, 0];
+    const [br, bg, bb] = rgbOf(b) ?? [0, 0, 0];
+    return Math.hypot(ar - br, ag - bg, ab - bb);
+  };
+  if (distance(x, y) >= TEAM_MIN_DISTANCE) return y;
+  return ["#ff66a6", "#ffc233", "#3ab7ff"].find((c) => distance(x, c) >= TEAM_MIN_DISTANCE) ?? y;
 }
 
 /** Minimum HSL lightness for a team color on the night canvas. */

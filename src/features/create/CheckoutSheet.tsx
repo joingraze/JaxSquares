@@ -1,0 +1,405 @@
+// Checkout for opening a board (the only payment in JaxSquares). Follows
+// docs/payments.md "Client":
+//   test   – no-charge test checkout, one tap
+//   wallet – Apple Pay / Google Pay (Stripe Express Checkout), card form fallback
+//   card   – Stripe Payment Element
+//   iap    – Apple In-App Purchase inside the iOS app (never shows the web price)
+// Every primary confirm carries data-testid="pay-confirm".
+
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { Game, GameState, PaymentConfig } from "../../../shared/types";
+import { AlertIcon, CheckIcon, SparklesIcon } from "../../components/icons";
+import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, LiveDot, Skeleton, TeamMark } from "../../components/ui";
+import {
+  CheckoutError,
+  checkoutMethod,
+  confirmStripePaid,
+  createStripeIntent,
+  formatPrice,
+  mountCardForm,
+  mountWalletButton,
+  payTest,
+  payWithIAP,
+  preloadCheckout,
+  type CardForm,
+  type CheckoutMethod,
+  type MountedCheckout,
+} from "../../lib/checkout";
+import { kickoffLabel, readableTeamColor, withAlpha } from "../../lib/format";
+import { haptic, platform } from "../../lib/native";
+import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
+import { formatLine } from "./model";
+
+export interface CheckoutDraft {
+  game: Game;
+  adminToken: string;
+}
+
+export interface CheckoutSheetProps {
+  open: boolean;
+  draft: CheckoutDraft | null;
+  /** null while /api/config loads (or failed); the sheet retries on open. */
+  payments: PaymentConfig | null;
+  onPaid: (gameId: string, state: GameState | null) => void;
+  /** Closed without paying: the board stays a draft. */
+  onClose: () => void;
+  /** Re-read /api/config (when it failed before the sheet opened). */
+  onRetryConfig?: () => void;
+}
+
+type Phase = "ready" | "paying" | "paid" | "pending";
+
+/** How long the "you're live" moment shows before the board opens. */
+const PAID_BEAT_MS = 520;
+
+export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
+  const [method, setMethod] = useState<CheckoutMethod | null>(null);
+  const [phase, setPhase] = useState<Phase>("ready");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [cardComplete, setCardComplete] = useState(false);
+  const [cardReady, setCardReady] = useState(false);
+  /** Bumped by "Try again" when the PaymentIntent couldn't be created. */
+  const [attempt, setAttempt] = useState(0);
+  const walletRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardForm = useRef<CardForm | null>(null);
+  const paidTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gameId = draft?.game.id ?? null;
+  const adminToken = draft?.adminToken ?? null;
+
+  // Fresh state for every opening / draft.
+  useEffect(() => {
+    if (!open) return;
+    setPhase("ready");
+    setError(null);
+    setNotice(null);
+    setClientSecret(null);
+    setCardComplete(false);
+    setMethod(payments ? checkoutMethod(payments, platform()) : null);
+    if (payments) preloadCheckout(payments, platform());
+  }, [open, gameId, payments]);
+
+  useEffect(() => () => {
+    if (paidTimer.current) clearTimeout(paidTimer.current);
+  }, []);
+
+  // Latest props for callbacks that must stay stable (they're effect deps; a new
+  // identity would remount the Stripe button on every parent render).
+  const latest = useRef({ onPaid, draft });
+  latest.current = { onPaid, draft };
+
+  const succeed = useCallback(
+    (state: GameState | null) => {
+      if (!gameId) return;
+      setPhase("paid");
+      setError(null);
+      void haptic("success");
+      const game = latest.current.draft?.game;
+      const colors = game
+        ? [readableTeamColor(game.teamX.color, CUSTOM_X_COLOR), readableTeamColor(game.teamY.color, CUSTOM_Y_COLOR), ...CELEBRATION_COLORS.slice(0, 2)]
+        : undefined;
+      void celebrate("pop", { colors, origin: { x: 0.5, y: 0.85 } });
+      paidTimer.current = setTimeout(() => latest.current.onPaid(gameId, state), PAID_BEAT_MS);
+    },
+    [gameId],
+  );
+
+  const fail = useCallback(
+    (err: unknown) => {
+      // Already open (e.g. the webhook won the race): that's a success.
+      if (err instanceof CheckoutError && err.status === 409 && err.state) return succeed(err.state);
+      setPhase("ready");
+      setError(err instanceof Error && err.message ? err.message : "That didn't go through. Try again.");
+      void haptic("error");
+    },
+    [succeed],
+  );
+
+  // Stripe methods need the board's PaymentIntent first.
+  useEffect(() => {
+    if (!open || !gameId || !adminToken || (method !== "wallet" && method !== "card") || clientSecret) return;
+    let cancelled = false;
+    setError(null);
+    createStripeIntent(gameId, adminToken)
+      .then((r) => !cancelled && setClientSecret(r.clientSecret))
+      .catch((err: unknown) => !cancelled && fail(err));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, gameId, adminToken, method, clientSecret, fail, attempt]);
+
+  // Apple Pay / Google Pay button.
+  useEffect(() => {
+    const el = walletRef.current;
+    if (!open || method !== "wallet" || !clientSecret || !el || !payments || !gameId || !adminToken) return;
+    let handle: MountedCheckout | null = null;
+    let disposed = false;
+    void mountWalletButton(el, {
+      clientSecret,
+      amountCents: payments.priceCents,
+      label: "Squares board",
+      publishableKey: payments.stripePublishableKey,
+      onPaid: () => {
+        setPhase("paying");
+        confirmStripePaid(gameId, adminToken).then(succeed, fail);
+      },
+      onUnavailable: () => !disposed && setMethod("card"),
+      onCancel: () => setNotice("No charge. Your board is saved whenever you're ready."),
+      onError: (message) => {
+        setError(message);
+        void haptic("error");
+      },
+    }).then((h) => {
+      if (disposed) h.destroy();
+      else handle = h;
+    });
+    return () => {
+      disposed = true;
+      handle?.destroy();
+    };
+  }, [open, method, clientSecret, payments, gameId, adminToken, succeed, fail]);
+
+  // Card form fallback.
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!open || method !== "card" || !clientSecret || !el || !payments) return;
+    let disposed = false;
+    mountCardForm(el, { clientSecret, publishableKey: payments.stripePublishableKey, onChange: setCardComplete }).then(
+      (form) => {
+        if (disposed) form.destroy();
+        else {
+          cardForm.current = form;
+          setCardReady(true);
+        }
+      },
+      (err: unknown) => !disposed && fail(err),
+    );
+    return () => {
+      disposed = true;
+      cardForm.current?.destroy();
+      cardForm.current = null;
+      setCardReady(false);
+    };
+  }, [open, method, clientSecret, payments, fail, attempt]);
+
+  const confirm = async () => {
+    if (!gameId || !adminToken || phase !== "ready") return;
+    setError(null);
+    setNotice(null);
+    setPhase("paying");
+    try {
+      if (method === "test") {
+        succeed(await payTest(gameId, adminToken));
+      } else if (method === "iap") {
+        const r = await payWithIAP(gameId, adminToken, payments?.iapProductId);
+        if (r.status === "paid") succeed(r.state);
+        else if (r.status === "pending") setPhase("pending");
+        else {
+          setPhase("ready");
+          setNotice("No charge. Tap Continue whenever you're ready.");
+        }
+      } else if (method === "card") {
+        const form = cardForm.current;
+        if (!form) return setPhase("ready");
+        const r = await form.submit();
+        if (r.status === "failed") throw new CheckoutError(r.message, 402);
+        succeed(await confirmStripePaid(gameId, adminToken));
+      }
+    } catch (err) {
+      fail(err);
+    }
+  };
+
+  const busy = phase === "paying" || phase === "paid";
+  const price = payments ? formatPrice(payments.priceCents, payments.currency) : null;
+  const linked = draft?.game.linkedEvent ?? null;
+
+  let action: ReactNode;
+  if (!payments) {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block variant="secondary" onClick={onRetryConfig}>
+        Try again
+      </Button>
+    );
+  } else if (phase === "paid") {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block leading={<CheckIcon size={20} strokeWidth={3} />} haptic={false} className="animate-pop">
+        You're live!
+      </Button>
+    );
+  } else if (phase === "pending") {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block variant="secondary" onClick={onClose}>
+        Done
+      </Button>
+    );
+  } else if ((method === "wallet" || method === "card") && error && (!clientSecret || (method === "card" && !cardReady))) {
+    action = (
+      <Button
+        data-testid="pay-confirm"
+        size="lg"
+        block
+        variant="secondary"
+        onClick={() => {
+          setError(null);
+          setAttempt((n) => n + 1);
+        }}
+      >
+        Try again
+      </Button>
+    );
+  } else if (method === "wallet") {
+    action = (
+      <div className="flex flex-col gap-2">
+        {/* Stripe owns the inner node; React only renders the placeholder beside it. */}
+        <div data-testid="pay-confirm" className={cx("relative min-h-13 overflow-hidden rounded-btn", busy && "pointer-events-none opacity-60")}>
+          <div ref={walletRef} />
+          {!clientSecret && <Skeleton className="absolute inset-0 h-13 w-full rounded-btn" />}
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setMethod("card")} disabled={busy}>
+          Pay with card instead
+        </Button>
+      </div>
+    );
+  } else if (method === "card") {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block loading={busy} disabled={!cardComplete || !cardReady} onClick={() => void confirm()}>
+        Pay {price}
+      </Button>
+    );
+  } else if (method === "iap") {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block loading={busy} onClick={() => void confirm()}>
+        Continue
+      </Button>
+    );
+  } else {
+    action = (
+      <Button data-testid="pay-confirm" size="lg" block loading={busy} onClick={() => void confirm()} haptic="medium">
+        Open my board
+      </Button>
+    );
+  }
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      dismissible={!busy}
+      title="Open your board"
+      description={phase === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : undefined}
+      footer={
+        <div className="flex flex-col gap-3">
+          {method === "test" && phase !== "paid" ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-gold-400/10 px-3.5 py-2.5 ring-1 ring-inset ring-gold-400/35">
+              <SparklesIcon size={18} className="shrink-0 text-gold-400" />
+              <div className="min-w-0 flex-1">
+                <p className="text-subhead font-extrabold text-gold-300">Test mode — no charge</p>
+                <p className="text-footnote text-ink-muted">Checkout isn't live yet. This one's on us.</p>
+              </div>
+              {price && <s className="shrink-0 text-subhead font-bold tabular-nums text-ink-subtle">{price}</s>}
+            </div>
+          ) : (
+            method !== "iap" &&
+            price &&
+            phase !== "paid" && (
+              <div className="flex items-baseline justify-between gap-3 px-1">
+                <div>
+                  <p className="text-callout font-bold text-ink">One board</p>
+                  <p className="text-footnote text-ink-muted">One-time. No subscription.</p>
+                </div>
+                <p className="font-display text-title-2 font-extrabold tabular-nums text-ink">{price}</p>
+              </div>
+            )
+          )}
+          {error && (
+            <p role="alert" className="flex items-start gap-1.5 px-1 text-footnote font-semibold text-danger-400 animate-fade-in">
+              <AlertIcon size={15} className="mt-px shrink-0" />
+              {error}
+            </p>
+          )}
+          {notice && !error && <p className="px-1 text-footnote text-ink-muted animate-fade-in">{notice}</p>}
+          {action}
+          {method === "iap" && phase === "ready" && <p className="text-center text-caption text-ink-subtle">You'll confirm with the App Store.</p>}
+        </div>
+      }
+    >
+      {draft && <Ticket game={draft.game} />}
+      {method === "card" && !(error && !cardReady) && (
+        <div className="relative mt-4 min-h-40">
+          <div ref={cardRef} />
+          {!clientSecret && <Skeleton className="absolute inset-0 h-40 w-full rounded-btn" />}
+        </div>
+      )}
+      <Included linked={Boolean(linked)} />
+    </BottomSheet>
+  );
+}
+
+/** The board being opened, as an admission ticket in the two team colors. */
+function Ticket({ game }: { game: Game }) {
+  const x = { ...game.teamX, color: game.teamX.color ?? CUSTOM_X_COLOR };
+  const y = { ...game.teamY, color: game.teamY.color ?? CUSTOM_Y_COLOR };
+  const glowX = withAlpha(readableTeamColor(x.color, CUSTOM_X_COLOR), 0.22);
+  const glowY = withAlpha(readableTeamColor(y.color, CUSTOM_Y_COLOR), 0.22);
+  const linked = game.linkedEvent;
+  return (
+    <div
+      className="relative overflow-hidden rounded-card bg-surface-3 ring-1 ring-inset ring-line-strong"
+      style={{ backgroundImage: `radial-gradient(90% 120% at 0% 0%, ${glowX}, transparent 60%), radial-gradient(90% 120% at 100% 0%, ${glowY}, transparent 60%)` }}
+    >
+      <div className="flex flex-col items-center px-4 pb-4 pt-5 text-center">
+        <div className="flex items-center gap-3.5">
+          <TeamMark team={x} size="lg" className="-rotate-3" />
+          <span className="font-display text-caption font-extrabold tracking-[0.2em] text-ink-subtle">VS</span>
+          <TeamMark team={y} size="lg" className="rotate-3" />
+        </div>
+        <p className="mt-3 max-w-full truncate font-display text-title-3 font-extrabold text-ink">{game.name}</p>
+        <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format)}</p>
+      </div>
+      {/* Perforation */}
+      <div aria-hidden className="relative h-0 border-t-2 border-dashed border-white/12">
+        <span className="absolute -left-2.5 -top-2.5 h-5 w-5 rounded-full bg-surface-2" />
+        <span className="absolute -right-2.5 -top-2.5 h-5 w-5 rounded-full bg-surface-2" />
+      </div>
+      <div className="flex items-center justify-center gap-2 px-4 py-2.5 text-footnote font-semibold text-ink-muted">
+        {linked ? (
+          <>
+            <LiveDot tone="brand" />
+            Live scores · {kickoffLabel(linked.startsAt)}
+          </>
+        ) : (
+          <>
+            <LiveDot tone="brand" pulse={false} />
+            You run the score · winners pop instantly
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Included({ linked }: { linked: boolean }) {
+  const items: { lead: string; rest: string }[] = [
+    { lead: "A live board", rest: "that fills in as friends pick" },
+    { lead: "Unlimited friends,", rest: "no app or account needed" },
+    linked ? { lead: "Live scores", rest: "and winners, all automatic" } : { lead: "Instant winners", rest: "the moment you type a score" },
+    { lead: "Alerts", rest: "when numbers drop and squares win" },
+  ];
+  return (
+    <ul aria-label="What's included" className="mt-4 flex flex-col gap-2.5 px-1">
+      {items.map((it) => (
+        <li key={it.lead} className="flex items-center gap-3 text-callout text-ink-muted">
+          <span aria-hidden className="grid h-5.5 w-5.5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-inverse">
+            <CheckIcon size={13} strokeWidth={3.4} />
+          </span>
+          <span className="min-w-0">
+            <span className="font-bold text-ink">{it.lead}</span> {it.rest}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}

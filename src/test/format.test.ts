@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contrastText,
+  distinctFrom,
   countdown,
   initialsOf,
   luminance,
@@ -79,5 +80,16 @@ describe("time", () => {
 
   it("formats a score line with an en dash", () => {
     expect(scoreLine(21, 14)).toBe("21–14");
+  });
+});
+
+describe("distinctFrom", () => {
+  it("keeps team colors that are already easy to tell apart", () => {
+    expect(distinctFrom("#e31837", "#00338d")).toBe("#00338d");
+  });
+  it("swaps a near-identical second team color for a contrasting one", () => {
+    const y = distinctFrom("#3d5a8a", "#3a5f8f");
+    expect(y).not.toBe("#3a5f8f");
+    expect(["#ff66a6", "#ffc233", "#3ab7ff"]).toContain(y);
   });
 });

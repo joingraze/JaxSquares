@@ -673,6 +673,13 @@ app.get("/.well-known/assetlinks.json", (c) => {
 
 async function invitePage(c: Ctx): Promise<Response> {
   const id = c.req.param("id") ?? "";
+  // Board codes are lowercase; someone typing the code in capitals still lands on the board.
+  const lower = id.toLowerCase();
+  if (lower !== id && GAME_ID_RE.test(lower)) {
+    const url = new URL(c.req.url);
+    url.pathname = url.pathname.replace(`/g/${id}`, `/g/${lower}`);
+    return c.redirect(url.toString(), 301);
+  }
   const indexReq = new Request(new URL("/", c.req.url), { headers: { accept: "text/html" } });
   const [html, state] = await Promise.all([
     c.env.ASSETS.fetch(indexReq),

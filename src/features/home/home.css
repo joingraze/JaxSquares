@@ -1,0 +1,124 @@
+/* Home-only motion: the welcome mini board, the join-code caret, pull to
+   refresh and card entrances. The mini board runs one 8s story loop: friends'
+   squares pop in, a toast slides by, the winning square flares and
+   "Your square hits!" lands. */
+
+.mb-wrap {
+  --mb-cycle: 8s;
+}
+
+.mb-glow {
+  background: radial-gradient(closest-side, rgb(198 249 31 / 0.16), rgb(255 194 51 / 0.06) 55%, transparent);
+  filter: blur(4px);
+}
+
+.mb-board {
+  transform: perspective(1100px) rotateX(12deg) rotateZ(-3deg) translateY(3px);
+  transform-origin: 50% 60%;
+  animation: mb-float 6s ease-in-out infinite;
+}
+
+@keyframes mb-float {
+  0%, 100% { transform: perspective(1100px) rotateX(12deg) rotateZ(-3deg) translateY(3px); }
+  50% { transform: perspective(1100px) rotateX(10deg) rotateZ(-2deg) translateY(-3px); }
+}
+
+.mb-pop {
+  animation: mb-pop var(--mb-cycle) var(--ease-spring) infinite both;
+}
+
+@keyframes mb-pop {
+  0% { opacity: 0; transform: scale(0.3); }
+  5% { opacity: 1; transform: scale(1.25); }
+  9% { transform: scale(1); }
+  86% { opacity: 1; transform: scale(1); }
+  92%, 100% { opacity: 0; transform: scale(0.6); }
+}
+
+.mb-win {
+  animation: mb-win var(--mb-cycle) ease-in-out infinite;
+}
+
+@keyframes mb-win {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(255 194 51 / 0.6), 0 0 14px 2px rgb(255 171 15 / 0.55); transform: scale(1); }
+  25% { box-shadow: 0 0 0 4px rgb(255 194 51 / 0), 0 0 22px 4px rgb(255 171 15 / 0.45); }
+  50% { box-shadow: 0 0 0 0 rgb(255 194 51 / 0.6), 0 0 14px 2px rgb(255 171 15 / 0.55); transform: scale(1); }
+  54% { transform: scale(1.35); box-shadow: 0 0 0 6px rgb(255 194 51 / 0.35), 0 0 30px 8px rgb(255 171 15 / 0.7); }
+  60% { transform: scale(1.1); }
+  75% { box-shadow: 0 0 0 4px rgb(255 194 51 / 0), 0 0 22px 4px rgb(255 171 15 / 0.45); }
+}
+
+.mb-toast-a {
+  animation: mb-toast-a var(--mb-cycle) var(--ease-spring) infinite both;
+}
+
+@keyframes mb-toast-a {
+  0% { opacity: 0; transform: translate3d(-14px, 6px, 0) scale(0.92); }
+  4%, 40% { opacity: 1; transform: none; }
+  45%, 100% { opacity: 0; transform: translate3d(-10px, 0, 0) scale(0.96); }
+}
+
+.mb-toast-b {
+  animation: mb-toast-b var(--mb-cycle) var(--ease-spring) infinite both;
+}
+
+@keyframes mb-toast-b {
+  0%, 52% { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.85) rotate(-4deg); }
+  57%, 92% { opacity: 1; transform: rotate(-3deg); }
+  97%, 100% { opacity: 0; transform: translate3d(0, 4px, 0) scale(0.95); }
+}
+
+/* Join code: blinking caret in the active box. */
+.join-code-active::after {
+  content: "";
+  position: absolute;
+  bottom: 0.7rem;
+  left: 50%;
+  width: 1rem;
+  height: 3px;
+  margin-left: -0.5rem;
+  border-radius: 2px;
+  background: var(--color-brand-400);
+  animation: join-caret 1s steps(1) infinite;
+}
+
+@keyframes join-caret {
+  50% { opacity: 0; }
+}
+
+/* Pull-to-refresh football. */
+.ptr-ball {
+  transition: transform 220ms var(--ease-spring), opacity 150ms ease;
+}
+.ptr-spin {
+  animation: ptr-spin 0.8s linear infinite;
+}
+@keyframes ptr-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Staggered entrance for dashboard cards. */
+.home-enter {
+  animation: home-enter 420ms var(--ease-out-quint) both;
+}
+@keyframes home-enter {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mb-board,
+  .mb-pop,
+  .mb-win,
+  .mb-toast-a,
+  .mb-toast-b,
+  .home-enter {
+    animation: none;
+  }
+  .mb-toast-a {
+    opacity: 1;
+  }
+  .mb-toast-b {
+    display: none;
+  }
+}

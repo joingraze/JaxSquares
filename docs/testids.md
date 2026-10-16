@@ -20,3 +20,6 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `claim-submit` | claim button in the board's action bar |
 | `host-lock` | lock board + draw numbers |
 | `score-x`, `score-y`, `score-save` | host score entry |
+| `host-open` | the host bar button that opens the host sheet |
+| `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step |
+| `host-bar-action` | the host bar's next-action pill |

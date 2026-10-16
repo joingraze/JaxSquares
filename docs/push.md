@@ -38,6 +38,25 @@ Tapping one opens `/g/<id>`.
   board's notifications in its own thread.
 - Badge: each device counts the pushes it has had since the app was last opened.
   Opening the app re-registers the device, which sets that count back to zero.
+  The native app also re-registers on every resume (`onAppResume` →
+  `syncPush(true)`), so the server's count matches the badge iOS just cleared.
+- "Turn off on this device" in Profile calls `disablePush()`: the device is
+  unregistered and a local flag (`isPushOff()`) stops the silent re-sync from
+  registering it again while the OS permission is still granted. `enablePush()`
+  clears the flag.
+
+### Who an event is about (ids and `actor`)
+
+Every id in a `NotifyEvent` is a **public player id** (`Player.id`, never a
+clientId): winner `playerIds` and `actor`. Push turns them into devices with
+`getMembers()`, the one server-only place that pairs a public id with its
+clientId.
+
+`actor` is whoever caused the event, and that player is not notified about it.
+Core sets it on host actions: `numbers-drawn` (`POST /lock`), `final`
+(`POST /final`, or a typed-in Final score) and `player-joined` (the joiner).
+`winner` never has an actor, so you hear about your own square even when you
+typed the score. Events from live scores (kickoff, auto-lock, winners) have none.
 
 ## 1. Web push (VAPID)
 

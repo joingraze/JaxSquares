@@ -1,0 +1,259 @@
+/* Notifications feature: preview banners, install illustration, success check. */
+
+/* ---------- Lock-screen style preview banners ---------- */
+
+.jxn-banners {
+  position: relative;
+  display: grid;
+  padding-bottom: 10px;
+}
+
+.jxn-banner {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: rgb(46 58 51 / 0.82);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 14px 30px -14px rgb(0 0 0 / 0.8);
+  animation: jxn-drop 620ms var(--ease-spring) both;
+}
+
+/* The one underneath peeks out below, like a stacked iOS notification. */
+.jxn-banner[data-back="true"] {
+  transform: translateY(10px) scale(0.92);
+  opacity: 0.5;
+  animation: jxn-drop-back 520ms var(--ease-out-quint) both;
+}
+.jxn-banner[data-back="true"] > * {
+  visibility: hidden;
+}
+
+.jxn-banner[data-back="false"] {
+  animation-delay: 260ms;
+  z-index: 1;
+}
+
+@keyframes jxn-drop {
+  from {
+    transform: translateY(-34px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes jxn-drop-back {
+  from {
+    transform: translateY(-24px) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(10px) scale(0.92);
+    opacity: 0.5;
+  }
+}
+
+/* ---------- Install guide: Safari toolbar with the Share button lit ---------- */
+
+.jxn-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 52px;
+  padding: 0 10px;
+  border-radius: 18px;
+  background: rgb(36 46 40 / 0.95);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  color: var(--color-ink-subtle);
+}
+
+.jxn-share-lit {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  color: var(--color-ink-inverse);
+  background: var(--color-brand-400);
+  box-shadow: 0 0 18px -2px rgb(198 249 31 / 0.7);
+}
+
+.jxn-share-lit::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--color-brand-400);
+  animation: jxn-ring 1.6s ease-out infinite;
+}
+
+@keyframes jxn-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+.jxn-tap {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  translate: -50% 0;
+  color: var(--color-brand-300);
+  animation: jxn-bob 1.1s ease-in-out infinite;
+}
+
+@keyframes jxn-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(5px);
+  }
+}
+
+/* ---------- Success ---------- */
+
+.jxn-check {
+  animation: jxn-check-pop 520ms var(--ease-bounce) both;
+}
+
+@keyframes jxn-check-pop {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ---------- Profile: how I look on a board ---------- */
+
+.jxn-preview {
+  --cell: 44px;
+  display: grid;
+  grid-template-columns: repeat(5, var(--cell));
+  gap: 5px;
+  justify-content: center;
+}
+
+.jxn-cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: calc(var(--cell) * 0.2);
+  background: color-mix(in srgb, var(--p, #45594c) 9%, rgb(255 255 255 / 0.035));
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+.jxn-cell[data-empty="true"] {
+  background: rgb(198 249 31 / 0.045);
+  box-shadow: inset 0 0 0 1px rgb(198 249 31 / 0.13);
+}
+
+.jxn-cell[data-mine="true"] {
+  background: color-mix(in srgb, var(--color-brand-400) 22%, var(--color-canvas));
+  box-shadow:
+    inset 0 0 0 2px var(--color-brand-400),
+    0 0 18px -2px rgb(198 249 31 / 0.7);
+  transform: scale(1.18);
+  z-index: 1;
+}
+
+.jxn-sticker {
+  display: grid;
+  place-items: center;
+  width: 74%;
+  height: 74%;
+  border-radius: 999px;
+  background: var(--p);
+  color: var(--pi);
+  font-size: calc(var(--cell) * 0.4);
+  line-height: 1;
+  box-shadow:
+    inset 0 -2px 0 rgb(0 0 0 / 0.2),
+    inset 0 2px 0 rgb(255 255 255 / 0.35);
+  user-select: none;
+}
+
+.jxn-sticker[data-initials="true"] {
+  font-family: var(--font-display);
+  font-variation-settings: "opsz" 96;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  font-size: calc(var(--cell) * 0.3);
+}
+
+.jxn-sticker > span {
+  transform: translateY(0.04em);
+}
+
+.jxn-cell[data-mine="true"] .jxn-sticker {
+  animation: jxn-sticker-pop 380ms var(--ease-spring) both;
+}
+
+@keyframes jxn-sticker-pop {
+  from {
+    transform: scale(0.4) rotate(-12deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.jxn-cell[data-dim="true"] .jxn-sticker {
+  opacity: 0.75;
+}
+
+.jxn-you {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  translate: -50% 0;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-brand-400);
+  color: var(--color-ink-inverse);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 10px -4px rgb(0 0 0 / 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jxn-banner,
+  .jxn-banner[data-back="true"],
+  .jxn-tap,
+  .jxn-share-lit::after,
+  .jxn-check,
+  .jxn-cell[data-mine="true"] .jxn-sticker {
+    animation: none;
+  }
+}

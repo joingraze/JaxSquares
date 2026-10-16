@@ -39,6 +39,8 @@ export class ApiError extends Error {
     /** HTTP status; 0 when the server was never reached (offline, timeout). */
     public readonly status: number,
     public readonly body?: unknown,
+    /** Seconds to wait before retrying, from Retry-After on a 429. */
+    public readonly retryAfter?: number,
   ) {
     super(message);
     this.name = "ApiError";
@@ -107,7 +109,8 @@ export async function request<T>(method: Method, path: string, opts: RequestOpti
     const msg = data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string"
       ? (data as { error: string }).error
       : fallbackMessage(res.status);
-    throw new ApiError(msg, res.status, data);
+    const retryAfter = Number(res.headers.get("retry-after")) || undefined;
+    throw new ApiError(msg, res.status, data, retryAfter);
   }
   return data as T;
 }

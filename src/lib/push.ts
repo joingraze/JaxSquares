@@ -9,10 +9,12 @@
 //   getPushState()        -> what to show ("needs-install" = iOS Safari tab: show "Add to Home Screen")
 //   enablePush()          -> from a tap; asks permission and registers
 //   onNotificationTap(cb) -> route to the tapped notification's in-app URL
+//   disablePush()         -> "turn off on this device"; sticks until enablePush (see isPushOff)
 
 import { Capacitor } from "@capacitor/core";
 import type { PushRegistration } from "../../shared/types";
 import { getClientId } from "./identity";
+import { onAppResume } from "./native";
 
 export type PushState =
   | "unsupported" // no push here (old browser, push not configured on the server)
@@ -29,6 +31,8 @@ export interface ForegroundPush {
 
 const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
 const MUTED_KEY = (gameId: string) => `jaxsquares.muted.${gameId}`;
+/** Set when the user turned notifications off in the app; the OS/browser permission may still be granted. */
+const OFF_KEY = "jaxsquares.push.off";
 /** Must match the channel ids in worker/push/fcm.ts. */
 const ANDROID_CHANNEL_ID = "game-updates";
 const ANDROID_QUIET_CHANNEL_ID = "board-activity";
@@ -251,6 +255,7 @@ async function enableNative(): Promise<PushState> {
   let { receive } = await FirebaseMessaging.checkPermissions();
   if (receive !== "granted" && receive !== "denied") ({ receive } = await FirebaseMessaging.requestPermissions());
   if (receive !== "granted") return nativeState(receive);
+  setPushOff(false);
   await registerNative();
   return "granted";
 }
@@ -303,6 +308,31 @@ async function subscribeWeb(key: string): Promise<void> {
   await register({ platform: "web", subscription: { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } } });
 }
 
+// ---- Turned off in the app ----
+
+/**
+ * True when notifications were turned off on this device from the app
+ * (disablePush). The system permission usually stays granted, so
+ * getPushState() still says "granted"; nothing re-registers this device until
+ * enablePush() is called again.
+ */
+export function isPushOff(): boolean {
+  try {
+    return localStorage.getItem(OFF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setPushOff(off: boolean): void {
+  try {
+    if (off) localStorage.setItem(OFF_KEY, "1");
+    else localStorage.removeItem(OFF_KEY);
+  } catch {
+    // storage unavailable: the server registration is what counts
+  }
+}
+
 // ---- Public API ----
 
 export async function getPushState(): Promise<PushState> {
@@ -334,6 +364,8 @@ export async function enablePush(): Promise<PushState> {
   // Prompt before any other await: Safari only honors it within the tap itself.
   const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
   if (permission !== "granted") return permission === "denied" ? "denied" : "default";
+  // Allowed: from here on a failed registration is retried on the next open (syncPush).
+  setPushOff(false);
   const key = await loadVapidKey();
   if (!key) return "unsupported";
   await subscribeWeb(key);
@@ -341,8 +373,12 @@ export async function enablePush(): Promise<PushState> {
   return "granted";
 }
 
-/** Stop pushes to this device (all games). */
+/**
+ * Stop pushes to this device (all games). Remembered locally (isPushOff), so
+ * the silent re-sync on the next open doesn't quietly turn them back on.
+ */
 export async function disablePush(): Promise<void> {
+  setPushOff(true);
   if (isNative()) {
     const { FirebaseMessaging } = await loadFm();
     const { token } = await FirebaseMessaging.getToken();
@@ -363,6 +399,7 @@ export async function disablePush(): Promise<void> {
  * subscriptions and tells the server the app was opened (resets the badge count).
  */
 export function syncPush(force = false): Promise<void> {
+  if (isPushOff()) return Promise.resolve();
   if (syncing) return syncing;
   if (!force && Date.now() - lastSync < SYNC_INTERVAL_MS) return Promise.resolve();
   syncing = (async () => {
@@ -396,8 +433,11 @@ let initialized = false;
 export function initPush(): void {
   if (initialized) return;
   initialized = true;
-  if (isNative()) void ensureNativeListeners();
-  else {
+  if (isNative()) {
+    void ensureNativeListeners();
+    // Coming back to the app clears the badge, so tell the server now (re-registering resets its unread count).
+    onAppResume(() => void syncPush(true));
+  } else {
     void registerServiceWorker();
     // Knowing the VAPID key up front lets enablePush skip a pointless prompt when push is off.
     if (webPushSupported()) void loadVapidKey();
