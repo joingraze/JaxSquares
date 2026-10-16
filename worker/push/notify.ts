@@ -2,7 +2,7 @@
 // right players. Runs inside waitUntil, so it never throws; failures are logged.
 
 import type { VapidKeys } from "@block65/webcrypto-web-push";
-import { getGame, getPlayers } from "../db";
+import { getGame, getMembers } from "../db";
 import type { Env } from "../env";
 import { coveredBySibling } from "./coalesce";
 import { buildDeliveries } from "./copy";
@@ -88,9 +88,9 @@ export async function notify(env: Env, gameId: string, event: NotifyEvent): Prom
     const channels = channelsFrom(env);
     if (!channels.vapid && !channels.fcm) return;
 
-    const [game, players] = await Promise.all([getGame(env.DB, gameId), getPlayers(env.DB, gameId)]);
+    const [game, members] = await Promise.all([getGame(env.DB, gameId), getMembers(env.DB, gameId)]);
     if (!game || game.status === "draft") return;
-    const deliveries = buildDeliveries(game, players, event);
+    const deliveries = buildDeliveries(game, members, event);
     if (deliveries.length === 0) return;
 
     const subs = await subscriptionsFor(env.DB, gameId, [...new Set(deliveries.map((d) => d.clientId))]);

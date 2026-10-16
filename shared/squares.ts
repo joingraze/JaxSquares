@@ -125,8 +125,9 @@ export function squareAt(squares: Square[], row: number, col: number): Square | 
   return squares.find((s) => s.row === row && s.col === col);
 }
 
-export function countClaimedBy(squares: Square[], clientId: string): number {
-  return squares.reduce((n, s) => (s.clientId === clientId ? n + 1 : n), 0);
+/** Squares owned by this player (public id). */
+export function countClaimedBy(squares: Square[], playerId: string): number {
+  return squares.reduce((n, s) => (s.playerId === playerId ? n + 1 : n), 0);
 }
 
 export function squaresLeft(state: Pick<GameState, "game" | "squares">): number {
@@ -161,10 +162,11 @@ export interface PeriodResult {
   score: Score | null;
   /** Winning square (the host's pick when overridden). */
   cell: Cell | null;
-  winnerClientId: string | null;
+  /** Public player id owning `cell`, if claimed. */
+  winnerPlayerId: string | null;
   /** Reverse square (reverse boards only); may equal `cell`. */
   reverseCell: Cell | null;
-  reverseWinnerClientId: string | null;
+  reverseWinnerPlayerId: string | null;
   prize: string | null;
   /** "host" when the winner comes from a ManualWinner override. */
   source: "auto" | "host";
@@ -181,7 +183,7 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
   const { game, squares, scores, manualWinners } = state;
   if (!game.numbers) return [];
 
-  const owner = new Map(squares.map((s) => [cellKey(s.row, s.col), s.clientId]));
+  const owner = new Map(squares.map((s) => [cellKey(s.row, s.col), s.playerId]));
   const ownerOf = (cell: Cell | null) => (cell ? (owner.get(cellKey(cell.row, cell.col)) ?? null) : null);
   const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
   const manualBy = new Map(manualWinners.map((m) => [m.periodKey, m]));
@@ -211,9 +213,9 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
       label: p.label,
       score,
       cell,
-      winnerClientId: ownerOf(cell),
+      winnerPlayerId: ownerOf(cell),
       reverseCell: rev,
-      reverseWinnerClientId: ownerOf(rev),
+      reverseWinnerPlayerId: ownerOf(rev),
       prize: prizeFor(game.prizes, p.key),
       source: manual ? "host" : "auto",
     });
@@ -221,9 +223,9 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
   return out;
 }
 
-/** Client ids that won a period (regular and reverse), deduplicated. */
+/** Public player ids that won a period (regular and reverse), deduplicated. */
 export function winnersOf(result: PeriodResult): string[] {
-  const ids = [result.winnerClientId, result.reverseWinnerClientId].filter((id): id is string => !!id);
+  const ids = [result.winnerPlayerId, result.reverseWinnerPlayerId].filter((id): id is string => !!id);
   return [...new Set(ids)];
 }
 
@@ -313,7 +315,7 @@ export function periodKeyForLive(format: GameFormat, livePeriod: number): string
  */
 export function liveCell(
   state: Pick<GameState, "game" | "squares" | "live">,
-): { periodKey: string | null; cell: Cell; clientId: string | null; reverseCell: Cell | null } | null {
+): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null } | null {
   const { game, live } = state;
   if (!game.numbers || !live || live.state === "pre") return null;
   const periodKey = periodKeyForLive(game.format, live.period);
@@ -322,30 +324,30 @@ export function liveCell(
   const cell = winningCell(live, draw);
   if (!cell) return null;
   const rev = game.format.reverse ? reverseCell(live, draw) : null;
-  return { periodKey, cell, clientId: squareAt(state.squares, cell.row, cell.col)?.clientId ?? null, reverseCell: rev };
+  return { periodKey, cell, playerId: squareAt(state.squares, cell.row, cell.col)?.playerId ?? null, reverseCell: rev };
 }
 
 // ---- Dashboard / summary ----
 
-/** Periods this client has won so far (regular and reverse). */
+/** Periods this player (public id) has won so far (regular and reverse). */
 export function myWins(
   results: PeriodResult[],
-  clientId: string,
+  playerId: string,
 ): { periodKey: string; label: string; reverse: boolean }[] {
   const out: { periodKey: string; label: string; reverse: boolean }[] = [];
   for (const r of results) {
-    if (r.winnerClientId === clientId) out.push({ periodKey: r.periodKey, label: r.label, reverse: false });
-    if (r.reverseWinnerClientId === clientId) out.push({ periodKey: r.periodKey, label: r.label, reverse: true });
+    if (r.winnerPlayerId === playerId) out.push({ periodKey: r.periodKey, label: r.label, reverse: false });
+    if (r.reverseWinnerPlayerId === playerId) out.push({ periodKey: r.periodKey, label: r.label, reverse: true });
   }
   return out;
 }
 
-/** clientId -> number of wins (a reverse win counts once). Handy for a leaderboard. */
+/** Public player id -> number of wins (a reverse win counts once). Handy for a leaderboard. */
 export function winCounts(results: PeriodResult[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const r of results) {
-    if (r.winnerClientId) counts[r.winnerClientId] = (counts[r.winnerClientId] ?? 0) + 1;
-    if (r.reverseWinnerClientId) counts[r.reverseWinnerClientId] = (counts[r.reverseWinnerClientId] ?? 0) + 1;
+    if (r.winnerPlayerId) counts[r.winnerPlayerId] = (counts[r.winnerPlayerId] ?? 0) + 1;
+    if (r.reverseWinnerPlayerId) counts[r.reverseWinnerPlayerId] = (counts[r.reverseWinnerPlayerId] ?? 0) + 1;
   }
   return counts;
 }

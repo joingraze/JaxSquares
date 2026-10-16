@@ -8,7 +8,7 @@ import { makeBrowserSubscription } from "./testFixtures";
 
 vi.mock("../db", () => ({
   getGame: vi.fn(async (_db: unknown, id: string) => (id === "abc234" ? { id } : null)),
-  getPlayers: vi.fn(async () => []),
+  getMembers: vi.fn(async () => []),
 }));
 
 const CLIENT = "client-jax-001";

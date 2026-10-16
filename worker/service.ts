@@ -18,6 +18,7 @@ import { notify, type NotifyEvent } from "./push";
 
 export type Deliver = (state: GameState, activities: Activity[]) => Promise<void>;
 
+/** `actor` is a public player id (never a clientId); null for system events. */
 export function newActivity(type: ActivityType, actor: string | null, data: Record<string, unknown> = {}, at = Date.now()): Activity {
   return { id: db.newActivityId(), type, at, actor, data };
 }
@@ -114,17 +115,18 @@ export function scoreEvents(
     );
     const r = results.find((x) => x.periodKey === c.periodKey);
     if (!r) continue;
-    const clientIds = winnersOf(r);
-    if (clientIds.length === 0) continue;
+    const playerIds = winnersOf(r);
+    if (playerIds.length === 0) continue;
     activities.push(
       newActivity(
         "winner",
         actor,
-        { periodKey: r.periodKey, label: r.label, clientIds, cell: r.cell, reverseCell: r.reverseCell, prize: r.prize },
+        { periodKey: r.periodKey, label: r.label, playerIds, cell: r.cell, reverseCell: r.reverseCell, prize: r.prize },
         now,
       ),
     );
-    notifications.push({ kind: "winner", periodKey: r.periodKey, label: r.label, clientIds });
+    // No actor: a winner hears about their own square even when they entered the score.
+    notifications.push({ kind: "winner", periodKey: r.periodKey, label: r.label, playerIds });
   }
   return { activities, notifications };
 }

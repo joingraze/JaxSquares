@@ -1,24 +1,25 @@
 // @vitest-environment node
 // End to end through notify(): real D1 SQL (node:sqlite), real VAPID signing and
 // encryption, a real RS256 service account; only the network and core's
-// getGame/getPlayers are faked.
+// getGame/getMembers are faked.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Game, Player } from "../../shared/types";
+import type { Game } from "../../shared/types";
+import type { Member } from "../db";
 import type { Env } from "../env";
 import { createTestD1, type TestD1 } from "../payments/testD1";
 import { resetSiblings } from "./coalesce";
 import { GOOGLE_TOKEN_URL, resetTokenCache } from "./fcm";
 import { notify } from "./notify";
 import { setMuted, upsertSubscription } from "./store";
-import { HOST, decryptWebPush, makeBrowserSubscription, makeGame, makePlayer, makeServiceAccount, makeVapidKeys } from "./testFixtures";
+import { HOST, decryptWebPush, makeBrowserSubscription, makeGame, makePlayer, makeServiceAccount, makeVapidKeys, pid } from "./testFixtures";
 
-const db = vi.hoisted(() => ({ game: null as Game | null, players: [] as Player[], fail: false }));
+const db = vi.hoisted(() => ({ game: null as Game | null, players: [] as Member[], fail: false }));
 vi.mock("../db", () => ({
   getGame: vi.fn(async () => {
     if (db.fail) throw new Error("D1 is down");
     return db.game;
   }),
-  getPlayers: vi.fn(async () => db.players),
+  getMembers: vi.fn(async () => db.players),
 }));
 
 const JAX = "client-jax-001";
@@ -104,7 +105,7 @@ const keys = () => t.query<{ k: string; unread: number }>(`SELECT endpoint_or_to
 
 describe("notify", () => {
   it("sends each player their own copy on every device and records the results", async () => {
-    await notify(env, "abc234", { kind: "winner", periodKey: "q2", label: "Half", clientIds: [JAX] });
+    await notify(env, "abc234", { kind: "winner", periodKey: "q2", label: "Half", playerIds: [pid(JAX)] });
 
     const jax = sent.web.find((w) => w.endpoint === jaxBrowser.endpoint)!.payload;
     expect(jax).toMatchObject({ title: "Super Bowl LX", body: "🎉 Your square hit at Half!", url: "/g/abc234", badge: 1 });
@@ -121,7 +122,7 @@ describe("notify", () => {
 
   it("skips muted players and the actor", async () => {
     await setMuted(t.d1, "abc234", SAM, true, 1);
-    await notify(env, "abc234", { kind: "numbers-drawn", actor: HOST });
+    await notify(env, "abc234", { kind: "numbers-drawn", actor: pid(HOST) });
     expect(sent.web.map((w) => w.endpoint)).not.toContain(hostBrowser.endpoint);
     expect(sent.fcm.map((f) => f.token)).toEqual(["lee-android-token-0000000000000000"]);
   });
@@ -183,7 +184,7 @@ describe("notify", () => {
 
   it("lets the last period's push stand in for the separate final push", async () => {
     await Promise.all([
-      notify(env, "abc234", { kind: "winner", periodKey: "final", label: "Final", clientIds: [JAX] }),
+      notify(env, "abc234", { kind: "winner", periodKey: "final", label: "Final", playerIds: [pid(JAX)] }),
       notify(env, "abc234", { kind: "final" }),
     ]);
     expect(sent.fcm.map((f) => f.body)).toEqual([

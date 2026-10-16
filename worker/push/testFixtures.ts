@@ -2,9 +2,14 @@
 // (VAPID keys made the way docs/push.md says, an RSA service account, a browser
 // push subscription) so signing and encryption run for real.
 
-import type { Game, Player } from "../../shared/types";
+import { derivePlayerIdSync } from "../../shared/playerId";
+import type { Game } from "../../shared/types";
+import type { Member } from "../db";
 
 export const HOST = "host-client-0001";
+
+/** Public player id of a test clientId. */
+export const pid = (clientId: string): string => derivePlayerIdSync(clientId);
 
 export function makeGame(over: Partial<Game> = {}): Game {
   return {
@@ -26,15 +31,16 @@ export function makeGame(over: Partial<Game> = {}): Game {
     numbers: null,
     status: "locked",
     linkedEvent: null,
-    hostClientId: HOST,
+    hostPlayerId: pid(HOST),
     createdAt: 1_760_000_000_000,
     lockedAt: null,
     ...over,
   };
 }
 
-export function makePlayer(clientId: string, name: string, over: Partial<Player> = {}): Player {
-  return { clientId, name, color: "#38bdf8", emoji: "", joinedAt: 1_760_000_000_000, isHost: clientId === HOST, ...over };
+/** A player as push sees it (getMembers): public id plus the clientId its devices registered under. */
+export function makePlayer(clientId: string, name: string, over: Partial<Member> = {}): Member {
+  return { id: pid(clientId), clientId, name, color: "#38bdf8", emoji: "", joinedAt: 1_760_000_000_000, isHost: clientId === HOST, ...over };
 }
 
 export function b64url(bytes: ArrayBuffer | Uint8Array): string {

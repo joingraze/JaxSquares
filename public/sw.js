@@ -7,8 +7,8 @@ const BADGE = "/icons/badge-96.png"; // monochrome status-bar icon (Android)
 
 const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#060a16"><title>Offline · JaxSquares</title>
-<style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#060a16;color:#e6edf6;
+<meta name="theme-color" content="#060c09"><title>Offline · JaxSquares</title>
+<style>body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#060c09;color:#f3f7f1;
 font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;text-align:center;padding:24px;box-sizing:border-box}
 h1{font-size:22px;margin:12px 0 6px}p{color:#94a3b8;margin:0 0 20px}
 button{background:#22c55e;color:#06210f;border:0;border-radius:999px;padding:12px 22px;font-weight:700;font-size:16px}</style>

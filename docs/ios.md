@@ -14,21 +14,32 @@ app when it isn't.
 | Minimum iOS | 15.0 |
 | Devices | iPhone only, portrait only (iPads run it in iPhone mode) |
 | Capacitor | 8.5 |
-| Plugins | app, haptics, preferences, share, splash-screen, status-bar, `@capacitor-firebase/messaging`, `@capgo/native-purchases` |
+| Plugins | app, haptics, preferences, share, splash-screen, status-bar, `@capacitor-firebase/messaging` (push), `@capgo/native-purchases` (IAP) |
+| Background | `#060c09` (pitch-950, `--color-canvas`) everywhere: WebView, launch screen, splash, status bar |
 
 ## What's already configured
 
 The repo already contains these, so don't redo them in Xcode:
 
 - **`capacitor.config.ts`** sets the app id and name and `webDir: dist/client`.
-  The WebView runs edge to edge (`contentInset: never`), has a pitch-navy
-  background so there is no white flash, and disables link previews. It also
-  configures the splash screen (hidden by `initNative()` once React paints), the
-  status bar (light text), and `NativePurchases.autoFinishTransactions = false`.
-  `includePlugins` keeps `@capacitor/push-notifications` out of the native build,
-  because it would fight `@capacitor-firebase/messaging` for notification
-  routing. **Add any new Capacitor plugin to `includePlugins`**, or it won't be
-  compiled in.
+  - The WebView runs edge to edge (`contentInset: never`) and disables link
+    previews.
+  - `#060c09`, the app's night-turf canvas, is the background for the WebView,
+    the splash screen and the status bar, so nothing flashes between the launch
+    screen and the first paint. `index.html` paints the same color inline.
+  - The splash screen is hidden by `initNative()` once React paints; auto-hide
+    after 2.5 s is only a safety net.
+  - `NativePurchases.autoFinishTransactions = false`. A StoreKit transaction
+    stays open until the Worker has verified it with Apple, and only then does
+    `src/lib/checkout.ts` finish it. If the app dies mid-purchase, the
+    transaction is still open on the next launch, and `recoverIAPPurchases()`
+    (called at startup on iOS from `src/App.tsx`) confirms it and opens the
+    board. See `docs/payments.md`.
+  - There is no `includePlugins` list: every Capacitor plugin in `package.json`
+    is compiled in. Push uses `@capacitor-firebase/messaging` only.
+    `@capacitor/push-notifications` was uninstalled and must not come back:
+    both plugins claim iOS's notification routing, the last one loaded wins,
+    and notification taps get swallowed.
 - **`ios/App/App/Info.plist`** contains:
   - Display name.
   - The `jaxsquares://` URL scheme.
@@ -47,12 +58,16 @@ The repo already contains these, so don't redo them in Xcode:
   no tracking, the collected data listed in `docs/app-store/listing.md`, and
   UserDefaults access (reason `CA92.1`, used by Preferences).
 - **`AppDelegate.swift`** forwards the APNs device token, registration errors
-  and background pushes to the Capacitor plugins. `SceneDelegate.swift`
-  (Capacitor template) forwards universal links and `jaxsquares://` URLs.
+  and background pushes to `@capacitor-firebase/messaging`.
+- **`SceneDelegate.swift`** (Capacitor template) forwards universal links and
+  `jaxsquares://` URLs. It also clears the app icon badge whenever the app
+  becomes active (`sceneDidBecomeActive`): `setBadgeCount(0)` on iOS 16+,
+  `applicationIconBadgeNumber = 0` on iOS 15. The server keeps its own count
+  per device and resets it when the app re-syncs push on open.
 - **Assets.** The app icon (`AppIcon-512@2x.png`, 1024 px, opaque) and the
   launch image (`Splash.imageset`, at @1x, @2x and @3x) are rendered by
-  `scripts/brand/generate.ts`. `LaunchScreen.storyboard` uses the same navy
-  background.
+  `scripts/brand/generate.ts`, which also writes the canvas color into
+  `LaunchScreen.storyboard`. See "Brand assets" below.
 
 The project was generated on Linux with
 `npx cap add ios --packagemanager SPM`. That needs no CocoaPods. Xcode resolves
@@ -81,6 +96,8 @@ npx cap sync ios
 # 3. Open Xcode (ios/App/App.xcodeproj).
 npx cap open ios
 ```
+
+`npm run ios` does all three steps.
 
 Run step 2 after every web build, every plugin install and every edit to
 `capacitor.config.ts`. It also recreates three gitignored things:
@@ -128,6 +145,12 @@ The full Firebase and APNs setup is in `docs/push.md`. The iOS-specific parts:
 4. The `aps-environment` entitlement says `development`. When you export an App
    Store or TestFlight build, Xcode switches it to `production`, so leave it
    as is.
+5. Push goes through `@capacitor-firebase/messaging` only (`src/lib/push.ts`).
+   `initPush()` runs once at startup, and notification taps route through
+   React Router (`onNotificationTap` in `src/App.tsx`).
+6. Each push carries the device's unread count as the icon badge. Opening the
+   app clears the badge (`SceneDelegate.sceneDidBecomeActive`), and the app's
+   push re-sync resets the server's count.
 
 ## In-App Purchase (board creation)
 
@@ -230,28 +253,42 @@ After the upload:
 Every icon and image comes from one SVG source:
 
 ```bash
-node --experimental-strip-types scripts/brand/generate.ts
+npm run brand     # node --experimental-strip-types scripts/brand/generate.ts
 ```
 
+- **The mark.** The same design as the in-app `LogoMark`
+  (`src/components/ui/Logo.tsx`): a 3x3 squares board with the winning square,
+  row 2 column 3, lit gold.
+- **Colors** (from `src/index.css`):
+  - canvas `#060c09` (pitch-950) for backgrounds
+  - volt `#c6f91f` and `#aee000` (brand-400/500) for the checkered tiles
+  - trophy gold `#ffc233` (gold-400) for the lit square
+  - The link preview also uses the team colors (`#3ab7ff`, `#ff66a6`), the
+    player colors and live red.
 - **Source files.**
   - `scripts/brand/art.ts` holds the icon, mark, favicon, badge and splash.
   - `scripts/brand/og.ts` holds the 1200×630 link preview.
 - **Requirements.** The script needs the Playwright Chromium build
   (`npx playwright install chromium`, or set `CHROMIUM_PATH`). The link preview
-  uses the design-system fonts from `node_modules`: Bricolage Grotesque for
-  display and Figtree for body. If those aren't installed it falls back to
-  Inter.
+  uses the design-system fonts from `node_modules`: Bricolage Grotesque (optical
+  size 96, as in the app) for display and Figtree for body. If those aren't
+  installed it falls back to Inter.
 - **Outputs.**
-  - Web: `public/favicon.svg`, `public/favicon.ico`,
-    `public/apple-touch-icon.png`, `public/og-image.png`.
-  - `public/icons/`: `icon-192/512`, `maskable-192/512`, `badge-96`,
-    `icon.svg`, `mark.svg`.
-  - iOS: the AppIcon and the Splash image set.
+  - Web: `public/favicon.svg`, `public/favicon.ico` (16/32/48, snapped to whole
+    pixels), `public/apple-touch-icon.png`, `public/og-image.png`.
+  - `public/icons/`: `icon-192/512`, `maskable-192/512`, `icon.svg`,
+    `mark.svg`, and `badge-96`, a white monochrome badge where the lit square is
+    the one at full opacity.
+  - iOS: the AppIcon, the Splash image set, and the launch storyboard's
+    background color.
   - Android: once `android/` exists, the launcher icons, adaptive foreground
-    and splash images.
-- **Checks.** App Store icons must have no alpha channel. The script renders
-  opaque PNGs for iOS, which you can confirm with
-  `sips -g hasAlpha ios/App/App/Assets.xcassets/AppIcon.appiconset/*.png`.
+    and background color, and splash images.
+- **Checks.**
+  - App Store icons must have no alpha channel. The script renders opaque PNGs
+    for iOS, which you can confirm with
+    `sips -g hasAlpha ios/App/App/Assets.xcassets/AppIcon.appiconset/*.png`.
+  - Look at the icon at 60 px and 40 px on a busy wallpaper. Look at the link
+    preview at about 300 px wide, which is its size in an iMessage bubble.
 
 ## Android (later)
 

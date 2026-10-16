@@ -2,6 +2,7 @@
 // hibernatable WebSockets, fans out state pushed by the Worker, tracks who is
 // watching, and polls live scores with an alarm while a linked game is on.
 
+import { isPlayerId } from "../shared/playerId";
 import type { Activity, GameState, LiveMessage } from "../shared/types";
 import type { Env } from "./env";
 import { fetchLiveForEvent } from "./scores";
@@ -16,7 +17,8 @@ const POLL_GIVE_UP_MS = 12 * 60 * 60_000;
 const SOCKET_OPEN = 1;
 
 interface Attachment {
-  clientId: string | null;
+  /** Public player id from ?player= (only used to count devices once). */
+  playerId: string | null;
   connectedAt: number;
 }
 
@@ -101,8 +103,8 @@ export class GameRoom implements DurableObject {
     const client = pair[0];
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
-    const clientId = (url.searchParams.get("clientId") ?? "").slice(0, 64) || null;
-    server.serializeAttachment({ clientId, connectedAt: Date.now() } satisfies Attachment);
+    const player = url.searchParams.get("player");
+    server.serializeAttachment({ playerId: isPlayerId(player) ? player : null, connectedAt: Date.now() } satisfies Attachment);
 
     // Current state first so the board renders instantly, then who's here.
     server.send(message({ type: "state", state }));
@@ -184,14 +186,14 @@ export class GameRoom implements DurableObject {
     }
   }
 
-  /** Distinct devices watching (sockets without a clientId count individually). */
+  /** Distinct devices watching (sockets without a player id count individually). */
   private sendPresence(exclude?: WebSocket): void {
     const sockets = this.ctx.getWebSockets().filter((ws) => ws !== exclude && ws.readyState === SOCKET_OPEN);
     const devices = new Set<string>();
     let anonymous = 0;
     for (const ws of sockets) {
       const a = ws.deserializeAttachment() as Attachment | null;
-      if (a?.clientId) devices.add(a.clientId);
+      if (a?.playerId) devices.add(a.playerId);
       else anonymous++;
     }
     const m = message({ type: "presence", watching: devices.size + anonymous });

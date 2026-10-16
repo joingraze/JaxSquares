@@ -9,6 +9,7 @@
 import type { NativePurchasesPlugin } from "@capgo/native-purchases";
 import type { Appearance, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
 import type { AppConfig, GameState, PaymentConfig } from "../../shared/types";
+import { getClientId } from "./identity";
 
 export type CheckoutMethod = "test" | "iap" | "wallet" | "card";
 export type CheckoutResult = "paid" | "cancelled" | "failed";
@@ -18,7 +19,6 @@ export type Platform = "ios" | "android" | "web";
 export type PurchaseOutcome = { status: "paid"; state: GameState } | { status: "cancelled" } | { status: "pending" };
 
 const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
-const CLIENT_ID_KEY = "jaxsquares.clientId";
 
 /** A failed checkout call. `status` 0 = never reached the server. `state` is set when the board is already open. */
 export class CheckoutError extends Error {
@@ -35,18 +35,9 @@ export class CheckoutError extends Error {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const gamePath = (gameId: string, rest: string) => `/games/${encodeURIComponent(gameId)}${rest}`;
 
-function clientId(): string | null {
-  try {
-    return localStorage.getItem(CLIENT_ID_KEY);
-  } catch {
-    return null;
-  }
-}
-
 async function request<T>(method: "GET" | "POST", path: string, opts: { adminToken?: string; body?: unknown } = {}): Promise<T> {
-  const headers: Record<string, string> = {};
-  const id = clientId();
-  if (id) headers["x-client-id"] = id;
+  // Same device id as every other call (identity.ts owns creating and storing it).
+  const headers: Record<string, string> = { "x-client-id": getClientId() };
   if (opts.adminToken) headers["x-admin-token"] = opts.adminToken;
   if (opts.body !== undefined) headers["content-type"] = "application/json";
   let res: Response;

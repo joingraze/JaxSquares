@@ -3,6 +3,8 @@
 > Draft. Have it reviewed before you publish it, and keep it in step with the
 > App Privacy answers in `listing.md` and `ios/App/App/PrivacyInfo.xcprivacy`.
 > Replace `support@jaxsquares.com` if the contact address changes.
+> The live page is `src/pages/Privacy.tsx` (route `/privacy`). Change both
+> together, and update `UPDATED` there when you do.
 
 **JaxSquares Privacy Policy**
 Last updated: <date>

@@ -136,10 +136,52 @@ export function isPeriodKeyFor(format: GameFormat, key: string): boolean {
   return FIXED_PERIODS[format.periods].some((p) => p.key === key);
 }
 
+// ---- Prize notes: fun stakes only, never money ----
+//
+// JaxSquares never moves money between players (our rule, and App Store
+// guideline 5.3 on gambling). A prize note is for things like "Loser buys
+// wings", so notes that mention money, payment apps or betting are rejected.
+
+export const PRIZE_MONEY_ERROR = "Prize notes can't include money. Try something like 'Loser buys wings'.";
+
+const MONEY_PATTERNS: readonly RegExp[] = [
+  // Any currency symbol ($ € £ ¥ ₹ ¢ ...), e.g. "$20" or "5€".
+  /\p{Sc}/u,
+  // Amounts with a currency code, e.g. "20 usd".
+  /\b(?:usd|eur|gbp)\b/,
+  // Money words, payment apps and betting language.
+  /\b(?:dollars?|bucks?|cash|cash[\s-]?(?:app|out)|money|venmo\w*|paypal\w*|zelle\w*|payouts?|pay[\s-]outs?|pots?|jackpots?|buy[\s-]?ins?|bets?|betting|bettors?|wager\w*|gambl\w*)\b/,
+];
+
+/**
+ * Why a prize note isn't allowed, or null when it's fine. Shared so the create
+ * form can validate inline with the exact rule the server enforces.
+ */
+export function validatePrizeNote(note: string): string | null {
+  const text = note
+    .normalize("NFKC")
+    .replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, "")
+    .toLowerCase();
+  return MONEY_PATTERNS.some((re) => re.test(text)) ? PRIZE_MONEY_ERROR : null;
+}
+
+/** Thrown by sanitizePrizes for a note that mentions money; `message` is safe to show. */
+export class PrizeNoteError extends Error {
+  constructor(
+    message: string,
+    /** The period key ("q1", "*", ...) of the offending note. */
+    readonly key: string,
+  ) {
+    super(message);
+    this.name = "PrizeNoteError";
+  }
+}
+
 /**
  * Keeps prize notes for this format's periods, trimmed to PRIZE_MAX_LENGTH.
  * "*" is a note that applies to every period without its own (handy for
- * every-score boards). Empty notes are dropped.
+ * every-score boards). Empty notes are dropped. Throws PrizeNoteError when a
+ * kept note mentions money (see validatePrizeNote); the API answers 400.
  */
 export function sanitizePrizes(format: GameFormat, input: unknown): Record<string, string> {
   const out: Record<string, string> = {};
@@ -151,6 +193,8 @@ export function sanitizePrizes(format: GameFormat, input: unknown): Record<strin
     if (key !== SHARED_DRAW_KEY && !isPeriodKeyFor(format, key)) continue;
     const note = value.replace(/\s+/g, " ").trim().slice(0, PRIZE_MAX_LENGTH).trim();
     if (!note) continue;
+    const problem = validatePrizeNote(note);
+    if (problem) throw new PrizeNoteError(problem, key);
     out[key] = note;
     count++;
   }

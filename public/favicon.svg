@@ -1,26 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="32" height="32"><defs>
   <linearGradient id="jx-bg" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#131c30"/><stop offset="1" stop-color="#060a16"/>
+    <stop offset="0" stop-color="#111a15"/><stop offset="0.7" stop-color="#060c09"/>
   </linearGradient>
-  <radialGradient id="jx-glow" cx="0.2" cy="0.05" r="0.9">
-    <stop offset="0" stop-color="#22c55e" stop-opacity="0.35"/><stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+  <radialGradient id="jx-flood-l" cx="0.08" cy="-0.06" r="0.8">
+    <stop offset="0" stop-color="#d6ff78" stop-opacity="0.1"/><stop offset="1" stop-color="#d6ff78" stop-opacity="0"/>
   </radialGradient>
-  <linearGradient id="jx-ball" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f59e0b"/>
+  <radialGradient id="jx-flood-r" cx="0.92" cy="-0.06" r="0.8">
+    <stop offset="0" stop-color="#d6ff78" stop-opacity="0.07"/><stop offset="1" stop-color="#d6ff78" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="jx-volt-a" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d5ff52"/><stop offset="0.55" stop-color="#c6f91f"/><stop offset="1" stop-color="#b9ec12"/>
   </linearGradient>
-  <linearGradient id="jx-tile-hi" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#fff" stop-opacity="0.16"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.08"/>
+  <linearGradient id="jx-volt-b" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#bdee0c"/><stop offset="0.55" stop-color="#aee000"/><stop offset="1" stop-color="#9fcf00"/>
   </linearGradient>
-  <filter id="jx-shadow" x="-30%" y="-30%" width="160%" height="160%">
-    <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.45"/>
-  </filter></defs><rect width="1024" height="1024" rx="194.56" fill="url(#jx-bg)"/><rect width="1024" height="1024" rx="194.56" fill="url(#jx-glow)"/><rect x="64" y="64" width="256" height="256" rx="48" fill="#22c55e"/><rect x="384" y="64" width="256" height="256" rx="48" fill="#16a34a"/><rect x="704" y="64" width="256" height="256" rx="48" fill="#22c55e"/><rect x="64" y="384" width="256" height="256" rx="48" fill="#16a34a"/><rect x="384" y="384" width="256" height="256" rx="48" fill="#22c55e"/><rect x="704" y="384" width="256" height="256" rx="48" fill="#16a34a"/><rect x="64" y="704" width="256" height="256" rx="48" fill="#22c55e"/><rect x="384" y="704" width="256" height="256" rx="48" fill="#16a34a"/><rect x="704" y="704" width="256" height="256" rx="48" fill="#22c55e"/><g transform="translate(512 512) rotate(-35)">
-    <clipPath id="jx-ball-tiny"><path d="M 350 0 L 349.25 -5.15 L 347.01 -13.17 L 343.27 -22.75 L 338.07 -33.41 L 331.43 -44.86 L 323.36 -56.87 L 313.91 -69.24 L 303.11 -81.81 L 291.01 -94.42 L 277.67 -106.92 L 263.14 -119.18 L 247.49 -131.07 L 230.77 -142.48 L 213.07 -153.28 L 194.45 -163.38 L 175 -172.69 L 154.8 -181.11 L 133.94 -188.56 L 112.5 -194.99 L 90.59 -200.33 L 68.28 -204.53 L 45.68 -207.56 L 22.89 -209.39 L 0 -210 L -22.89 -209.39 L -45.68 -207.56 L -68.28 -204.53 L -90.59 -200.33 L -112.5 -194.99 L -133.94 -188.56 L -154.8 -181.11 L -175 -172.69 L -194.45 -163.38 L -213.07 -153.28 L -230.77 -142.48 L -247.49 -131.07 L -263.14 -119.18 L -277.67 -106.92 L -291.01 -94.42 L -303.11 -81.81 L -313.91 -69.24 L -323.36 -56.87 L -331.43 -44.86 L -338.07 -33.41 L -343.27 -22.75 L -347.01 -13.17 L -349.25 -5.15 L -350 0 L -349.25 5.15 L -347.01 13.17 L -343.27 22.75 L -338.07 33.41 L -331.43 44.86 L -323.36 56.87 L -313.91 69.24 L -303.11 81.81 L -291.01 94.42 L -277.67 106.92 L -263.14 119.18 L -247.49 131.07 L -230.77 142.48 L -213.07 153.28 L -194.45 163.38 L -175 172.69 L -154.8 181.11 L -133.94 188.56 L -112.5 194.99 L -90.59 200.33 L -68.28 204.53 L -45.68 207.56 L -22.89 209.39 L 0 210 L 22.89 209.39 L 45.68 207.56 L 68.28 204.53 L 90.59 200.33 L 112.5 194.99 L 133.94 188.56 L 154.8 181.11 L 175 172.69 L 194.45 163.38 L 213.07 153.28 L 230.77 142.48 L 247.49 131.07 L 263.14 119.18 L 277.67 106.92 L 291.01 94.42 L 303.11 81.81 L 313.91 69.24 L 323.36 56.87 L 331.43 44.86 L 338.07 33.41 L 343.27 22.75 L 347.01 13.17 L 349.25 5.15 Z"/></clipPath>
-    <path d="M 350 0 L 349.25 -5.15 L 347.01 -13.17 L 343.27 -22.75 L 338.07 -33.41 L 331.43 -44.86 L 323.36 -56.87 L 313.91 -69.24 L 303.11 -81.81 L 291.01 -94.42 L 277.67 -106.92 L 263.14 -119.18 L 247.49 -131.07 L 230.77 -142.48 L 213.07 -153.28 L 194.45 -163.38 L 175 -172.69 L 154.8 -181.11 L 133.94 -188.56 L 112.5 -194.99 L 90.59 -200.33 L 68.28 -204.53 L 45.68 -207.56 L 22.89 -209.39 L 0 -210 L -22.89 -209.39 L -45.68 -207.56 L -68.28 -204.53 L -90.59 -200.33 L -112.5 -194.99 L -133.94 -188.56 L -154.8 -181.11 L -175 -172.69 L -194.45 -163.38 L -213.07 -153.28 L -230.77 -142.48 L -247.49 -131.07 L -263.14 -119.18 L -277.67 -106.92 L -291.01 -94.42 L -303.11 -81.81 L -313.91 -69.24 L -323.36 -56.87 L -331.43 -44.86 L -338.07 -33.41 L -343.27 -22.75 L -347.01 -13.17 L -349.25 -5.15 L -350 0 L -349.25 5.15 L -347.01 13.17 L -343.27 22.75 L -338.07 33.41 L -331.43 44.86 L -323.36 56.87 L -313.91 69.24 L -303.11 81.81 L -291.01 94.42 L -277.67 106.92 L -263.14 119.18 L -247.49 131.07 L -230.77 142.48 L -213.07 153.28 L -194.45 163.38 L -175 172.69 L -154.8 181.11 L -133.94 188.56 L -112.5 194.99 L -90.59 200.33 L -68.28 204.53 L -45.68 207.56 L -22.89 209.39 L 0 210 L 22.89 209.39 L 45.68 207.56 L 68.28 204.53 L 90.59 200.33 L 112.5 194.99 L 133.94 188.56 L 154.8 181.11 L 175 172.69 L 194.45 163.38 L 213.07 153.28 L 230.77 142.48 L 247.49 131.07 L 263.14 119.18 L 277.67 106.92 L 291.01 94.42 L 303.11 81.81 L 313.91 69.24 L 323.36 56.87 L 331.43 44.86 L 338.07 33.41 L 343.27 22.75 L 347.01 13.17 L 349.25 5.15 Z" fill="url(#jx-ball)"/>
-    
-    <g stroke="#fff" fill="none" stroke-width="35" clip-path="url(#jx-ball-tiny)"><path d="M -203 -252 Q -238 0 -203 252"/><path d="M 203 -252 Q 238 0 203 252"/></g>
-    <path d="M 350 0 L 349.25 -5.15 L 347.01 -13.17 L 343.27 -22.75 L 338.07 -33.41 L 331.43 -44.86 L 323.36 -56.87 L 313.91 -69.24 L 303.11 -81.81 L 291.01 -94.42 L 277.67 -106.92 L 263.14 -119.18 L 247.49 -131.07 L 230.77 -142.48 L 213.07 -153.28 L 194.45 -163.38 L 175 -172.69 L 154.8 -181.11 L 133.94 -188.56 L 112.5 -194.99 L 90.59 -200.33 L 68.28 -204.53 L 45.68 -207.56 L 22.89 -209.39 L 0 -210 L -22.89 -209.39 L -45.68 -207.56 L -68.28 -204.53 L -90.59 -200.33 L -112.5 -194.99 L -133.94 -188.56 L -154.8 -181.11 L -175 -172.69 L -194.45 -163.38 L -213.07 -153.28 L -230.77 -142.48 L -247.49 -131.07 L -263.14 -119.18 L -277.67 -106.92 L -291.01 -94.42 L -303.11 -81.81 L -313.91 -69.24 L -323.36 -56.87 L -331.43 -44.86 L -338.07 -33.41 L -343.27 -22.75 L -347.01 -13.17 L -349.25 -5.15 L -350 0 L -349.25 5.15 L -347.01 13.17 L -343.27 22.75 L -338.07 33.41 L -331.43 44.86 L -323.36 56.87 L -313.91 69.24 L -303.11 81.81 L -291.01 94.42 L -277.67 106.92 L -263.14 119.18 L -247.49 131.07 L -230.77 142.48 L -213.07 153.28 L -194.45 163.38 L -175 172.69 L -154.8 181.11 L -133.94 188.56 L -112.5 194.99 L -90.59 200.33 L -68.28 204.53 L -45.68 207.56 L -22.89 209.39 L 0 210 L 22.89 209.39 L 45.68 207.56 L 68.28 204.53 L 90.59 200.33 L 112.5 194.99 L 133.94 188.56 L 154.8 181.11 L 175 172.69 L 194.45 163.38 L 213.07 153.28 L 230.77 142.48 L 247.49 131.07 L 263.14 119.18 L 277.67 106.92 L 291.01 94.42 L 303.11 81.81 L 313.91 69.24 L 323.36 56.87 L 331.43 44.86 L 338.07 33.41 L 343.27 22.75 L 347.01 13.17 L 349.25 5.15 Z" fill="none" stroke="#060a16" stroke-width="72" stroke-linejoin="round"/>
-    <g stroke="#fff" stroke-linecap="round" fill="none">
-      <line x1="-91" y1="0" x2="91" y2="0" stroke-width="42"/>
-      <g stroke-width="37.8"><line x1="-60.67" y1="-63" x2="-60.67" y2="63"/><line x1="0" y1="-63" x2="0" y2="63"/><line x1="60.67" y1="-63" x2="60.67" y2="63"/></g>
-    </g>
-  </g></svg>
+  <linearGradient id="jx-gold" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#ffdc7a"/><stop offset="0.5" stop-color="#ffc233"/><stop offset="1" stop-color="#ffb41f"/>
+  </linearGradient>
+  <linearGradient id="jx-sheen" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#fff" stop-opacity="0.38"/><stop offset="0.07" stop-color="#fff" stop-opacity="0.1"/><stop offset="0.2" stop-color="#fff" stop-opacity="0"/>
+  </linearGradient>
+  <filter id="jx-glow" x="-100%" y="-100%" width="300%" height="300%">
+    <feGaussianBlur stdDeviation="30"/>
+  </filter>
+  <filter id="jx-lift" x="-20%" y="-20%" width="140%" height="140%">
+    <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000" flood-opacity="0.55"/>
+  </filter></defs><rect width="1024" height="1024" rx="194.56" fill="#060c09"/><rect x="64" y="64" width="256" height="256" rx="56" fill="#c6f91f"/><rect x="384" y="64" width="256" height="256" rx="56" fill="#aee000"/><rect x="704" y="64" width="256" height="256" rx="56" fill="#c6f91f"/><rect x="64" y="384" width="256" height="256" rx="56" fill="#aee000"/><rect x="384" y="384" width="256" height="256" rx="56" fill="#c6f91f"/><rect x="704" y="384" width="256" height="256" rx="56" fill="#ffc233"/><rect x="64" y="704" width="256" height="256" rx="56" fill="#c6f91f"/><rect x="384" y="704" width="256" height="256" rx="56" fill="#aee000"/><rect x="704" y="704" width="256" height="256" rx="56" fill="#c6f91f"/></svg>

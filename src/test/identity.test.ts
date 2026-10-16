@@ -30,6 +30,27 @@ describe("client id", () => {
   });
 });
 
+describe("player id", () => {
+  it("is the public hash of the clientId, stable and never the clientId itself", async () => {
+    const { derivePlayerId } = await import("../../shared/playerId");
+    const clientId = id.getClientId();
+    const pid = id.getPlayerId();
+    expect(pid).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(pid).not.toBe(clientId);
+    expect(pid).toBe(await derivePlayerId(clientId));
+    expect(id.getPlayerId()).toBe(pid);
+  });
+
+  it("is computed during hydration and follows the native clientId", async () => {
+    const { derivePlayerId } = await import("../../shared/playerId");
+    localStorage.setItem("jaxsquares.clientId", "local-id-0001");
+    const before = id.getPlayerId();
+    await id.hydrateIdentity(memoryStore({ "jaxsquares.clientId": "native-id-0001" }));
+    expect(id.getPlayerId()).toBe(await derivePlayerId("native-id-0001"));
+    expect(id.getPlayerId()).not.toBe(before);
+  });
+});
+
 describe("profile", () => {
   it("fills in a fun default color and emoji, with no name yet", () => {
     const p = id.getProfile();
@@ -54,6 +75,23 @@ describe("profile", () => {
   it("ignores a corrupt stored profile", () => {
     localStorage.setItem("jaxsquares.profile", "{not json");
     expect(id.getProfile().name).toBe("");
+  });
+});
+
+describe("native mirroring of new values", () => {
+  it("a new clientId and an admin token are also written to the native store", async () => {
+    vi.resetModules();
+    const setStored = vi.fn(async () => {});
+    vi.doMock("../lib/native", () => ({ getStored: vi.fn(async () => null), setStored, removeStored: vi.fn(async () => {}) }));
+    try {
+      const fresh = await import("../lib/identity");
+      const clientId = fresh.getClientId();
+      fresh.saveAdminToken("g9", "tok-9");
+      expect(setStored).toHaveBeenCalledWith("jaxsquares.clientId", clientId);
+      expect(setStored).toHaveBeenCalledWith("jaxsquares.admin.g9", "tok-9");
+    } finally {
+      vi.doUnmock("../lib/native");
+    }
   });
 });
 
@@ -132,6 +170,15 @@ describe("hydrateIdentity (native store mirror)", () => {
     const store = memoryStore();
     await id.hydrateIdentity(store);
     expect(store.data.get("jaxsquares.clientId")).toBe("local-id");
+  });
+
+  it("creates the clientId once on a fresh install and saves it to the native store", async () => {
+    const store = memoryStore();
+    await id.hydrateIdentity(store);
+    const created = id.getClientId();
+    expect(created).toMatch(/^[0-9a-f-]{32,36}$/);
+    expect(store.data.get("jaxsquares.clientId")).toBe(created);
+    expect(store.setStored.mock.calls.filter(([k]) => k === "jaxsquares.clientId")).toHaveLength(1);
   });
 
   it("merges known games from both sides", async () => {

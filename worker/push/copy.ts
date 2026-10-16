@@ -5,7 +5,8 @@
 // Copy rules: short, fun, and never about money. A host's free-text prize note
 // may be quoted as-is.
 
-import type { Game, PeriodsPreset, Player, Sport } from "../../shared/types";
+import type { Game, PeriodsPreset, Sport } from "../../shared/types";
+import type { Member } from "../db";
 import type { Delivery, NotifyEvent, NotifyKind, PushContent } from "./types";
 
 const HOUR = 60 * 60;
@@ -58,15 +59,16 @@ function base(game: Game, kind: NotifyKind, over: Partial<PushContent> & Pick<Pu
 }
 
 /**
- * Deliveries for one event, before mutes (the store applies those). The actor
- * never hears about their own action; host-only events go to the host alone.
+ * Deliveries for one event, before mutes (the store applies those). `members`
+ * are the board's players with their clientIds (worker/db.ts getMembers); events
+ * name people by public player id. The actor never hears about their own
+ * action; host-only events go to the host alone.
  */
-export function buildDeliveries(game: Game, players: Player[], event: NotifyEvent, now = Date.now()): Delivery[] {
-  const everyone = [...new Set([game.hostClientId, ...players.map((p) => p.clientId)])].filter(
-    (id) => id && id !== event.actor,
-  );
+export function buildDeliveries(game: Game, members: Member[], event: NotifyEvent, now = Date.now()): Delivery[] {
+  const audience = members.filter((m) => m.clientId && m.id !== event.actor);
+  const everyone = [...new Set(audience.map((m) => m.clientId))];
   const to = (ids: string[], content: PushContent): Delivery[] => ids.map((clientId) => ({ clientId, content }));
-  const hostOnly = everyone.includes(game.hostClientId) ? [game.hostClientId] : [];
+  const hostOnly = audience.filter((m) => m.isHost || m.id === game.hostPlayerId).map((m) => m.clientId).slice(0, 1);
   const id = game.id;
 
   switch (event.kind) {
@@ -83,7 +85,7 @@ export function buildDeliveries(game: Game, players: Player[], event: NotifyEven
     }
 
     case "winner": {
-      const winners = [...new Set(event.clientIds)];
+      const winners = [...new Set(event.playerIds)];
       const tag = `${id}:win:${event.periodKey}`;
       const at = atPeriod(event.label);
       const prize = game.prizes[event.periodKey]?.trim();
@@ -93,7 +95,7 @@ export function buildDeliveries(game: Game, players: Player[], event: NotifyEven
         urgency: "high",
         ttlSeconds: 6 * HOUR,
       });
-      const names = winners.map((w) => players.find((p) => p.clientId === w)?.name || "Someone");
+      const names = winners.map((w) => members.find((m) => m.id === w)?.name || "Someone");
       const who = names.length === 1 ? `${names[0]}'s square hit` : `${joinNames(names)} hit`;
       // The last fixed period doubles as the wrap-up, so notify() can skip the separate "final" push.
       const isLast = event.periodKey === "final";
@@ -102,10 +104,8 @@ export function buildDeliveries(game: Game, players: Player[], event: NotifyEven
         tag,
         ttlSeconds: 6 * HOUR,
       });
-      return [
-        ...to(everyone.filter((c) => winners.includes(c)), mine),
-        ...to(everyone.filter((c) => !winners.includes(c)), theirs),
-      ];
+      const won = new Set(audience.filter((m) => winners.includes(m.id)).map((m) => m.clientId));
+      return [...to([...won], mine), ...to(everyone.filter((c) => !won.has(c)), theirs)];
     }
 
     case "board-full": {
@@ -117,8 +117,8 @@ export function buildDeliveries(game: Game, players: Player[], event: NotifyEven
     }
 
     case "player-joined": {
-      const joiner = [...players].reverse().find((p) => p.name === event.name);
-      const count = players.length;
+      const joiner = [...members].reverse().find((p) => p.name === event.name);
+      const count = members.filter((m) => m.name).length;
       const body = `${joiner?.emoji || "👋"} ${event.name} joined your board. ${count} ${count === 1 ? "player" : "players"} in.`;
       // Replaces the previous join quietly: the latest one carries the running count.
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:joined`, renotify: false, quiet: true, ttlSeconds: 12 * HOUR }));

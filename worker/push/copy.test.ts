@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { NotifyEvent } from "./types";
 import { atPeriod, buildDeliveries, joinNames } from "./copy";
-import { HOST, makeGame, makePlayer } from "./testFixtures";
+import { HOST, makeGame, makePlayer, pid } from "./testFixtures";
 
 const NOW = 1_760_000_100_000;
 const players = [
@@ -39,17 +39,25 @@ describe("buildDeliveries", () => {
   });
 
   it("never tells the actor about their own action", () => {
-    const ds = buildDeliveries(makeGame(), players, { kind: "numbers-drawn", actor: HOST }, NOW);
+    const ds = buildDeliveries(makeGame(), players, { kind: "numbers-drawn", actor: pid(HOST) }, NOW);
     expect(recipients(ds)).toEqual(["client-jax-001", "client-sam-002"]);
+    const ended = buildDeliveries(makeGame(), players, { kind: "final", actor: pid(HOST) }, NOW);
+    expect(recipients(ended)).toEqual(["client-jax-001", "client-sam-002"]);
   });
 
-  it("includes the host even before they've joined as a player", () => {
-    const ds = buildDeliveries(makeGame(), players.slice(1), { kind: "final" }, NOW);
+  it("matches the actor by public id, never by clientId", () => {
+    const ds = buildDeliveries(makeGame(), players, { kind: "numbers-drawn", actor: HOST }, NOW);
     expect(recipients(ds)).toContain(HOST);
   });
 
+  it("reaches the host as a member without a name (getMembers' fallback)", () => {
+    const hostOnly = makePlayer(HOST, "", { joinedAt: 0 });
+    const ds = buildDeliveries(makeGame(), [hostOnly, ...players.slice(1)], { kind: "board-full" }, NOW);
+    expect(recipients(ds)).toEqual([HOST]);
+  });
+
   describe("winner", () => {
-    const event: NotifyEvent = { kind: "winner", periodKey: "q2", label: "Half", clientIds: ["client-jax-001"] };
+    const event: NotifyEvent = { kind: "winner", periodKey: "q2", label: "Half", playerIds: [pid("client-jax-001")] };
 
     it("congratulates the winner and tells everyone else who hit", () => {
       const ds = buildDeliveries(makeGame(), players, event, NOW);
@@ -67,7 +75,7 @@ describe("buildDeliveries", () => {
     });
 
     it("names both winners on a reverse board", () => {
-      const ds = buildDeliveries(makeGame(), players, { ...event, periodKey: "q1", label: "Q1", clientIds: ["client-jax-001", "client-sam-002"] }, NOW);
+      const ds = buildDeliveries(makeGame(), players, { ...event, periodKey: "q1", label: "Q1", playerIds: [pid("client-jax-001"), pid("client-sam-002")] }, NOW);
       expect(bodyFor(ds, HOST)).toBe("Jax and Sam hit in Q1.");
       expect(bodyFor(ds, "client-sam-002")).toBe("🎉 Your square hit in Q1!");
     });
@@ -83,7 +91,7 @@ describe("buildDeliveries", () => {
     });
 
     it("dedupes a player who won both the square and its reverse", () => {
-      const ds = buildDeliveries(makeGame(), players, { ...event, clientIds: ["client-jax-001", "client-jax-001"] }, NOW);
+      const ds = buildDeliveries(makeGame(), players, { ...event, playerIds: [pid("client-jax-001"), pid("client-jax-001")] }, NOW);
       expect(ds.filter((d) => d.clientId === "client-jax-001")).toHaveLength(1);
     });
   });
@@ -129,7 +137,7 @@ describe("buildDeliveries", () => {
     });
 
     it("nobody hears about it when the host is the actor", () => {
-      expect(buildDeliveries(makeGame(), players, { kind: "board-full", actor: HOST }, NOW)).toEqual([]);
+      expect(buildDeliveries(makeGame(), players, { kind: "board-full", actor: pid(HOST) }, NOW)).toEqual([]);
     });
   });
 
@@ -142,8 +150,8 @@ describe("buildDeliveries", () => {
   it("never uses money language", () => {
     const events: NotifyEvent[] = [
       { kind: "numbers-drawn" },
-      { kind: "winner", periodKey: "q1", label: "Q1", clientIds: ["client-jax-001"] },
-      { kind: "winner", periodKey: "final", label: "Final", clientIds: ["client-sam-002"] },
+      { kind: "winner", periodKey: "q1", label: "Q1", playerIds: [pid("client-jax-001")] },
+      { kind: "winner", periodKey: "final", label: "Final", playerIds: [pid("client-sam-002")] },
       { kind: "game-starting" },
       { kind: "board-full" },
       { kind: "player-joined", name: "Sam" },

@@ -3,13 +3,18 @@
 
 export type NotifyEvent = (
   | { kind: "numbers-drawn" }
-  | { kind: "winner"; periodKey: string; label: string; clientIds: string[] }
+  /** `playerIds`: public ids of the players whose squares won (regular and reverse). */
+  | { kind: "winner"; periodKey: string; label: string; playerIds: string[] }
   | { kind: "game-starting" }
   | { kind: "board-full" }
   | { kind: "player-joined"; name: string }
   | { kind: "final" }
 ) & {
-  /** clientId of whoever caused the event (e.g. the host who drew numbers); they aren't notified about their own action. */
+  /**
+   * Public player id of whoever caused the event (e.g. the host who drew the
+   * numbers or ended the game); they aren't notified about their own action.
+   * Left off events nobody "did" (winner, kickoff, live-score final).
+   */
   actor?: string;
 };
 
@@ -35,7 +40,7 @@ export interface PushContent {
   ttlSeconds: number;
 }
 
-/** Who gets what for one event. */
+/** Who gets what for one event. `clientId` is server-only: it's how devices are registered. */
 export interface Delivery {
   clientId: string;
   content: PushContent;

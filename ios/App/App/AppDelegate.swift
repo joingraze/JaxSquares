@@ -20,8 +20,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     // MARK: - Push notifications
-    // The Capacitor push plugins listen for these notifications; without the
-    // forwarding below a device never receives its APNs/FCM token.
+    // @capacitor-firebase/messaging listens for these notifications; without the
+    // forwarding below a device never receives its APNs/FCM token. The badge is
+    // cleared in SceneDelegate.sceneDidBecomeActive.
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)

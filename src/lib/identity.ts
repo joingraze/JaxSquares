@@ -1,6 +1,11 @@
 // Account-free identity for this device.
 //
-// - clientId: random id sent as `x-client-id` on every request.
+// - clientId: random secret sent as `x-client-id` on every request. It is the
+//   device's only credential, so it never appears in a URL, a share, the UI or
+//   any server response.
+// - playerId: the public id the server uses for this device in every payload
+//   (Player.id, Square.playerId, Activity.actor, results), derived one-way from
+//   the clientId (shared/playerId.ts). Compare against this to find "mine".
 // - profile: the name/color/emoji used when joining a board.
 // - admin tokens: one per hosted game, sent as `x-admin-token`.
 // - known games: ids this device created or joined (for hydration + dashboard).
@@ -11,6 +16,7 @@
 // values back in either direction.
 
 import { useSyncExternalStore } from "react";
+import { derivePlayerId, derivePlayerIdSync } from "../../shared/playerId";
 import { getStored, removeStored, setStored } from "./native";
 
 export const STORAGE_KEYS = {
@@ -114,15 +120,48 @@ if (typeof window !== "undefined") {
   });
 }
 
-// ---- Client id ----
+// ---- Client id (secret) and player id (public) ----
 
+function newClientId(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  // randomUUID needs a secure context; getRandomValues doesn't (plain-http LAN dev).
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * This device's secret id, created on first use and saved to localStorage and
+ * the native store (so iOS clearing WebView storage doesn't orphan the
+ * device's boards). Only for the `x-client-id` header.
+ */
 export function getClientId(): string {
   let id = readLocal(STORAGE_KEYS.clientId);
   if (!id) {
-    id = crypto.randomUUID();
+    id = newClientId();
     persist(STORAGE_KEYS.clientId, id);
   }
   return id;
+}
+
+let playerIdCache: { clientId: string; playerId: string } | null = null;
+
+/**
+ * This device's public player id: what GameState uses for Player.id,
+ * Square.playerId, Activity.actor and results. Synchronous: hydrateIdentity
+ * computes it with WebCrypto at startup; if anything asks earlier (or the
+ * clientId changed) it is derived on the spot with the same hash.
+ */
+export function getPlayerId(): string {
+  const clientId = getClientId();
+  if (playerIdCache?.clientId !== clientId) playerIdCache = { clientId, playerId: derivePlayerIdSync(clientId) };
+  return playerIdCache.playerId;
+}
+
+async function primePlayerId(): Promise<void> {
+  const clientId = getClientId();
+  if (playerIdCache?.clientId === clientId) return;
+  const playerId = await derivePlayerId(clientId);
+  // The clientId can't change during the await (hydration is the only writer), but don't cache a stale pair.
+  if (getClientId() === clientId) playerIdCache = { clientId, playerId };
 }
 
 // ---- Profile ----
@@ -270,15 +309,25 @@ export interface PersistentStore {
  * Startup step (await before the first render): mirrors identity between
  * localStorage and the native store. `getStored` adopts whichever side has the
  * value (native wins on conflict); the known-games list is merged so neither
- * side loses boards, then each known game's admin token is restored.
+ * side loses boards, then each known game's admin token is restored. Finally
+ * the public player id is computed (WebCrypto) so getPlayerId() is ready.
  * On the web this only touches localStorage and finishes immediately.
+ *
+ * Later writes (a new clientId, a new admin token) mirror themselves through
+ * persist(), so this only has to reconcile what was there at launch.
  */
 export async function hydrateIdentity(store: PersistentStore = { getStored, setStored }): Promise<void> {
   const localGames = getKnownGames();
 
   const clientId = await store.getStored(STORAGE_KEYS.clientId);
-  if (clientId) writeLocal(STORAGE_KEYS.clientId, clientId);
-  else await store.setStored(STORAGE_KEYS.clientId, getClientId());
+  if (clientId) {
+    writeLocal(STORAGE_KEYS.clientId, clientId);
+  } else {
+    // First launch with the native store: seed it (with the existing local id, or a new one).
+    const id = readLocal(STORAGE_KEYS.clientId) ?? newClientId();
+    writeLocal(STORAGE_KEYS.clientId, id);
+    await store.setStored(STORAGE_KEYS.clientId, id);
+  }
 
   const profile = await store.getStored(STORAGE_KEYS.profile);
   if (profile) writeLocal(STORAGE_KEYS.profile, profile);
@@ -303,5 +352,6 @@ export async function hydrateIdentity(store: PersistentStore = { getStored, setS
     }),
   );
 
+  await primePlayerId();
   emit();
 }

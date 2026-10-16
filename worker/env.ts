@@ -22,9 +22,17 @@ export interface Env {
   APPLE_IAP_KEY_ID?: string;
   APPLE_IAP_ISSUER_ID?: string;
   APPLE_IAP_PRIVATE_KEY?: string;
+  /** iOS bundle id (default "com.jaxsquares.app"); also used in apple-app-site-association. */
   APPLE_BUNDLE_ID?: string;
+  /** Apple developer team id, for apple-app-site-association (universal links). */
   APPLE_TEAM_ID?: string;
   IAP_PRODUCT_ID?: string;
+
+  // ---- Android app links (/.well-known/assetlinks.json) ----
+  /** Android application id (default "com.jaxsquares.app"). */
+  ANDROID_PACKAGE?: string;
+  /** Comma-separated SHA-256 signing-cert fingerprints ("AA:BB:..."), e.g. upload key + Play app signing key. */
+  ANDROID_SHA256_CERT_FINGERPRINTS?: string;
 
   // ---- Push ----
   VAPID_PUBLIC_KEY?: string;

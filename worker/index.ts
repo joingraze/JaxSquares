@@ -4,12 +4,22 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
-import { everyScoreIndex, everyScorePeriod, formatError, periodsFor, sanitizeFormat, sanitizePrizes } from "../shared/formats";
+import {
+  PrizeNoteError,
+  everyScoreIndex,
+  everyScorePeriod,
+  formatError,
+  periodsFor,
+  sanitizeFormat,
+  sanitizePrizes,
+} from "../shared/formats";
+import { isPlayerId } from "../shared/playerId";
 import { drawNumbers, isValidCell, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
   CreateGameResponse,
   Game,
+  GameFormat,
   GameState,
   League,
   LinkedEvent,
@@ -18,18 +28,24 @@ import type {
 } from "../shared/types";
 import * as db from "./db";
 import type { Env } from "./env";
+import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { inviteMeta, withInviteMeta } from "./og";
 import { getPaymentConfig, paymentsRoutes } from "./payments";
+import { playerIdOf } from "./playerIds";
 import { pushRoutes, type NotifyEvent } from "./push";
+import { RATE_LIMITS, checkRate, type RateRule } from "./rateLimit";
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
 import { loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
 
 export { GameRoom } from "./room";
 
-/** Optional vars read here that aren't (yet) declared on Env. */
-type CoreEnv = Env & { ANDROID_PACKAGE?: string; ANDROID_SHA256_CERT_FINGERPRINTS?: string };
-type AppEnv = { Bindings: Env; Variables: { clientId: string } };
+/**
+ * `clientId`: the device's secret (x-client-id), used only for D1 lookups.
+ * `playerId`: its public id, used for everything a client can see (activity
+ * actors, ownership checks against GameState, notify actors, rate-limit keys).
+ */
+type AppEnv = { Bindings: Env; Variables: { clientId: string; playerId: string } };
 type Ctx = Context<AppEnv>;
 
 const SPORTS: readonly Sport[] = ["football", "basketball", "baseball", "hockey", "soccer", "other"];
@@ -140,6 +156,22 @@ function fail(status: 400 | 403 | 404 | 409, message: string): never {
   throw new HTTPException(status, { message });
 }
 
+/** Prize notes for this format; a note that mentions money is a 400 with a message the UI shows as-is. */
+function cleanPrizes(format: GameFormat, input: unknown): Record<string, string> {
+  try {
+    return sanitizePrizes(format, input);
+  } catch (err) {
+    if (err instanceof PrizeNoteError) fail(400, err.message);
+    throw err;
+  }
+}
+
+/** 429 with a friendly message once this player is over `rule`; null to carry on. */
+async function rateLimited(c: Ctx, rule: RateRule): Promise<Response | null> {
+  const { ok, retryAfter } = await checkRate(c.env.DB, rule, c.get("playerId"));
+  return ok ? null : c.json({ error: rule.message }, 429, { "retry-after": String(retryAfter) });
+}
+
 function gameIdParam(c: Ctx): string {
   const id = c.req.param("id") ?? "";
   if (!GAME_ID_RE.test(id)) fail(404, "Game not found");
@@ -191,6 +223,7 @@ const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
   const id = c.req.header("x-client-id") ?? "";
   if (!CLIENT_ID_RE.test(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
   c.set("clientId", id);
+  c.set("playerId", await playerIdOf(id));
   await next();
 };
 
@@ -230,6 +263,7 @@ api.route("/", pushRoutes);
 
 api.post("/games", requireClient, async (c) => {
   const clientId = c.get("clientId");
+  const me = c.get("playerId");
   const body = await readJson(c);
   const now = Date.now();
 
@@ -250,6 +284,10 @@ api.post("/games", requireClient, async (c) => {
   if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
   const host = cleanProfile(body.host);
   if (!host.name) fail(400, "Add your name so friends know it's your board");
+  const prizes = cleanPrizes(format, body.prizes);
+  // Counted only once the request is valid, so fixing a typo doesn't use up a try.
+  const limited = await rateLimited(c, RATE_LIMITS.createGame);
+  if (limited) return limited;
 
   const adminToken = makeToken();
   for (let attempt = 0; attempt < 4; attempt++) {
@@ -262,18 +300,18 @@ api.post("/games", requireClient, async (c) => {
       teamY,
       format,
       periods: periodsFor(format.periods),
-      prizes: sanitizePrizes(format, body.prizes),
+      prizes,
       maxPerPlayer,
       numbers: null,
       status: "draft",
       linkedEvent,
-      hostClientId: clientId,
+      hostPlayerId: me,
       createdAt: now,
       lockedAt: null,
     };
     try {
-      const created = newActivity("created", clientId, {}, now);
-      await c.env.DB.batch(db.insertGame(c.env.DB, game, adminToken, { ...host, joinedAt: now }, created));
+      const created = newActivity("created", me, {}, now);
+      await c.env.DB.batch(db.insertGame(c.env.DB, game, clientId, adminToken, { ...host, joinedAt: now }, created));
     } catch (err) {
       if (String(err).includes("UNIQUE") && attempt < 3) continue; // id collision: roll again
       throw err;
@@ -298,7 +336,7 @@ api.patch("/games/:id", requireClient, async (c) => {
     fields.name = cleanText(body.name, 60);
     if (!fields.name) fail(400, "Board name can't be empty");
   }
-  if (body.prizes !== undefined) fields.prizes = sanitizePrizes(state.game.format, body.prizes);
+  if (body.prizes !== undefined) fields.prizes = cleanPrizes(state.game.format, body.prizes);
   if (body.maxPerPlayer !== undefined) {
     if (state.game.status !== "draft" && state.game.status !== "open") fail(409, "Squares are already locked");
     const max = intIn(body.maxPerPlayer, 0, totalSquares(state.game.format.boardSize));
@@ -323,17 +361,19 @@ api.delete("/games/:id", requireClient, async (c) => {
 api.post("/games/:id/join", requireClient, async (c) => {
   const id = gameIdParam(c);
   const clientId = c.get("clientId");
+  const me = c.get("playerId");
   const state = await stateOr404(c, id);
-  if (state.game.status === "draft" && clientId !== state.game.hostClientId) fail(409, "This board isn't open yet");
+  const isHostDevice = me === state.game.hostPlayerId;
+  if (state.game.status === "draft" && !isHostDevice) fail(409, "This board isn't open yet");
   const profile = cleanProfile(await readJson(c));
   if (!profile.name) fail(400, "Pick a name");
-  const isNew = !state.players.some((p) => p.clientId === clientId);
+  const isNew = !state.players.some((p) => p.id === me);
   const now = Date.now();
   const writes = [db.upsertPlayer(c.env.DB, id, { clientId, ...profile, joinedAt: now })];
-  const joined = isNew ? newActivity("joined", clientId, { name: profile.name }, now) : null;
+  const joined = isNew ? newActivity("joined", me, { name: profile.name }, now) : null;
   if (joined) writes.push(db.insertActivity(c.env.DB, id, joined));
   const { state: next } = await commitOr404(c, id, writes, now);
-  const notify: NotifyEvent[] = isNew && clientId !== state.game.hostClientId ? [{ kind: "player-joined", name: profile.name }] : [];
+  const notify: NotifyEvent[] = isNew && !isHostDevice ? [{ kind: "player-joined", name: profile.name, actor: me }] : [];
   publish(c, next, joined ? [joined.id] : [], notify);
   return c.json({ state: next });
 });
@@ -346,17 +386,19 @@ function requireOpen(state: GameState): void {
 api.post("/games/:id/claim", requireClient, async (c) => {
   const id = gameIdParam(c);
   const clientId = c.get("clientId");
-  const state = await stateOr404(c, id);
+  const me = c.get("playerId");
+  const [limited, state] = await Promise.all([rateLimited(c, RATE_LIMITS.squares), stateOr404(c, id)]);
+  if (limited) return limited;
   const { game } = state;
   requireOpen(state);
-  if (!state.players.some((p) => p.clientId === clientId)) fail(403, "Join the board first");
+  if (!state.players.some((p) => p.id === me)) fail(403, "Join the board first");
   const cells = parseCells((await readJson(c)).cells, game);
   if (!cells) fail(400, "Pick squares on this board");
 
   const taken = new Set(state.squares.map((s) => `${s.row},${s.col}`));
   let wanted = cells.filter((x) => !taken.has(`${x.row},${x.col}`));
   if (game.maxPerPlayer > 0) {
-    const mine = state.squares.filter((s) => s.clientId === clientId).length;
+    const mine = state.squares.filter((s) => s.playerId === me).length;
     const room = game.maxPerPlayer - mine;
     if (room <= 0) fail(409, `You can have up to ${game.maxPerPlayer} squares on this board`);
     wanted = wanted.slice(0, room);
@@ -369,7 +411,7 @@ api.post("/games/:id/claim", requireClient, async (c) => {
   const { results, state: next } = await commitOr404(
     c,
     id,
-    [...db.claimSquares(c.env.DB, id, clientId, wanted, now), db.claimActivity(c.env.DB, id, activityId, clientId, now)],
+    [...db.claimSquares(c.env.DB, id, clientId, wanted, now), db.claimActivity(c.env.DB, id, activityId, { clientId, playerId: me }, now)],
     now,
   );
   const claimed = results.slice(0, wanted.length).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
@@ -383,15 +425,17 @@ api.post("/games/:id/claim", requireClient, async (c) => {
 api.post("/games/:id/release", requireClient, async (c) => {
   const id = gameIdParam(c);
   const clientId = c.get("clientId");
-  const state = await stateOr404(c, id);
+  const me = c.get("playerId");
+  const [limited, state] = await Promise.all([rateLimited(c, RATE_LIMITS.squares), stateOr404(c, id)]);
+  if (limited) return limited;
   requireOpen(state);
   const cells = parseCells((await readJson(c)).cells, state.game);
   if (!cells) fail(400, "Pick squares on this board");
-  const mine = new Set(state.squares.filter((s) => s.clientId === clientId).map((s) => `${s.row},${s.col}`));
+  const mine = new Set(state.squares.filter((s) => s.playerId === me).map((s) => `${s.row},${s.col}`));
   const own = cells.filter((x) => mine.has(`${x.row},${x.col}`));
   if (own.length === 0) return c.json({ state });
   const now = Date.now();
-  const released = newActivity("released", clientId, { count: own.length, cells: own }, now);
+  const released = newActivity("released", me, { count: own.length, cells: own }, now);
   const { state: next } = await commitOr404(
     c,
     id,
@@ -408,7 +452,8 @@ api.post("/games/:id/lock", requireClient, async (c) => {
   if (state.game.status === "draft") fail(409, "This board isn't open yet");
   if (state.game.status !== "open") fail(409, "Numbers are already drawn");
   const now = Date.now();
-  const locked = newActivity("locked", c.get("clientId"), {}, now);
+  const me = c.get("playerId");
+  const locked = newActivity("locked", me, {}, now);
   const { state: next } = await commitOr404(
     c,
     id,
@@ -416,7 +461,8 @@ api.post("/games/:id/lock", requireClient, async (c) => {
     now,
   );
   const recorded = next.activity.some((a) => a.id === locked.id);
-  publish(c, next, [locked.id], recorded ? [{ kind: "numbers-drawn" }] : []);
+  // The host who drew the numbers isn't pushed about it.
+  publish(c, next, [locked.id], recorded ? [{ kind: "numbers-drawn", actor: me }] : []);
   return c.json({ state: next });
 });
 
@@ -437,7 +483,7 @@ api.post("/games/:id/scores", requireClient, async (c) => {
   const everyScore = game.format.periods === "every-score";
   const label = everyScore ? cleanText(body.label, 24) || period.label : period.label;
   const now = Date.now();
-  const actor = c.get("clientId");
+  const actor = c.get("playerId");
   const changed = { periodKey: period.key, label, scoreX, scoreY };
 
   const projectedScores = [
@@ -457,7 +503,7 @@ api.post("/games/:id/scores", requireClient, async (c) => {
   const ids = activities.map((a) => a.id);
   if (final && next.activity.some((a) => a.id === final.id)) {
     ids.push(final.id);
-    notifications.push({ kind: "final" });
+    notifications.push({ kind: "final", actor });
   }
   publish(c, next, ids, notifications);
   return c.json({ state: next });
@@ -493,11 +539,11 @@ api.post("/games/:id/winners", requireClient, async (c) => {
     { periodKey: period.key, row, col, updatedAt: now },
   ];
   const result = resolveResults({ ...state, manualWinners }).find((r) => r.periodKey === period.key);
-  const clientIds = result?.winnerClientId ? [result.winnerClientId] : [];
+  const playerIds = result?.winnerPlayerId ? [result.winnerPlayerId] : [];
   const winner = newActivity(
     "winner",
-    c.get("clientId"),
-    { periodKey: period.key, label: period.label, clientIds, cell: { row, col }, manual: true, prize: result?.prize ?? null },
+    c.get("playerId"),
+    { periodKey: period.key, label: period.label, playerIds, cell: { row, col }, manual: true, prize: result?.prize ?? null },
     now,
   );
   const { state: next } = await commitOr404(
@@ -510,7 +556,7 @@ api.post("/games/:id/winners", requireClient, async (c) => {
     c,
     next,
     [winner.id],
-    clientIds.length > 0 ? [{ kind: "winner", periodKey: period.key, label: period.label, clientIds }] : [],
+    playerIds.length > 0 ? [{ kind: "winner", periodKey: period.key, label: period.label, playerIds }] : [],
   );
   return c.json({ state: next });
 });
@@ -531,7 +577,8 @@ api.post("/games/:id/final", requireClient, async (c) => {
   if (state.game.status === "final") return c.json({ state });
   requireLocked(state);
   const now = Date.now();
-  const final = newActivity("final", c.get("clientId"), {}, now);
+  const me = c.get("playerId");
+  const final = newActivity("final", me, {}, now);
   const { state: next } = await commitOr404(
     c,
     id,
@@ -539,7 +586,8 @@ api.post("/games/:id/final", requireClient, async (c) => {
     now,
   );
   const recorded = next.activity.some((a) => a.id === final.id);
-  publish(c, next, [final.id], recorded ? [{ kind: "final" }] : []);
+  // The host who ended the game isn't pushed about it.
+  publish(c, next, [final.id], recorded ? [{ kind: "final", actor: me }] : []);
   return c.json({ state: next });
 });
 
@@ -548,10 +596,11 @@ api.get("/games/:id/live", async (c) => {
   if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
     return c.json({ error: "Expected a WebSocket upgrade" }, 426);
   }
-  const url = new URL(c.req.url);
-  const clientId = url.searchParams.get("clientId") ?? "";
+  // ?player=<public player id> only de-duplicates the watcher count. Nothing
+  // else from the query is forwarded (a stray ?clientId= is ignored).
+  const player = new URL(c.req.url).searchParams.get("player");
   const target = new URL("https://room/live");
-  if (CLIENT_ID_RE.test(clientId)) target.searchParams.set("clientId", clientId);
+  if (isPlayerId(player)) target.searchParams.set("player", player);
   const headers = new Headers(c.req.raw.headers);
   headers.set("x-game-id", id);
   return roomStub(c.env, id).fetch(target.toString(), { headers });
@@ -578,7 +627,7 @@ app.onError((err, c) => {
 app.route("/api", api);
 
 app.get("/.well-known/apple-app-site-association", (c) => {
-  const env = c.env as CoreEnv;
+  const env = c.env;
   const appId = `${env.APPLE_TEAM_ID ?? "TEAMID"}.${env.APPLE_BUNDLE_ID ?? DEFAULT_BUNDLE_ID}`;
   return c.json(
     {
@@ -601,7 +650,7 @@ app.get("/.well-known/apple-app-site-association", (c) => {
 });
 
 app.get("/.well-known/assetlinks.json", (c) => {
-  const env = c.env as CoreEnv;
+  const env = c.env;
   const fingerprints = (env.ANDROID_SHA256_CERT_FINGERPRINTS ?? "")
     .split(",")
     .map((s) => s.trim())
@@ -640,14 +689,25 @@ app.get("/g/:id/*", invitePage);
 // serves index.html for deep links so client-side routing works on refresh.
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-// ---- Cron: start live polling for linked games about to kick off or in progress ----
+// ---- Cron (every minute) ----
+// Wakes the GameRoom of linked games about to kick off or in progress so live
+// polling starts on time; once an hour also runs housekeeping (stale drafts,
+// old activity, expired rate-limit windows; see worker/housekeeping.ts).
 
-async function scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-  const ids = await db.gamesToWake(env.DB, Date.now(), POLL_LEAD_MS);
+async function wakeLinkedGames(env: Env, now: number): Promise<void> {
+  const ids = await db.gamesToWake(env.DB, now, POLL_LEAD_MS);
   const results = await Promise.allSettled(
     ids.map((id) => roomStub(env, id).fetch("https://room/wake", { method: "POST", headers: { "x-game-id": id } })),
   );
   for (const r of results) if (r.status === "rejected") console.error("wake failed", r.reason);
+}
+
+async function scheduled(controller: ScheduledController, env: Env): Promise<void> {
+  const now = Date.now();
+  const jobs = [wakeLinkedGames(env, now)];
+  if (isHousekeepingTick(controller.scheduledTime || now)) jobs.push(housekeeping(env, now).then(() => undefined));
+  const results = await Promise.allSettled(jobs);
+  for (const r of results) if (r.status === "rejected") console.error("cron job failed", r.reason);
 }
 
 export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Env>;

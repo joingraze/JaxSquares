@@ -12,6 +12,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import type { PushRegistration } from "../../shared/types";
+import { getClientId } from "./identity";
 
 export type PushState =
   | "unsupported" // no push here (old browser, push not configured on the server)
@@ -27,7 +28,6 @@ export interface ForegroundPush {
 }
 
 const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
-const CLIENT_ID_KEY = "jaxsquares.clientId";
 const MUTED_KEY = (gameId: string) => `jaxsquares.muted.${gameId}`;
 /** Must match the channel ids in worker/push/fcm.ts. */
 const ANDROID_CHANNEL_ID = "game-updates";
@@ -45,19 +45,10 @@ let syncing: Promise<void> | null = null;
 
 // ---- API ----
 
-function clientId(): string {
-  let id = localStorage.getItem(CLIENT_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(CLIENT_ID_KEY, id);
-  }
-  return id;
-}
-
 async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE}/api${path}`, {
     method,
-    headers: { "x-client-id": clientId(), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: { "x-client-id": getClientId(), ...(body === undefined ? {} : { "content-type": "application/json" }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;

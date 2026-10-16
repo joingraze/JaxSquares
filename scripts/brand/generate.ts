@@ -14,7 +14,7 @@ import { chromium, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { badgeSvg, faviconSvg, iconSvg, markSvg, splashSvg, type IconShape } from "./art.ts";
+import { badgeSvg, faviconSvg, iconSvg, markSvg, palette, splashSvg, type IconShape } from "./art.ts";
 import { ogHtml } from "./og.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -94,7 +94,7 @@ async function web(page: Page) {
   }
   write(at("public/icons/badge-96.png"), await render(page, badgeSvg(96), 96, 96, true));
   const fonts = {
-    display: fontDataUrl("@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-standard-normal.woff2"),
+    display: fontDataUrl("@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-opsz-normal.woff2"),
     body: fontDataUrl("@fontsource-variable/figtree/files/figtree-latin-wght-normal.woff2"),
   };
   write(at("public/og-image.png"), await render(page, ogHtml(fonts), 1200, 630));
@@ -117,6 +117,13 @@ async function ios(page: Page) {
   for (const stale of readdirSync(splashSet).filter((f) => f.startsWith("splash-2732x2732"))) rmSync(join(splashSet, stale));
   const images = scales.map(({ scale, file }) => ({ idiom: "universal", filename: file, scale }));
   write(join(splashSet, "Contents.json"), JSON.stringify({ images, info: { version: 1, author: "xcode" } }, null, 2) + "\n");
+  // The launch storyboard paints the canvas color behind the (aspect-filled) splash image.
+  const storyboard = at("ios/App/App/Base.lproj/LaunchScreen.storyboard");
+  if (existsSync(storyboard)) {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(palette.canvas.slice(i, i + 2), 16) / 255);
+    const color = `<color key="backgroundColor" red="${r}" green="${g}" blue="${b}" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>`;
+    write(storyboard, readFileSync(storyboard, "utf8").replace(/<color key="backgroundColor"[^>]*\/>/, color));
+  }
 }
 
 /** Re-renders the launcher icons and splash images the Capacitor Android template ships, at their existing sizes. */
@@ -140,7 +147,7 @@ async function android(page: Page) {
   }
   write(
     join(res, "values/ic_launcher_background.xml"),
-    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">#0B1120</color>\n</resources>\n`,
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${palette.canvas.toUpperCase()}</color>\n</resources>\n`,
   );
   for (const file of findFiles(res, /^splash\.png$/)) {
     const { width, height } = pngSize(file);

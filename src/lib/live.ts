@@ -12,11 +12,14 @@
 //
 // The connection logic lives in LiveGame (no React) so it can be tested with a
 // fake socket and fake timers; the hooks are thin bindings.
+//
+// "Mine" is always decided by the public player id (getPlayerId()), which is
+// what the server puts in GameState. The secret clientId never goes in a URL.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Activity, GameState, GameSummary, LiveMessage, Square } from "../../shared/types";
 import { API_BASE, ApiError, api } from "./api";
-import { getClientId } from "./identity";
+import { getPlayerId } from "./identity";
 import { onAppResume } from "./native";
 
 export type ConnectionState =
@@ -59,17 +62,21 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
   return Math.round(ceiling / 2 + random() * (ceiling / 2));
 }
 
-/** ws(s)://.../api/games/:id/live, derived from API_BASE (native app) or the page origin (web). */
+/**
+ * ws(s)://.../api/games/:id/live?player=<public player id>, derived from
+ * API_BASE (native app) or the page origin (web). The player id only lets the
+ * room count this device once across tabs; it is public, unlike the clientId.
+ */
 export function liveSocketUrl(
   gameId: string,
-  clientId: string,
+  playerId: string,
   apiBase: string = API_BASE,
   loc: Pick<Location, "protocol" | "host"> = location,
 ): string {
   const base = apiBase
     ? apiBase.replace(/^http(s?):\/\//i, (_m, s: string) => `ws${s}://`).replace(/\/+$/, "")
     : `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}`;
-  return `${base}/api/games/${encodeURIComponent(gameId)}/live?clientId=${encodeURIComponent(clientId)}`;
+  return `${base}/api/games/${encodeURIComponent(gameId)}/live?player=${encodeURIComponent(playerId)}`;
 }
 
 export function parseLiveMessage(data: unknown): LiveMessage | null {
@@ -92,12 +99,12 @@ export function parseLiveMessage(data: unknown): LiveMessage | null {
   return null;
 }
 
-/** Optimistically claim cells for `clientId` (skips taken cells and respects the per-player limit). */
-export function claimPatch(clientId: string, cells: { row: number; col: number }[], now = Date.now()): Patch {
+/** Optimistically claim cells for this player (public id; skips taken cells and respects the per-player limit). */
+export function claimPatch(playerId: string, cells: { row: number; col: number }[], now = Date.now()): Patch {
   return (state) => {
     const taken = new Set(state.squares.map((s) => `${s.row},${s.col}`));
     const limit = state.game.maxPerPlayer;
-    let mine = state.squares.filter((s) => s.clientId === clientId).length;
+    let mine = state.squares.filter((s) => s.playerId === playerId).length;
     const added: Square[] = [];
     for (const { row, col } of cells) {
       const key = `${row},${col}`;
@@ -105,17 +112,17 @@ export function claimPatch(clientId: string, cells: { row: number; col: number }
       if (limit > 0 && mine >= limit) break;
       taken.add(key);
       mine++;
-      added.push({ row, col, clientId, claimedAt: now });
+      added.push({ row, col, playerId, claimedAt: now });
     }
     return added.length ? { ...state, squares: [...state.squares, ...added] } : state;
   };
 }
 
-/** Optimistically release `clientId`'s squares at these cells. */
-export function releasePatch(clientId: string, cells: { row: number; col: number }[]): Patch {
+/** Optimistically release this player's (public id) squares at these cells. */
+export function releasePatch(playerId: string, cells: { row: number; col: number }[]): Patch {
   return (state) => {
     const drop = new Set(cells.map((c) => `${c.row},${c.col}`));
-    const squares = state.squares.filter((s) => !(s.clientId === clientId && drop.has(`${s.row},${s.col}`)));
+    const squares = state.squares.filter((s) => !(s.playerId === playerId && drop.has(`${s.row},${s.col}`)));
     return squares.length === state.squares.length ? state : { ...state, squares };
   };
 }
@@ -316,7 +323,7 @@ export function browserLiveDeps(): LiveDeps {
   return {
     fetchState: (id, signal) => api.getGame(id, signal),
     openSocket: (url) => new WebSocket(url),
-    socketUrl: (id) => liveSocketUrl(id, getClientId()),
+    socketUrl: (id) => liveSocketUrl(id, getPlayerId()),
     random: Math.random,
     now: Date.now,
     isOnline: () => (typeof navigator === "undefined" ? true : navigator.onLine !== false),

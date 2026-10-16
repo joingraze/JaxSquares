@@ -43,9 +43,12 @@ class TestStatement {
   }
 
   exec(): Record<string, unknown>[] {
-    if (returnsRows(this.sql)) return this.db.prepare(this.sql).all(...this.params).map((r) => ({ ...r }));
-    this.db.prepare(this.sql).run(...this.params);
-    return [];
+    return this.execWithChanges().results;
+  }
+
+  execWithChanges(): { results: Record<string, unknown>[]; changes: number } {
+    if (returnsRows(this.sql)) return { results: this.db.prepare(this.sql).all(...this.params).map((r) => ({ ...r })), changes: 0 };
+    return { results: [], changes: Number(this.db.prepare(this.sql).run(...this.params).changes) };
   }
 }
 
@@ -67,7 +70,10 @@ export async function createTestD1(migrations: string[]): Promise<TestD1> {
     async batch(statements: TestStatement[]) {
       db.exec("BEGIN");
       try {
-        const out = statements.map((s) => ({ results: s.exec(), success: true, meta: {} }));
+        const out = statements.map((s) => {
+          const { results, changes } = s.execWithChanges();
+          return { results, success: true, meta: { changes } };
+        });
         db.exec("COMMIT");
         return out;
       } catch (err) {

@@ -1,10 +1,17 @@
-// All D1 access. Row <-> domain mapping lives here so routes stay focused on
-// validation and orchestration.
+// All core D1 access. Row <-> domain mapping lives here so routes stay focused
+// on validation and orchestration. (Module-owned tables live with their module:
+// worker/payments/store.ts and worker/push/store.ts.)
+//
+// Identity: rows store the device's secret clientId (players.client_id,
+// squares.client_id, games.host_client_id). Every domain object built here for
+// clients carries the public player id instead (worker/playerIds.ts); the
+// clientId never leaves this file except as `Member.clientId` for push.
 //
 // Writes are built as prepared statements and run through `commit`, which
 // appends a version bump and the full state read to the same batch: one round
 // trip per mutation, and the state it returns is exactly what was written.
 
+import { isPlayerId } from "../shared/playerId";
 import { myWins, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
@@ -24,8 +31,17 @@ import type {
   Square,
   Team,
 } from "../shared/types";
+import { playerIdMap, playerIdOf } from "./playerIds";
 
 const ACTIVITY_LIMIT = 50;
+
+/**
+ * Server-only view of a player: the public Player plus the device's clientId,
+ * which push needs to find their registered devices. Never send it to a client.
+ */
+export interface Member extends Player {
+  clientId: string;
+}
 
 export interface GameRow {
   id: string;
@@ -112,7 +128,8 @@ function json<T>(text: string | null | undefined, fallback: T): T {
   }
 }
 
-export function rowToGame(r: GameRow): Game {
+/** `hostPlayerId` is the public id derived from `r.host_client_id`. */
+export function rowToGame(r: GameRow, hostPlayerId: string): Game {
   return {
     id: r.id,
     name: r.name,
@@ -127,16 +144,21 @@ export function rowToGame(r: GameRow): Game {
     numbers: json<Record<string, NumberDraw> | null>(r.numbers, null),
     status: r.status as Game["status"],
     linkedEvent: json<LinkedEvent | null>(r.linked_event, null),
-    hostClientId: r.host_client_id,
+    hostPlayerId,
     createdAt: r.created_at,
     lockedAt: r.locked_at,
   };
 }
 
+/** clientId -> public id; every id passed in must be in the map (see playerIdMap). */
+type Ids = Map<string, string>;
+
+const publicId = (ids: Ids, clientId: string): string => ids.get(clientId) ?? "";
+
 const rowToPlayer =
-  (hostClientId: string) =>
+  (ids: Ids, hostClientId: string) =>
   (r: PlayerRow): Player => ({
-    clientId: r.client_id,
+    id: publicId(ids, r.client_id),
     name: r.name,
     color: r.color,
     emoji: r.emoji,
@@ -144,7 +166,9 @@ const rowToPlayer =
     isHost: r.client_id === hostClientId,
   });
 
-const rowToSquare = (r: SquareRow): Square => ({ row: r.row, col: r.col, clientId: r.client_id, claimedAt: r.claimed_at });
+const rowToSquare =
+  (ids: Ids) =>
+  (r: SquareRow): Square => ({ row: r.row, col: r.col, playerId: publicId(ids, r.client_id), claimedAt: r.claimed_at });
 
 function rowToScore(r: ScoreRow): Score {
   const s: Score = {
@@ -175,13 +199,25 @@ const rowToLive = (r: LiveRow): LiveStatus => ({
   updatedAt: r.updated_at,
 });
 
-const rowToActivity = (r: ActivityRow): Activity => ({
-  id: r.id,
-  type: r.type as Activity["type"],
-  at: r.at,
-  actor: r.actor,
-  data: json<Record<string, unknown>>(r.data, {}),
-});
+/**
+ * Activity rows store public ids. Rows written before public ids existed hold
+ * clientIds (as `actor` and in a winner's `clientIds`); those are translated
+ * here, and anything that isn't a known player or a well-formed public id is
+ * dropped, so no clientId can ever reach a client through the feed.
+ */
+function rowToActivity(ids: Ids) {
+  const actorOf = (v: unknown): string | null =>
+    typeof v !== "string" ? null : (ids.get(v) ?? (isPlayerId(v) ? v : null));
+  return (r: ActivityRow): Activity => {
+    const data = json<Record<string, unknown>>(r.data, {});
+    if (Array.isArray(data.clientIds)) {
+      data.playerIds ??= data.clientIds.map(actorOf).filter((x): x is string => !!x);
+      delete data.clientIds;
+    }
+    delete data.clientId;
+    return { id: r.id, type: r.type as Activity["type"], at: r.at, actor: actorOf(r.actor), data };
+  };
+}
 
 // ---- Reads ----
 
@@ -191,16 +227,36 @@ export async function getGameRow(db: D1Database, id: string): Promise<GameRow | 
 
 export async function getGame(db: D1Database, id: string): Promise<Game | null> {
   const row = await getGameRow(db, id);
-  return row ? rowToGame(row) : null;
+  return row ? rowToGame(row, await playerIdOf(row.host_client_id)) : null;
 }
 
-export async function getPlayers(db: D1Database, gameId: string): Promise<Player[]> {
+async function memberRows(db: D1Database, gameId: string): Promise<{ host: string; rows: PlayerRow[]; ids: Ids }> {
   const [game, players] = await db.batch([
     db.prepare(`SELECT host_client_id FROM games WHERE id = ?`).bind(gameId),
     db.prepare(`SELECT client_id, name, color, emoji, joined_at FROM players WHERE game_id = ? ORDER BY joined_at`).bind(gameId),
   ]);
   const host = (game.results[0] as { host_client_id: string } | undefined)?.host_client_id ?? "";
-  return (players.results as PlayerRow[]).map(rowToPlayer(host));
+  const rows = players.results as PlayerRow[];
+  const ids = await playerIdMap([host, ...rows.map((r) => r.client_id)].filter(Boolean));
+  return { host, rows, ids };
+}
+
+/** Players with their clientIds. Server-only (push uses it to reach devices). */
+export async function getMembers(db: D1Database, gameId: string): Promise<Member[]> {
+  const { host, rows, ids } = await memberRows(db, gameId);
+  const toPlayer = rowToPlayer(ids, host);
+  const members: Member[] = rows.map((r) => ({ ...toPlayer(r), clientId: r.client_id }));
+  // The host joins at creation; keep them reachable even if that row is missing.
+  if (host && !members.some((m) => m.clientId === host)) {
+    members.push({ id: publicId(ids, host), name: "", color: "", emoji: "", joinedAt: 0, isHost: true, clientId: host });
+  }
+  return members;
+}
+
+/** Public players (no clientIds). */
+export async function getPlayers(db: D1Database, gameId: string): Promise<Player[]> {
+  const { host, rows, ids } = await memberRows(db, gameId);
+  return rows.map(rowToPlayer(ids, host));
 }
 
 export async function getAdminToken(db: D1Database, gameId: string): Promise<string | null> {
@@ -222,20 +278,22 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
   ];
 }
 
-function stateFrom(results: D1Result[]): GameState | null {
+async function stateFrom(results: D1Result[]): Promise<GameState | null> {
   const [games, players, squares, scores, manual, live, activity] = results;
   const row = games.results[0] as GameRow | undefined;
   if (!row) return null;
-  const game = rowToGame(row);
+  const playerRows = players.results as PlayerRow[];
+  const squareRows = squares.results as SquareRow[];
+  const ids = await playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id)]);
   const liveRow = live.results[0] as LiveRow | undefined;
   return {
-    game,
-    players: (players.results as PlayerRow[]).map(rowToPlayer(game.hostClientId)),
-    squares: (squares.results as SquareRow[]).map(rowToSquare),
+    game: rowToGame(row, publicId(ids, row.host_client_id)),
+    players: playerRows.map(rowToPlayer(ids, row.host_client_id)),
+    squares: squareRows.map(rowToSquare(ids)),
     scores: (scores.results as ScoreRow[]).map(rowToScore),
     manualWinners: (manual.results as ManualWinnerRow[]).map(rowToManual),
     live: liveRow ? rowToLive(liveRow) : null,
-    activity: (activity.results as ActivityRow[]).map(rowToActivity),
+    activity: (activity.results as ActivityRow[]).map(rowToActivity(ids)),
     version: row.version,
   };
 }
@@ -251,7 +309,7 @@ export async function getGameStateWithToken(
   id: string,
 ): Promise<{ state: GameState; adminToken: string } | null> {
   const results = await db.batch(stateReads(db, id));
-  const state = stateFrom(results);
+  const state = await stateFrom(results);
   if (!state) return null;
   return { state, adminToken: (results[0].results[0] as GameRow).admin_token };
 }
@@ -268,7 +326,7 @@ export async function commit(
 ): Promise<{ results: D1Result[]; state: GameState | null }> {
   const bump = db.prepare(`UPDATE games SET version = version + 1, updated_at = ? WHERE id = ?`).bind(now, gameId);
   const all = await db.batch([...writes, bump, ...stateReads(db, gameId)]);
-  return { results: all.slice(0, writes.length), state: stateFrom(all.slice(writes.length + 1)) };
+  return { results: all.slice(0, writes.length), state: await stateFrom(all.slice(writes.length + 1)) };
 }
 
 // ---- Write statements (run them through commit) ----
@@ -277,7 +335,7 @@ export function newActivityId(): string {
   return crypto.randomUUID();
 }
 
-/** Plain activity insert; OR IGNORE makes re-sending the same activity harmless. */
+/** Plain activity insert; OR IGNORE makes re-sending the same activity harmless. `a.actor` must be a public id. */
 export function insertActivity(db: D1Database, gameId: string, a: Activity): D1PreparedStatement {
   return db
     .prepare(`INSERT OR IGNORE INTO activity (id, game_id, type, at, actor, data) VALUES (?, ?, ?, ?, ?, ?)`)
@@ -294,8 +352,9 @@ export function insertActivityIfChanged(db: D1Database, gameId: string, a: Activ
 export function insertGame(
   db: D1Database,
   game: Game,
+  hostClientId: string,
   adminToken: string,
-  host: Omit<Player, "isHost" | "clientId">,
+  host: Pick<Player, "name" | "color" | "emoji" | "joinedAt">,
   created: Activity,
 ): D1PreparedStatement[] {
   return [
@@ -321,14 +380,14 @@ export function insertGame(
         game.status,
         game.linkedEvent ? JSON.stringify(game.linkedEvent) : null,
         game.linkedEvent?.startsAt ?? null,
-        game.hostClientId,
+        hostClientId,
         adminToken,
         game.createdAt,
         game.createdAt,
       ),
     db
       .prepare(`INSERT INTO players (game_id, client_id, name, color, emoji, joined_at) VALUES (?, ?, ?, ?, ?, ?)`)
-      .bind(game.id, game.hostClientId, host.name, host.color, host.emoji, host.joinedAt),
+      .bind(game.id, hostClientId, host.name, host.color, host.emoji, host.joinedAt),
     insertActivity(db, game.id, created),
   ];
 }
@@ -403,17 +462,23 @@ export function claimSquares(
   return cells.map((c) => stmt.bind(gameId, c.row, c.col, clientId, now));
 }
 
-/** "claimed" activity listing the cells this request actually got (none -> no row). */
-export function claimActivity(db: D1Database, gameId: string, id: string, clientId: string, now: number): D1PreparedStatement {
+/** "claimed" activity listing the cells this request actually got (none -> no row). Recorded under the public `actor` id. */
+export function claimActivity(
+  db: D1Database,
+  gameId: string,
+  id: string,
+  who: { clientId: string; playerId: string },
+  now: number,
+): D1PreparedStatement {
   return db
     .prepare(
       `INSERT INTO activity (id, game_id, type, at, actor, data)
-       SELECT ?1, ?2, 'claimed', ?3, ?4,
+       SELECT ?1, ?2, 'claimed', ?3, ?5,
               json_object('count', COUNT(*), 'cells', json_group_array(json_object('row', row, 'col', col)))
        FROM squares WHERE game_id = ?2 AND client_id = ?4 AND claimed_at = ?3
        HAVING COUNT(*) > 0`,
     )
-    .bind(id, gameId, now, clientId);
+    .bind(id, gameId, now, who.clientId, who.playerId);
 }
 
 /** Release the client's own squares, only while the board is open. */
@@ -572,6 +637,8 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
     .bind(clientId, limit)
     .all<DashboardRow>();
   if (rows.length === 0) return [];
+  const me = await playerIdOf(clientId);
+  const hostIds = await playerIdMap(rows.map((r) => r.host_client_id));
 
   const ids = JSON.stringify(rows.map((r) => r.id));
   const inIds = `game_id IN (SELECT value FROM json_each(?1))`;
@@ -592,13 +659,14 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
   const scoresBy = group(scores.results as (ScoreRow & { game_id: string })[]);
   const manualBy = group(manual.results as (ManualWinnerRow & { game_id: string })[]);
   const mineBy = group(mine.results as (SquareRow & { game_id: string })[]);
+  const toSquare = rowToSquare(new Map([[clientId, me]]));
 
   return rows.map((r) => {
-    const game = rowToGame(r);
+    const game = rowToGame(r, publicId(hostIds, r.host_client_id));
     const liveRow = liveBy.get(r.id)?.[0];
     const results = resolveResults({
       game,
-      squares: (mineBy.get(r.id) ?? []).map(rowToSquare),
+      squares: (mineBy.get(r.id) ?? []).map(toSquare),
       scores: (scoresBy.get(r.id) ?? []).map(rowToScore),
       manualWinners: (manualBy.get(r.id) ?? []).map(rowToManual),
     });
@@ -610,14 +678,14 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       teamY: game.teamY,
       status: game.status,
       format: game.format,
-      isHost: game.hostClientId === clientId,
+      isHost: r.host_client_id === clientId,
       mySquares: r.my_squares,
       claimed: r.claimed,
       totalSquares: totalSquares(game.format.boardSize),
       playerCount: r.player_count,
       live: liveRow ? rowToLive(liveRow) : null,
       startsAt: game.linkedEvent?.startsAt ?? null,
-      myWins: myWins(results, clientId).map((w) => ({
+      myWins: myWins(results, me).map((w) => ({
         periodKey: w.periodKey,
         label: w.reverse ? `${w.label} (reverse)` : w.label,
       })),
@@ -625,4 +693,72 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       createdAt: game.createdAt,
     };
   });
+}
+
+
+// ---- Rate limits (table from migrations/0005_housekeeping.sql) ----
+
+/**
+ * Fixed-window counter: counts one hit for `key` in the window containing
+ * `now` and returns the hits so far in that window (this one included).
+ */
+export async function hitRateLimit(db: D1Database, key: string, windowMs: number, now: number): Promise<number> {
+  const windowStart = now - (now % windowMs);
+  const row = await db
+    .prepare(
+      `INSERT INTO rate_limits (key, window_start, count) VALUES (?1, ?2, 1)
+       ON CONFLICT (key) DO UPDATE SET
+         count = CASE WHEN rate_limits.window_start = excluded.window_start THEN rate_limits.count + 1 ELSE 1 END,
+         window_start = excluded.window_start
+       RETURNING count`,
+    )
+    .bind(key, windowStart)
+    .first<{ count: number }>();
+  return row?.count ?? 1;
+}
+
+// ---- Housekeeping (cron) ----
+
+const GAME_TABLES = ["activity", "live_status", "manual_winners", "scores", "squares", "players"] as const;
+
+/**
+ * Deletes up to `limit` boards still in "draft" (never paid for) that were
+ * created before `before`. Returns their ids. Purchases are a ledger and stay.
+ */
+export async function deleteStaleDrafts(db: D1Database, before: number, limit = 100): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT id FROM games WHERE status = 'draft' AND created_at < ? ORDER BY created_at LIMIT ?`)
+    .bind(before, limit)
+    .all<{ id: string }>();
+  if (results.length === 0) return [];
+  const ids = JSON.stringify(results.map((r) => r.id));
+  // Re-checked inside the transaction: a draft paid for since the SELECT is kept.
+  const stillDraft = `SELECT id FROM games WHERE status = 'draft' AND id IN (SELECT value FROM json_each(?1))`;
+  await db.batch([
+    ...GAME_TABLES.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id IN (${stillDraft})`).bind(ids)),
+    db.prepare(`DELETE FROM games WHERE id IN (${stillDraft})`).bind(ids),
+  ]);
+  return results.map((r) => r.id);
+}
+
+/** Keeps only the newest `keep` activity rows of each game. Returns how many rows went. */
+export async function pruneActivity(db: D1Database, keep: number): Promise<number> {
+  const res = await db
+    .prepare(
+      `DELETE FROM activity WHERE id IN (
+         SELECT id FROM (
+           SELECT id, ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY at DESC, rowid DESC) AS rn
+           FROM activity
+           WHERE game_id IN (SELECT game_id FROM activity GROUP BY game_id HAVING COUNT(*) > ?1)
+         ) WHERE rn > ?1
+       )`,
+    )
+    .bind(keep)
+    .run();
+  return res.meta.changes ?? 0;
+}
+
+/** Drops rate-limit windows that ended before `before`. */
+export async function pruneRateLimits(db: D1Database, before: number): Promise<void> {
+  await db.prepare(`DELETE FROM rate_limits WHERE window_start < ?`).bind(before).run();
 }

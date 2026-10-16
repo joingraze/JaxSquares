@@ -6,17 +6,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App, { createAppRouter } from "./App";
 import { captureHostLink, hydrateIdentity } from "./lib/identity";
-import * as native from "./lib/native";
-import * as push from "./lib/push";
+import { initPush } from "./lib/push";
 
 /** Never hold the first paint hostage to the native store. */
 const HYDRATE_TIMEOUT_MS = 1500;
-
-/** Startup hooks owned by other modules: call them only if they're exported. */
-function optional<T>(mod: object, name: string): T | null {
-  const fn = (mod as Record<string, unknown>)[name];
-  return typeof fn === "function" ? (fn as T) : null;
-}
 
 async function start(): Promise<void> {
   // Opened from a host link: keep the token, then drop it from the address bar.
@@ -29,6 +22,7 @@ async function start(): Promise<void> {
     new Promise((resolve) => setTimeout(resolve, HYDRATE_TIMEOUT_MS)),
   ]);
 
+  // Deep links, notification taps and App Store recovery are wired inside the router (LaunchHooks in App.tsx).
   const router = createAppRouter();
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
@@ -36,14 +30,12 @@ async function start(): Promise<void> {
     </StrictMode>,
   );
 
-  const navigate = (path: string) => void router.navigate(path);
-
-  optional<(opts: { navigate: (path: string) => void }) => unknown>(native, "initNative")?.({ navigate });
-
-  const registerServiceWorker = optional<() => Promise<void>>(push, "registerServiceWorker");
-  void registerServiceWorker?.().catch(() => {});
-  optional<() => void>(push, "initPush")?.();
-  optional<(cb: (url: string) => void) => unknown>(push, "onNotificationTap")?.(navigate);
+  // Service worker (web) or FCM listeners (app), then a silent re-sync. Needs the device id, so after hydration.
+  try {
+    initPush();
+  } catch (err) {
+    console.warn("push init failed", err);
+  }
 }
 
 void start();

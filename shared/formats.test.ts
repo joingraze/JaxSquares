@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   PERIOD_PRESETS,
   PRESET_INFO,
+  PRIZE_MONEY_ERROR,
+  PrizeNoteError,
   defaultFormat,
   drawKeys,
   everyScoreIndex,
@@ -13,6 +15,7 @@ import {
   prizeFor,
   sanitizeFormat,
   sanitizePrizes,
+  validatePrizeNote,
 } from "./formats";
 import type { GameFormat } from "./types";
 
@@ -151,9 +154,79 @@ describe("prizes", () => {
     expect(prizeFor({}, "final")).toBeNull();
   });
 
+  it("rejects notes that mention money, with a message the UI can show", () => {
+    expect(() => sanitizePrizes(fmt(), { q1: "Loser buys wings", final: "$20 to the winner" })).toThrow(PrizeNoteError);
+    try {
+      sanitizePrizes(fmt(), { final: "Winner takes the pot" });
+    } catch (err) {
+      expect(err).toBeInstanceOf(PrizeNoteError);
+      expect((err as PrizeNoteError).message).toBe(PRIZE_MONEY_ERROR);
+      expect((err as PrizeNoteError).key).toBe("final");
+    }
+    // Notes for keys this format doesn't have are dropped before they're checked.
+    expect(sanitizePrizes(fmt({ periods: "final" }), { q1: "$5", final: "Bragging rights" })).toEqual({ final: "Bragging rights" });
+  });
+
   it("validates period keys per format", () => {
     expect(isPeriodKeyFor(fmt({ periods: "final" }), "final")).toBe(true);
     expect(isPeriodKeyFor(fmt({ periods: "final" }), "q1")).toBe(false);
     expect(isPeriodKeyFor(fmt({ periods: "every-score" }), "s9")).toBe(true);
+  });
+});
+
+describe("validatePrizeNote", () => {
+  it("allows fun, money-free stakes", () => {
+    for (const ok of [
+      "Loser buys wings",
+      "Winner picks the next movie",
+      "Bragging rights",
+      "Loser does the dishes 🍽️",
+      "Potluck host gets a pass",
+      "Better luck next time",
+      "Alphabet soup for the loser",
+      "Spot on the couch",
+      "Cashews for the table",
+      "Pizza on me",
+      "2 pounds of wings",
+    ]) {
+      expect(validatePrizeNote(ok), ok).toBeNull();
+    }
+  });
+
+  it("rejects currency amounts and symbols", () => {
+    for (const bad of ["$20", "Winner gets 20$", "€10 each", "£5", "¥1000", "₹500", "50¢", "20 USD", "Ten dollars", "A dollar a square", "5 bucks"]) {
+      expect(validatePrizeNote(bad), bad).toBe(PRIZE_MONEY_ERROR);
+    }
+  });
+
+  it("rejects payment apps, pots, payouts and betting words", () => {
+    for (const bad of [
+      "Venmo the winner",
+      "Loser venmos me",
+      "PayPal me",
+      "Zelle it over",
+      "Cash prize",
+      "CashApp $winner",
+      "cash app",
+      "Big payout",
+      "Winner takes the pot",
+      "Jackpot!",
+      "Buy-in is lunch",
+      "buy in",
+      "Friendly bet",
+      "No betting",
+      "Wager: pushups",
+      "Money on the line",
+      "Gambling night",
+    ]) {
+      expect(validatePrizeNote(bad), bad).toBe(PRIZE_MONEY_ERROR);
+    }
+  });
+
+  it("sees through case, full-width characters and zero-width tricks", () => {
+    expect(validatePrizeNote("VENMO")).toBe(PRIZE_MONEY_ERROR);
+    expect(validatePrizeNote("ｂｅｔ")).toBe(PRIZE_MONEY_ERROR);
+    expect(validatePrizeNote("＄20")).toBe(PRIZE_MONEY_ERROR);
+    expect(validatePrizeNote("ven\u200bmo")).toBe(PRIZE_MONEY_ERROR);
   });
 });

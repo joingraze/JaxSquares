@@ -4,29 +4,18 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // The app bundles the built SPA from dist/client and talks to the production API
 // through VITE_API_BASE, so the WebView never loads a remote page.
 
-// pitch-950, the app background: no white flash between launch screen and first paint.
-const BACKGROUND = "#060a16";
+// pitch-950 (--color-canvas), the app background: no flash between the launch screen and first paint.
+const BACKGROUND = "#060c09";
 
 const config: CapacitorConfig = {
   appId: "com.jaxsquares.app",
   appName: "JaxSquares",
   webDir: "dist/client",
   backgroundColor: BACKGROUND,
-  // Plugins compiled into the native projects. @capacitor/push-notifications is
-  // in node_modules but deliberately left out: both it and
-  // @capacitor-firebase/messaging (used by src/lib/push.ts) claim iOS's
-  // notification routing, and the last one loaded wins, which would swallow
-  // notification taps. Add any new Capacitor plugin here or it won't be built in.
-  includePlugins: [
-    "@capacitor-firebase/messaging",
-    "@capacitor/app",
-    "@capacitor/haptics",
-    "@capacitor/preferences",
-    "@capacitor/share",
-    "@capacitor/splash-screen",
-    "@capacitor/status-bar",
-    "@capgo/native-purchases",
-  ],
+  // Every Capacitor plugin in package.json is compiled in. Push goes through
+  // @capacitor-firebase/messaging (src/lib/push.ts); don't add
+  // @capacitor/push-notifications next to it: both claim iOS's notification
+  // routing, the last one loaded wins, and notification taps get swallowed.
   server: {
     // Android's WebView origin becomes https://localhost so secure-context APIs
     // (clipboard, crypto.randomUUID) behave like the web app.
@@ -62,6 +51,8 @@ const config: CapacitorConfig = {
       // Light text over the dark pitch background, drawn over the WebView.
       style: "DARK",
       overlaysWebView: true,
+      // Only used if the bar ever stops overlaying (Android); matches the canvas.
+      backgroundColor: BACKGROUND,
     },
     FirebaseMessaging: {
       presentationOptions: ["badge", "sound", "alert"],

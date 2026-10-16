@@ -6,6 +6,7 @@ import {
   LiveGame,
   POLL_INTERVAL_MS,
   backoffDelay,
+  browserLiveDeps,
   claimPatch,
   liveSocketUrl,
   parseLiveMessage,
@@ -37,7 +38,7 @@ function makeState(version: number, overrides: Partial<GameState> = {}): GameSta
       numbers: null,
       status: "open",
       linkedEvent: null,
-      hostClientId: "host",
+      hostPlayerId: "host",
       createdAt: 0,
       lockedAt: null,
     },
@@ -82,22 +83,32 @@ describe("backoffDelay", () => {
 
 describe("liveSocketUrl", () => {
   it("derives wss from an https API base (native app)", () => {
-    expect(liveSocketUrl("abc", "cid-12345678", "https://jaxsquares.com")).toBe(
-      "wss://jaxsquares.com/api/games/abc/live?clientId=cid-12345678",
+    expect(liveSocketUrl("abc", "pid-1234567890123456789", "https://jaxsquares.com")).toBe(
+      "wss://jaxsquares.com/api/games/abc/live?player=pid-1234567890123456789",
     );
   });
 
   it("derives ws from an http API base", () => {
-    expect(liveSocketUrl("abc", "c", "http://localhost:8787/")).toBe("ws://localhost:8787/api/games/abc/live?clientId=c");
+    expect(liveSocketUrl("abc", "c", "http://localhost:8787/")).toBe("ws://localhost:8787/api/games/abc/live?player=c");
   });
 
   it("uses the page origin when there is no API base", () => {
     expect(liveSocketUrl("a b", "c", "", { protocol: "https:", host: "jaxsquares.com" })).toBe(
-      "wss://jaxsquares.com/api/games/a%20b/live?clientId=c",
+      "wss://jaxsquares.com/api/games/a%20b/live?player=c",
     );
     expect(liveSocketUrl("a", "c", "", { protocol: "http:", host: "localhost:5173" })).toBe(
-      "ws://localhost:5173/api/games/a/live?clientId=c",
+      "ws://localhost:5173/api/games/a/live?player=c",
     );
+  });
+});
+
+describe("browserLiveDeps", () => {
+  it("puts the public player id in the socket URL, never the clientId", async () => {
+    const { getClientId, getPlayerId } = await import("../lib/identity");
+    const url = browserLiveDeps().socketUrl("abc");
+    expect(url).toContain(`player=${encodeURIComponent(getPlayerId())}`);
+    expect(url).not.toContain(getClientId());
+    expect(url).not.toContain("clientId");
   });
 });
 
@@ -121,7 +132,7 @@ describe("parseLiveMessage", () => {
 
 describe("claimPatch / releasePatch", () => {
   it("claims only free cells and respects the per-player limit", () => {
-    const base = makeState(1, { squares: [{ row: 0, col: 0, clientId: "other", claimedAt: 1 }] });
+    const base = makeState(1, { squares: [{ row: 0, col: 0, playerId: "other", claimedAt: 1 }] });
     base.game.maxPerPlayer = 2;
     const next = claimPatch("me", [
       { row: 0, col: 0 },
@@ -129,12 +140,12 @@ describe("claimPatch / releasePatch", () => {
       { row: 0, col: 2 },
       { row: 0, col: 3 },
     ], 5)(base);
-    expect(next.squares.filter((s) => s.clientId === "me").map((s) => s.col)).toEqual([1, 2]);
+    expect(next.squares.filter((s) => s.playerId === "me").map((s) => s.col)).toEqual([1, 2]);
     expect(base.squares).toHaveLength(1); // input untouched
   });
 
   it("returns the same state when nothing changes", () => {
-    const base = makeState(1, { squares: [{ row: 1, col: 1, clientId: "other", claimedAt: 1 }] });
+    const base = makeState(1, { squares: [{ row: 1, col: 1, playerId: "other", claimedAt: 1 }] });
     expect(claimPatch("me", [{ row: 1, col: 1 }])(base)).toBe(base);
     expect(releasePatch("me", [{ row: 1, col: 1 }])(base)).toBe(base);
   });
@@ -142,12 +153,12 @@ describe("claimPatch / releasePatch", () => {
   it("releases only my own squares", () => {
     const base = makeState(1, {
       squares: [
-        { row: 0, col: 0, clientId: "me", claimedAt: 1 },
-        { row: 0, col: 1, clientId: "other", claimedAt: 1 },
+        { row: 0, col: 0, playerId: "me", claimedAt: 1 },
+        { row: 0, col: 1, playerId: "other", claimedAt: 1 },
       ],
     });
     const next = releasePatch("me", [{ row: 0, col: 0 }, { row: 0, col: 1 }])(base);
-    expect(next.squares).toEqual([{ row: 0, col: 1, clientId: "other", claimedAt: 1 }]);
+    expect(next.squares).toEqual([{ row: 0, col: 1, playerId: "other", claimedAt: 1 }]);
   });
 });
 
@@ -178,15 +189,15 @@ describe("GameStore", () => {
     expect(store.getServerState()?.squares).toHaveLength(0);
 
     // Someone else's claim arrives while ours is in flight: both show.
-    store.receive(makeState(2, { squares: [{ row: 5, col: 5, clientId: "other", claimedAt: 1 }] }));
-    expect(store.getState()?.squares.map((s) => s.clientId).sort()).toEqual(["me", "other"]);
+    store.receive(makeState(2, { squares: [{ row: 5, col: 5, playerId: "other", claimedAt: 1 }] }));
+    expect(store.getState()?.squares.map((s) => s.playerId).sort()).toEqual(["me", "other"]);
 
     // Our request settles with a state that includes our claim: patch removed, no duplicate.
     store.receive(
       makeState(3, {
         squares: [
-          { row: 5, col: 5, clientId: "other", claimedAt: 1 },
-          { row: 2, col: 3, clientId: "me", claimedAt: 2 },
+          { row: 5, col: 5, playerId: "other", claimedAt: 1 },
+          { row: 2, col: 3, playerId: "me", claimedAt: 2 },
         ],
       }),
     );
@@ -485,7 +496,7 @@ describe("LiveGame", () => {
       claimPatch("me", [{ row: 1, col: 1 }]),
     );
     expect(live.store.getState()?.squares).toHaveLength(1);
-    resolve({ state: makeState(2, { squares: [{ row: 1, col: 1, clientId: "me", claimedAt: 9 }] }) });
+    resolve({ state: makeState(2, { squares: [{ row: 1, col: 1, playerId: "me", claimedAt: 9 }] }) });
     await pending;
     expect(live.store.hasPending).toBe(false);
     expect(live.store.getState()?.version).toBe(2);

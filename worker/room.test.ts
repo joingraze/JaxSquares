@@ -25,7 +25,7 @@ function state(over: { status?: GameState["game"]["status"]; linked?: boolean; l
       status: over.status ?? "locked",
       linkedEvent:
         over.linked === false ? null : { provider: "espn", league: "nfl", eventId: "1", startsAt: KICKOFF, xIsHome: true },
-      hostClientId: "h",
+      hostPlayerId: "h",
       createdAt: 0,
       lockedAt: null,
     },

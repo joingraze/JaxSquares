@@ -104,15 +104,25 @@ export interface Game {
   numbers: Record<string, NumberDraw> | null;
   status: GameStatus;
   linkedEvent: LinkedEvent | null;
-  /** The host's anonymous device id. */
-  hostClientId: string;
+  /** Public id of the host's player (see Player.id). */
+  hostPlayerId: string;
   createdAt: number;
   lockedAt: number | null;
 }
 
-/** Someone who has joined a board (host included once they pick a name). */
+/**
+ * Someone who has joined a board (host included once they pick a name).
+ *
+ * Identity model: a device's `clientId` is a secret bearer credential sent only
+ * as the `x-client-id` header and never appears in any response. Everything
+ * public (GameState, live messages, results, activity) names people by their
+ * public player id = base64url(SHA-256("jaxsquares:player:" + clientId)), first
+ * 22 chars (shared/playerId.ts). The id is stable per device and can't be turned
+ * back into the clientId.
+ */
 export interface Player {
-  clientId: string;
+  /** Public player id (not the clientId). */
+  id: string;
   name: string;
   color: string;
   /** Optional single emoji avatar. */
@@ -121,11 +131,11 @@ export interface Player {
   isHost: boolean;
 }
 
-/** A claimed square. Look up name/color via `players` by clientId. */
+/** A claimed square. Look up name/color via `players` by `playerId` (= Player.id). */
 export interface Square {
   row: number; // grid position (board layout, independent of numbers)
   col: number;
-  clientId: string;
+  playerId: string;
   claimedAt: number;
 }
 
@@ -175,10 +185,39 @@ export interface Activity {
   id: string;
   type: ActivityType;
   at: number;
-  /** clientId of who did it, when a person did it. */
+  /** Public player id of who did it; null for system events (live scores, auto-lock at kickoff). */
   actor: string | null;
-  /** Small structured payload, e.g. { count: 3 } or { periodKey: "q1" }. */
+  /**
+   * Small structured payload; see ActivityData for the shape per type, e.g.
+   * { count: 3, cells } or { periodKey: "q1", ... }.
+   */
   data: Record<string, unknown>;
+}
+
+/**
+ * The `data` payload of each activity type (documented here; `Activity.data`
+ * stays loosely typed so older rows never break parsing).
+ */
+export interface ActivityData {
+  created: Record<string, never>;
+  joined: { name: string };
+  claimed: { count: number; cells: { row: number; col: number }[] };
+  released: { count: number; cells: { row: number; col: number }[] };
+  /** `auto` when a linked board locked itself at kickoff (actor null). */
+  locked: { auto?: true };
+  score: { periodKey: string; label: string; scoreX: number; scoreY: number; source: Score["source"] };
+  winner: {
+    periodKey: string;
+    label: string;
+    /** Public ids of the players whose squares won (regular and reverse), deduplicated. */
+    playerIds: string[];
+    cell: { row: number; col: number } | null;
+    reverseCell?: { row: number; col: number } | null;
+    prize: string | null;
+    /** True when the host picked the winning square. */
+    manual?: true;
+  };
+  final: Record<string, never>;
 }
 
 /** Full game state returned by the API and pushed over the live socket. */
@@ -218,6 +257,10 @@ export interface GameSummary {
 }
 
 // ---- Live socket messages (server -> client) ----
+// Connect to /api/games/:id/live?player=<public player id> (the param only
+// de-duplicates the watcher count; never send the clientId). Plain-text "ping"
+// is answered with "pong" (also {"type":"ping"} -> {"type":"pong"}). Close code
+// 4404 means the board was deleted.
 
 export type LiveMessage =
   | { type: "state"; state: GameState }
@@ -225,8 +268,8 @@ export type LiveMessage =
   | { type: "event"; activity: Activity };
 
 // ---- Request payloads ----
-// Every request identifies the device with the `x-client-id` header. Host-only
-// endpoints also require `x-admin-token`.
+// Every request identifies the device with the `x-client-id` header (secret,
+// never echoed back). Host-only endpoints also require `x-admin-token`.
 
 export interface CreateGameInput {
   name: string;
@@ -235,6 +278,7 @@ export interface CreateGameInput {
   teamX: Team;
   teamY: Team;
   format: GameFormat;
+  /** Free-text notes; rejected (400) if one mentions money (see validatePrizeNote). */
   prizes: Record<string, string>;
   maxPerPlayer: number;
   /** Set when the board is linked to a real game from /api/schedule. */
@@ -276,6 +320,7 @@ export interface ManualWinnerInput {
 
 export interface UpdateGameInput {
   name?: string;
+  /** Free-text notes; rejected (400) if one mentions money (see validatePrizeNote). */
   prizes?: Record<string, string>;
   maxPerPlayer?: number;
 }

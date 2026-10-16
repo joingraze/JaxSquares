@@ -85,24 +85,26 @@ Words already in the name and subtitle ("JaxSquares", "football", "squares",
 
 | Field | URL | Plan |
 |---|---|---|
-| Support URL (required) | `https://jaxsquares.com/support` | Needs a route; see below |
-| Privacy Policy URL (required) | `https://jaxsquares.com/privacy` | Needs a route. The text is in `docs/app-store/privacy-policy.md` |
+| Support URL (required) | `https://jaxsquares.com/support` | Live: `src/pages/Support.tsx` |
+| Privacy Policy URL (required) | `https://jaxsquares.com/privacy` | Live: `src/pages/Privacy.tsx`, from `docs/app-store/privacy-policy.md` |
 | Marketing URL (optional) | `https://jaxsquares.com` | Exists |
 
-The SPA has no `/privacy` or `/support` pages yet. Either option works:
+All three pages are SPA routes in `src/App.tsx`, next to `/terms`
+(`src/pages/Terms.tsx`). The Worker serves `index.html` for any non-API path,
+so the URLs work on a direct load, which is what App Review does.
 
-- Add two static routes in `src/App.tsx`.
-- Ship `public/privacy.html` and `public/support.html`. Then the URLs are
-  `/privacy.html` and `/support.html`, or add a redirect in the Worker.
-
-The support page needs:
-
-- A contact email, e.g. `support@jaxsquares.com`. Set up the mailbox before
-  you submit.
-- Three FAQs:
-  - "How do I join a board?" Open the link.
-  - "I lost host access." Host rights live on the device that created the board.
-  - "How do I delete a board?" Host → board menu → Delete.
+- **Support page.** Email button, plus five FAQs: joining a board, what it
+  costs, lost host access, a paid board that isn't open yet, and
+  notifications. It links to Privacy and Terms.
+- **Terms.** They say JaxSquares is a free-to-play game board for friends:
+  - no wagering
+  - no money handled between players
+  - prize notes are informal notes between friends
+  - the board creation fee is non-refundable, except where the law or the
+    platform's rules require a refund
+- **Contact address.** `support@jaxsquares.com` is a placeholder in all three
+  pages and in the privacy policy. Set up the mailbox, or change the
+  `SUPPORT_EMAIL` constant in each page, before you submit.
 
 ## Age rating questionnaire
 
@@ -150,6 +152,9 @@ accept whatever Apple computes; don't change the answers.
 > the winning square.
 > A ready-made board with players is at https://jaxsquares.com/g/<DEMO_ID>.
 > Universal links: https://jaxsquares.com/g/<id> opens the app.
+> Purchases are verified with Apple on our server before the transaction is
+> finished. If a purchase is interrupted, the app completes it the next time
+> it opens.
 
 Before you submit, create the demo board on production. Fill it with a few
 players, then paste its id over `<DEMO_ID>`.
@@ -190,6 +195,25 @@ they're never used to work out location, so they aren't a declared data type.
 `ios/App/App/PrivacyInfo.xcprivacy` declares the same four types. Keep the two
 in sync.
 
+## Build facts behind these answers
+
+Check these still hold before each submission. Details are in `docs/ios.md`.
+
+- **Push.** Notifications go through `@capacitor-firebase/messaging` (Firebase
+  Cloud Messaging) and nothing else. `@capacitor/push-notifications` was
+  removed from the project. Firebase is used only for messaging, so the
+  "no analytics" answer stands.
+- **Badge.** Each push sets the icon badge to the device's unread count, and
+  opening the app clears it.
+- **In-App Purchase.** Transactions aren't finished automatically
+  (`autoFinishTransactions: false`). The Worker verifies each one with Apple,
+  and the app finishes it only after that. A purchase interrupted mid-way is
+  completed on the next launch, so a host is never charged without getting a
+  board.
+- **Icon and colors.** The App Store icon is the 3x3 squares board: volt tiles
+  (`#c6f91f` / `#aee000`) on the night-turf canvas (`#060c09`), with the
+  winning square lit gold (`#ffc233`). It's rendered by `npm run brand`.
+
 ## Content rights
 
 - "Does your app contain, show, or access third-party content?" **Yes.** It
@@ -210,9 +234,13 @@ in sync.
   iPhone-only.
 - **Teams:** use fictional teams with made-up colors, e.g. "Harbor Hawks" vs
   "Granite Bears". No NFL or college marks.
-- **Look:** dark pitch background, a big headline in the display font (Bricolage Grotesque ExtraBold, white
-  with one word in brand green or gold), and the device frame or a full-bleed UI
-  crop below.
+- **Look:**
+  - The app's night-turf canvas (`#060c09`) with the soft floodlight glow from
+    the top corners, like `public/og-image.png`.
+  - A big headline in the display font (Bricolage Grotesque ExtraBold), white
+    with one word in volt (`#c6f91f`). Use trophy gold (`#ffc233`) only for
+    wins.
+  - The device frame or a full-bleed UI crop below.
 
 | # | Headline | Shows |
 |---|---|---|

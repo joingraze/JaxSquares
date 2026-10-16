@@ -67,14 +67,14 @@ function makeGame(format: Partial<GameFormat> = {}, over: Partial<Game> = {}): G
     numbers: { "*": f.boardSize === 25 ? PAIRS : IDENTITY },
     status: "locked",
     linkedEvent: null,
-    hostClientId: "host",
+    hostPlayerId: "host",
     createdAt: 0,
     lockedAt: 1,
     ...over,
   };
 }
 
-const sq = (row: number, col: number, clientId: string): Square => ({ row, col, clientId, claimedAt: 0 });
+const sq = (row: number, col: number, playerId: string): Square => ({ row, col, playerId, claimedAt: 0 });
 const score = (periodKey: string, scoreX: number, scoreY: number, extra: Partial<Score> = {}): Score => ({
   periodKey,
   scoreX,
@@ -220,12 +220,12 @@ describe("resolveResults", () => {
     expect(results[0]).toMatchObject({
       label: "Q1",
       cell: { row: 3, col: 7 },
-      winnerClientId: "sam",
+      winnerPlayerId: "sam",
       reverseCell: null,
       prize: "Bragging rights",
       source: "auto",
     });
-    expect(results[1]).toMatchObject({ label: "Half", cell: { row: 0, col: 4 }, winnerClientId: "ali" });
+    expect(results[1]).toMatchObject({ label: "Half", cell: { row: 0, col: 4 }, winnerPlayerId: "ali" });
     expect(results[2]).toMatchObject({ cell: { row: 0, col: 4 }, prize: "Winner picks the movie" });
     expect(results[2].score?.source).toBe("live");
   });
@@ -233,7 +233,7 @@ describe("resolveResults", () => {
   it("reports no winner when the winning square is empty", () => {
     const [r] = resolveResults(input(makeGame(), [], [score("final", 14, 21)]));
     expect(r.cell).toEqual({ row: 1, col: 4 });
-    expect(r.winnerClientId).toBeNull();
+    expect(r.winnerPlayerId).toBeNull();
   });
 
   it("ignores scores for periods the board doesn't have", () => {
@@ -247,7 +247,7 @@ describe("resolveResults", () => {
     const game = makeGame({ boardSize: 25 });
     const [r] = resolveResults(input(game, [sq(1, 3, "kim")], [score("q1", 7, 3)]));
     expect(r.cell).toEqual({ row: 1, col: 3 });
-    expect(r.winnerClientId).toBe("kim");
+    expect(r.winnerPlayerId).toBe("kim");
   });
 
   it("reverse: awards the swapped square too", () => {
@@ -255,8 +255,8 @@ describe("resolveResults", () => {
     const [r] = resolveResults(input(game, [sq(3, 7, "a"), sq(7, 3, "b")], [score("q1", 7, 3)]));
     expect(r.cell).toEqual({ row: 3, col: 7 });
     expect(r.reverseCell).toEqual({ row: 7, col: 3 });
-    expect(r.winnerClientId).toBe("a");
-    expect(r.reverseWinnerClientId).toBe("b");
+    expect(r.winnerPlayerId).toBe("a");
+    expect(r.reverseWinnerPlayerId).toBe("b");
     expect(winnersOf(r)).toEqual(["a", "b"]);
   });
 
@@ -289,8 +289,8 @@ describe("resolveResults", () => {
     );
     expect(results[0]).toMatchObject({
       cell: { row: 5, col: 5 },
-      winnerClientId: "picked",
-      reverseWinnerClientId: "rev",
+      winnerPlayerId: "picked",
+      reverseWinnerPlayerId: "rev",
       source: "host",
     });
   });
@@ -300,7 +300,7 @@ describe("resolveResults", () => {
       input(makeGame(), [sq(2, 2, "x")], [], [{ periodKey: "q2", row: 2, col: 2, updatedAt: 0 }]),
     );
     expect(results).toHaveLength(1);
-    expect(results[0]).toMatchObject({ periodKey: "q2", label: "Half", score: null, winnerClientId: "x", source: "host" });
+    expect(results[0]).toMatchObject({ periodKey: "q2", label: "Half", score: null, winnerPlayerId: "x", source: "host" });
   });
 
   it("every-score: one result per entry, ordered numerically, labels from entries", () => {
@@ -312,7 +312,7 @@ describe("resolveResults", () => {
     ];
     const results = resolveResults(input(game, [sq(3, 0, "first")], scores));
     expect(results.map((r) => r.periodKey)).toEqual(["s1", "s2", "s10"]);
-    expect(results[0]).toMatchObject({ label: "Score 1", winnerClientId: "first", prize: "High five" });
+    expect(results[0]).toMatchObject({ label: "Score 1", winnerPlayerId: "first", prize: "High five" });
     expect(results[2].label).toBe("Score 10");
     expect(boardPeriods(game, scores).map((p) => p.key)).toEqual(["s1", "s2", "s10"]);
   });
@@ -430,7 +430,7 @@ describe("live helpers", () => {
     expect(liveCell({ game, squares: [sq(3, 4, "me")], live })).toEqual({
       periodKey: "q2",
       cell: { row: 3, col: 4 },
-      clientId: "me",
+      playerId: "me",
       reverseCell: { row: 4, col: 3 },
     });
     expect(liveCell({ game, squares: [], live: { ...live, state: "pre" } })).toBeNull();

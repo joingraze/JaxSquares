@@ -1,18 +1,206 @@
-import { TopBar } from "../components/ui";
+// Privacy policy (App Store "Privacy Policy URL": https://jaxsquares.com/privacy).
+// Source text: docs/app-store/privacy-policy.md. Keep the two, the App Privacy
+// answers in docs/app-store/listing.md and ios/App/App/PrivacyInfo.xcprivacy in step.
+import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { BellIcon, CheckIcon, GridIcon, InfoIcon, LockIcon, PencilIcon, RefreshIcon, TrashIcon, UserIcon, UsersIcon, XIcon } from "../components/icons";
+import { buttonStyles, Card, ListGroup, ListRow, TopBar } from "../components/ui";
+
+const UPDATED = "October 16, 2026";
+const SUPPORT_EMAIL = "support@jaxsquares.com";
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="px-1 font-display text-title-3 font-extrabold text-ink">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Prose({ children }: { children: ReactNode }) {
+  return <div className="flex flex-col gap-3 px-1 text-callout text-ink-muted">{children}</div>;
+}
+
+/** A row that wraps (ListRow truncates): icon tile, bold lead-in, muted detail. */
+function Fact({ icon, title, children }: { icon?: ReactNode; title: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex gap-3.5 px-4 py-3.5">
+      {icon && (
+        <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface-4 text-brand-400 [&>svg]:h-[1.15rem] [&>svg]:w-[1.15rem]">
+          {icon}
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-callout font-bold text-ink">{title}</p>
+        <p className="mt-0.5 text-subhead text-ink-muted">{children}</p>
+      </div>
+    </div>
+  );
+}
+
+function Check({ children, no }: { children: ReactNode; no?: boolean }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <span
+        aria-hidden
+        className={
+          no
+            ? "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/8 text-ink-muted"
+            : "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-400/15 text-brand-400"
+        }
+      >
+        {no ? <XIcon size={12} strokeWidth={3} /> : <CheckIcon size={12} strokeWidth={3.2} />}
+      </span>
+      <span>{children}</span>
+    </li>
+  );
+}
 
 export default function Privacy() {
   return (
     <>
-      <TopBar title="Privacy" back />
-      <article className="flex flex-col gap-4 px-safe text-callout text-ink-muted [&_h2]:font-display [&_h2]:text-title-3 [&_h2]:font-extrabold [&_h2]:text-ink">
-        <p>JaxSquares has no accounts. Here is everything we keep and why.</p>
-        <h2>On your device</h2>
-        <p>A random device id, the name, color and emoji you pick, and the boards you've opened. Hosts also keep a private host key for each board they create.</p>
-        <h2>On our servers</h2>
-        <p>Boards you create or join: your display name, color, emoji, the squares you claim and the scores entered. If you turn on notifications we store the push token for this device so we can tell you about numbers, kickoffs and winning squares.</p>
-        <h2>Payments</h2>
-        <p>Creating a board is the only purchase. Apple or Stripe handles it; we never see your card details. No money ever moves between players in JaxSquares.</p>
-      </article>
+      <TopBar title="Privacy" subtitle={`Last updated ${UPDATED}`} back />
+      <div className="flex flex-col gap-8 px-safe pt-1">
+        <Card tone="brand" padding="lg">
+          <p className="eyebrow text-brand-300">The short version</p>
+          <p className="mt-2 font-display text-title-3 font-extrabold text-ink">We keep as little as a squares board needs.</p>
+          <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
+            <Check>No accounts, no ads, no tracking.</Check>
+            <Check>Card and Apple Pay details never reach us.</Check>
+            <Check>We never sell or share your information.</Check>
+            <Check>Ask, and we'll delete what we hold.</Check>
+          </ul>
+        </Card>
+
+        <Section title="What we collect">
+          <ListGroup footer="We don't collect your email, phone number, contacts, photos, location or health data. There are no analytics or advertising SDKs.">
+            <Fact icon={<UserIcon />} title="A random device ID">
+              Created the first time you open JaxSquares and stored on your device, so we can recognize your squares and the boards you host or join. It isn't your Apple or advertising identifier.
+            </Fact>
+            <Fact icon={<PencilIcon />} title="The name you choose">
+              The display name, color and emoji you pick. Everyone in that board can see them, and a nickname is fine.
+            </Fact>
+            <Fact icon={<GridIcon />} title="Board content">
+              Board and team names, the optional prize notes a host writes, and the game's scores and results.
+            </Fact>
+            <Fact icon={<BellIcon />} title="Notification tokens">
+              Only if you turn notifications on: the push token your device or browser gives us, used to tell you about your boards. Turn it off any time.
+            </Fact>
+            <Fact icon={<LockIcon />} title="Purchase records">
+              When a host pays to create a board, we keep the transaction reference, amount and the board it unlocked. Card and Apple Pay details go straight to Apple or Stripe.
+            </Fact>
+            <Fact icon={<InfoIcon />} title="Basic server logs">
+              Our hosting provider records technical details like IP address and request time to keep the service running and secure. We don't use them to work out where you are.
+            </Fact>
+          </ListGroup>
+        </Section>
+
+        <Section title="How we use it">
+          <Prose>
+            <p>Only to run JaxSquares:</p>
+            <ul className="flex flex-col gap-2 text-ink">
+              <Check>Showing boards and drawing numbers</Check>
+              <Check>Recording scores and winning squares</Check>
+              <Check>Sending the notifications you asked for</Check>
+              <Check>Unlocking boards that were paid for</Check>
+              <Check>Preventing abuse</Check>
+            </ul>
+            <ul className="mt-1 flex flex-col gap-2">
+              <Check no>We don't sell your information.</Check>
+              <Check no>We don't share it for advertising.</Check>
+              <Check no>We don't track you across other apps or websites.</Check>
+            </ul>
+          </Prose>
+        </Section>
+
+        <Section title="Who processes it for us">
+          <ListGroup footer="Each provider handles data under its own privacy terms, and only for these purposes.">
+            <ListRow title="Cloudflare" subtitle="Hosting and database" />
+            <ListRow title="Apple" subtitle="In-App Purchase and push delivery" />
+            <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
+            <ListRow title="Stripe" subtitle="Web payments for creating a board" />
+          </ListGroup>
+        </Section>
+
+        <Section title="Sharing inside a board">
+          <Card padding="lg" className="flex gap-3.5">
+            <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-500/15 text-accent-400">
+              <UsersIcon size={19} />
+            </span>
+            <div className="text-callout text-ink-muted">
+              <p>
+                Anyone with a board's link can see its name and prize notes, the players' names, colors and emoji, who claimed which squares,
+                and the scores and winners.
+              </p>
+              <p className="mt-2 font-semibold text-ink">Only share links with people you want to play with.</p>
+            </div>
+          </Card>
+        </Section>
+
+        <Section title="How long we keep it">
+          <ListGroup>
+            <Fact title="Boards and their data">Until the host deletes the board.</Fact>
+            <Fact title="Purchase records">As long as tax and accounting law requires.</Fact>
+            <Fact title="Push tokens">Deleted when you turn notifications off, or when Apple or Google tells us a token is no longer valid.</Fact>
+          </ListGroup>
+        </Section>
+
+        <Section title="Your choices">
+          <ListGroup>
+            <Fact icon={<GridIcon />} title="Leave a board">
+              Release your squares before the numbers are drawn.
+            </Fact>
+            <Fact icon={<TrashIcon />} title="Delete a board">
+              The host can delete a board at any time. It's removed for everyone.
+            </Fact>
+            <Fact icon={<BellIcon />} title="Notifications">
+              Turn them off in the app, or in iOS Settings → Notifications → JaxSquares.
+            </Fact>
+            <Fact icon={<RefreshIcon />} title="Start fresh">
+              Delete the app, or clear this site's data in your browser, and the device ID is removed from your device.
+            </Fact>
+            <Fact icon={<UserIcon />} title="Ask us">
+              To find out what we hold or have it deleted, email {SUPPORT_EMAIL} with a board link. We'll respond within 30 days.
+            </Fact>
+          </ListGroup>
+        </Section>
+
+        <Section title="Children">
+          <Prose>
+            <p>JaxSquares isn't directed to children under 13, and we don't knowingly collect information from them.</p>
+          </Prose>
+        </Section>
+
+        <Section title="Changes">
+          <Prose>
+            <p>If this policy changes, we'll update the date at the top. If a change matters, we'll also tell you in the app.</p>
+          </Prose>
+        </Section>
+
+        <Card tone="raised" padding="lg" className="flex flex-col items-start gap-4">
+          <div>
+            <p className="font-display text-title-3 font-extrabold text-ink">Questions about your data?</p>
+            <p className="mt-1 text-callout text-ink-muted">Write to us and a real person will answer.</p>
+          </div>
+          <a href={`mailto:${SUPPORT_EMAIL}?subject=Privacy%20question`} className={buttonStyles({ block: true })}>
+            Email us
+          </a>
+          <p className="text-footnote text-ink-subtle">
+            <span className="select-all font-semibold text-ink-muted">{SUPPORT_EMAIL}</span>
+            <br />
+            See also our{" "}
+            <Link to="/terms" className="font-semibold text-brand-400 underline-offset-2 hover:underline">
+              Terms
+            </Link>{" "}
+            and{" "}
+            <Link to="/support" className="font-semibold text-brand-400 underline-offset-2 hover:underline">
+              Support
+            </Link>
+            .
+          </p>
+        </Card>
+      </div>
     </>
   );
 }

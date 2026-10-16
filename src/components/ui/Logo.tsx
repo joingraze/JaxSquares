@@ -5,7 +5,7 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
   const cells = [0, 1, 2];
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className={cx("shrink-0", className)}>
-      <rect width="32" height="32" rx="9" fill="var(--color-surface-4)" />
+      <rect width="32" height="32" rx="9" fill="var(--color-canvas)" />
       {cells.flatMap((r) =>
         cells.map((c) => {
           const lit = r === 1 && c === 2;
@@ -17,8 +17,7 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
               width="7.2"
               height="7.2"
               rx="2"
-              fill={lit ? "var(--color-gold-400)" : "var(--color-brand-400)"}
-              opacity={lit ? 1 : (r + c) % 2 ? 0.55 : 0.9}
+              fill={lit ? "var(--color-gold-400)" : (r + c) % 2 ? "var(--color-brand-500)" : "var(--color-brand-400)"}
             />
           );
         }),
