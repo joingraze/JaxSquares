@@ -10,6 +10,7 @@ import { getGame } from "../db";
 import type { Env } from "../env";
 import { activateGame, isHost, loadState } from "../service";
 import { fetchAppStoreTransaction, transactionProblem, type AppStoreCredentials, type AppStoreTransaction } from "./apple";
+import { gameIdFromAccountToken } from "./boardToken";
 import { CURRENCY, boardPriceCents, getPaymentConfig, iapProductId } from "./config";
 import { milliunitsToMinor } from "./encoding";
 import * as store from "./store";
@@ -17,6 +18,7 @@ import {
   BOARD_PRODUCT,
   StripeApiError,
   boardIdempotencyKey,
+  cancelPaymentIntent,
   createBoardPaymentIntent,
   retrievePaymentIntent,
   verifyStripeSignature,
@@ -125,8 +127,14 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
       intent = await retrieveOrNull(secretKey, pending.reference);
       const reusable =
         intent?.status === "succeeded" ||
+        // Being paid right now: replacing it could charge the host twice.
+        intent?.status === "processing" ||
         (intent && REUSABLE.has(intent.status) && intent.amount === amountCents && intent.currency === CURRENCY);
       if (!reusable) {
+        // Superseded (the price changed) but still payable: cancel it at Stripe so a
+        // tab still showing it can't pay it as well. If Stripe refuses (it's being
+        // paid this moment) that's a 502 and the retry sees its real status.
+        if (intent && REUSABLE.has(intent.status)) await cancelPaymentIntent(secretKey, intent.id);
         await store.markCanceled(c.env.DB, pending.reference);
         replacing = pending.reference;
         intent = null;
@@ -153,7 +161,8 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
       const state = await activatePurchase(c.env, await recordStripePaid(c.env.DB, gameId, intent));
       return c.json({ error: "This board is already active", state }, 409);
     }
-    return c.json({ clientSecret: intent.client_secret });
+    // The intent's own amount, so the page shows (and the wallet sheet itemizes) what it charges.
+    return c.json({ clientSecret: intent.client_secret, amountCents: intent.amount, currency: intent.currency });
   } catch (err) {
     if (!(err instanceof StripeApiError)) throw err;
     console.error(`stripe intent for ${gameId} failed: ${err.status} ${err.code ?? ""} ${err.message}`);
@@ -199,11 +208,34 @@ function appStoreCredentials(env: Env): AppStoreCredentials | null {
 }
 
 const usedElsewhere = (c: Ctx) => c.json({ error: "That purchase already opened another board" }, 409);
+const boardDeleted = (c: Ctx) => c.json({ error: "This board was deleted" }, 410);
+
+const ASK_APPLE = "Ask Apple for a refund at reportaproblem.apple.com.";
+
+/**
+ * A verified purchase that couldn't open its board, now in the ledger as
+ * 'unused'. `unused: true` tells the app it's recorded (so the transaction can be
+ * finished) and the message tells the host what to do: 409 with the board's state
+ * when it was already open, 410 when it was deleted first.
+ */
+async function unusedPurchase(c: Ctx, gameId: string, boardExists: boolean): Promise<Response> {
+  if (!boardExists) {
+    return c.json({ error: `This board was deleted before your purchase went through. ${ASK_APPLE}`, unused: true }, 410);
+  }
+  const state = await loadState(c.env, gameId);
+  return c.json({ error: `This board was already open, so this purchase wasn't used. ${ASK_APPLE}`, unused: true, state }, 409);
+}
 
 paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   const gameId = c.req.param("id");
-  const game = await hostedGame(c, gameId);
-  if (game instanceof Response) return game;
+  if (!c.req.header("x-client-id")) return c.json({ error: "Missing x-client-id" }, 400);
+  // No board (deleted before its purchase was confirmed: housekeeping, or the host)
+  // still gets the purchase verified and recorded below, so the charge isn't lost.
+  // Nobody can prove they host a deleted board; Apple's appAccountToken binding is the proof.
+  const game = await getGame(c.env.DB, gameId);
+  if (game && !(await isHost(c.env, gameId, c.req.header("x-admin-token") ?? ""))) {
+    return c.json({ error: "Only the host can do that" }, 403);
+  }
   const creds = appStoreCredentials(c.env);
   if (!creds) return c.json({ error: "In-app purchase isn't set up yet" }, 503);
 
@@ -214,7 +246,8 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   // A retry after a dropped response: already verified, skip Apple.
   const known = await store.getPurchase(c.env.DB, transactionId);
   if (known && known.gameId !== gameId) return usedElsewhere(c);
-  if (known?.status === "paid") return activate(c, known);
+  if (known?.status === "paid") return game ? activate(c, known) : boardDeleted(c);
+  if (known?.status === "unused") return unusedPurchase(c, gameId, game !== null);
 
   let tx: AppStoreTransaction | null;
   try {
@@ -226,9 +259,10 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   if (!tx) return c.json({ error: "Apple has no record of that purchase" }, 400);
   const problem = transactionProblem(tx, { transactionId, bundleId: creds.bundleId, productId: iapProductId(c.env), gameId });
   if (problem) return c.json({ error: problem }, 400);
+  if (!game && gameIdFromAccountToken(tx.appAccountToken ?? "") !== gameId) return c.json({ error: "Game not found" }, 404);
 
   const currency = (tx.currency ?? CURRENCY).toLowerCase();
-  const purchase = await store.recordPaid(c.env.DB, {
+  const entry: store.NewPurchase = {
     reference: transactionId,
     gameId,
     provider: "iap",
@@ -236,7 +270,16 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     amountCents: typeof tx.price === "number" ? milliunitsToMinor(tx.price, currency) : boardPriceCents(c.env),
     currency,
     livemode: tx.environment === "Production",
-  });
+  };
+  if (!game || game.status !== "draft") {
+    // Already open (paid another way, or by another purchase) or gone: this
+    // purchase must not count as paying for the board. Keep it for a refund.
+    const row = await store.recordUnused(c.env.DB, entry);
+    if (row.gameId !== gameId) return usedElsewhere(c);
+    if (row.status === "paid") return game ? activate(c, row) : boardDeleted(c);
+    return unusedPurchase(c, gameId, game !== null);
+  }
+  const purchase = await store.recordPaid(c.env.DB, entry);
   if (purchase.gameId !== gameId) return usedElsewhere(c);
   return activate(c, purchase);
 });

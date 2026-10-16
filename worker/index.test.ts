@@ -4,15 +4,18 @@
 // notify actors, money-free prize notes, rate limits and cron housekeeping.
 // Only the GameRoom (sockets) and push delivery are faked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PRIZE_MONEY_ERROR } from "../shared/formats";
+import { MONEY_ERRORS, PRIZE_MONEY_ERROR } from "../shared/formats";
 import { derivePlayerIdSync } from "../shared/playerId";
-import type { CreateGameResponse, GameState, GameSummary } from "../shared/types";
+import { MAX_PLAYERS } from "../shared/squares";
+import type { CreateGameResponse, GameState, GameSummary, LiveUpdate } from "../shared/types";
 import type { Env } from "./env";
 import { ACTIVITY_KEEP, DRAFT_TTL_MS, HOUSEKEEPING_MINUTE, housekeeping, isHousekeepingTick } from "./housekeeping";
 import worker from "./index";
+import { boardAccountToken } from "./payments/boardToken";
 import { createTestD1, type TestD1 } from "./payments/testD1";
 import { notify } from "./push";
 import { RATE_LIMITS } from "./rateLimit";
+import { applyLiveUpdate } from "./service";
 
 vi.mock("./push", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./push")>()),
@@ -30,6 +33,7 @@ const MIGRATIONS = [
   "migrations/0003_purchases.sql",
   "migrations/0004_push.sql",
   "migrations/0005_housekeeping.sql",
+  "migrations/0006_purchases_unused.sql",
 ];
 
 let t: TestD1;
@@ -94,8 +98,8 @@ const createInput = (over: Record<string, unknown> = {}) => ({
 });
 
 /** Created, paid (test checkout), with Ana and Ben joined and holding squares. */
-async function openBoard(): Promise<{ id: string; admin: string }> {
-  const created = await call<CreateGameResponse>("POST", "/games", { body: createInput() });
+async function openBoard(over: Record<string, unknown> = {}): Promise<{ id: string; admin: string }> {
+  const created = await call<CreateGameResponse>("POST", "/games", { body: createInput(over) });
   expect(created.status).toBe(201);
   const { game, adminToken } = created.body;
   expect((await call("POST", `/games/${game.id}/pay/test`, { admin: adminToken })).status).toBe(200);
@@ -161,13 +165,41 @@ describe("public payloads never contain a clientId", () => {
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: HOST })).body.games[0].isHost).toBe(true);
   });
 
-  it("knowing someone's public id doesn't let you act as them", async () => {
+  it("knowing someone's public id doesn't let you act as them, or take over their feed entries", async () => {
     const { id } = await openBoard();
-    // Ben sends Ana's public id as his x-client-id: that's just a different (new) device.
-    const res = await call("POST", `/games/${id}/release`, { client: pid(ANA), body: { cells: [{ row: 0, col: 0 }] } });
-    expect(res.status).toBe(200);
+    const actors = async () => {
+      const state = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+      return { created: state.activity.find((a) => a.type === "created")?.actor, all: new Set(state.activity.map((a) => a.actor)) };
+    };
+    expect(await actors()).toEqual({ created: pid(HOST), all: new Set([pid(HOST), pid(ANA), pid(BEN)]) });
+
+    // A public id is in every GameState; sent as an x-client-id it is refused everywhere.
+    const asAna = { client: pid(ANA) };
+    expect((await call("POST", `/games/${id}/release`, { ...asAna, body: { cells: [{ row: 0, col: 0 }] } })).status).toBe(401);
+    expect((await call("POST", `/games/${id}/join`, { client: pid(HOST), body: { name: "Mallory" } })).status).toBe(401);
+    expect((await call("POST", "/push/test", asAna)).status).toBe(401);
+    expect((await call("POST", "/push/test", { client: ANA })).status).toBe(200);
     const state = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
     expect(state.squares.find((s) => s.row === 0 && s.col === 0)?.playerId).toBe(pid(ANA));
+    expect(state.players.map((p) => p.name)).toEqual(["Jordan", "Ana", "Ben"]);
+
+    // A player row from before that check (its clientId is the host's or Ana's public id) still can't
+    // turn their entries into its own: they'd otherwise read as pid(pid(...)), the impostor's id.
+    for (const victim of [HOST, ANA]) {
+      t.query(`INSERT INTO players (game_id, client_id, name, color, emoji, joined_at) VALUES (?, ?, 'Mallory', '#38bdf8', '', 9)`, id, pid(victim));
+    }
+    expect(await actors()).toEqual({ created: pid(HOST), all: new Set([pid(HOST), pid(ANA), pid(BEN)]) });
+  });
+
+  it("host-check answers whether x-admin-token is the board's host token, and nothing more", async () => {
+    const { id, admin } = await openBoard();
+    const check = (token?: string, board = id) => call("GET", `/games/${board}/host-check`, { client: BEN, admin: token });
+    const ok = await check(admin);
+    expect([ok.status, ok.body]).toEqual([200, { ok: true }]);
+    expect((await check("x")).status).toBe(403);
+    expect((await check()).status).toBe(403);
+    expect((await check(admin, "zzzz9")).status).toBe(404);
+    expect((await call("GET", `/games/${id}/host-check`, { client: null, admin })).status).toBe(401);
   });
 
   it("translates legacy activity rows that stored clientIds", async () => {
@@ -226,6 +258,211 @@ describe("deleting a board", () => {
     expect(roomCalls.filter((r) => r.url === "https://room/close")).toHaveLength(1);
     expect(t.query(`SELECT 1 FROM games WHERE id = ?`, stale)).toEqual([]);
   });
+
+  it("housekeeping leaves alone (and doesn't close) a stale draft paid for mid-sweep", async () => {
+    const stale = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, stale);
+    // The payment lands right after the sweep has picked its stale drafts.
+    const real = t.d1;
+    env.DB = {
+      prepare(sql: string) {
+        const stmt = real.prepare(sql);
+        if (!/status = 'draft' AND created_at/.test(sql)) return stmt;
+        return {
+          bind: (...args: unknown[]) => ({
+            all: async () => {
+              const out = await stmt.bind(...args).all();
+              t.query(`UPDATE games SET status = 'open' WHERE id = ? AND status = 'draft'`, stale);
+              return out;
+            },
+          }),
+        };
+      },
+      batch: (statements: D1PreparedStatement[]) => real.batch(statements),
+    } as unknown as D1Database;
+    const tick = Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE);
+    await worker.scheduled({ scheduledTime: tick, cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
+    expect(t.query(`SELECT status FROM games WHERE id = ?`, stale)).toEqual([{ status: "open" }]);
+    expect(roomCalls.filter((r) => r.url === "https://room/close")).toEqual([]);
+  });
+});
+
+describe("every-score entries", () => {
+  it("removing an entry drops its host pick, so the next entry is decided by its own score", async () => {
+    const { id, admin } = await openBoard({ format: { periods: "every-score", reverse: false, boardSize: 25, freshNumbers: false }, prizes: {} });
+    await call("POST", `/games/${id}/lock`, { admin });
+    const draw = (await call<GameState>("GET", `/games/${id}`, { client: null })).body.game.numbers!["*"];
+    // Ana holds (0,0), Ben holds (1,1).
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 3, scoreY: 0 } })).status).toBe(200);
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 10, scoreY: 0 } })).status).toBe(200);
+    expect((await call("POST", `/games/${id}/winners`, { admin, body: { periodKey: "s2", row: 1, col: 1 } })).status).toBe(200);
+    // The host removes Score 2 (a typo): its pick for Ben goes with it.
+    const removed = await call<{ state: GameState }>("DELETE", `/games/${id}/scores/s2`, { admin });
+    expect(removed.body.state.scores.map((s) => s.periodKey)).toEqual(["s1"]);
+    expect(removed.body.state.manualWinners).toEqual([]);
+
+    vi.mocked(notify).mockClear();
+    const next = await call<{ state: GameState }>("POST", `/games/${id}/scores`, {
+      admin,
+      body: { periodKey: "next", scoreX: draw.x[0][0], scoreY: draw.y[0][0] },
+    });
+    expect(next.status).toBe(200);
+    const winner = next.body.state.activity.find((a) => a.type === "winner" && a.data.periodKey === "s2")!;
+    expect(winner.data.playerIds).toEqual([pid(ANA)]);
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "winner", periodKey: "s2", label: "Score 2", playerIds: [pid(ANA)] });
+  });
+
+  it("a score the feed takes back is dropped (with its pick), not announced as a new entry", async () => {
+    const { id, admin } = await openBoard({ format: { periods: "every-score", reverse: false, boardSize: 25, freshNumbers: false }, prizes: {} });
+    // Ana takes every other square, so whatever square a score lands on has a winner to push.
+    const rest: { row: number; col: number }[] = [];
+    for (let row = 0; row < 5; row++) for (let col = 0; col < 5; col++) if (row > 1 || (row === 1 && col !== 1) || (row === 0 && col > 1)) rest.push({ row, col });
+    expect((await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: rest } })).status).toBe(200);
+    const linked = { provider: "espn", league: "nfl", eventId: "401", startsAt: Date.now(), xIsHome: true };
+    await t.d1.prepare(`UPDATE games SET linked_event = ?, starts_at = ? WHERE id = ?`).bind(JSON.stringify(linked), linked.startsAt, id).run();
+    const feed = (scoreX: number, scoreY: number): LiveUpdate => ({
+      live: { state: "in", period: 1, clock: "5:00", detail: "Q1 5:00", scoreX, scoreY, updatedAt: 1 },
+      linescoresX: [scoreX],
+      linescoresY: [scoreY],
+      completedPeriods: 0,
+      isFinal: false,
+    });
+    const poll = (x: number, y: number) => applyLiveUpdate(env, id, feed(x, y), async () => {});
+    const load = async () => (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    const entries = async () => (await load()).scores.map((s) => [s.periodKey, s.scoreX, s.scoreY]);
+    const winnerPushes = () => vi.mocked(notify).mock.calls.map((c) => c[2]).filter((e) => e.kind === "winner");
+
+    await poll(0, 0); // kickoff: the board locks
+    await poll(7, 0);
+    expect(await entries()).toEqual([["s1", 7, 0]]);
+    expect((await call("POST", `/games/${id}/winners`, { admin, body: { periodKey: "s1", row: 1, col: 1 } })).status).toBe(200);
+
+    // The touchdown is overturned on review: back to 0-0. 0-0 is never a winning
+    // score, so Score 1 goes (its pick too) and nothing new is announced, on this
+    // poll or the next.
+    vi.mocked(notify).mockClear();
+    await poll(0, 0);
+    await poll(0, 0);
+    const after = await load();
+    expect(after.scores).toEqual([]);
+    expect(after.manualWinners).toEqual([]);
+    expect(winnerPushes()).toEqual([]);
+
+    // Scoring carries on from the corrected score.
+    await poll(3, 0);
+    await poll(10, 0);
+    expect(await entries()).toEqual([
+      ["s1", 3, 0],
+      ["s2", 10, 0],
+    ]);
+    // A touchdown corrected to a field goal by the other side's count (10-0 -> 6-0):
+    // Score 2 is that corrected score, not a third entry.
+    vi.mocked(notify).mockClear();
+    await poll(6, 0);
+    expect(await entries()).toEqual([
+      ["s1", 3, 0],
+      ["s2", 6, 0],
+    ]);
+    expect(winnerPushes().map((e) => e.kind === "winner" && e.periodKey)).toEqual(["s2"]);
+  });
+});
+
+describe("re-saving a score", () => {
+  it("doesn't record or announce an unchanged score again", async () => {
+    const { id, admin } = await openBoard();
+    await call("POST", `/games/${id}/lock`, { admin });
+    const draw = (await call<GameState>("GET", `/games/${id}`, { client: null })).body.game.numbers!["*"];
+    const onAna = { scoreX: draw.x[0][0], scoreY: draw.y[0][0] }; // Ana holds (0,0)
+    vi.mocked(notify).mockClear();
+    const kinds = () => vi.mocked(notify).mock.calls.map((c) => c[2].kind);
+    const feed = async (type: string, periodKey: string) =>
+      (await call<GameState>("GET", `/games/${id}`, { client: null })).body.activity.filter((a) => a.type === type && a.data.periodKey === periodKey);
+
+    // A double tap, a retry after a lost response, a second host phone.
+    for (let i = 0; i < 3; i++) expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "q1", ...onAna } })).status).toBe(200);
+    expect(kinds()).toEqual(["winner"]);
+    expect(await feed("score", "q1")).toHaveLength(1);
+    expect(await feed("winner", "q1")).toHaveLength(1);
+
+    // A real correction is still news.
+    await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "q1", scoreX: onAna.scoreX + 10, scoreY: onAna.scoreY } });
+    expect(await feed("score", "q1")).toHaveLength(2);
+
+    // The Final of a typed-in board: announced (and the game ended) once.
+    vi.mocked(notify).mockClear();
+    for (let i = 0; i < 3; i++) expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "final", ...onAna } })).status).toBe(200);
+    expect(kinds().sort()).toEqual(["final", "winner"]);
+    expect(await feed("score", "final")).toHaveLength(1);
+    expect(await feed("winner", "final")).toHaveLength(1);
+  });
+});
+
+describe("players", () => {
+  const joinAs = (id: string, client: string, name = "Bot") => call("POST", `/games/${id}/join`, { client, body: { name } });
+
+  it(`caps a board at ${MAX_PLAYERS} players; players already on it can still rename`, async () => {
+    const { id } = await openBoard(); // Jordan, Ana, Ben
+    for (let i = 3; i < MAX_PLAYERS; i++) {
+      t.query(
+        `INSERT INTO players (game_id, client_id, name, color, emoji, joined_at) VALUES (?, ?, 'Bot', '#38bdf8', '', ?)`,
+        id,
+        `filler-client-${String(i).padStart(6, "0")}`,
+        i,
+      );
+    }
+    const late = await joinAs(id, "late-friend-0000-0001", "Late");
+    expect(late.status).toBe(409);
+    expect(t.query(`SELECT 1 FROM players WHERE game_id = ?`, id)).toHaveLength(MAX_PLAYERS);
+    expect((await joinAs(id, ANA, "Ana B")).status).toBe(200);
+  });
+
+  it(`lets ${RATE_LIMITS.joinBoard.limit} new players join one board per minute`, async () => {
+    const { id } = await openBoard(); // Ana and Ben joined already
+    for (let i = 2; i < RATE_LIMITS.joinBoard.limit; i++) expect((await joinAs(id, `bot-client-${String(i).padStart(8, "0")}`)).status).toBe(200);
+    const limited = await joinAs(id, "bot-client-one-too-many");
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: RATE_LIMITS.joinBoard.message });
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    // Renames aren't new players; other boards are unaffected; no clientId in the counters.
+    expect((await joinAs(id, ANA, "Ana B")).status).toBe(200);
+    expect((await openBoard()).id).toBeTruthy();
+    const rows = t.query<{ key: string }>(`SELECT key FROM rate_limits`);
+    expect(rows.every((r) => !r.key.includes("bot-client") && !r.key.includes(ANA))).toBe(true);
+  });
+
+  it(`allows ${RATE_LIMITS.join.limit} joins/renames per device per minute`, async () => {
+    const { id } = await openBoard(); // Ana has used 1 already
+    for (let i = 1; i < RATE_LIMITS.join.limit; i++) expect((await joinAs(id, ANA, `Ana ${i}`)).status).toBe(200);
+    const limited = await joinAs(id, ANA, "Ana again");
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: RATE_LIMITS.join.message });
+    expect((await joinAs(id, BEN, "Ben B")).status).toBe(200);
+  });
+
+  it("lets the host remove a player and free their squares while the board is open", async () => {
+    const { id, admin } = await openBoard(); // Ana holds (0,0) and (0,1), Ben (1,1)
+    const rest: { row: number; col: number }[] = [];
+    for (let row = 0; row < 5; row++) for (let col = 0; col < 5; col++) if (row > 1 || (row === 1 && col !== 1) || (row === 0 && col > 1)) rest.push({ row, col });
+    const grab = await call<{ state: GameState }>("POST", `/games/${id}/claim`, { client: BEN, body: { cells: rest } });
+    expect(grab.body.state.squares).toHaveLength(25);
+
+    const path = (playerId: string) => `/games/${id}/players/${encodeURIComponent(playerId)}`;
+    expect((await call("DELETE", path(pid(BEN)), { client: ANA, admin: "nope" })).status).toBe(403);
+    expect((await call("DELETE", path(pid(HOST)), { admin })).status).toBe(400);
+    expect((await call("DELETE", path(pid("nobody-on-this-board")), { admin })).status).toBe(404);
+
+    roomCalls = [];
+    const res = await call<{ state: GameState }>("DELETE", path(pid(BEN)), { admin });
+    expect(res.status).toBe(200);
+    for (const secret of [HOST, ANA, BEN]) expect(res.text).not.toContain(secret);
+    expect(res.body.state.players.map((p) => p.id)).toEqual([pid(HOST), pid(ANA)]);
+    expect(res.body.state.squares.map((s) => s.playerId)).toEqual([pid(ANA), pid(ANA)]);
+    expect(roomCalls.filter((r) => r.url.endsWith("/broadcast"))).toHaveLength(1);
+
+    // Once the numbers are drawn, who holds what is settled.
+    await call("POST", `/games/${id}/lock`, { admin });
+    expect((await call("DELETE", path(pid(ANA)), { admin })).status).toBe(409);
+  });
 });
 
 describe("notify actors", () => {
@@ -235,6 +472,26 @@ describe("notify actors", () => {
     expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "numbers-drawn", actor: pid(HOST) });
     await call("POST", `/games/${id}/final`, { admin });
     expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "final", actor: pid(HOST) });
+  });
+});
+
+describe("board-full push", () => {
+  const cells = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => ({ row: Math.floor((from + i) / 5), col: (from + i) % 5 }));
+
+  it("isn't sent to the host for filling their own board", async () => {
+    const { id } = await openBoard(); // 5x5, rows 0-1 partly taken by Ana and Ben
+    vi.mocked(notify).mockClear();
+    const res = await call<{ claimed: number }>("POST", `/games/${id}/claim`, { body: { cells: cells(0, 25) } });
+    expect(res.body.claimed).toBe(22);
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "board-full", actor: pid(HOST) });
+  });
+
+  it("names whoever claimed the last square, so the host still hears about a player filling it", async () => {
+    const { id } = await openBoard();
+    await call("POST", `/games/${id}/claim`, { body: { cells: cells(0, 24) } });
+    vi.mocked(notify).mockClear();
+    await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: cells(24, 25) } });
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "board-full", actor: pid(ANA) });
   });
 });
 
@@ -250,6 +507,29 @@ describe("prize notes", () => {
     expect(edit.body).toEqual({ error: PRIZE_MONEY_ERROR });
     const ok = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { prizes: { q1: "Winner picks the music" } } });
     expect(ok.body.state.game.prizes).toEqual({ q1: "Winner picks the music" });
+  });
+
+  it("holds board names, team names and score labels to the same rule (the name is every push's title)", async () => {
+    const badName = await call("POST", "/games", { body: createInput({ name: "$20 Squares Pool" }) });
+    expect(badName.status).toBe(400);
+    expect(badName.body).toEqual({ error: MONEY_ERRORS.name });
+    const badTeam = await call("POST", "/games", { body: createInput({ teamX: { name: "Winner gets 20usd" } }) });
+    expect(badTeam.status).toBe(400);
+    expect(badTeam.body).toEqual({ error: MONEY_ERRORS.team });
+
+    const { id, admin } = await openBoard({ format: { periods: "every-score", reverse: false, boardSize: 25, freshNumbers: false }, prizes: {} });
+    const rename = await call("PATCH", `/games/${id}`, { admin, body: { name: "Winner takes the pot" } });
+    expect(rename.status).toBe(400);
+    expect(rename.body).toEqual({ error: MONEY_ERRORS.name });
+    const renamed = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { name: "Bucks vs Packers" } });
+    expect(renamed.body.state.game.name).toBe("Bucks vs Packers");
+
+    await call("POST", `/games/${id}/lock`, { admin });
+    const label = await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 7, scoreY: 0, label: "Pay me 20" } });
+    expect(label.status).toBe(400);
+    expect(label.body).toEqual({ error: MONEY_ERRORS.label });
+    const plain = await call<{ state: GameState }>("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 7, scoreY: 0, label: "Pick six" } });
+    expect(plain.body.state.scores.map((s) => s.label)).toEqual(["Pick six"]);
   });
 });
 
@@ -282,6 +562,56 @@ describe("rate limits", () => {
   });
 });
 
+describe("rate limits per network address", () => {
+  // CF-Connecting-IP is set by Cloudflare; a clientId is free to mint, so one address rotating made-up ids
+  // has to run into a limit too.
+  const ip = "203.0.113.7";
+  const device = (i: number) => `rotating-device-id-${String(i).padStart(6, "0")}`;
+
+  it(`allows ${RATE_LIMITS.createGameIp.limit} new boards per address per hour, however many device ids it uses`, async () => {
+    const create = (client: string, from = ip) => call("POST", "/games", { client, body: createInput(), headers: { "cf-connecting-ip": from } });
+    for (let i = 0; i < RATE_LIMITS.createGameIp.limit; i++) expect((await create(device(i))).status).toBe(201);
+    const limited = await create(device(999));
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: RATE_LIMITS.createGameIp.message });
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+    // Another address is unaffected, and the counters never hold the address itself.
+    expect((await create(device(1000), "198.51.100.4")).status).toBe(201);
+    const keys = t.query<{ key: string }>(`SELECT key FROM rate_limits`).map((r) => r.key);
+    expect(keys.filter((k) => k.startsWith("create-ip:"))).toHaveLength(2);
+    expect(keys.some((k) => k.includes(ip) || k.includes("198.51.100.4"))).toBe(false);
+  });
+
+  it(`allows ${RATE_LIMITS.squaresIp.limit} claims/releases per address per minute across devices`, async () => {
+    const { id } = await openBoard();
+    const devices = Array.from({ length: 6 }, (_, k) => device(k));
+    for (const client of devices) expect((await call("POST", `/games/${id}/join`, { client, body: { name: "Bot" } })).status).toBe(200);
+    const holding = new Map<string, boolean>();
+    const tap = (k: number) => {
+      const client = devices[k];
+      const held = holding.get(client) ?? false;
+      holding.set(client, !held);
+      const cells = [{ row: 2 + Math.floor(k / 5), col: k % 5 }];
+      return call("POST", `/games/${id}/${held ? "release" : "claim"}`, { client, body: { cells }, headers: { "cf-connecting-ip": ip } });
+    };
+    // Each device stays under its own limit (50 of 60).
+    for (let i = 0; i < RATE_LIMITS.squaresIp.limit; i++) expect((await tap(i % devices.length)).status).toBe(200);
+    const limited = await tap(0);
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: RATE_LIMITS.squaresIp.message });
+  });
+
+  it(`allows ${RATE_LIMITS.joinIp.limit} joins/renames per address per minute across devices`, async () => {
+    const { id } = await openBoard(); // Jordan, Ana and Ben are players
+    const rename = (client: string, name: string) => call("POST", `/games/${id}/join`, { client, body: { name }, headers: { "cf-connecting-ip": ip } });
+    const players = [HOST, ANA, BEN];
+    for (let i = 0; i < RATE_LIMITS.joinIp.limit; i++) expect((await rename(players[i % 3], `Name ${i}`)).status).toBe(200);
+    const limited = await rename(ANA, "Ana again");
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: RATE_LIMITS.joinIp.message });
+  });
+});
+
 describe("housekeeping", () => {
   it("runs once an hour", () => {
     expect(isHousekeepingTick(Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE))).toBe(true);
@@ -308,6 +638,63 @@ describe("housekeeping", () => {
     // The newest rows survive.
     expect(t.query(`SELECT 1 FROM activity WHERE id = ?`, `bulk-${ACTIVITY_KEEP + 29}`)).toHaveLength(1);
     expect(t.query(`SELECT 1 FROM rate_limits WHERE key = 'old'`)).toEqual([]);
+  });
+});
+
+describe("a charged App Store purchase for a draft housekeeping deleted", () => {
+  const TX = "2000000123456789";
+
+  async function testPem(): Promise<string> {
+    const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign"])) as CryptoKeyPair;
+    const der = new Uint8Array((await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer);
+    return `-----BEGIN PRIVATE KEY-----\n${btoa(String.fromCharCode(...der))}\n-----END PRIVATE KEY-----`;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("is kept in the ledger (not finished as a 404 with no record), and the host is told", async () => {
+    Object.assign(env, {
+      IAP_PRODUCT_ID: "com.jaxsquares.app.board",
+      APPLE_IAP_KEY_ID: "KEYID",
+      APPLE_IAP_ISSUER_ID: "issuer",
+      APPLE_IAP_PRIVATE_KEY: await testPem(),
+      APPLE_BUNDLE_ID: "com.jaxsquares.app",
+    });
+    const created = await call<CreateGameResponse>("POST", "/games", { body: createInput() });
+    const { game, adminToken } = created.body;
+    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, game.id);
+    expect((await housekeeping(env)).drafts).toEqual([game.id]);
+
+    const part = (v: unknown) => btoa(JSON.stringify(v)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+    const tx = {
+      transactionId: TX,
+      bundleId: "com.jaxsquares.app",
+      productId: "com.jaxsquares.app.board",
+      price: 4990,
+      currency: "USD",
+      environment: "Production",
+      appAccountToken: boardAccountToken(game.id),
+    };
+    const fetchMock = vi.fn(async () => Response.json({ signedTransactionInfo: `${part({ alg: "ES256" })}.${part(tx)}.sig` }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await call<{ error: string; unused: boolean }>("POST", `/games/${game.id}/pay/iap`, { admin: adminToken, body: { transactionId: TX } });
+    expect(res.status).toBe(410);
+    expect(res.body.unused).toBe(true);
+    expect(res.body.error).toMatch(/reportaproblem\.apple\.com/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(t.query(`SELECT reference, game_id, status, amount_cents FROM purchases`)).toEqual([
+      { reference: TX, game_id: game.id, status: "unused", amount_cents: 499 },
+    ]);
+    expect(t.query(`SELECT 1 FROM games WHERE id = ?`, game.id)).toEqual([]);
+  });
+});
+
+describe("app config", () => {
+  it("isn't cached, so a switch to live checkout reaches every client right away", async () => {
+    const res = await call("GET", "/config", { client: null });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 });
 

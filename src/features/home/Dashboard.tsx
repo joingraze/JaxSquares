@@ -27,7 +27,7 @@ import { buildInbox } from "./inbox";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { LiveCard } from "./LiveCard";
 import { LiveCarousel } from "./LiveCarousel";
-import { useHomeFeed } from "./homeFeed";
+import { statesNotOlder, useHomeFeed } from "./homeFeed";
 import {
   boardBuzz,
   cardModel,
@@ -67,7 +67,9 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   const [openedAt] = useState(() => Date.now());
   const [finalsShown, setFinalsShown] = useState(FINALS_COLLAPSED);
   const { snapshot, sync } = useHomeFeed();
-  const details = snapshot.states;
+  // A state older than its summary (a board Home stopped following, or a final
+  // the host corrected since) is dropped: the summary knows better.
+  const details = useMemo(() => statesNotOlder(snapshot.states, games), [snapshot.states, games]);
 
   // Each summary with its board's live state on top (only states from the network: a cached one may be older).
   // A board deleted while Home followed it disappears now, not at the next summary refresh.
@@ -90,12 +92,19 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   }, [grouped, details, me]);
 
   const liveKey = followOrder(boards).join(",");
+  // "id@version": a finished board is fetched again when its summary moves past the state held.
   const onceKey = sections.final
     .slice(0, finalsShown)
-    .map((g) => g.id)
+    .map((g) => (g.version === undefined ? g.id : `${g.id}@${g.version}`))
     .join(",");
   useEffect(() => {
-    sync(liveKey ? liveKey.split(",") : [], onceKey ? onceKey.split(",") : []);
+    const versions: Record<string, number> = {};
+    const once = (onceKey ? onceKey.split(",") : []).map((key) => {
+      const [id, version] = key.split("@");
+      if (version !== undefined) versions[id] = Number(version);
+      return id;
+    });
+    sync(liveKey ? liveKey.split(",") : [], once, versions);
   }, [sync, liveKey, onceKey]);
 
   const [joining, setJoining] = useState(false);

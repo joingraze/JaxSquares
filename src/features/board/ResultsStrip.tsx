@@ -5,7 +5,7 @@
 // A period whose square nobody took says so plainly ("Nobody had 7–3"); the
 // host can pick a winner from host tools.
 
-import { periodPhrase } from "../../../shared/formats";
+import { everyScoreIndex, periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
 import { Avatar, cx, LiveDot } from "../../components/ui";
@@ -20,7 +20,11 @@ export interface ResultsStripProps {
   reverse: boolean;
   /** Numbers aren't drawn yet: cards only show what's at stake. */
   predraw: boolean;
-  /** The live "if it ended now" owner and score for the period in play. */
+  /**
+   * The live "if it ended now" owner and score for the period in play. Fixed
+   * periods only: an every-score entry is never won by the score it's at now
+   * (the next entry needs a new score; 0-0 never wins).
+   */
   liveNow: { playerId: string | null; scoreX: number; scoreY: number } | null;
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
@@ -49,7 +53,8 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
         const iWon = !!r && (r.winnerPlayerId === me || r.reverseWinnerPlayerId === me);
         const selected = selectedKey === card.key;
         const tappable = !!r?.cell;
-        const liveOwner = card.status === "live" && liveNow?.playerId ? byId.get(liveNow.playerId) : null;
+        const now = card.status === "live" && everyScoreIndex(card.key) === null ? liveNow : null;
+        const liveOwner = now?.playerId ? byId.get(now.playerId) : null;
         return (
           <button
             key={card.key}
@@ -112,17 +117,17 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
                   </span>
                 )}
               </>
-            ) : card.status === "live" && liveNow ? (
+            ) : now ? (
               <>
                 <div className="flex items-baseline gap-1.5 font-display font-extrabold tabular-nums leading-none">
-                  <span className="text-title-3">{liveNow.scoreX}</span>
+                  <span className="text-title-3">{now.scoreX}</span>
                   <span className="text-ink-subtle">–</span>
-                  <span className="text-title-3">{liveNow.scoreY}</span>
+                  <span className="text-title-3">{now.scoreY}</span>
                 </div>
                 <div className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
                   <span className="shrink-0">If it ended now:</span>
                 </div>
-                <WinnerLine player={liveOwner ?? null} me={me} empty={!liveNow.playerId} score={liveNow} live />
+                <WinnerLine player={liveOwner ?? null} me={me} empty={!now.playerId} score={now} live />
               </>
             ) : (
               <>

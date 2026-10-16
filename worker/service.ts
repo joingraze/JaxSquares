@@ -8,6 +8,7 @@ import {
   nextEveryScoreEntry,
   periodScoresFromLinescores,
   resolveResults,
+  retractedEntries,
   winnersOf,
   type PeriodScore,
 } from "../shared/squares";
@@ -157,8 +158,9 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
 /**
  * Apply a provider update to a linked board: upsert live status + completed
  * period scores (never replacing a host-entered score), append every-score
- * entries when the total changes, lock at kickoff if the host hasn't, and mark
- * the board final when the game ends. Pushes the new state and sends pushes.
+ * entries when the total goes up (and drop the feed's entries when it's
+ * corrected down), lock at kickoff if the host hasn't, and mark the board
+ * final when the game ends. Pushes the new state and sends pushes.
  *
  * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
  * own sockets directly instead of fetching itself.
@@ -203,9 +205,18 @@ export async function applyLiveUpdate(
   }
 
   const changed: PeriodScore[] = [];
+  // Every-score entries the feed took back (a score overturned on review). They
+  // are deleted ahead of the upsert below, which may reuse the same index.
+  let retracted: string[] = [];
+  let scores = prev.scores;
   if (game.format.periods === "every-score") {
-    const entry = live.state === "pre" ? null : nextEveryScoreEntry(prev.scores, live.scoreX, live.scoreY);
-    if (entry) changed.push(entry);
+    if (live.state !== "pre") {
+      retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
+      for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
+      scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
+      const entry = nextEveryScoreEntry(scores, live.scoreX, live.scoreY);
+      if (entry) changed.push(entry);
+    }
   } else {
     const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
     for (const ps of periodScoresFromLinescores(game.format, update)) {
@@ -220,7 +231,8 @@ export async function applyLiveUpdate(
     writes.push(db.upsertLiveScore(env.DB, gameId, { ...c, label }, now));
   }
   if (changed.length > 0) {
-    const projected = { ...prev, game: { ...game, numbers }, scores: upsertScores(prev.scores, changed, now) };
+    const manualWinners = prev.manualWinners.filter((m) => !retracted.includes(m.periodKey));
+    const projected = { ...prev, game: { ...game, numbers }, scores: upsertScores(scores, changed, now), manualWinners };
     const events = scoreEvents(projected, changed, "live", null, now);
     activities.push(...events.activities);
     notifications.push(...events.notifications);

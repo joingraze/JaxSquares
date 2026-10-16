@@ -246,6 +246,7 @@ export function rememberGame(gameId: string): void {
 export function forgetGame(gameId: string): void {
   persist(STORAGE_KEYS.games, JSON.stringify(getKnownGames().filter((id) => id !== gameId)));
   unpersist(STORAGE_KEYS.admin(gameId));
+  linkTokens.delete(gameId);
 }
 
 // ---- Host (admin) tokens ----
@@ -265,37 +266,131 @@ export function isHostOf(gameId: string): boolean {
 
 const HOST_PARAM = "host";
 const GAME_PATH_RE = /^\/g\/([^/?#]+)\/?/;
+/** Board codes, as the worker accepts them (GameView lowercases a typed one). */
+const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
 
-/** Reads a host link (`/g/<id>?host=<token>`). Returns null when the URL isn't one. */
-export function parseHostLink(pathname: string, search: string): { gameId: string; token: string } | null {
-  const m = GAME_PATH_RE.exec(pathname);
-  if (!m) return null;
-  const token = new URLSearchParams(search).get(HOST_PARAM)?.trim();
-  if (!token) return null;
-  return { gameId: decodeURIComponent(m[1]), token };
+/** `host` from a `?a=b` search or `#a=b` fragment. */
+function hostParam(part: string): string | null {
+  return new URLSearchParams(part.replace(/^[?#]/, "")).get(HOST_PARAM)?.trim() || null;
+}
+
+/** `part` (a search or fragment) without its `host` param; left as is when it has none. */
+function withoutHost(part: string, lead: "?" | "#"): string {
+  const params = new URLSearchParams(part.replace(/^[?#]/, ""));
+  if (!params.has(HOST_PARAM)) return part;
+  params.delete(HOST_PARAM);
+  const rest = params.toString();
+  return rest ? `${lead}${rest}` : "";
 }
 
 /**
- * Saves the admin token from a host link so the host can manage the board from
- * another device. Returns the search string with the token removed (the caller
- * replaces the URL so the token doesn't linger in history), or null if the URL
- * wasn't a host link.
+ * Reads a host link: `/g/<id>#host=<token>`, or the older `/g/<id>?host=<token>`
+ * (still accepted; the fragment form never reaches the server or its logs).
+ * Returns null when the URL isn't one, including a malformed or non-board id,
+ * so a crafted link can't throw on startup or store a token under a junk key.
  */
-export function captureHostLink(pathname: string, search: string): string | null {
-  const link = parseHostLink(pathname, search);
-  if (!link) return null;
-  saveAdminToken(link.gameId, link.token);
-  const params = new URLSearchParams(search);
-  params.delete(HOST_PARAM);
-  const rest = params.toString();
-  return rest ? `?${rest}` : "";
+export function parseHostLink(pathname: string, search: string, hash = ""): { gameId: string; token: string } | null {
+  const m = GAME_PATH_RE.exec(pathname);
+  if (!m) return null;
+  const token = hostParam(hash) ?? hostParam(search);
+  if (!token) return null;
+  let gameId: string;
+  try {
+    gameId = decodeURIComponent(m[1]).toLowerCase();
+  } catch {
+    return null;
+  }
+  return GAME_ID_RE.test(gameId) ? { gameId, token } : null;
 }
 
-/** The link a host can open on another device to manage `gameId`. Null when this device isn't the host. */
+/**
+ * Host-link tokens not adopted because this device already holds a different
+ * one for that board (see captureHostLink). Unverified; memory only.
+ */
+const linkTokens = new Map<string, string>();
+
+/**
+ * Asks the server whether `token` is the board's host token: true or false once
+ * it has answered, null when it couldn't be asked (offline). `checkHostToken`
+ * in api.ts.
+ */
+export type HostTokenCheck = (gameId: string, token: string) => Promise<boolean | null>;
+
+/**
+ * Saves the admin token from a host link so the host can manage the board from
+ * another device. Returns the search and fragment with the token removed (the
+ * caller replaces the URL so the token doesn't linger in history), or null if
+ * the URL wasn't a host link.
+ *
+ * A token this device already holds is never overwritten: anyone with the
+ * invite can craft `#host=x` (or a link gets truncated), and the server can't
+ * hand the real token out again. A different token from a link is only kept
+ * aside; the API client tries it if the held one is refused and adopts it once
+ * it has worked (settleLinkAdminToken). On a device holding none, the token is
+ * used at once (so the host's tools show straight away) and `check`ed: one the
+ * server refuses is dropped again, so a crafted link can't dress a player's
+ * device up as the host. While hydrateIdentity is still restoring tokens from
+ * the native store, this waits for it, so a held token is always seen.
+ */
+export function captureHostLink(
+  pathname: string,
+  search: string,
+  hash = "",
+  check?: HostTokenCheck,
+): { search: string; hash: string } | null {
+  const link = parseHostLink(pathname, search, hash);
+  if (!link) return null;
+  const { gameId, token } = link;
+  const adopt = () => {
+    const held = getAdminToken(gameId);
+    if (held !== null) {
+      if (held !== token) linkTokens.set(gameId, token);
+      return;
+    }
+    saveAdminToken(gameId, token);
+    emit();
+    void check?.(gameId, token).then(
+      (ok) => {
+        if (ok === false && getAdminToken(gameId) === token) {
+          unpersist(STORAGE_KEYS.admin(gameId));
+          emit();
+        }
+      },
+      () => {},
+    );
+  };
+  if (hydrating) void hydrating.then(adopt);
+  else adopt();
+  return { search: withoutHost(search, "?"), hash: withoutHost(hash, "#") };
+}
+
+/** The token a host link offered for `gameId` that differs from the one held here (unverified), if any. */
+export function linkAdminToken(gameId: string): string | null {
+  return linkTokens.get(gameId) ?? null;
+}
+
+/** The server has answered for a host link's token: adopt it if it worked, else drop it. */
+export function settleLinkAdminToken(gameId: string, worked: boolean): void {
+  const token = linkTokens.get(gameId);
+  linkTokens.delete(gameId);
+  if (worked && token) saveAdminToken(gameId, token);
+}
+
+/**
+ * The link a host can open on another device to manage `gameId`. Null when this
+ * device isn't the host. The token rides in the fragment, which browsers never
+ * send, so it stays out of the Worker's request logs.
+ */
 export function hostLinkUrl(gameId: string, origin: string): string | null {
   const token = getAdminToken(gameId);
   if (!token) return null;
-  return `${origin}/g/${encodeURIComponent(gameId)}?${HOST_PARAM}=${encodeURIComponent(token)}`;
+  return `${origin}/g/${encodeURIComponent(gameId)}#${HOST_PARAM}=${encodeURIComponent(token)}`;
+}
+
+/** React binding: this device's admin token for `gameId`, re-rendering when it changes (e.g. a refused host-link token is dropped). */
+export function useAdminToken(gameId: string | undefined): string | null {
+  const get = () => (gameId ? getAdminToken(gameId) : null);
+  return useSyncExternalStore(subscribeIdentity, get, get);
 }
 
 // ---- Native hydration ----
@@ -316,7 +411,24 @@ export interface PersistentStore {
  * Later writes (a new clientId, a new admin token) mirror themselves through
  * persist(), so this only has to reconcile what was there at launch.
  */
-export async function hydrateIdentity(store: PersistentStore = { getStored, setStored }): Promise<void> {
+export function hydrateIdentity(store: PersistentStore = { getStored, setStored }): Promise<void> {
+  const run = hydrateFrom(store);
+  const settled: Promise<void> = run.then(
+    () => clearHydrating(settled),
+    () => clearHydrating(settled),
+  );
+  hydrating = settled;
+  return run;
+}
+
+/** Set while hydrateIdentity runs (main.tsx renders without waiting past a timeout); captureHostLink waits on it. */
+let hydrating: Promise<void> | null = null;
+
+function clearHydrating(p: Promise<void>): void {
+  if (hydrating === p) hydrating = null;
+}
+
+async function hydrateFrom(store: PersistentStore): Promise<void> {
   const localGames = getKnownGames();
 
   const clientId = await store.getStored(STORAGE_KEYS.clientId);

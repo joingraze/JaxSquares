@@ -1,8 +1,9 @@
-// D1 access for the purchases ledger (migrations/0003_purchases.sql). The table
+// D1 access for the purchases ledger (migrations/0003_purchases.sql, 0006). The table
 // belongs to the payments module, so its SQL lives here rather than in worker/db.ts.
 
 export type PurchaseProvider = "test" | "stripe" | "iap";
-export type PurchaseStatus = "pending" | "paid" | "canceled";
+/** "unused": charged, but it opened nothing (board already open, or deleted first); for refund follow-up. */
+export type PurchaseStatus = "pending" | "paid" | "canceled" | "unused";
 
 export interface Purchase {
   reference: string;
@@ -91,6 +92,25 @@ export async function recordPaid(db: D1Database, p: NewPurchase, now = Date.now(
            livemode = excluded.livemode,
            paid_at = COALESCE(purchases.paid_at, excluded.paid_at)
          WHERE purchases.game_id = excluded.game_id`,
+      )
+      .bind(p.reference, p.gameId, p.provider, Math.trunc(p.amountCents), p.currency, p.livemode ? 1 : 0, now, now),
+    db.prepare(`SELECT ${COLUMNS} FROM purchases WHERE reference = ?`).bind(p.reference),
+  ]);
+  return fromRow(read.results[0]);
+}
+
+/**
+ * Records a verified purchase that can't open its board (already open, or
+ * deleted) so it isn't lost, and returns the stored row. A reference already in
+ * the ledger is left untouched (its row is returned), so this never downgrades a
+ * paid purchase or takes a reference from another board.
+ */
+export async function recordUnused(db: D1Database, p: NewPurchase, now = Date.now()): Promise<Purchase> {
+  const [, read] = await db.batch<PurchaseRow>([
+    db
+      .prepare(
+        `INSERT INTO purchases (${COLUMNS}) VALUES (?, ?, ?, 'unused', ?, ?, ?, ?, ?)
+         ON CONFLICT(reference) DO NOTHING`,
       )
       .bind(p.reference, p.gameId, p.provider, Math.trunc(p.amountCents), p.currency, p.livemode ? 1 : 0, now, now),
     db.prepare(`SELECT ${COLUMNS} FROM purchases WHERE reference = ?`).bind(p.reference),

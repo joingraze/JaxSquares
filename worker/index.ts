@@ -5,16 +5,18 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
 import { HTTPException } from "hono/http-exception";
 import {
+  MONEY_ERRORS,
   PrizeNoteError,
   everyScoreIndex,
   everyScorePeriod,
   formatError,
+  mentionsMoney,
   periodsFor,
   sanitizeFormat,
   sanitizePrizes,
 } from "../shared/formats";
-import { isPlayerId } from "../shared/playerId";
-import { drawNumbers, isValidCell, resolveResults, totalSquares } from "../shared/squares";
+import { isClientId, isPlayerId } from "../shared/playerId";
+import { MAX_PLAYERS, drawNumbers, isValidCell, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
   CreateGameResponse,
@@ -33,7 +35,7 @@ import { inviteMeta, withInviteMeta } from "./og";
 import { getPaymentConfig, paymentsRoutes } from "./payments";
 import { playerIdOf } from "./playerIds";
 import { pushRoutes, type NotifyEvent } from "./push";
-import { RATE_LIMITS, checkRate, type RateRule } from "./rateLimit";
+import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLimit";
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
 import { closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
@@ -52,11 +54,11 @@ const SPORTS: readonly Sport[] = ["football", "basketball", "baseball", "hockey"
 const LEAGUES: readonly League[] = ["nfl", "ncaaf", "custom"];
 const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused characters
 const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
-const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_SCORE = 999;
 const DEFAULT_COLOR = "#38bdf8";
 const DEFAULT_BUNDLE_ID = "com.jaxsquares.app";
+const BOARD_FULL = "This board has all the players it can take. Ask the host to make room.";
 
 // ---- small validation helpers ----
 
@@ -166,10 +168,25 @@ function cleanPrizes(format: GameFormat, input: unknown): Record<string, string>
   }
 }
 
-/** 429 with a friendly message once this player is over `rule`; null to carry on. */
-async function rateLimited(c: Ctx, rule: RateRule): Promise<Response | null> {
-  const { ok, retryAfter } = await checkRate(c.env.DB, rule, c.get("playerId"));
+/** 429 with a friendly message once this player (or `subject`, e.g. a game id) is over `rule`; null to carry on. */
+async function rateLimited(c: Ctx, rule: RateRule, subject: string = c.get("playerId")): Promise<Response | null> {
+  const { ok, retryAfter } = await checkRate(c.env.DB, rule, subject);
   return ok ? null : c.json({ error: rule.message }, 429, { "retry-after": String(retryAfter) });
+}
+
+/**
+ * `rule` for this device, and `perAddress` for the caller's network address
+ * (CF-Connecting-IP, which Cloudflare sets; absent outside it): a clientId is
+ * free to mint, so the device count alone can't stop one source rotating
+ * made-up ids.
+ */
+async function deviceLimited(c: Ctx, rule: RateRule, perAddress: RateRule): Promise<Response | null> {
+  const ip = c.req.header("cf-connecting-ip")?.trim();
+  const [device, address] = await Promise.all([
+    rateLimited(c, rule),
+    ip ? addressSubject(ip).then((subject) => rateLimited(c, perAddress, subject)) : null,
+  ]);
+  return device ?? address;
 }
 
 function gameIdParam(c: Ctx): string {
@@ -221,7 +238,7 @@ async function commitOr404(c: Ctx, id: string, writes: D1PreparedStatement[], no
 
 const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
   const id = c.req.header("x-client-id") ?? "";
-  if (!CLIENT_ID_RE.test(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
+  if (!isClientId(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
   c.set("clientId", id);
   c.set("playerId", await playerIdOf(id));
   await next();
@@ -250,9 +267,11 @@ api.use("*", cors({ origin: "*", maxAge: 86400 }));
 
 api.get("/health", (c) => c.json({ ok: true }));
 
+// Not cached: a switch to live checkout (or a new price) has to reach every
+// client at once, or old pages would keep using test checkout or the old price.
 api.get("/config", (c) =>
   c.json({ payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null }, 200, {
-    "cache-control": "public, max-age=300",
+    "cache-control": "no-store",
   }),
 );
 
@@ -269,12 +288,15 @@ api.post("/games", requireClient, async (c) => {
 
   const name = cleanText(body.name, 60);
   if (!name) fail(400, "Give your board a name");
+  // Every player sees the name, and it's the title of every push for the board.
+  if (mentionsMoney(name)) fail(400, MONEY_ERRORS.name);
   const formatProblem = formatError(body.format);
   if (formatProblem) fail(400, formatProblem);
   const format = sanitizeFormat(body.format);
   const teamX = cleanTeam(body.teamX);
   const teamY = cleanTeam(body.teamY);
   if (!teamX || !teamY) fail(400, "Pick both teams");
+  if ([teamX, teamY].some((t) => mentionsMoney(t.name) || mentionsMoney(t.abbr ?? ""))) fail(400, MONEY_ERRORS.team);
   const linkedEvent = body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
   if (body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
   let league: League = LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
@@ -286,7 +308,7 @@ api.post("/games", requireClient, async (c) => {
   if (!host.name) fail(400, "Add your name so friends know it's your board");
   const prizes = cleanPrizes(format, body.prizes);
   // Counted only once the request is valid, so fixing a typo doesn't use up a try.
-  const limited = await rateLimited(c, RATE_LIMITS.createGame);
+  const limited = await deviceLimited(c, RATE_LIMITS.createGame, RATE_LIMITS.createGameIp);
   if (limited) return limited;
 
   const adminToken = makeToken();
@@ -327,6 +349,17 @@ api.get("/games/:id", async (c) => {
   return c.json(state, 200, { "cache-control": "no-store" });
 });
 
+/**
+ * 200 when x-admin-token is this board's host token. A device checks a host
+ * link's token here before trusting it (anyone with the invite can craft one).
+ */
+api.get("/games/:id/host-check", requireClient, async (c) => {
+  const adminToken = await db.getAdminToken(c.env.DB, gameIdParam(c));
+  if (adminToken === null) fail(404, "Game not found");
+  if (!tokenMatches(adminToken, c.req.header("x-admin-token") ?? "")) fail(403, "Only the host can do that");
+  return c.json({ ok: true }, 200, { "cache-control": "no-store" });
+});
+
 api.patch("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
@@ -335,6 +368,7 @@ api.patch("/games/:id", requireClient, async (c) => {
   if (body.name !== undefined) {
     fields.name = cleanText(body.name, 60);
     if (!fields.name) fail(400, "Board name can't be empty");
+    if (mentionsMoney(fields.name)) fail(400, MONEY_ERRORS.name);
   }
   if (body.prizes !== undefined) fields.prizes = cleanPrizes(state.game.format, body.prizes);
   if (body.maxPerPlayer !== undefined) {
@@ -369,13 +403,42 @@ api.post("/games/:id/join", requireClient, async (c) => {
   const profile = cleanProfile(await readJson(c));
   if (!profile.name) fail(400, "Pick a name");
   const isNew = !state.players.some((p) => p.id === me);
+  if (isNew && state.players.length >= MAX_PLAYERS) fail(409, BOARD_FULL);
+  // Counted once the request is valid. A clientId is free to mint, so new
+  // players are also counted per board.
+  const [limited, boardLimited] = await Promise.all([
+    deviceLimited(c, RATE_LIMITS.join, RATE_LIMITS.joinIp),
+    isNew ? rateLimited(c, RATE_LIMITS.joinBoard, id) : null,
+  ]);
+  const blocked = limited ?? boardLimited;
+  if (blocked) return blocked;
   const now = Date.now();
-  const writes = [db.upsertPlayer(c.env.DB, id, { clientId, ...profile, joinedAt: now })];
+  const writes = [db.upsertPlayer(c.env.DB, id, { clientId, ...profile, joinedAt: now }, MAX_PLAYERS)];
   const joined = isNew ? newActivity("joined", me, { name: profile.name }, now) : null;
-  if (joined) writes.push(db.insertActivity(c.env.DB, id, joined));
+  // Recorded only if the player went in (a racing join may have taken the last spot).
+  if (joined) writes.push(db.insertActivityIfChanged(c.env.DB, id, joined));
   const { state: next } = await commitOr404(c, id, writes, now);
+  if (!next.players.some((p) => p.id === me)) fail(409, BOARD_FULL);
   const notify: NotifyEvent[] = isNew && !isHostDevice ? [{ kind: "player-joined", name: profile.name, actor: me }] : [];
   publish(c, next, joined ? [joined.id] : [], notify);
+  return c.json({ state: next });
+});
+
+/**
+ * Host removes a player while squares are still being picked, freeing every
+ * square they hold (e.g. someone who grabbed the whole board, or names nobody
+ * knows). They can join again; the cap and the join limits bound a flood.
+ */
+api.delete("/games/:id/players/:playerId", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  if (state.game.status !== "draft" && state.game.status !== "open") fail(409, "Squares are locked");
+  const playerId = c.req.param("playerId");
+  if (playerId === state.game.hostPlayerId) fail(400, "You can't remove yourself from your own board");
+  const writes = state.players.some((p) => p.id === playerId) ? await db.removePlayer(c.env.DB, id, playerId) : null;
+  if (!writes) fail(404, "That player isn't on this board");
+  const { state: next } = await commitOr404(c, id, writes);
+  publish(c, next);
   return c.json({ state: next });
 });
 
@@ -388,7 +451,7 @@ api.post("/games/:id/claim", requireClient, async (c) => {
   const id = gameIdParam(c);
   const clientId = c.get("clientId");
   const me = c.get("playerId");
-  const [limited, state] = await Promise.all([rateLimited(c, RATE_LIMITS.squares), stateOr404(c, id)]);
+  const [limited, state] = await Promise.all([deviceLimited(c, RATE_LIMITS.squares, RATE_LIMITS.squaresIp), stateOr404(c, id)]);
   if (limited) return limited;
   const { game } = state;
   requireOpen(state);
@@ -418,7 +481,8 @@ api.post("/games/:id/claim", requireClient, async (c) => {
   const claimed = results.slice(0, wanted.length).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
   if (claimed > 0) {
     const full = next.squares.length >= totalSquares(game.format.boardSize);
-    publish(c, next, [activityId], full ? [{ kind: "board-full" }] : []);
+    // The host hears about it, unless the host just claimed the last square.
+    publish(c, next, [activityId], full ? [{ kind: "board-full", actor: me }] : []);
   }
   return c.json({ claimed, skipped: requested - claimed, state: next });
 });
@@ -427,7 +491,7 @@ api.post("/games/:id/release", requireClient, async (c) => {
   const id = gameIdParam(c);
   const clientId = c.get("clientId");
   const me = c.get("playerId");
-  const [limited, state] = await Promise.all([rateLimited(c, RATE_LIMITS.squares), stateOr404(c, id)]);
+  const [limited, state] = await Promise.all([deviceLimited(c, RATE_LIMITS.squares, RATE_LIMITS.squaresIp), stateOr404(c, id)]);
   if (limited) return limited;
   requireOpen(state);
   const cells = parseCells((await readJson(c)).cells, state.game);
@@ -483,15 +547,23 @@ api.post("/games/:id/scores", requireClient, async (c) => {
   const period = resolvePeriodKey(state, body.periodKey, true);
   const everyScore = game.format.periods === "every-score";
   const label = everyScore ? cleanText(body.label, 24) || period.label : period.label;
+  // Shown on the board and in the winner push.
+  if (mentionsMoney(label)) fail(400, MONEY_ERRORS.label);
   const now = Date.now();
   const actor = c.get("playerId");
   const changed = { periodKey: period.key, label, scoreX, scoreY };
+  // Re-saving the recorded score (a double tap, a retry, a second host phone,
+  // a label-only edit) isn't news: it's written, but not announced again.
+  const existing = state.scores.find((s) => s.periodKey === period.key);
+  const same = existing?.scoreX === scoreX && existing?.scoreY === scoreY;
 
   const projectedScores = [
     ...state.scores.filter((s) => s.periodKey !== period.key),
     { ...changed, source: "host" as const, updatedAt: now, ...(everyScore ? { label } : {}) },
   ];
-  const { activities, notifications } = scoreEvents({ ...state, scores: projectedScores }, [changed], "host", actor, now);
+  const { activities, notifications } = same
+    ? { activities: [] as Activity[], notifications: [] as NotifyEvent[] }
+    : scoreEvents({ ...state, scores: projectedScores }, [changed], "host", actor, now);
   const writes = [
     db.upsertHostScore(c.env.DB, id, { ...changed, label: everyScore ? label : null }, now),
     ...activities.map((a) => db.insertActivity(c.env.DB, id, a)),
@@ -516,6 +588,9 @@ api.delete("/games/:id/scores/:periodKey", requireClient, async (c) => {
   const periodKey = c.req.param("periodKey");
   if (!state.scores.some((s) => s.periodKey === periodKey)) fail(404, "No score for that period");
   const writes = [db.deleteScore(c.env.DB, id, periodKey)];
+  // An every-score entry goes with its host pick: the next entry reuses the
+  // index, and it must be decided by its own score, not the removed one's pick.
+  if (state.game.format.periods === "every-score") writes.push(db.deleteManualWinner(c.env.DB, id, periodKey));
   // Removing the Final score of a typed-in board reopens scoring.
   if (periodKey === "final" && state.game.status === "final" && !state.game.linkedEvent) {
     writes.push(db.reopenFinal(c.env.DB, id));

@@ -571,6 +571,39 @@ describe("LiveGame", () => {
     live.stop();
   });
 
+  it("goes back to live after a short network blip the socket survived", async () => {
+    const h = harness();
+    const live = new LiveGame("g-blip", h.deps, null);
+    live.start({ initialFetch: false });
+    await vi.advanceTimersByTimeAsync(0);
+    const s = h.sockets[0];
+    s.open();
+    s.message({ type: "state", state: makeState(1) });
+    await vi.advanceTimersByTimeAsync(10_000);
+    h.setOnline(false);
+    expect(live.getStatus().connection).toBe("offline");
+    await vi.advanceTimersByTimeAsync(3_000);
+    h.setOnline(true);
+    // Same socket (it was heard from recently), and the "offline" banner is gone.
+    expect(h.sockets).toHaveLength(1);
+    expect(live.getStatus().connection).toBe("live");
+    s.message({ type: "state", state: makeState(2) });
+    expect(live.getStatus().connection).toBe("live");
+    live.stop();
+  });
+
+  it("stays offline when the app resumes with the device still offline", async () => {
+    const h = harness();
+    const live = new LiveGame("g-resume-offline", h.deps, null);
+    live.start({ initialFetch: false });
+    await vi.advanceTimersByTimeAsync(0);
+    h.sockets[0].open();
+    h.setOnline(false);
+    h.resume();
+    expect(live.getStatus().connection).toBe("offline");
+    live.stop();
+  });
+
   it("mutate: shows the patch immediately, then reconciles with the response", async () => {
     const h = harness();
     const live = new LiveGame("g-mutate", h.deps, makeState(1));

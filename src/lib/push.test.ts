@@ -27,6 +27,8 @@ vi.mock("./native", async (orig) => {
 
 const reg = { pushManager: { getSubscription: vi.fn(async () => sub), subscribe: vi.fn(async () => sub) } };
 const calls: string[] = [];
+/** API paths that answer 503 (a flaky connection or an outage). */
+const failing = new Set<string>();
 
 beforeAll(() => {
   vi.stubGlobal("PushManager", class {});
@@ -45,6 +47,7 @@ beforeAll(() => {
     vi.fn(async (url: string) => {
       const path = String(url).replace(/^.*\/api/, "");
       calls.push(path);
+      if (failing.has(path)) return new Response(JSON.stringify({ error: "boom" }), { status: 503, headers: { "content-type": "application/json" } });
       const body = path === "/config" ? { vapidPublicKey: "BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" } : { ok: true, sent: 1 };
       return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     }),
@@ -57,6 +60,8 @@ afterAll(() => {
 
 beforeEach(() => {
   calls.length = 0;
+  failing.clear();
+  sub.unsubscribe.mockClear();
   localStorage.clear();
   nativeStore.clear();
 });
@@ -83,9 +88,41 @@ describe("turning notifications off on this device", () => {
     expect(calls).toContain("/push/register");
   });
 
+  it("unsubscribes this device even when the server can't be told", async () => {
+    failing.add("/push/unregister");
+    await push.disablePush();
+    expect(calls).toContain("/push/unregister");
+    // The push service now rejects the dead endpoint, and the server drops it on its next send.
+    expect(sub.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(push.isPushOff()).toBe(true);
+  });
+
+  it("doesn't claim to be off when this device is still subscribed and registered", async () => {
+    failing.add("/push/unregister");
+    sub.unsubscribe.mockRejectedValueOnce(new Error("no"));
+    await expect(push.disablePush()).rejects.toThrow("boom");
+    expect(push.isPushOff()).toBe(false);
+  });
+
   it("re-registers on sync while on (resets the server's badge count)", async () => {
     calls.length = 0;
     await push.syncPush(true);
+    expect(calls).toContain("/push/register");
+  });
+});
+
+describe("the web badge", () => {
+  it("resets the server's count whenever the app comes back and clears the badge", async () => {
+    const clearAppBadge = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clearAppBadge", { configurable: true, value: clearAppBadge });
+    push.initPush();
+    await push.syncPush(); // whatever the first open started
+    calls.length = 0;
+    // Opened moments ago, a push came in, and now the app is back within the minute.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await push.syncPush();
+    expect(clearAppBadge).toHaveBeenCalled();
+    // Otherwise the next push would count the one just seen: badge 2 for one new thing.
     expect(calls).toContain("/push/register");
   });
 });

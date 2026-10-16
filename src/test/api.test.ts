@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, errorMessage } from "../lib/api";
-import { getAdminToken, getClientId, getKnownGames, saveAdminToken } from "../lib/identity";
+import { ApiError, api, checkHostToken, errorMessage } from "../lib/api";
+import { captureHostLink, getAdminToken, getClientId, getKnownGames, saveAdminToken } from "../lib/identity";
 
 const fetchMock = vi.fn();
 
@@ -84,6 +84,56 @@ describe("api client", () => {
     fetchMock.mockReturnValueOnce(reply(200, { state: {} }));
     await api.join("other", { name: "Jax", color: "#ff6b35", emoji: "🔥" });
     expect(getKnownGames()).toEqual(["other", "new1"]);
+  });
+
+  it("keeps the held host token over a host link's, and adopts the link's only once the server takes it", async () => {
+    // The server accepts only "real"; anything else is the 403 every host route answers.
+    fetchMock.mockImplementation((_url: string, init: RequestInit) =>
+      (init.headers as Record<string, string>)["x-admin-token"] === "real" ? reply(200, { state: {} }) : reply(403, { error: "Only the host can do that" }),
+    );
+    const sent = () => fetchMock.mock.calls.map(([, init]) => (init as RequestInit & { headers: Record<string, string> }).headers["x-admin-token"]);
+
+    // The host's real token wins over a bogus link: it's sent, and it stays.
+    saveAdminToken("hst1", "real");
+    expect(captureHostLink("/g/hst1", "", "#host=bogus")).toEqual({ search: "", hash: "" });
+    await api.lock("hst1");
+    expect(sent()).toEqual(["real"]);
+    expect(getAdminToken("hst1")).toBe("real");
+
+    // A device that first got a truncated link still recovers with the real one: tried after the 403, then kept.
+    fetchMock.mockClear();
+    saveAdminToken("hst2", "trunc");
+    captureHostLink("/g/hst2", "", "#host=real");
+    await api.finish("hst2");
+    expect(sent()).toEqual(["trunc", "real"]);
+    expect(getAdminToken("hst2")).toBe("real");
+
+    // Two bad tokens: the call fails, the held one stays and the link's is dropped.
+    fetchMock.mockClear();
+    saveAdminToken("hst3", "held");
+    captureHostLink("/g/hst3", "", "#host=bogus");
+    const err = (await api.lock("hst3").catch((e: unknown) => e)) as ApiError;
+    expect(err.status).toBe(403);
+    expect(getAdminToken("hst3")).toBe("held");
+    await api.lock("hst3").catch(() => {});
+    expect(sent()).toEqual(["held", "bogus", "held"]);
+  });
+
+  it("checkHostToken asks the server about a host link's token before the device trusts it", async () => {
+    fetchMock.mockImplementation((_url: string, init: RequestInit) =>
+      (init.headers as Record<string, string>)["x-admin-token"] === "real" ? reply(200, { ok: true }) : reply(403, { error: "Only the host can do that" }),
+    );
+    expect(await checkHostToken("hst4", "real")).toBe(true);
+    const { url, init, headers } = lastCall();
+    expect([url, init.method, headers["x-admin-token"]]).toEqual(["/api/games/hst4/host-check", "GET", "real"]);
+    expect(await checkHostToken("hst4", "bogus")).toBe(false);
+    fetchMock.mockImplementation(() => reply(404, { error: "Game not found" }));
+    expect(await checkHostToken("gone", "real")).toBe(false);
+    // Unknown (offline, or the server fumbled): the caller keeps the token.
+    fetchMock.mockImplementation(() => Promise.reject(new TypeError("Failed to fetch")));
+    expect(await checkHostToken("hst4", "real")).toBeNull();
+    fetchMock.mockImplementation(() => reply(500, {}));
+    expect(await checkHostToken("hst4", "real")).toBeNull();
   });
 
   it("deleteGame forgets the board locally", async () => {

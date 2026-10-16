@@ -37,7 +37,11 @@ const OFF_KEY = "jaxsquares.push.off";
 /** Must match the channel ids in worker/push/fcm.ts. */
 const ANDROID_CHANNEL_ID = "game-updates";
 const ANDROID_QUIET_CHANNEL_ID = "board-activity";
-/** Re-registering also resets the server's badge count, so do it on every open, but not on every tab flick. */
+/**
+ * Re-registering also resets the server's badge count. Throttled when there's no
+ * badge to keep in step (a tab flick needs no refresh); coming back to a cleared
+ * badge always resets it (onAppVisible on web, onAppResume in the app).
+ */
 const SYNC_INTERVAL_MS = 60 * 1000;
 const SW_READY_TIMEOUT_MS = 10 * 1000;
 /** A tap nobody claims (no onNotificationTap listener yet) falls back to a full navigation. */
@@ -392,24 +396,58 @@ export async function enablePush(): Promise<PushState> {
 }
 
 /**
+ * Tell the server to forget this device, then drop the subscription here
+ * whatever it answered: a dead endpoint/token gets 404/410 or UNREGISTERED on
+ * the next send, and the server deletes it then. Rejects only when both failed,
+ * i.e. pushes would still arrive.
+ */
+async function unregister(tellServer: () => Promise<unknown>, dropHere: () => Promise<unknown>): Promise<void> {
+  const told = await tellServer().then(
+    () => null,
+    (err: unknown) => err ?? new Error("Couldn't reach the server"),
+  );
+  try {
+    await dropHere();
+  } catch (err) {
+    if (told) throw told;
+    console.warn("push unsubscribe failed; the server already forgot this device", err);
+    return;
+  }
+  if (told) console.warn("push unregister failed; the server drops this device on its next send", told);
+}
+
+/**
  * Stop pushes to this device (all games). Remembered locally (isPushOff), so
  * the silent re-sync on the next open doesn't quietly turn them back on.
+ * Works offline (the device unsubscribes itself); rejects, and stays on, only
+ * if this device could still get pushes.
  */
 export async function disablePush(): Promise<void> {
   setPushOff(true);
-  if (isNative()) {
-    const { FirebaseMessaging } = await loadFm();
-    const { token } = await FirebaseMessaging.getToken();
-    await call("POST", "/push/unregister", { token });
-    await FirebaseMessaging.deleteToken();
-    return;
+  try {
+    if (isNative()) {
+      const { FirebaseMessaging } = await loadFm();
+      await unregister(
+        async () => call("POST", "/push/unregister", { token: (await FirebaseMessaging.getToken()).token }),
+        () => FirebaseMessaging.deleteToken(),
+      );
+      return;
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    await unregister(
+      () => call("POST", "/push/unregister", { endpoint: sub.endpoint }),
+      async () => {
+        if (!(await sub.unsubscribe())) throw new Error("Push subscription is still active");
+      },
+    );
+  } catch (err) {
+    // Still subscribed here and registered there: it isn't off, so don't remember it as off.
+    setPushOff(false);
+    throw err;
   }
-  if (!("serviceWorker" in navigator)) return;
-  const reg = await navigator.serviceWorker.getRegistration();
-  const sub = await reg?.pushManager.getSubscription();
-  if (!sub) return;
-  await call("POST", "/push/unregister", { endpoint: sub.endpoint });
-  await sub.unsubscribe();
 }
 
 /**
@@ -444,8 +482,15 @@ export function syncPush(force = false): Promise<void> {
 
 function onAppVisible(): void {
   if (document.visibilityState !== "visible") return;
-  if (!isNative()) (navigator as Partial<Pick<Navigator, "clearAppBadge">>).clearAppBadge?.().catch(() => undefined);
-  void syncPush();
+  const clearAppBadge = isNative() ? undefined : (navigator as Partial<Pick<Navigator, "clearAppBadge">>).clearAppBadge;
+  if (!clearAppBadge) {
+    void syncPush();
+    return;
+  }
+  void clearAppBadge.call(navigator).catch(() => undefined);
+  // The badge was just cleared, so reset the server's count now (like the native resume does);
+  // otherwise a push within the throttle window would count the ones already seen.
+  void syncPush(true);
 }
 
 let initialized = false;

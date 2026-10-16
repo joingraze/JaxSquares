@@ -144,25 +144,57 @@ export function isPeriodKeyFor(format: GameFormat, key: string): boolean {
 
 export const PRIZE_MONEY_ERROR = "Prize notes can't include money. Try something like 'Loser buys wings'.";
 
+/**
+ * The same rule for the other text a board shows everyone (the API answers 400
+ * with these). The board name is also every push's title.
+ */
+export const MONEY_ERRORS = {
+  name: "Board names can't mention money. Try something like 'Sunday Squares'.",
+  team: "Team names can't mention money.",
+  label: "Score labels can't mention money.",
+} as const;
+
+/** An amount: digits ("20", "1,000") or a number word, not inside a longer word. */
+const AMOUNT = String.raw`(?<![a-z])(?:\d[\d,.]*|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred|thousand|few|couple(?:\s+of)?|big)`;
+
 const MONEY_PATTERNS: readonly RegExp[] = [
   // Any currency symbol ($ € £ ¥ ₹ ¢ ...), e.g. "$20" or "5€".
   /\p{Sc}/u,
-  // Amounts with a currency code, e.g. "20 usd".
-  /\b(?:usd|eur|gbp)\b/,
+  // Currency codes and words, also stuck to a number ("20usd", "20dollars", "50 quid").
+  /(?<![a-z])(?:usd|cad|aud|nzd|eur|gbp|dollars?|quid(?!\s+pro\b))\b/,
+  // "Bucks" and "euros" as an amount ("5 bucks", "5bucks", "a buck"), never the team.
+  new RegExp(String.raw`${AMOUNT}\s*(?:bucks?|euros?)\b|\ba\s+buck\b`),
+  // Paying or owing an amount ("Loser pays winner 25", "owes 20 each"), but
+  // not paying for things ("Loser pays for 2 pizzas").
+  /\b(?:pay|pays|paid|paying|owe|owes|owed|owing)\b(?:\s+[a-z']+){0,2}\s+\d[\d,.]*(?=\s*(?:$|[^\sa-z]|(?:each|apiece|to|per|a|an|total|for|if|and|or)\b))/,
+  // Cash as the prize ("winner gets cash", "cash prize", "cash for the winner"),
+  // not a name that starts with it ("Cash cab") or a cashew.
+  /\bcash(?:[\s-]?(?:app|out)\b|\b(?=\s*(?:$|[^\sa-z]|(?:prizes?|money|rewards?|bonus\w*|payouts?|pool|to|for|from|in|or|and|each|only|back|up)\b)))/,
+  // The money pool ("winner takes the pot"), not a pot of chili or a pot luck.
+  /\b(?:the|whole|split)\s+pot\b(?!\s+(?:of|luck|roast|pie)\b)/,
   // Money words, payment apps and betting language.
-  /\b(?:dollars?|bucks?|cash|cash[\s-]?(?:app|out)|money|venmo\w*|paypal\w*|zelle\w*|payouts?|pay[\s-]outs?|pots?|jackpots?|buy[\s-]?ins?|bets?|betting|bettors?|wager\w*|gambl\w*)\b/,
+  /\b(?:money|venmo\w*|paypal\w*|zelle\w*|(?:apple|google|samsung)\s*pay|gpay|payouts?|pay[\s-]outs?|jackpots?|buy[\s-]?ins?|bets?|betting|bettors?|wager\w*|gambl\w*)\b/,
 ];
+
+/**
+ * True when free text talks about money: currencies, amounts, paying someone,
+ * payment apps, betting. Best effort; case, full-width letters and zero-width
+ * characters don't get around it.
+ */
+export function mentionsMoney(text: string): boolean {
+  const t = text
+    .normalize("NFKC")
+    .replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, "")
+    .toLowerCase();
+  return MONEY_PATTERNS.some((re) => re.test(t));
+}
 
 /**
  * Why a prize note isn't allowed, or null when it's fine. Shared so the create
  * form can validate inline with the exact rule the server enforces.
  */
 export function validatePrizeNote(note: string): string | null {
-  const text = note
-    .normalize("NFKC")
-    .replace(/[\u200b-\u200d\u2060\ufeff\u00ad]/g, "")
-    .toLowerCase();
-  return MONEY_PATTERNS.some((re) => re.test(text)) ? PRIZE_MONEY_ERROR : null;
+  return mentionsMoney(note) ? PRIZE_MONEY_ERROR : null;
 }
 
 /** Thrown by sanitizePrizes for a note that mentions money; `message` is safe to show. */

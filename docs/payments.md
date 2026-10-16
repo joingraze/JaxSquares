@@ -108,11 +108,19 @@ Do these steps in order. Payments stay in test mode until step 4.
    - Set `plugins.NativePurchases.autoFinishTransactions = false` in
      `capacitor.config.ts`. Then StoreKit only finishes a transaction after the
      server has verified it.
-   - Call `recoverIAPPurchases(getAdminToken)` from `src/lib/checkout.ts` once
-     at app launch. If the app is killed between Apple charging and the server
-     confirming, the board opens on the next launch. Each purchase carries the
-     board id in StoreKit's `appAccountToken`, so it can't be used for a
-     different board.
+   - Call `watchIAPPurchases({ adminTokenFor, onOpened, onUnused, onResume })`
+     from `src/lib/checkout.ts` once at app launch (`src/App.tsx` does). It
+     confirms unfinished purchases at launch and on every resume, and redeems
+     what StoreKit delivers while the app runs (`transactionUpdated`: an Ask to
+     Buy approval). If the app is killed between Apple charging and the server
+     confirming, the board opens on the next launch or resume. Each purchase
+     carries the board id in StoreKit's `appAccountToken`, so it can't be used
+     for a different board.
+   - `payWithIAP` never charges twice for one board: it first confirms an
+     unfinished purchase already bound to the board, and it buys nothing for a
+     board that's already open or gone. A purchase is only finished once the
+     server has recorded or rejected it for good (400, 409, 410); a bare 404 or
+     a failure leaves it unfinished for the next try.
 
 The server verifies each purchase by calling
 `GET /inApps/v1/transactions/{transactionId}` with an ES256 JWT (`aud`
@@ -146,8 +154,12 @@ If any is missing, the app keeps running the no-charge test checkout. The
 Worker logs `PAYMENTS_MODE=live but <names> not set` once per isolate, which
 you can see with `npx wrangler tail`.
 
-`/api/config` is cached for up to 5 minutes, so give clients that long to
-pick up the switch.
+`/api/config` isn't cached (`no-store`), and the client re-reads it every
+minute. A page that still says test mode when the server has gone live gets a
+403 from the test checkout, re-reads the config and switches to the real
+checkout. A price change shows up the same way: the web checkout shows and
+itemizes the PaymentIntent's own amount, and a still-payable intent at the old
+price is canceled at Stripe before it's replaced.
 
 Check it worked:
 
@@ -175,8 +187,9 @@ prints a `whsec_…`. Put the Stripe values in `.dev.vars`.
 
 ## Ledger
 
-`migrations/0003_purchases.sql` creates the `purchases` table. It has one row
-per payment reference:
+`migrations/0003_purchases.sql` creates the `purchases` table
+(`0006_purchases_unused.sql` adds the `unused` status). It has one row per
+payment reference:
 
 | `provider` | `reference` |
 |---|---|
@@ -186,6 +199,13 @@ per payment reference:
 
 The table has no foreign key to `games`, on purpose. Deleting a board doesn't
 erase its payment, and doesn't free its Apple transaction to be used again.
+
+`status` is `pending` (a Stripe intent not paid yet), `paid`, `canceled`, or
+`unused`: an App Store purchase Apple charged that opened nothing, because the
+board was already open (a second purchase) or was deleted before the purchase
+was confirmed. The host is told to ask Apple for a refund
+(reportaproblem.apple.com); support can find these with
+`SELECT * FROM purchases WHERE status = 'unused'`.
 
 ```sql
 -- Real revenue by method (gross, before Stripe fees / Apple commission)
@@ -198,8 +218,8 @@ FROM purchases WHERE status = 'paid' AND livemode = 1 GROUP BY provider;
 | Method | Path | Notes |
 |---|---|---|
 | POST | `/api/games/:id/pay/test` | Host only. Only works in test mode. Returns `{ state }`. |
-| POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret }` and reuses the board's open PaymentIntent. If the board is already open it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and opens it on the spot. |
-| POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already opened another board) and 502 (couldn't reach Apple, so retry). |
+| POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already open it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and opens it on the spot. |
+| POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already opened another board; or, with `unused: true` and `state`, the board was already open so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
 | POST | `/api/stripe/webhook` | Called by Stripe. Returns `{ received: true }`. |
 
 ## Client (`src/lib/checkout.ts`)
@@ -214,7 +234,7 @@ const label = `Create board · ${formatPrice(payments.priceCents, payments.curre
 
 // test:   state = await payTest(gameId, adminToken)
 // iap:    const r = await payWithIAP(gameId, adminToken)  // { status: "paid", state } | { status: "cancelled" } | { status: "pending" }
-// wallet: const { clientSecret } = await createStripeIntent(gameId, adminToken)
+// wallet: const { clientSecret, amountCents } = await createStripeIntent(gameId, adminToken)
 //         mountWalletButton(el, { clientSecret, amountCents, label: "Squares board",
 //           onPaid: async () => (state = await confirmStripePaid(gameId, adminToken)),
 //           onUnavailable: () => switchTo("card"), onCancel, onError })

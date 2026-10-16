@@ -25,7 +25,17 @@ import {
   useToast,
 } from "../components/ui";
 import { ApiError, api } from "../lib/api";
-import { CheckoutError, checkoutMethod, checkoutPrice, fetchAppConfig, payTest, payWithIAP, preloadCheckout } from "../lib/checkout";
+import {
+  CheckoutError,
+  checkoutMethod,
+  checkoutPrice,
+  fetchAppConfig,
+  payTest,
+  payWithIAP,
+  preloadCheckout,
+  UnconfirmedPurchaseError,
+  type PurchaseOutcome,
+} from "../lib/checkout";
 import { readableTeamColor } from "../lib/format";
 import { NAME_MAX_LENGTH, setProfile, useProfile } from "../lib/identity";
 import { haptic, platform } from "../lib/native";
@@ -54,6 +64,11 @@ import { useSchedule, type ScheduleLeague } from "../features/create/useSchedule
 interface Draft extends CheckoutDraft {
   /** inputSignature of the body that created it, so an unchanged re-tap reuses it. */
   sig: string;
+  /**
+   * An App Store purchase for it may still land (Ask to Buy, or charged but not
+   * confirmed yet), so it's never deleted: it opens when the purchase does.
+   */
+  paying?: boolean;
 }
 
 type Phase = "idle" | "working" | "live";
@@ -175,6 +190,17 @@ export default function CreateGame() {
 
   const openBoard = (id: string) => navigate(`/g/${encodeURIComponent(id)}?invite=1`, { replace: true });
 
+  /** The payment config for this tap (lib/checkout reuses it for a minute); the last one known if it can't load. */
+  const loadPayments = async (refresh = false): Promise<PaymentConfig | null> => {
+    const c = await fetchAppConfig({ refresh }).catch(() => null);
+    if (!c) return payments;
+    if (mounted.current && c.payments !== payments) {
+      setPayments(c.payments);
+      void checkoutPrice(c.payments, platform()).then((p) => mounted.current && setPrice(p));
+    }
+    return c.payments;
+  };
+
   /** The payoff: the button says you're live, confetti in the team colors, then the board + invite sheet. */
   const goLive = (game: Game) => {
     if (!mounted.current) return;
@@ -213,22 +239,44 @@ export default function CreateGame() {
       const sig = inputSignature(input);
       if (!current || current.sig !== sig) {
         const res = await api.createGame(input);
-        // The settings changed after a checkout that didn't finish: drop the stale unpaid draft.
-        if (current) void api.deleteGame(current.game.id, current.adminToken).catch(() => {});
+        // The settings changed after a checkout that didn't finish: drop the stale unpaid
+        // draft, unless an App Store purchase for it may still land (it stays on Home).
+        if (current && !current.paying) void api.deleteGame(current.game.id, current.adminToken).catch(() => {});
         current = { game: res.game, adminToken: res.adminToken, sig };
         setDraft(current);
         if (!res.paymentRequired) return goLive(current.game);
       }
-      const config = payments ?? (await fetchAppConfig().then((c) => c.payments, () => null));
-      const method = config ? checkoutMethod(config, platform()) : null;
+      // Read per tap, so a page left open across the switch to live checkout pays the right way.
+      let config = await loadPayments();
+      let method = config ? checkoutMethod(config, platform()) : null;
       if (method === "test") {
-        await payTest(current.game.id, current.adminToken);
-        return goLive(current.game);
+        try {
+          await payTest(current.game.id, current.adminToken);
+          return goLive(current.game);
+        } catch (err) {
+          // Test checkout was switched off after this config was read: use the real one.
+          if (!(err instanceof CheckoutError && err.status === 403)) throw err;
+          config = await loadPayments(true);
+          method = config ? checkoutMethod(config, platform()) : null;
+          if (!method || method === "test") throw err;
+        }
       }
       if (method === "iap") {
         // The App Store's own sheet is the confirm step.
-        const r = await payWithIAP(current.game.id, current.adminToken, config?.iapProductId);
+        let r: PurchaseOutcome;
+        try {
+          r = await payWithIAP(current.game.id, current.adminToken, config?.iapProductId);
+        } catch (err) {
+          // Maybe charged and not confirmed yet: this draft must not be deleted.
+          current = { ...current, paying: true };
+          setDraft(current);
+          throw err;
+        }
         if (r.status === "paid") return goLive(current.game);
+        if (r.status === "pending") {
+          current = { ...current, paying: true };
+          setDraft(current);
+        }
         setPhase("idle");
         setNotice(r.status === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : "No charge. Your draft is saved on Home.");
         return;
@@ -238,7 +286,10 @@ export default function CreateGame() {
       setSheetOpen(true);
     } catch (err) {
       // Already open (paid elsewhere, or a retried test checkout): that's the happy path.
-      if (err instanceof CheckoutError && err.status === 409 && err.state && current) return goLive(current.game);
+      if (err instanceof CheckoutError && err.status === 409 && err.state && current) {
+        if (err.unused) toast.show({ title: "That purchase wasn't needed", description: err.message, duration: 0 });
+        return goLive(current.game);
+      }
       setPhase("idle");
       createFailed(err);
     }
@@ -247,6 +298,10 @@ export default function CreateGame() {
   const createFailed = (err: unknown) => {
     void haptic("error");
     const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
+    if (err instanceof UnconfirmedPurchaseError) {
+      toast.show({ title: "Payment received", description: message });
+      return;
+    }
     if (err instanceof ApiError && err.status === 400 && message === PRIZE_MONEY_ERROR) {
       setDetailsOpen(true);
       toast.error("Keep prizes fun", message);

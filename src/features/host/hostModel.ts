@@ -3,10 +3,12 @@
 // number-draw reveal. No React and no IO so the rules are unit-tested.
 
 import {
+  MONEY_ERRORS,
   PRIZE_MAX_LENGTH,
   SHARED_DRAW_KEY,
   everyScoreIndex,
   everyScorePeriod,
+  mentionsMoney,
   periodsFor,
   prizeFor,
   validatePrizeNote,
@@ -15,6 +17,7 @@ import {
   boardPeriods,
   cellKey,
   drawFor,
+  liveLabel,
   resolveResults,
   reverseCell,
   totalSquares,
@@ -23,7 +26,7 @@ import {
   type Cell,
   type PeriodResult,
 } from "../../../shared/squares";
-import type { Game, GameState, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
+import type { Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
 /** Highest score the API accepts. */
@@ -247,13 +250,47 @@ export function scoreTargets(state: Pick<GameState, "game" | "scores">): ScoreTa
   return [...entries, { key: NEXT_ENTRY, label: everyScorePeriod(n + 1).label, existing: null }];
 }
 
-/** The period the keypad should open on: the next one without a result (every-score: a new entry). */
-export function defaultTargetKey(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners">): string {
+/** The live period number each fixed period ends with (linked boards); "final" ends with the game. */
+const ENDS_AFTER: Record<string, number> = { q1: 1, q2: 2, q3: 3 };
+
+/** Play is stopped right after `live.period`: the feed's "End of 1st" or "Halftime" (see worker/scores/espn.ts). */
+function atBreak(live: LiveStatus): boolean {
+  return live.state === "in" && /^(end of|halftime)/i.test(live.detail.trim());
+}
+
+/** The real game is still playing for this period, so its score isn't known yet. */
+function stillInPlay(live: LiveStatus | null, key: string): boolean {
+  if (!live || live.state !== "in") return false;
+  const n = ENDS_AFTER[key];
+  if (n === undefined) return true;
+  return live.period < n || (live.period === n && !atBreak(live));
+}
+
+/** The live score is this period's final score: the break right after it, or the final whistle. */
+function liveScoreIsFor(state: Pick<GameState, "game" | "live">, key: string): boolean {
+  const { live } = state;
+  if (!live) return false;
+  if (key === "final") return live.state === "post" && liveLabel(live, state.game.status) === "Final";
+  return live.period === ENDS_AFTER[key] && atBreak(live);
+}
+
+/**
+ * The period the keypad should open on: the next one without a result
+ * (every-score: a new entry). On a linked board that period may still be in
+ * play, and a host score would pin it for good, so a fix opens on the latest
+ * decided period instead.
+ */
+export function defaultTargetKey(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners" | "live">): string {
   const { game } = state;
   if (game.format.periods === "every-score") return NEXT_ENTRY;
-  const next = upcomingPeriod(state);
-  if (next) return next.key;
   const periods = boardPeriods(game, state.scores);
+  const next = upcomingPeriod(state);
+  if (next && stillInPlay(state.live, next.key)) {
+    const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
+    const last = periods.filter((p) => done.has(p.key)).at(-1);
+    if (last) return last.key;
+  }
+  if (next) return next.key;
   return periods[periods.length - 1]?.key ?? "final";
 }
 
@@ -292,14 +329,16 @@ export interface ScoreSuggestion {
 }
 
 /**
- * A one-tap fill for a new period: the live score on linked boards, otherwise
- * the score recorded before it (nobody scored since). Null when editing a
- * recorded score or on every-score boards.
+ * A one-tap fill for a new period: on linked boards the live score, but only
+ * when it is that period's score (its break, or the final whistle; mid-period
+ * it's just the score so far); otherwise the score recorded before it (nobody
+ * scored since). Null when editing a recorded score or on every-score boards.
  */
 export function scoreSuggestion(state: GameState, key: string): ScoreSuggestion | null {
   if (state.game.format.periods === "every-score" || key === NEXT_ENTRY) return null;
   if (state.scores.some((s) => s.periodKey === key)) return null;
   if (state.live && state.live.state !== "pre") {
+    if (!liveScoreIsFor(state, key)) return null;
     return { label: "Live score", draft: { x: String(state.live.scoreX), y: String(state.live.scoreY) } };
   }
   const targets = scoreTargets(state);
@@ -502,7 +541,8 @@ export function editErrors(draft: EditDraft): { name: string | null; prizes: Rec
     const e = prizeError(v);
     if (e) prizes[k] = e;
   }
-  return { name: tidy(draft.name) ? null : "Give your board a name", prizes };
+  const name = tidy(draft.name);
+  return { name: !name ? "Give your board a name" : mentionsMoney(name) ? MONEY_ERRORS.name : null, prizes };
 }
 
 /** True when max squares per person can still change (the API refuses once locked). */

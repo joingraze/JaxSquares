@@ -14,6 +14,7 @@ import {
   fallbackActivityText,
   headlineScore,
   lostToOthers,
+  mineAfter,
   myNumbers,
   myWinIds,
   nearestPath,
@@ -114,6 +115,21 @@ describe("decideTap", () => {
     expect(decideTap({ ...base, cell: empty, maxPerPlayer: 3, mineCount: 2, selection: sel(["5,5"]) })).toEqual({ kind: "limit", max: 3 });
     // Unselecting is always allowed, even at the limit.
     expect(decideTap({ ...base, cell: empty, maxPerPlayer: 1, mineCount: 1, selection: sel(["0,0"]) }).kind).toBe("unselect");
+  });
+
+  it("lets me swap at the limit: a picked give-back makes room for one new pick", () => {
+    const atMax = { ...base, maxPerPlayer: 3, mineCount: 3 };
+    expect(decideTap({ ...atMax, cell: empty })).toEqual({ kind: "limit", max: 3 });
+    // The callout's advice: tap one of yours to give it back, then pick another.
+    const giving = applyTap(EMPTY_SELECTION, mine.key, decideTap({ ...atMax, cell: mine }));
+    expect(decideTap({ ...atMax, cell: empty, selection: giving }).kind).toBe("select");
+    const swapped = applyTap(giving, empty.key, { kind: "select" });
+    expect(mineAfter(3, swapped)).toBe(3);
+    // One new square per give-back...
+    expect(decideTap({ ...atMax, cell: { key: "0,1", ownerId: null, mine: false }, selection: swapped })).toEqual({ kind: "limit", max: 3 });
+    // ...and keeping the given-back square after all would make four.
+    expect(decideTap({ ...atMax, cell: mine, selection: swapped })).toEqual({ kind: "limit", max: 3 });
+    expect(decideTap({ ...atMax, cell: mine, selection: giving }).kind).toBe("unselect-release");
   });
 });
 
@@ -492,6 +508,42 @@ describe("right now", () => {
     expect(now?.drawKey).toBe("q2");
     // Digit 7 is in column 6 of the shifted draw.
     expect(now?.cell).toEqual({ row: 6, col: 6 });
+  });
+
+  it("moves on to the next period during a break, once the one just ended is recorded", () => {
+    // ESPN keeps period 2 all through halftime; the board has already recorded the Half.
+    const SHIFTED: NumberDraw = { x: DIGITS.x.map((_, i) => DIGITS.x[(i + 9) % 10]), y: DIGITS.y };
+    const fresh = { periods: "quarters" as const, reverse: false, boardSize: 100 as const, freshNumbers: true };
+    const halftime = { state: "in" as const, period: 2, clock: "0:00", detail: "Halftime", scoreX: 14, scoreY: 10, updatedAt: 1 };
+    const state = makeState({
+      game: { status: "locked", format: fresh, numbers: { q1: DIGITS, q2: DIGITS, q3: SHIFTED, final: DIGITS } },
+      // 14-10 is (9,4) under the Half's digits, (9,5) under Q3's.
+      squares: [sq(9, 4, ME), sq(9, 5, MAYA)],
+      scores: [score("q1", 7, 3), score("q2", 14, 10)],
+      live: halftime,
+    });
+    const now = rightNow(state, ME);
+    expect(now).toMatchObject({ live: true, periodKey: "q3", drawKey: "q3", label: "Q3", cell: { row: 9, col: 5 }, ownerId: MAYA, mine: false, threat: null });
+    expect(nowSentence(now!)).toBe("Wins if it's 14–10 at the end of Q3");
+    expect(defaultDrawKey(state)).toBe("q3");
+    expect(periodCards(state, resolveResults(state)).map((c) => [c.key, c.status])).toEqual([
+      ["q1", "done"],
+      ["q2", "done"],
+      ["q3", "live"],
+      ["final", "later"],
+    ]);
+    // The board's live square follows: Maya's, under the Q3 digits.
+    const cells = buildCells({ state, me: ME, selection: EMPTY_SELECTION, results: resolveResults(state) });
+    expect(cells[9][5].live).toBe(true);
+    expect(cells[9][4].live).toBe(false);
+
+    // Same at the end of the 1st on a shared draw: it's Half's square now.
+    const endOfFirst = makeState({
+      game: { status: "locked", numbers: { "*": DIGITS } },
+      scores: [score("q1", 7, 3)],
+      live: { ...halftime, period: 1, detail: "End of 1st", scoreX: 7, scoreY: 3 },
+    });
+    expect(rightNow(endOfFirst, ME)).toMatchObject({ periodKey: "q2", label: "Half" });
   });
 
   it("says nothing before the draw, once every period is decided, or after the final", () => {

@@ -12,7 +12,7 @@
 // trip per mutation, and the state it returns is exactly what was written.
 
 import { isPlayerId } from "../shared/playerId";
-import { boardPeriods, liveCell, myWins, resolveResults, totalSquares } from "../shared/squares";
+import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
   Game,
@@ -203,11 +203,15 @@ const rowToLive = (r: LiveRow): LiveStatus => ({
  * Activity rows store public ids. Rows written before public ids existed hold
  * clientIds (as `actor` and in a winner's `clientIds`); those are translated
  * here, and anything that isn't a known player or a well-formed public id is
- * dropped, so no clientId can ever reach a client through the feed.
+ * dropped, so no clientId can ever reach a client through the feed. A value
+ * that is already a member's public id stays as it is, even if a row's
+ * clientId equals it (the API refuses such clientIds now; an older row may
+ * hold one), so nobody can take over another player's entries.
  */
 function rowToActivity(ids: Ids) {
+  const publicIds = new Set(ids.values());
   const actorOf = (v: unknown): string | null =>
-    typeof v !== "string" ? null : (ids.get(v) ?? (isPlayerId(v) ? v : null));
+    typeof v !== "string" ? null : publicIds.has(v) ? v : (ids.get(v) ?? (isPlayerId(v) ? v : null));
   return (r: ActivityRow): Activity => {
     const data = json<Record<string, unknown>>(r.data, {});
     if (Array.isArray(data.clientIds)) {
@@ -424,18 +428,42 @@ export async function deleteGame(db: D1Database, gameId: string): Promise<boolea
   return (results[results.length - 1].meta.changes ?? 0) > 0;
 }
 
-/** Insert or rename a player. */
+/**
+ * Insert or rename a player. A new player goes in only while the board has
+ * fewer than `maxPlayers` (checked inside the transaction, so racing joins
+ * can't overshoot); renames always apply.
+ */
 export function upsertPlayer(
   db: D1Database,
   gameId: string,
   p: { clientId: string; name: string; color: string; emoji: string; joinedAt: number },
+  maxPlayers: number,
 ): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO players (game_id, client_id, name, color, emoji, joined_at) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO players (game_id, client_id, name, color, emoji, joined_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6
+       WHERE EXISTS (SELECT 1 FROM players WHERE game_id = ?1 AND client_id = ?2)
+          OR (SELECT COUNT(*) FROM players WHERE game_id = ?1) < ?7
        ON CONFLICT (game_id, client_id) DO UPDATE SET name = excluded.name, color = excluded.color, emoji = excluded.emoji`,
     )
-    .bind(gameId, p.clientId, p.name, p.color, p.emoji, p.joinedAt);
+    .bind(gameId, p.clientId, p.name, p.color, p.emoji, p.joinedAt, maxPlayers);
+}
+
+/**
+ * Host removes a player (by public id) and frees their squares; null when
+ * nobody on the board has that id. Only while squares are still being picked
+ * (re-checked inside the transaction), and never the host.
+ */
+export async function removePlayer(db: D1Database, gameId: string, playerId: string): Promise<D1PreparedStatement[] | null> {
+  const { rows, ids } = await memberRows(db, gameId);
+  const clientId = rows.find((r) => publicId(ids, r.client_id) === playerId)?.client_id;
+  if (!clientId) return null;
+  const picking = `EXISTS (SELECT 1 FROM games WHERE id = ?1 AND status IN ('draft', 'open') AND host_client_id <> ?2)`;
+  return [
+    db.prepare(`DELETE FROM squares WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
+    db.prepare(`DELETE FROM players WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
+  ];
 }
 
 /**
@@ -567,6 +595,23 @@ export function deleteScore(db: D1Database, gameId: string, periodKey: string): 
   return db.prepare(`DELETE FROM scores WHERE game_id = ? AND period_key = ?`).bind(gameId, periodKey);
 }
 
+/**
+ * Drops an every-score entry the feed took back: only a provider score (a host
+ * entry stays), then its host pick once the entry is gone, so a later entry
+ * reusing the index is decided by its own score.
+ */
+export function deleteLiveEntry(db: D1Database, gameId: string, periodKey: string): D1PreparedStatement[] {
+  return [
+    db.prepare(`DELETE FROM scores WHERE game_id = ? AND period_key = ? AND source = 'live'`).bind(gameId, periodKey),
+    db
+      .prepare(
+        `DELETE FROM manual_winners WHERE game_id = ?1 AND period_key = ?2
+           AND NOT EXISTS (SELECT 1 FROM scores WHERE game_id = ?1 AND period_key = ?2)`,
+      )
+      .bind(gameId, periodKey),
+  ];
+}
+
 export function upsertManualWinner(
   db: D1Database,
   gameId: string,
@@ -670,12 +715,8 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
     const liveStatus = liveRow ? rowToLive(liveRow) : null;
     const squares = (squaresBy.get(r.id) ?? []).map(toSquare);
     const boardScores = (scoresBy.get(r.id) ?? []).map(rowToScore);
-    const results = resolveResults({
-      game,
-      squares,
-      scores: boardScores,
-      manualWinners: (manualBy.get(r.id) ?? []).map(rowToManual),
-    });
+    const manualWinners = (manualBy.get(r.id) ?? []).map(rowToManual);
+    const results = resolveResults({ game, squares, scores: boardScores, manualWinners });
     return {
       id: game.id,
       name: game.name,
@@ -698,21 +739,20 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       lastActivityAt: r.updated_at,
       createdAt: game.createdAt,
       latestScore: latestScoreOf(game, boardScores, liveStatus),
-      leaderPlayerId: leaderOf(game, squares, liveStatus, results),
+      leaderPlayerId: leaderOf({ game, squares, live: liveStatus, scores: boardScores, manualWinners }, results),
+      // Read with the row, before the batch above: everything else is at least this new.
+      version: r.version,
     };
   });
 }
 
-/** The live feed's score while it's on (or final), else the latest recorded period's. */
+/** The live feed's score while it's on (or over), else the latest recorded period's. */
 export function latestScoreOf(
-  game: Pick<Game, "format" | "periods">,
+  game: Pick<Game, "format" | "periods" | "status">,
   scores: Score[],
   live: LiveStatus | null,
 ): GameSummary["latestScore"] {
-  if (live && live.state !== "pre") {
-    const label = live.state === "post" ? "Final" : live.detail.trim() || `Q${live.period} ${live.clock}`.trim();
-    return { scoreX: live.scoreX, scoreY: live.scoreY, label };
-  }
+  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, game.status) };
   const byKey = new Map(scores.map((s) => [s.periodKey, s]));
   const last = boardPeriods(game, scores)
     .filter((p) => byKey.has(p.key))
@@ -723,12 +763,10 @@ export function latestScoreOf(
 
 /** Who holds the square the live score points at; with no live square, the latest period's winner. */
 export function leaderOf(
-  game: Game,
-  squares: Square[],
-  live: LiveStatus | null,
+  state: Pick<GameState, "game" | "squares" | "live" | "scores" | "manualWinners">,
   results: ReturnType<typeof resolveResults>,
 ): string | null {
-  const now = liveCell({ game, squares, live });
+  const now = liveCell(state);
   if (now) return now.playerId;
   return results.at(-1)?.winnerPlayerId ?? null;
 }
@@ -769,13 +807,15 @@ export async function deleteStaleDrafts(db: D1Database, before: number, limit = 
     .all<{ id: string }>();
   if (results.length === 0) return [];
   const ids = JSON.stringify(results.map((r) => r.id));
-  // Re-checked inside the transaction: a draft paid for since the SELECT is kept.
+  // Re-checked inside the transaction: a draft paid for since the SELECT is
+  // kept, so only the ids the last statement actually deleted are returned
+  // (the cron closes their rooms).
   const stillDraft = `SELECT id FROM games WHERE status = 'draft' AND id IN (SELECT value FROM json_each(?1))`;
-  await db.batch([
+  const out = await db.batch([
     ...GAME_TABLES.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id IN (${stillDraft})`).bind(ids)),
-    db.prepare(`DELETE FROM games WHERE id IN (${stillDraft})`).bind(ids),
+    db.prepare(`DELETE FROM games WHERE id IN (${stillDraft}) RETURNING id`).bind(ids),
   ]);
-  return results.map((r) => r.id);
+  return (out[out.length - 1].results as { id: string }[]).map((r) => r.id);
 }
 
 /** Keeps only the newest `keep` activity rows of each game. Returns how many rows went. */

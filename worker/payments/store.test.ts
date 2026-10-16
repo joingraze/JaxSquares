@@ -7,7 +7,7 @@ import { createTestD1, type TestD1 } from "./testD1";
 
 let t: TestD1;
 beforeEach(async () => {
-  t = await createTestD1(["migrations/0003_purchases.sql"]);
+  t = await createTestD1(["migrations/0003_purchases.sql", "migrations/0006_purchases_unused.sql"]);
 });
 
 const iap = (gameId: string): store.NewPurchase => ({
@@ -41,6 +41,15 @@ describe("purchases ledger", () => {
     await store.recordPaid(t.d1, iap("g1"));
     await store.markCanceled(t.d1, "2000000000000001");
     expect((await store.getPurchase(t.d1, "2000000000000001"))?.status).toBe("paid");
+  });
+
+  it("keeps a purchase that opened nothing as unused, without touching a reference already in the ledger", async () => {
+    expect(await store.recordUnused(t.d1, iap("g1"), 5)).toMatchObject({ gameId: "g1", status: "unused", amountCents: 499, paidAt: 5 });
+    // Already paid for g2: neither downgraded nor taken by g1.
+    const paid = { ...iap("g2"), reference: "2000000000000002" };
+    await store.recordPaid(t.d1, paid, 6);
+    expect(await store.recordUnused(t.d1, { ...paid, gameId: "g1" }, 7)).toMatchObject({ gameId: "g2", status: "paid", paidAt: 6 });
+    expect(await store.latestPending(t.d1, "g1", "iap")).toBeNull();
   });
 
   it("rejects unknown providers at the schema level", async () => {

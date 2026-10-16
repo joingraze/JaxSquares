@@ -18,15 +18,21 @@ exception so far: the public-id rename below, which closed an impersonation hole
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
 - Real time: every mutation is pushed to every open board within one second.
 - Prize notes never mention money: `validatePrizeNote` (`shared/formats.ts`)
-  rejects currency symbols/amounts and money, payment-app and betting words; the
+  rejects currency symbols, codes and amounts (also stuck to a number, "20usd"),
+  paying or owing an amount, and money, payment-app and betting words; the
   API answers 400 "Prize notes can't include money. Try something like 'Loser
-  buys wings'." (App Store guideline 5.3).
+  buys wings'." (App Store guideline 5.3). The same check (`mentionsMoney`)
+  covers the board name (every push's title), team names and every-score
+  labels: 400 with `MONEY_ERRORS.name` / `.team` / `.label`.
 
 ## Identity: secret clientId, public player id
 
 The `clientId` is a bearer credential: whoever sends it *is* that player. So it
 is only ever sent as the `x-client-id` header and is never returned by the API,
-put in a URL, pushed over a socket or shown in the UI.
+put in a URL, pushed over a socket or shown in the UI. A valid one is 8–64
+base64url chars and never exactly 22 (`isClientId` in `shared/playerId.ts`): a
+public id is in every `GameState`, and sent as a clientId it would be taken for
+that player's own entries, so the API answers 401 (the app's ids are 32 or 36).
 
 Everything public names a player by their **public player id**:
 
@@ -74,7 +80,8 @@ the same value synchronously.) It is stable per device and one-way.
   (UTC minute 17) it also runs housekeeping (`worker/housekeeping.ts`): deletes
   boards still in `draft` (never paid) 7 days after creation (closing their
   rooms like a host delete), prunes activity beyond the newest 200 per game, and
-  drops expired rate-limit windows.
+  drops expired rate-limit windows. An App Store purchase for a deleted draft
+  that's confirmed later isn't lost: `/pay/iap` keeps it as `unused` (410).
 
 ## HTTP API
 
@@ -84,26 +91,28 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
-| GET | `/api/config` | – | – | `AppConfig` |
+| GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute) |
 | GET | `/api/schedule?league=nfl\|ncaaf` | – | – | `{ events: ScheduleEvent[] }` (next ~10 days, cached) |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on a money prize note; 429 |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on money in a prize note, the name or a team name; 429 |
 | GET | `/api/games/:id` | – | – | `GameState` |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on a money prize note |
+| GET | `/api/games/:id/host-check` | C H | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a prize note or the name |
 | DELETE | `/api/games/:id` | C H | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404 |
-| POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename) |
+| POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
+| DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `draft`/`open`; 400 for the host, 404 if not on the board, 409 once locked. They may join again |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
 | POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers) |
-| POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry |
-| DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }` |
+| POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
+| DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
 | GET | `/api/me/games` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; activates draft) |
-| POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret }` (PaymentIntent for this board) |
-| POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates) |
+| POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board; show and itemize its amount) |
+| POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates). A verified purchase that can't open the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already open, 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
 | POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }` |
 | POST | `/api/push/register` | C | `PushRegistration` | `{ ok: true }` |
 | POST | `/api/push/unregister` | C | `{ endpoint? , token? }` | `{ ok: true }` |
@@ -113,12 +122,27 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | GET | `/api/health` | – | – | `{ ok: true }` |
 
 Rate limits (`worker/rateLimit.ts`, fixed windows in the D1 `rate_limits` table
-keyed by `<rule>:<public player id>`; fail open if the table is unavailable):
+keyed by `<rule>:<public player id>`, `<rule>:<game id>` for per-board rules, or
+`<rule>:<hashed address>` for per-address rules, so the table holds no clientId
+or raw IP; fail open if the table is unavailable). A clientId is free to mint,
+so each per-device rule has a per-address twin keyed by `CF-Connecting-IP` (set
+by Cloudflare; not applied when absent, e.g. in tests). The address limits are
+generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 
 | Rule | Limit | Counts |
 |---|---|---|
 | `create` | 10 per device per hour | valid `POST /api/games` requests |
 | `squares` | 60 per device per minute | `claim` + `release` together |
+| `join` | 60 per device per minute | valid `join` requests (joins and renames) |
+| `join-board` | 30 per board per minute | new players joining that board (clientIds are free to mint, so this is per board) |
+| `create-ip` | 20 per address per hour | what `create` counts, for every device behind one address |
+| `squares-ip` | 300 per address per minute | what `squares` counts, for every device behind one address |
+| `join-ip` | 120 per address per minute | what `join` counts, for every device behind one address |
+
+`maxPerPlayer` (the board's squares-per-player cap) counts per device, not per
+person: with no accounts, someone can mint more devices. The host can remove a
+player and free their squares while squares are being picked
+(`DELETE /api/games/:id/players/:playerId`).
 
 Non-API routes:
 - `GET /.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
@@ -136,20 +160,26 @@ WebSocket held by the game's `GameRoom` (hibernatable). The Worker forwards only
 `player` (when it is a well-formed public id) and `watch=0`; everything else in
 the query is ignored.
 
-- `player` only de-duplicates the watcher count across tabs and devices.
+- `player` only de-duplicates the watcher count across tabs and devices. The
+  app always sends it; a socket without one gets every message but isn't
+  counted.
 - `watch=0` makes the socket **passive**: it receives every message (state,
   events, presence, deleted) but is not counted in `presence.watching`, and
   opening or closing it doesn't send presence to anyone else (it hears the
   current count once, on connect). Home uses it to follow every board you're in
   without inflating "N watching". Any other value (or none) is an active socket.
   A device with an active and a passive socket on the same board counts once.
+- A room holds at most 500 sockets (`MAX_SOCKETS` in `worker/room.ts`); past
+  that the upgrade is refused (HTTP 503) and the client falls back to polling.
 
 Server → client (`LiveMessage`, JSON):
 - `{ type: "state", state }` first on connect, then after every mutation. Clients
-  keep the highest `version` (equal versions are re-applied).
+  keep the highest `version` (equal versions are re-applied). The first one is
+  the newest the room has: if a change was broadcast while the socket's D1 read
+  was in flight, the socket starts from that change, not the older read.
 - `{ type: "event", activity }` once per new activity (toasts, haptics).
 - `{ type: "presence", watching }` whenever an active socket connects or leaves:
-  distinct active devices (sockets without `player` count individually).
+  distinct active devices with a `player`.
 - `{ type: "deleted" }` when the board is deleted (host `DELETE`, or housekeeping
   removing a stale draft). It is the last message; the room then closes the
   socket with code **4404** and drops its storage and alarm.
@@ -161,7 +191,9 @@ about 10 s, because local workerd keeps the TCP connection open for ~10 s after
 the close handshake and the dev server's socket bridge (miniflare's
 `coupleWebSocket`) only forwards the close once that connection ends; the
 `deleted` message arrives within ~100 ms. A socket opened after deletion is
-refused (HTTP 404), and `GET /api/games/:id` answers 404.
+refused (HTTP 404), and `GET /api/games/:id` answers 404; so is one whose
+board is deleted while it opens (the room remembers the delete in memory, and
+a broadcast arriving after it doesn't bring the room's storage or alarm back).
 
 Keepalive: the client sends the text `ping` every 25 s and the room answers
 `pong` without waking from hibernation (a JSON `{"type":"ping"}` gets
@@ -184,14 +216,25 @@ optional in the type only so older fixtures type-check):
 - `latestScore: { scoreX, scoreY, label } | null`: the live feed's score while a
   linked game is on or over (`label` is the provider's clock, e.g. "Q3 4:12",
   or "Final"), else the latest recorded period's score (`label` = that
-  period's label: "Q1", "Half", "Score 3"). null before any score.
+  period's label: "Q1", "Half", "Score 3"). null before any score. "Final"
+  only for a finished game (`liveLabel` in `shared/squares.ts`): a postponed or
+  canceled game is also "post" but shows the provider's word ("Postponed").
 - `leaderPlayerId: string | null`: public id of whoever holds the square the
   live score points at right now; with no live square, the latest resolved
   period's winner. null when there is none yet or nobody claimed that square.
 
+`version` is the board's `GameState.version` when the summary was read (always
+sent; optional in the type for the same reason). Nothing in the summary is
+older than it.
+
 Home follows boards that are still moving over passive sockets (`watch=0`, at
 most 12) and lays each board's live state over its summary; the summary list
-itself refreshes on focus and every 30 s.
+itself refreshes on focus and every 30 s. A state counts only once it came from
+the network (not the cache), and never when it is older than the summary's
+`version`: a board Home stopped following, or a final the host corrected (score
+edits, manual winners and deleting the Final score all still work on a final
+board). Finished boards on screen are fetched once per Home visit, and again
+when their summary's `version` moves past the state held.
 
 ## Activity
 
@@ -223,8 +266,14 @@ rows per game in D1.
   team's score mapped to the row/col whose digit list contains it), reverse cell,
   `resolveResults(state)` → per-period results honoring `ManualWinner` overrides,
   and dashboard helpers. Pure and unit-tested.
-- "Final" includes overtime. Every-score boards record each change in either team's
-  score as a new entry.
+- "Final" includes overtime. Every-score boards record each rise in either team's
+  score as a new entry; when the feed corrects a score down (a touchdown
+  overturned), its entries above the new score are dropped with their host
+  picks (`retractedEntries`), never a host's, and nothing is announced.
+- While a linked game is on, the period in play is `periodInPlay`: the live
+  period's own, or the next undecided one once that's recorded (ESPN keeps
+  period 2 through halftime). `liveCell`, the board's "Right now" and its draw
+  tab follow it.
 
 ## Module ownership (one owner per file)
 
@@ -261,7 +310,7 @@ then removed from the URL (`replace`), so back/refresh doesn't repeat it.
 | `?invite=1` | create flow, after the board opens | `GameView` | opens the invite sheet (even while still `draft` waiting on a payment webhook; it re-checks until open) |
 | `?checkout=1` | Home card "Finish setup" (unpaid board) | `HostControls` | opens `CheckoutSheet` for the draft, if this device holds the admin token and the board is still `draft` |
 | `?draw=1` | Home card "Draw numbers", inbox "Your board is full" | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet |
-| `?host=<adminToken>` | a host link ("Host from another phone") | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar |
+| `#host=<adminToken>` (fragment; the older `?host=` still works) | a host link ("Host from another phone", `hostLinkUrl`) | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar. The fragment is never sent, so the token stays out of the Worker's request logs. Only a real board code (`[a-z0-9]{4,16}`, lowercased) counts; a malformed one is ignored. A token the device already holds is never overwritten (anyone with the invite can craft `#host=x`, and the server never re-issues it): a different one is kept aside in memory, tried by the API client only after the held one gets a 403, and adopted once it works. A device holding none uses the token at once and checks it (`GET /api/games/:id/host-check`); one the server refuses is dropped again. Opened while `hydrateIdentity` is still reading the native store, the capture waits for it. The board treats this device as the host, not a newcomer (no invite hero, no join sheet on the first tap) |
 
 Checkout for drafts: `CheckoutSheet` (`src/features/create/CheckoutSheet.tsx`)
 is self-contained: given the board (`GET /api/games/:id`), the saved admin token
@@ -319,8 +368,8 @@ type NotifyEvent = (
 notify(env: Env, gameId: string, event: NotifyEvent): Promise<void>   // call via ctx.waitUntil
 ```
 Core passes `actor` on host actions: `numbers-drawn` from `POST /lock`, `final`
-from `POST /final` and from a typed-in board's Final score, and
-`player-joined`. `winner` never has an actor (you hear about your own square even
+from `POST /final` and from a typed-in board's Final score, `player-joined`,
+and `board-full` (whoever claimed the last square). `winner` never has an actor (you hear about your own square even
 when you typed the score); live-score events have none either. Push resolves
 public ids to devices through `getMembers()`.
 `worker/index.ts` mounts the three routers under `/api` and calls `notify` from the

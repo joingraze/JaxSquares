@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NavigationType, Outlet, ScrollRestoration, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { checkHostToken } from "../lib/api";
 import { captureHostLink } from "../lib/identity";
 import * as push from "../lib/push";
 import { ShellContext, TAB_PATHS, type ShellApi } from "./shell";
@@ -65,10 +66,10 @@ export function AppShell() {
   }
   const transition = anim.current.transition;
 
-  // ---- host links opened inside the app (?host=<token>) ----
+  // ---- host links opened inside the app (#host=<token>, or the older ?host=<token>) ----
   useEffect(() => {
-    const rest = captureHostLink(location.pathname, location.search);
-    if (rest !== null) navigate({ pathname: location.pathname, search: rest, hash: location.hash }, { replace: true });
+    const rest = captureHostLink(location.pathname, location.search, location.hash, checkHostToken);
+    if (rest !== null) navigate({ pathname: location.pathname, ...rest }, { replace: true });
   }, [location.pathname, location.search, location.hash, navigate]);
 
   // ---- push received while the app is open ----

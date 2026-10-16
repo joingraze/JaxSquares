@@ -208,6 +208,16 @@ describe("withState", () => {
     expect(g.latestScore).toEqual({ scoreX: 14, scoreY: 10, label: "Half" });
     expect(g.leaderPlayerId).toBe(MAYA);
   });
+
+  it("doesn't call a postponed game Final (only a finished one)", () => {
+    const postponed = { state: "post" as const, period: 0, clock: "0:00", detail: "Postponed", scoreX: 0, scoreY: 0, updatedAt: 1 };
+    const s = state({ live: postponed });
+    expect(withState(summary({ status: "locked" }), s, ME).latestScore).toEqual({ scoreX: 0, scoreY: 0, label: "Postponed" });
+    expect(liveSnapshot(s, ME)?.clock).toBe("Postponed");
+    const over = state({ game: { status: "final" }, live: { ...postponed, period: 4, detail: "", scoreX: 27, scoreY: 24 } });
+    expect(withState(summary({ status: "locked" }), over, ME).latestScore).toEqual({ scoreX: 27, scoreY: 24, label: "Final" });
+    expect(liveSnapshot(over, ME)?.clock).toBe("Final");
+  });
 });
 
 describe("plain-language periods", () => {

@@ -121,6 +121,13 @@ export function retrievePaymentIntent(secretKey: string, id: string): Promise<Pa
   return stripeFetch<PaymentIntent>(secretKey, "GET", `/payment_intents/${encodeURIComponent(id)}`);
 }
 
+/** Cancels an unpaid intent so it can't be paid any more. Stripe answers 400 once it's paid or being paid. */
+export function cancelPaymentIntent(secretKey: string, id: string): Promise<PaymentIntent> {
+  return stripeFetch<PaymentIntent>(secretKey, "POST", `/payment_intents/${encodeURIComponent(id)}/cancel`, {
+    cancellation_reason: "abandoned",
+  });
+}
+
 /**
  * Idempotency key per game and price. When a dead intent is replaced, the old id
  * is folded in so the replacement isn't answered with the cached dead one.

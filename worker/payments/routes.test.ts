@@ -70,7 +70,7 @@ const purchases = () => ledger.query("SELECT reference, game_id, provider, statu
 
 beforeEach(async () => {
   pem ??= await testPem();
-  ledger = await createTestD1(["migrations/0003_purchases.sql"]);
+  ledger = await createTestD1(["migrations/0003_purchases.sql", "migrations/0006_purchases_unused.sql"]);
   games = new Map([["g1", draft("g1")], ["g2", draft("g2")]]);
   vi.mocked(db.getGame).mockImplementation(async (_db, id) => games.get(id) ?? null);
   vi.mocked(service.isHost).mockImplementation(async (_env, _id, token) => token === ADMIN);
@@ -145,7 +145,7 @@ describe("POST /games/:id/pay/stripe", () => {
     fetchMock.mockResolvedValueOnce(Response.json(intent()));
     const res = await call("/games/g1/pay/stripe");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ clientSecret: "pi_1_secret_abc" });
+    expect(await res.json()).toEqual({ clientSecret: "pi_1_secret_abc", amountCents: 499, currency: "usd" });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.stripe.com/v1/payment_intents");
     expect((init.headers as Record<string, string>)["idempotency-key"]).toBe("board-g1-499usd");
@@ -160,7 +160,7 @@ describe("POST /games/:id/pay/stripe", () => {
     await call("/games/g1/pay/stripe");
     fetchMock.mockResolvedValueOnce(Response.json(intent()));
     const res = await call("/games/g1/pay/stripe");
-    expect(await res.json()).toEqual({ clientSecret: "pi_1_secret_abc" });
+    expect(await res.json()).toEqual({ clientSecret: "pi_1_secret_abc", amountCents: 499, currency: "usd" });
     expect(fetchMock.mock.calls[1][0]).toBe("https://api.stripe.com/v1/payment_intents/pi_1");
     expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe("GET");
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -173,7 +173,7 @@ describe("POST /games/:id/pay/stripe", () => {
       .mockResolvedValueOnce(Response.json(intent({ status: "canceled" })))
       .mockResolvedValueOnce(Response.json(intent({ id: "pi_2", client_secret: "pi_2_secret" })));
     const res = await call("/games/g1/pay/stripe");
-    expect(await res.json()).toEqual({ clientSecret: "pi_2_secret" });
+    expect(await res.json()).toEqual({ clientSecret: "pi_2_secret", amountCents: 499, currency: "usd" });
     expect(((fetchMock.mock.calls[2][1] as RequestInit).headers as Record<string, string>)["idempotency-key"]).toBe(
       "board-g1-499usd-after-pi_1",
     );
@@ -181,6 +181,43 @@ describe("POST /games/:id/pay/stripe", () => {
       ["pi_1", "canceled"],
       ["pi_2", "pending"],
     ]);
+  });
+
+  it("returns the intent's own amount, so the page shows and charges the same price", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json(intent({ amount: 599 })));
+    const res = await call("/games/g1/pay/stripe", { env: makeEnv({ BOARD_PRICE_CENTS: "599" }) });
+    expect(await res.json()).toEqual({ clientSecret: "pi_1_secret_abc", amountCents: 599, currency: "usd" });
+  });
+
+  it("cancels a still-payable intent at Stripe before replacing it after a price change", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json(intent()));
+    await call("/games/g1/pay/stripe");
+    fetchMock
+      .mockResolvedValueOnce(Response.json(intent()))
+      .mockResolvedValueOnce(Response.json(intent({ status: "canceled" })))
+      .mockResolvedValueOnce(Response.json(intent({ id: "pi_2", amount: 599, client_secret: "pi_2_secret" })));
+    const res = await call("/games/g1/pay/stripe", { env: makeEnv({ BOARD_PRICE_CENTS: "599" }) });
+    expect(await res.json()).toEqual({ clientSecret: "pi_2_secret", amountCents: 599, currency: "usd" });
+    // An old tab can't pay the $4.99 intent any more.
+    expect(fetchMock.mock.calls[2][0]).toBe("https://api.stripe.com/v1/payment_intents/pi_1/cancel");
+    expect((fetchMock.mock.calls[2][1] as RequestInit).method).toBe("POST");
+    expect(purchases().map((p) => [p.reference, p.status, p.amount_cents])).toEqual([
+      ["pi_1", "canceled", 499],
+      ["pi_2", "pending", 599],
+    ]);
+  });
+
+  it("doesn't replace an intent Stripe won't cancel (it may be getting paid right now)", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json(intent()));
+    await call("/games/g1/pay/stripe");
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock
+      .mockResolvedValueOnce(Response.json(intent()))
+      .mockResolvedValueOnce(Response.json({ error: { message: "unexpected state", code: "payment_intent_unexpected_state" } }, { status: 400 }));
+    const res = await call("/games/g1/pay/stripe", { env: makeEnv({ BOARD_PRICE_CENTS: "599" }) });
+    expect(res.status).toBe(502);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(purchases().map((p) => [p.reference, p.status])).toEqual([["pi_1", "pending"]]);
   });
 
   it("activates right away when the stored intent already succeeded (webhook still in flight)", async () => {
@@ -358,6 +395,65 @@ describe("POST /games/:id/pay/iap", () => {
     const res = await call("/games/g1/pay/iap", { body: { transactionId: TX } });
     expect(res.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("won't let a second purchase pay for a board that's already open: it's kept as unused, not paid", async () => {
+    // tx 1001 is charged but can't be confirmed (a bad Apple key answers 401 every time)...
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    fetchMock.mockResolvedValue(new Response("", { status: 401 }));
+    for (let i = 0; i < 3; i++) expect((await call("/games/g1/pay/iap", { body: { transactionId: "1001" } })).status).toBe(502);
+    // ...another purchase opens the board, then recovery sends 1001 again.
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (url: string) =>
+      Response.json(signedTransaction({ transactionId: url.endsWith("1002") ? "1002" : "1001" })),
+    );
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: "1002" } })).status).toBe(200);
+    const res = await call("/games/g1/pay/iap", { body: { transactionId: "1001" } });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; state: GameState; unused: boolean };
+    expect(body).toMatchObject({ unused: true, state: { game: { status: "open" } } });
+    expect(body.error).toMatch(/already open.*reportaproblem\.apple\.com/);
+    expect(service.activateGame).toHaveBeenCalledTimes(1);
+    expect(purchases().map((p) => [p.reference, p.status])).toEqual([
+      ["1002", "paid"],
+      ["1001", "unused"],
+    ]);
+    // A retry is answered from the ledger.
+    const calls = fetchMock.mock.calls.length;
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: "1001" } })).status).toBe(409);
+    expect(fetchMock).toHaveBeenCalledTimes(calls);
+  });
+
+  it("keeps a verified purchase for a board deleted before it was confirmed (410), so it isn't lost", async () => {
+    games.delete("g1");
+    fetchMock.mockResolvedValue(Response.json(signedTransaction()));
+    // Nobody can prove they host a deleted board, so the admin token isn't needed: Apple's binding is the proof.
+    const res = await call("/games/g1/pay/iap", { body: { transactionId: TX }, admin: null });
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as { error: string; unused: boolean })).toMatchObject({
+      unused: true,
+      error: expect.stringMatching(/deleted.*reportaproblem\.apple\.com/),
+    });
+    expect(purchases()).toEqual([
+      { reference: TX, game_id: "g1", provider: "iap", status: "unused", amount_cents: 499, currency: "usd", livemode: 1 },
+    ]);
+    expect(service.activateGame).not.toHaveBeenCalled();
+    // Not bound to the deleted board: nothing is recorded.
+    fetchMock.mockResolvedValue(Response.json(signedTransaction({ transactionId: "77", appAccountToken: undefined })));
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: "77" } })).status).toBe(404);
+    fetchMock.mockResolvedValue(Response.json(signedTransaction({ transactionId: "78", appAccountToken: boardAccountToken("g2") })));
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: "78" } })).status).toBe(400);
+    expect(purchases()).toHaveLength(1);
+  });
+
+  it("answers 410 for a purchase that opened a board that's since been deleted", async () => {
+    fetchMock.mockResolvedValueOnce(Response.json(signedTransaction()));
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: TX } })).status).toBe(200);
+    games.delete("g1");
+    const res = await call("/games/g1/pay/iap", { body: { transactionId: TX } });
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as { unused?: boolean }).unused).toBeUndefined();
+    expect(purchases()[0].status).toBe("paid");
   });
 
   it("validates input and reports Apple outages as retryable", async () => {

@@ -95,7 +95,7 @@ export interface Game {
   periods: Period[];
   /** Optional free-text prize note per period key (max 60 chars each). Never money handling. */
   prizes: Record<string, string>;
-  /** 0 means unlimited squares per player. */
+  /** 0 means unlimited squares per player. Counted per device: with no accounts, one person can use more. */
   maxPerPlayer: number;
   /**
    * null until locked. Key "*" holds the single draw; with freshNumbers there is
@@ -267,6 +267,13 @@ export interface GameSummary {
    * that square. Always sent by `GET /api/me/games`.
    */
   leaderPlayerId?: string | null;
+  /**
+   * The board's `GameState.version` when this summary was read (a lower bound:
+   * nothing in it is older). Home lays a board's live state over the summary
+   * only when that state is at least this new: a finished board still changes
+   * (a corrected score, a reopened final). Always sent by `GET /api/me/games`.
+   */
+  version?: number;
 }
 
 // ---- Live socket messages (server -> client) ----

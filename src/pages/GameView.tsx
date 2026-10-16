@@ -11,7 +11,7 @@
 // the whole board is on the first screen of an iPhone in every state; the
 // rest (find a player, my numbers, results, players, activity) sits below it.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { periodPhrase } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, gridSize, resolveResults, upcomingPeriod } from "../../shared/squares";
@@ -33,6 +33,7 @@ import {
   drawKeyOf,
   lostToOthers,
   drawTabs,
+  mineAfter,
   headlineScore,
   myNumbers,
   myWinIds,
@@ -54,19 +55,22 @@ import { celebratedWins, markCelebrated } from "../features/board/storage";
 import { Ticker } from "../features/board/Ticker";
 import { useTicker } from "../features/board/useTicker";
 import { useNow } from "../features/board/useNow";
-import { HostControls } from "../features/host/HostControls";
+import { HostControls, loadHostTools } from "../features/host/hostTools";
 import { InviteHero } from "../features/invite/InviteHero";
-import { InviteSheet } from "../features/invite/InviteSheet";
 import { JoinedCard } from "../features/invite/JoinedCard";
-import { JoinSheet } from "../features/invite/JoinSheet";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
-import { NotifyPrompt } from "../features/notifications/NotifyPrompt";
 import { api, errorMessage, inviteUrl } from "../lib/api";
 import { pluralize, teamVars } from "../lib/format";
-import { getAdminToken, getPlayerId, isHostOf } from "../lib/identity";
+import { getAdminToken, getPlayerId, isHostOf, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
+
+// Not in the board's own chunk: host tools (only the host needs them; see hostDevice below) and the
+// sheets, which all start closed and load once the board is up.
+const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m) => ({ default: m.InviteSheet })));
+const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
+const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
 
 type Cell = { row: number; col: number };
 type Spotlight = { kind: "period" | "cell" | "player"; id: string };
@@ -87,6 +91,13 @@ export default function GameView() {
   const me = getPlayerId();
   const now = useNow();
   useHideTabBar();
+  // On the host's device the tools download alongside the board's data, and the board waits for them
+  // (unless they fail to load) so they never pop in above the squares.
+  // Subscribed: a host-link token the server refuses is dropped after the first render.
+  const hostDevice = !!useAdminToken(id);
+  if (hostDevice && !HostControls) void loadHostTools().catch(() => undefined);
+  const [hostToolsFailed, setHostToolsFailed] = useState(false);
+  const [, setHostToolsIn] = useState(!!HostControls);
 
   // ---- live activity -> the bottom ticker (one alert per moment; tap one to see its square) ----
   // Read through a ref: the jump needs the board's current draw tabs and scroll position.
@@ -176,6 +187,21 @@ export default function GameView() {
   const joined = !!state?.players.some((p) => p.id === me);
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
   const isHost = !!game && (isHostOf(game.id) || game.hostPlayerId === me);
+  const wantHostTools = hostDevice || isHost;
+  useEffect(() => {
+    if (!wantHostTools || HostControls) return;
+    let alive = true;
+    loadHostTools().then(
+      () => alive && setHostToolsIn(true),
+      (err: unknown) => {
+        console.warn("host tools failed to load", err);
+        if (alive) setHostToolsFailed(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [wantHostTools]);
   const phase = state ? boardPhase(state) : "open";
   const axis = useMemo(
     () => (game ? axisLabels(drawFor(game, drawKey), gridSize(game.format.boardSize)) : { x: [], y: [], drawn: false }),
@@ -516,7 +542,12 @@ export default function GameView() {
         setCallout({
           key: cell.key,
           tone: "warn",
-          children: <CalloutBody title={`Up to ${outcome.max} squares each`} detail="Tap one of yours to give it back, then pick another." />,
+          children: (
+            <CalloutBody
+              title={`Up to ${outcome.max} squares each`}
+              detail={cell.mine ? "Unpick one of your new squares to keep this one." : "Tap one of yours to give it back, then pick another."}
+            />
+          ),
         });
         return;
       }
@@ -529,7 +560,8 @@ export default function GameView() {
       const nextSel = applyTap(sel, cell.key, outcome);
       setSelection(nextSel);
       // Newcomer: the first pick opens the join sheet straight away (link -> square -> Join & claim).
-      if (!isJoined && outcome.kind === "select" && sel.claim.size === 0) setJoinOpen(true);
+      // Not the host on another device (host link): they join only if they choose to, from the bar.
+      if (!isJoined && outcome.kind === "select" && sel.claim.size === 0 && !getAdminToken(s.game.id)) setJoinOpen(true);
     },
     [me, endPick],
   );
@@ -621,7 +653,7 @@ export default function GameView() {
     );
   }
 
-  if (!state || !game) {
+  if (!state || !game || (hostDevice && !HostControls && !hostToolsFailed)) {
     return (
       <>
         <TopBar title="Board" large={false} back />
@@ -646,11 +678,16 @@ export default function GameView() {
   // ---- render: the board ----
 
   const open = game.status === "open";
-  const newcomer = !joined && open;
+  // Host tools render only on the device holding the admin token.
+  const hostBar = isHost && !!getAdminToken(game.id);
+  // The host on another device (opened the host link) isn't invited to their own board.
+  const newcomer = !joined && open && !hostBar;
   const n = gridSize(game.format.boardSize);
   const claimN = selection.claim.size;
   const releaseN = selection.release.size;
   const left = squaresLeftFor(game.maxPerPlayer, mineCount);
+  // What's left once this selection goes through (a give-back frees a spot).
+  const leftAfter = squaresLeftFor(game.maxPerPlayer, mineAfter(mineCount, selection));
   const showBar = !pick && !joinOpen && open && claimN + releaseN > 0;
   const firstMine = state.squares.find((sq) => sq.playerId === me);
   const focusKey =
@@ -677,8 +714,6 @@ export default function GameView() {
       ? `These are the ${tabs.find((t) => t.key === drawKey)?.label ?? ""} numbers. The square in play is on the ${tabs.find((t) => t.key === nowView.drawKey)?.label ?? "current"} tab.`
       : null;
   const playerSpot = spot?.kind === "player" ? spot.id : null;
-  // Host tools render only on the device holding the admin token.
-  const hostBar = isHost && !!getAdminToken(game.id);
   const showSpot = (periodKey: string) => {
     setSpot({ kind: "period", id: periodKey });
     if (game.format.freshNumbers) setDrawPick(drawKeyOf(game, periodKey));
@@ -735,7 +770,7 @@ export default function GameView() {
 
         {isHost && (
           <div className="empty:hidden">
-            <HostControls state={state} apply={receive} pickCell={pickCell} onInvite={share} />
+            {HostControls && <HostControls state={state} apply={receive} pickCell={pickCell} onInvite={share} />}
           </div>
         )}
 
@@ -962,9 +997,9 @@ export default function GameView() {
                 </Button>
               )}
             </div>
-            {left !== null && claimN > 0 && (
+            {leftAfter !== null && claimN > 0 && (
               <p className="px-2 pt-1.5 text-center text-caption font-semibold text-ink-muted">
-                {left - claimN <= 0 ? `That's your max of ${game.maxPerPlayer}` : `${left - claimN} more after this (max ${game.maxPerPlayer})`}
+                {leftAfter <= 0 ? `That's your max of ${game.maxPerPlayer}` : `${leftAfter} more after this (max ${game.maxPerPlayer})`}
               </p>
             )}
           </div>
@@ -973,21 +1008,23 @@ export default function GameView() {
 
       <Ticker note={tickerNote} onDismiss={dismissTicker} />
 
-      <InviteSheet
-        state={state}
-        open={inviteOpen}
-        watching={watching}
-        justCreated={justCreated}
-        onClose={() => {
-          setInviteOpen(false);
-          // Fresh from creating the board: now's the moment to offer notifications.
-          if (justCreated) setCreatedAsk(true);
-          setJustCreated(false);
-        }}
-      />
-      <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} />
-      <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
-      <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
+      <Suspense fallback={null}>
+        <InviteSheet
+          state={state}
+          open={inviteOpen}
+          watching={watching}
+          justCreated={justCreated}
+          onClose={() => {
+            setInviteOpen(false);
+            // Fresh from creating the board: now's the moment to offer notifications.
+            if (justCreated) setCreatedAsk(true);
+            setJustCreated(false);
+          }}
+        />
+        <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} />
+        <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
+        <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
+      </Suspense>
     </div>
   );
 }

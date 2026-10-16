@@ -9,7 +9,7 @@ import {
   drawFor,
   gridSize,
   liveCell,
-  periodKeyForLive,
+  periodInPlay,
   squareAt,
   totalSquares,
   upcomingPeriod,
@@ -84,7 +84,7 @@ export interface CellView {
 }
 
 export interface CellInputs {
-  state: Pick<GameState, "game" | "players" | "squares" | "live">;
+  state: Pick<GameState, "game" | "players" | "squares" | "live" | "scores" | "manualWinners">;
   me: string;
   selection: Selection;
   results: PeriodResult[];
@@ -181,7 +181,7 @@ export function defaultDrawKey(state: Pick<GameState, "game" | "squares" | "scor
   if (!game.format.freshNumbers || !game.numbers) return SHARED_DRAW_KEY;
   const keys = Object.keys(game.numbers).filter((k) => k !== SHARED_DRAW_KEY);
   if (live && live.state === "in") {
-    const k = periodKeyForLive(game.format, live.period);
+    const k = periodInPlay(state, live.period);
     if (k && game.numbers[k]) return k;
   }
   const next = upcomingPeriod(state);
@@ -213,16 +213,27 @@ export interface TapInput {
   cell: Pick<CellView, "key" | "ownerId" | "mine">;
   selection: Selection;
   maxPerPlayer: number;
-  /** Squares this player already owns. */
+  /** Squares this player already owns (picked give-backs still count). */
   mineCount: number;
+}
+
+/** Squares this player owns once the selection goes through (give-backs are sent first, then claims). */
+export function mineAfter(mineCount: number, selection: Selection): number {
+  return mineCount - selection.release.size + selection.claim.size;
 }
 
 export function decideTap({ status, cell, selection, maxPerPlayer, mineCount }: TapInput): TapOutcome {
   if (status !== "open") return { kind: "inspect" };
-  if (cell.mine) return selection.release.has(cell.key) ? { kind: "unselect-release" } : { kind: "select-release" };
+  // One more square than the selection ends with: a picked give-back makes room for a swap.
+  const overLimit = maxPerPlayer > 0 && mineAfter(mineCount, selection) + 1 > maxPerPlayer;
+  if (cell.mine) {
+    if (!selection.release.has(cell.key)) return { kind: "select-release" };
+    // Keeping it after all, with its replacement already picked, would go over.
+    return overLimit ? { kind: "limit", max: maxPerPlayer } : { kind: "unselect-release" };
+  }
   if (cell.ownerId) return { kind: "inspect" };
   if (selection.claim.has(cell.key)) return { kind: "unselect" };
-  if (maxPerPlayer > 0 && mineCount + selection.claim.size + 1 > maxPerPlayer) return { kind: "limit", max: maxPerPlayer };
+  if (overLimit) return { kind: "limit", max: maxPerPlayer };
   return { kind: "select" };
 }
 
@@ -465,7 +476,7 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
   let detail: string | null = null;
   const isLive = live?.state === "in";
   if (live && isLive) {
-    periodKey = everyScore ? null : periodKeyForLive(game.format, live.period);
+    periodKey = everyScore ? null : periodInPlay(state, live.period);
     score = { scoreX: live.scoreX, scoreY: live.scoreY };
     detail = live.detail || clockLine(live.period, live.clock);
   } else {
@@ -560,7 +571,7 @@ export function periodCards(state: Pick<GameState, "game" | "scores" | "manualWi
     }
     return cards;
   }
-  const livePeriod = live?.state === "in" && game.status === "locked" ? periodKeyForLive(game.format, live.period) : null;
+  const livePeriod = live?.state === "in" && game.status === "locked" ? periodInPlay(state, live.period) : null;
   let nextAssigned = false;
   return boardPeriods(game, state.scores).map((p) => {
     const result = byKey.get(p.key) ?? null;

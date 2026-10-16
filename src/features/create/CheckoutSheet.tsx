@@ -61,12 +61,15 @@ const PAID_BEAT_MS = 520;
 export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
   const [loaded, setLoaded] = useState<PaymentConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
-  const payments = given ?? loaded;
+  // What the sheet re-read itself (after a failure, or checkout going live) beats the caller's copy.
+  const payments = loaded ?? given;
   const [method, setMethod] = useState<CheckoutMethod | null>(null);
   const [phase, setPhase] = useState<Phase>("ready");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
+  /** What the board's PaymentIntent charges: shown and itemized instead of the config's price, which can be stale. */
+  const [charge, setCharge] = useState<{ amountCents: number; currency: string } | null>(null);
   const [cardComplete, setCardComplete] = useState(false);
   const [cardReady, setCardReady] = useState(false);
   const [storePrice, setStorePrice] = useState<string | null>(null);
@@ -98,6 +101,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
     setError(null);
     setNotice(null);
     setClientSecret(null);
+    setCharge(null);
     setCardComplete(false);
     setMethod(payments ? checkoutMethod(payments, platform()) : null);
     if (payments) preloadCheckout(payments, platform());
@@ -155,7 +159,11 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
     let cancelled = false;
     setError(null);
     createStripeIntent(gameId, adminToken)
-      .then((r) => !cancelled && setClientSecret(r.clientSecret))
+      .then((r) => {
+        if (cancelled) return;
+        if (typeof r.amountCents === "number" && r.currency) setCharge({ amountCents: r.amountCents, currency: r.currency });
+        setClientSecret(r.clientSecret);
+      })
       .catch((err: unknown) => !cancelled && fail(err));
     return () => {
       cancelled = true;
@@ -170,7 +178,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
     let disposed = false;
     void mountWalletButton(el, {
       clientSecret,
-      amountCents: payments.priceCents,
+      amountCents: charge?.amountCents ?? payments.priceCents,
       label: "Squares board",
       publishableKey: payments.stripePublishableKey,
       onPaid: () => {
@@ -191,7 +199,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
       disposed = true;
       handle?.destroy();
     };
-  }, [open, method, clientSecret, payments, gameId, adminToken, succeed, fail]);
+  }, [open, method, clientSecret, charge, payments, gameId, adminToken, succeed, fail]);
 
   // Card form fallback.
   useEffect(() => {
@@ -240,6 +248,11 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
         succeed(await confirmStripePaid(gameId, adminToken));
       }
     } catch (err) {
+      if (method === "test" && err instanceof CheckoutError && err.status === 403) {
+        // Test checkout was switched off after this config was read: switch to the real checkout.
+        const fresh = await fetchAppConfig({ refresh: true }).then((c) => c.payments, () => null);
+        if (fresh && fresh.mode !== "test") return setLoaded(fresh);
+      }
       fail(err);
     }
   };
@@ -250,7 +263,14 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
   };
 
   const busy = phase === "paying" || phase === "paid";
-  const price = method === "iap" ? storePrice : payments ? formatPrice(payments.priceCents, payments.currency) : null;
+  const price =
+    method === "iap"
+      ? storePrice
+      : charge
+        ? formatPrice(charge.amountCents, charge.currency)
+        : payments
+          ? formatPrice(payments.priceCents, payments.currency)
+          : null;
 
   let action: ReactNode;
   if (!payments) {

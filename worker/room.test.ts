@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, LiveMessage } from "../shared/types";
 import type { Env } from "./env";
-import { CLOSE_DELETED, GameRoom, POLL_LEAD_MS, countWatching, pollPlan } from "./room";
+import { CLOSE_DELETED, GameRoom, MAX_SOCKETS, POLL_LEAD_MS, countWatching, pollPlan } from "./room";
 import { loadState } from "./service";
 
 vi.mock("./service", () => ({ applyLiveUpdate: vi.fn(), loadState: vi.fn() }));
@@ -69,18 +69,21 @@ describe("pollPlan", () => {
 });
 
 describe("countWatching", () => {
-  it("counts devices once, anonymous sockets each, passive sockets never", () => {
+  it("counts devices once, passive sockets never", () => {
     expect(
       countWatching([
         { playerId: "p1", connectedAt: 0 },
         { playerId: "p1", connectedAt: 1 },
         { playerId: "p2", connectedAt: 0 },
-        { playerId: null, connectedAt: 0 },
-        null,
         { playerId: "p3", connectedAt: 0, passive: true },
-        { playerId: null, connectedAt: 0, passive: true },
       ]),
-    ).toBe(4);
+    ).toBe(2);
+  });
+
+  it("never counts sockets without a player id (the app always sends one), however many", () => {
+    const anonymous = Array.from({ length: 3000 }, (_, i) => ({ playerId: null, connectedAt: i }));
+    expect(countWatching([...anonymous, null, { playerId: null, connectedAt: 0, passive: true }])).toBe(0);
+    expect(countWatching([{ playerId: "p1", connectedAt: 0 }, ...anonymous])).toBe(1);
   });
 
   it("a device with both a passive and an active socket counts once", () => {
@@ -237,10 +240,82 @@ describe("GameRoom", () => {
   });
 
   it("only watch=0 is passive", async () => {
-    const a = await connect("?watch=1");
-    const b = await connect("?watch=false");
+    const a = await connect("?player=AAAAAAAAAAAAAAAAAAAAAA&watch=1");
+    const b = await connect("?player=BBBBBBBBBBBBBBBBBBBBBB&watch=false");
     expect(b.watching()).toEqual([2]);
     expect(a.watching()).toEqual([1, 2]);
+  });
+
+  it("sockets without a player id get every message but don't add to the count", async () => {
+    const ana = await connect("?player=AAAAAAAAAAAAAAAAAAAAAA");
+    for (let i = 0; i < 5; i++) await connect("");
+    const last = ctx.sockets[ctx.sockets.length - 1];
+    expect(last.messages()[0]).toMatchObject({ type: "state" });
+    expect(ana.watching()).toEqual([1, 1, 1, 1, 1, 1]);
+  });
+
+  it("refuses sockets past the room's cap without loading the board", async () => {
+    for (let i = 0; i < MAX_SOCKETS; i++) ctx.sockets.push(new FakeSocket());
+    vi.mocked(loadState).mockClear();
+    const res = (await room.fetch(
+      new Request("https://room/live?player=AAAAAAAAAAAAAAAAAAAAAA", { headers: { upgrade: "websocket", "x-game-id": "g1" } }),
+    )) as unknown as { status: number };
+    expect(res.status).toBe(503);
+    expect(ctx.sockets).toHaveLength(MAX_SOCKETS);
+    expect(loadState).not.toHaveBeenCalled();
+    // Room again once one leaves.
+    ctx.sockets[0].readyState = CLOSED;
+    expect((await connect("?player=AAAAAAAAAAAAAAAAAAAAAA")).messages()[0]).toMatchObject({ type: "state" });
+  });
+
+  /** An upgrade whose D1 read is held until the test releases it (D1 isn't behind the DO's input gate). */
+  function slowUpgrade(query: string) {
+    let release!: (s: GameState | null) => void;
+    vi.mocked(loadState).mockImplementationOnce(() => new Promise((r) => (release = r)));
+    const res = room.fetch(
+      new Request(`https://room/live${query}`, { headers: { upgrade: "websocket", "x-game-id": "g1" } }),
+    ) as unknown as Promise<{ status: number }>;
+    return { res, release: (s: GameState | null) => release(s) };
+  }
+
+  async function broadcast(next: GameState): Promise<void> {
+    await room.fetch(
+      new Request("https://room/broadcast", { method: "POST", headers: { "x-game-id": "g1" }, body: JSON.stringify({ state: next }) }),
+    );
+  }
+
+  it("a socket opened while a broadcast is in flight starts from the newer state", async () => {
+    const v1 = state({ status: "open", linked: false });
+    const v2 = { ...v1, version: 2 };
+    const existing = await connect("?player=AAAAAAAAAAAAAAAAAAAAAA");
+    const slow = slowUpgrade("?player=BBBBBBBBBBBBBBBBBBBBBB&watch=0");
+    await broadcast(v2); // reaches only the sockets accepted so far
+    slow.release(v1); // the read made before the change committed
+    expect((await slow.res).status).toBe(101);
+    const fresh = ctx.sockets[ctx.sockets.length - 1];
+    const versions = (ws: FakeSocket) => ws.messages().flatMap((m) => (m.type === "state" ? [m.state.version] : []));
+    expect(versions(existing)).toEqual([1, 2]);
+    expect(versions(fresh)).toEqual([2]);
+    // A late, older push is still dropped.
+    await broadcast(v1);
+    expect(versions(fresh)).toEqual([2]);
+  });
+
+  it("a socket whose board is deleted while it opens is refused, and nothing comes back", async () => {
+    const existing = await connect("?player=AAAAAAAAAAAAAAAAAAAAAA");
+    // A linked board before kickoff: opening a socket would arm the alarm.
+    const before = state({ status: "open" });
+    const slow = slowUpgrade("?player=BBBBBBBBBBBBBBBBBBBBBB&watch=0");
+    await room.fetch(new Request("https://room/close", { method: "POST", headers: { "x-game-id": "g1" } }));
+    expect(existing.closedWith?.code).toBe(CLOSE_DELETED);
+    slow.release(before); // read before the delete committed
+    expect((await slow.res).status).toBe(404);
+    expect(ctx.sockets).toHaveLength(1);
+    // A change committed just before the delete, arriving late, doesn't bring the room back either.
+    await broadcast({ ...before, version: 2 });
+    expect(existing.messages().at(-1)).toEqual({ type: "deleted" });
+    expect(ctx.stored.size).toBe(0);
+    expect(await ctx.storage.getAlarm()).toBeNull();
   });
 
   it("a deleted board sends { type: 'deleted' } to every socket, then closes with 4404", async () => {

@@ -179,7 +179,7 @@ accept whatever Apple computes; don't change the answers.
 > players, drawn numbers and two scores in, so you can see the live board,
 > the "right now" winner and the results. Back on Home, the bell opens the
 > activity inbox. To run that board as its host from this device, open
-> https://jaxsquares.com/g/<DEMO_ID>?host=<DEMO_HOST_TOKEN>.
+> https://jaxsquares.com/g/<DEMO_ID>#host=<DEMO_HOST_TOKEN>.
 >
 > FULL FLOW (sandbox purchase):
 > 1) Tap "New board". Tap "Custom" and type any two teams (scores are then

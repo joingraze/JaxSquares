@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ToastProvider } from "../../components/ui";
 import { getPlayerId } from "../../lib/identity";
+import { markCelebrated } from "../board/storage";
 import Home from "../../pages/Home";
 
 const fetchMock = vi.fn();
@@ -195,6 +196,68 @@ describe("Home", () => {
     await waitFor(() => expect(screen.getByText(/Maya grabbed 5 squares/)).toBeInTheDocument());
     expect(screen.getByRole("progressbar", { name: "5 of 100 squares claimed" })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(wholeText("95 left"))).toBeInTheDocument(), { timeout: 3000 });
+  });
+
+  it("shows the host's corrected final, not the wrong one Home saw live, now and on the next visit", async () => {
+    const me = getPlayerId();
+    localStorage.setItem("jaxsquares.games", JSON.stringify(["fixed"]));
+    markCelebrated("fixed", ["final"]); // no confetti (jsdom has no canvas)
+    const digits = Array.from({ length: 10 }, (_, i) => [i]);
+    const base = boardState("fixed", me);
+    const locked = boardState("fixed", me, {
+      game: { ...base.game, hostPlayerId: MAYA, status: "locked", numbers: { "*": { x: digits, y: digits } } },
+      squares: [
+        { row: 0, col: 7, playerId: me, claimedAt: 1 },
+        { row: 0, col: 1, playerId: MAYA, claimedAt: 1 },
+      ],
+      version: 5,
+    });
+    const finalScore = (scoreX: number, version: number): GameState => ({
+      ...locked,
+      game: { ...locked.game, status: "final" },
+      scores: [{ periodKey: "final", scoreX, scoreY: 0, source: "host", updatedAt: 1 }],
+      version,
+    });
+    const wrong = finalScore(17, 6); // hits my square
+    const fixed = finalScore(21, 8); // hits Maya's
+    serve([summary({ id: "fixed", name: "Probe Board", status: "locked", mySquares: 1, claimed: 2, playerCount: 2, version: 5 })], {
+      fixed,
+    });
+    const view = renderHome();
+    await waitFor(() => expect(sockets.get("fixed")).toBeDefined());
+    act(() => sockets.get("fixed")!.open());
+    act(() => sockets.get("fixed")!.push({ type: "state", state: wrong }));
+    expect(await screen.findByText("17–0")).toBeInTheDocument();
+
+    // The host deletes the wrong final and types 21-0; the next summary refresh says so.
+    serve(
+      [
+        summary({
+          id: "fixed",
+          name: "Probe Board",
+          status: "final",
+          mySquares: 1,
+          claimed: 2,
+          playerCount: 2,
+          latestScore: { scoreX: 21, scoreY: 0, label: "Final" },
+          leaderPlayerId: MAYA,
+          version: 8,
+        }),
+      ],
+      { fixed },
+    );
+    act(() => void window.dispatchEvent(new Event("focus")));
+    expect(await screen.findByText("21–0")).toBeInTheDocument();
+    expect(screen.queryByText("17–0")).toBeNull();
+    expect(screen.queryByText(/You hit/)).toBeNull();
+    await waitFor(() => expect(screen.getByText(/Maya won/)).toBeInTheDocument());
+
+    // Coming back to Home later in the session.
+    view.unmount();
+    renderHome();
+    expect(await screen.findByText("21–0")).toBeInTheDocument();
+    expect(screen.queryByText("17–0")).toBeNull();
+    expect(screen.queryByText(/You hit/)).toBeNull();
   });
 
   it("opens an activity inbox from the bell, with an unread count", async () => {

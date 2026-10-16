@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PRIZE_MONEY_ERROR } from "../../../shared/formats";
+import { MONEY_ERRORS, PRIZE_MONEY_ERROR } from "../../../shared/formats";
 import type { GameState, NumberDraw, Player, Score, Square } from "../../../shared/types";
 import {
   NEXT_ENTRY,
@@ -92,6 +92,9 @@ function makeState(over: Omit<Partial<GameState>, "game"> & { game?: Partial<Gam
 
 const locked = (over: Parameters<typeof makeState>[0] = {}) =>
   makeState({ ...over, game: { status: "locked", numbers: { "*": DRAW }, ...over.game } });
+
+const linked = (over: Parameters<typeof makeState>[0] = {}) =>
+  locked({ ...over, game: { linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: 1, xIsHome: true }, ...over.game } });
 
 const everyScore = (scores: Score[] = [], over: Parameters<typeof makeState>[0] = {}) =>
   locked({
@@ -290,12 +293,35 @@ describe("scoreSuggestion", () => {
     expect(scoreSuggestion(locked({ scores: [score("q1", 7, 3), score("q2", 14, 10)] }), "q3")?.label).toBe("Same as Half");
   });
 
-  it("offers the live score on linked boards", () => {
-    const s = locked({
-      scores: [score("q1", 7, 3)],
-      live: { state: "in", period: 2, clock: "4:00", detail: "Q2 4:00", scoreX: 14, scoreY: 3, updatedAt: 1 },
-    });
-    expect(scoreSuggestion(s, "q2")).toEqual({ label: "Live score", draft: { x: "14", y: "3" } });
+  it("offers the live score on linked boards only once it is that period's score", () => {
+    const at = (period: number, detail: string, scores = [score("q1", 7, 3)]) =>
+      linked({ scores, live: { state: "in", period, clock: "0:00", detail, scoreX: 14, scoreY: 3, updatedAt: 1 } });
+    // Halftime (the feed hasn't recorded the Half yet): the live score is the Half's.
+    expect(scoreSuggestion(at(2, "Halftime"), "q2")).toEqual({ label: "Live score", draft: { x: "14", y: "3" } });
+    expect(scoreSuggestion(at(1, "End of 1st", []), "q1")).toEqual({ label: "Live score", draft: { x: "14", y: "3" } });
+    // Mid-period it's only the score so far: a host score would pin the period for good.
+    expect(scoreSuggestion(at(2, "Q2 4:00"), "q2")).toBeNull();
+    expect(scoreSuggestion(at(3, "Q3 8:12", [score("q1", 7, 3), score("q2", 14, 3)]), "q3")).toBeNull();
+    // Nor a guess from the previous period while the real game is on.
+    expect(scoreSuggestion(at(3, "Q3 8:12", [score("q1", 7, 3), score("q2", 14, 3)]), "final")).toBeNull();
+    // The final whistle: the live score is the Final's.
+    const over = linked({ scores: [score("q1", 7, 3)], live: { state: "post", period: 4, clock: "0:00", detail: "Final", scoreX: 24, scoreY: 20, updatedAt: 1 } });
+    expect(scoreSuggestion(over, "final")).toEqual({ label: "Live score", draft: { x: "24", y: "20" } });
+    expect(scoreSuggestion(over, "q2")).toBeNull();
+  });
+
+  it("opens a linked board's fix on the latest decided period, never one still in play", () => {
+    const live = (period: number, detail: string) => ({ state: "in" as const, period, clock: "8:12", detail, scoreX: 17, scoreY: 10, updatedAt: 1 });
+    const decided = [score("q1", 7, 3), score("q2", 14, 10)];
+    expect(defaultTargetKey(linked({ scores: decided, live: live(3, "Q3 8:12") }))).toBe("q2");
+    expect(defaultTargetKey(linked({ scores: decided, live: live(2, "Halftime") }))).toBe("q2");
+    // The period just ended but the feed hasn't recorded it: that's the one to fix.
+    expect(defaultTargetKey(linked({ scores: [score("q1", 7, 3)], live: live(2, "Halftime") }))).toBe("q2");
+    // Nothing decided yet: the period in play (with nothing suggested).
+    expect(defaultTargetKey(linked({ live: live(1, "Q1 8:12") }))).toBe("q1");
+    // Game over: anything undecided, else the Final.
+    const post = { ...live(4, "Final"), state: "post" as const };
+    expect(defaultTargetKey(linked({ scores: decided, live: post }))).toBe("q3");
   });
 
   it("has nothing to offer for the first period, a recorded one, or every-score entries", () => {
@@ -441,6 +467,11 @@ describe("edit board", () => {
     const errors = editErrors(draft);
     expect(errors.name).toBeTruthy();
     expect(errors.prizes).toEqual({ q1: PRIZE_MONEY_ERROR });
+  });
+
+  it("flags money in the board name, inline, with the server's message", () => {
+    expect(editErrors({ ...editDraftOf(locked().game), name: "$20 Squares Pool" }).name).toBe(MONEY_ERRORS.name);
+    expect(editErrors({ ...editDraftOf(locked().game), name: "Bucks vs Packers" }).name).toBeNull();
   });
 
   it("sends only what changed, keeping notes the form doesn't show", () => {

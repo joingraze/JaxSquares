@@ -16,6 +16,11 @@ vi.mock("../../lib/native", async (orig) => {
   return { ...real, haptic: vi.fn(async () => {}), platform: () => "web" as const };
 });
 vi.mock("../../components/ui/confetti", () => ({ celebrate: vi.fn(), CELEBRATION_COLORS: [], prefersReducedMotion: () => true }));
+// Stripe's card form, faked: mounts, never completes.
+const stripeElement = { on: vi.fn(), mount: vi.fn(), destroy: vi.fn() };
+vi.mock("@stripe/stripe-js", () => ({
+  loadStripe: vi.fn(async () => ({ elements: () => ({ create: () => stripeElement }), confirmPayment: vi.fn() })),
+}));
 
 const { appStorePrice, checkoutPrice } = await import("../../lib/checkout");
 const { CheckoutSheet } = await import("./CheckoutSheet");
@@ -88,5 +93,37 @@ describe("CheckoutSheet on its own", () => {
     await waitFor(() => expect(onPaid).toHaveBeenCalledWith("abc123", state), { timeout: 2000 });
     const payCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/pay/test"));
     expect(payCall?.[1]?.headers).toMatchObject({ "x-admin-token": "tok" });
+  });
+});
+
+describe("CheckoutSheet after a config change", () => {
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("shows the price of the PaymentIntent it will charge, not a stale config's", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/pay/stripe")) return new Response(JSON.stringify({ clientSecret: "pi_1_secret", amountCents: 599, currency: "usd" }), { status: 200 });
+      return new Response("{}", { status: 404 });
+    });
+    // The page loaded config while the board cost $4.99; the server now charges $5.99.
+    render(<CheckoutSheet open draft={{ game, adminToken: "tok" }} payments={LIVE} onPaid={() => {}} onClose={() => {}} />);
+    expect(await screen.findByRole("button", { name: "Pay $5.99" })).toHaveAttribute("data-testid", "pay-confirm");
+    expect(screen.getByText("$5.99, one time.")).toBeInTheDocument();
+  });
+
+  it("switches to the real checkout when the server says test checkout is off", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/api/config")) return new Response(JSON.stringify({ payments: LIVE, vapidPublicKey: null }), { status: 200 });
+      if (url.endsWith("/pay/test")) return new Response(JSON.stringify({ error: "Test checkout is off" }), { status: 403 });
+      if (url.endsWith("/pay/stripe")) return new Response(JSON.stringify({ clientSecret: "pi_1_secret", amountCents: 499, currency: "usd" }), { status: 200 });
+      return new Response("{}", { status: 404 });
+    });
+    render(<CheckoutSheet open draft={{ game, adminToken: "tok" }} payments={TEST} onPaid={() => {}} onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open my board" }));
+    expect(await screen.findByRole("button", { name: "Pay $4.99" }, { timeout: 2000 })).toHaveAttribute("data-testid", "pay-confirm");
+    expect(screen.queryByText("Test checkout is off")).toBeNull();
   });
 });

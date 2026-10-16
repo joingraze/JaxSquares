@@ -2,6 +2,7 @@
 // which also applies CORS. Errors are { error } like the rest of the API.
 
 import { Hono, type Context } from "hono";
+import { isClientId } from "../../shared/playerId";
 import { getGame } from "../db";
 import type { Env } from "../env";
 import { channelsFrom, deliver, jobsFor } from "./notify";
@@ -11,7 +12,6 @@ import { isFcmToken, isPushServiceEndpoint, parseRegistration } from "./validate
 
 type Ctx = Context<{ Bindings: Env }>;
 
-const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
 const MAX_BODY_BYTES = 8 * 1024;
 
@@ -21,7 +21,7 @@ const error = (c: Ctx, status: 400 | 401 | 404 | 413, message: string) => c.json
 
 function clientIdOf(c: Ctx): string | null {
   const id = c.req.header("x-client-id") ?? "";
-  return CLIENT_ID_RE.test(id) ? id : null;
+  return isClientId(id) ? id : null;
 }
 
 /** The JSON object body, or an error response. */

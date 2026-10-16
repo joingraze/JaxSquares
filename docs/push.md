@@ -39,10 +39,16 @@ Tapping one opens `/g/<id>`.
 - Badge: each device counts the pushes it has had since the app was last opened.
   Opening the app re-registers the device, which sets that count back to zero.
   The native app also re-registers on every resume (`onAppResume` →
-  `syncPush(true)`), so the server's count matches the badge iOS just cleared.
+  `syncPush(true)`), and the web app every time it comes back and clears its
+  badge (`visibilitychange` → `clearAppBadge()` + `syncPush(true)`), so the
+  server's count matches the badge that was just cleared.
 - "Turn off on this device" in Profile calls `disablePush()`: the device is
   unregistered and a local flag (`isPushOff()`) stops the silent re-sync from
-  registering it again while the OS permission is still granted. `enablePush()`
+  registering it again while the OS permission is still granted. The device
+  also unsubscribes itself (`sub.unsubscribe()` / `deleteToken()`) even when the
+  unregister request fails, so turning off works offline: the dead endpoint or
+  token answers 404/410 or `UNREGISTERED` on the next send and the server
+  deletes it. Only if both fail does `disablePush()` reject, leaving it on. `enablePush()`
   clears the flag. In the native app the flag is mirrored to Capacitor
   Preferences (`setStored`/`getStored` in `src/lib/native.ts`), because iOS can
   clear a WebView's localStorage; `hydratePushOff()` restores it before any
@@ -57,7 +63,9 @@ clientId.
 
 `actor` is whoever caused the event, and that player is not notified about it.
 Core sets it on host actions: `numbers-drawn` (`POST /lock`), `final`
-(`POST /final`, or a typed-in Final score) and `player-joined` (the joiner).
+(`POST /final`, or a typed-in Final score), `player-joined` (the joiner) and
+`board-full` (whoever claimed the last square, so a host filling their own
+board isn't pushed about it).
 `winner` never has an actor, so you hear about your own square even when you
 typed the score. Events from live scores (kickoff, auto-lock, winners) have none.
 

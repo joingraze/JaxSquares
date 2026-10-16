@@ -10,11 +10,13 @@ import {
   lastDigit,
   liveCell,
   liveChanged,
+  liveLabel,
   myWins,
   nextEveryScoreEntry,
   periodKeyForLive,
   periodScoresFromLinescores,
   resolveResults,
+  retractedEntries,
   reverseCell,
   shuffledDigits,
   squaresLeft,
@@ -25,7 +27,7 @@ import {
   winningCell,
   type ResultsInput,
 } from "./squares";
-import type { Game, GameFormat, LiveStatus, LiveUpdate, NumberDraw, Score, Square } from "./types";
+import type { Game, GameFormat, LiveStatus, LiveUpdate, ManualWinner, NumberDraw, Score, Square } from "./types";
 
 /** Deterministic rng (mulberry32) so draws are reproducible. */
 function seeded(seed: number): () => number {
@@ -399,6 +401,25 @@ describe("nextEveryScoreEntry", () => {
     expect(nextEveryScoreEntry([], 0, 0)).toBeNull();
   });
 
+  it("never appends a score below the latest entry: that's a correction, not a new score", () => {
+    // A touchdown overturned on review: 7-0 back to 0-0 must not make 0-0 a winner.
+    expect(nextEveryScoreEntry([score("s1", 7, 0, { source: "live" })], 0, 0)).toBeNull();
+    expect(nextEveryScoreEntry([score("s1", 7, 7), score("s2", 14, 7)], 7, 10)).toBeNull();
+  });
+
+  it("finds the live entries a correction took back, newest first, never a host's", () => {
+    const live = (k: string, x: number, y: number) => score(k, x, y, { source: "live" });
+    expect(retractedEntries([live("s1", 7, 0)], 0, 0)).toEqual(["s1"]);
+    expect(retractedEntries([live("s1", 3, 0), live("s3", 10, 7), live("s2", 10, 0)], 3, 0)).toEqual(["s3", "s2"]);
+    expect(retractedEntries([live("s1", 3, 0), live("s2", 10, 0)], 10, 3)).toEqual([]);
+    expect(retractedEntries([live("s1", 3, 0), score("s2", 10, 0)], 3, 0)).toEqual([]);
+    // Corrected to a different score: the entry goes, and the corrected score is the next entry.
+    const scores = [live("s1", 3, 0), live("s2", 10, 0)];
+    const gone = retractedEntries(scores, 6, 0);
+    expect(gone).toEqual(["s2"]);
+    expect(nextEveryScoreEntry(scores.filter((s) => !gone.includes(s.periodKey)), 6, 0)).toEqual({ periodKey: "s2", label: "Score 2", scoreX: 6, scoreY: 0 });
+  });
+
   it("appends s1 for the first score and sN+1 after the latest entry", () => {
     expect(nextEveryScoreEntry([], 3, 0)).toEqual({ periodKey: "s1", label: "Score 1", scoreX: 3, scoreY: 0 });
     const scores = [score("s1", 3, 0), score("s2", 3, 7)];
@@ -427,14 +448,27 @@ describe("live helpers", () => {
   it("liveCell points at the square the current score lands on", () => {
     const game = makeGame({ reverse: true });
     const live: LiveStatus = { state: "in", period: 2, clock: "1:00", detail: "", scoreX: 14, scoreY: 3, updatedAt: 0 };
-    expect(liveCell({ game, squares: [sq(3, 4, "me")], live })).toEqual({
+    expect(liveCell({ game, squares: [sq(3, 4, "me")], live, scores: [], manualWinners: [] })).toEqual({
       periodKey: "q2",
       cell: { row: 3, col: 4 },
       playerId: "me",
       reverseCell: { row: 4, col: 3 },
     });
-    expect(liveCell({ game, squares: [], live: { ...live, state: "pre" } })).toBeNull();
-    expect(liveCell({ game: { ...game, numbers: null }, squares: [], live })).toBeNull();
+    expect(liveCell({ game, squares: [], live: { ...live, state: "pre" }, scores: [], manualWinners: [] })).toBeNull();
+    expect(liveCell({ game: { ...game, numbers: null }, squares: [], live, scores: [], manualWinners: [] })).toBeNull();
+  });
+
+  it("liveCell skips ahead past a period that's already decided (halftime: ESPN still says period 2)", () => {
+    const game = makeGame({ reverse: true });
+    const halftime: LiveStatus = { state: "in", period: 2, clock: "0:00", detail: "Halftime", scoreX: 14, scoreY: 3, updatedAt: 0 };
+    const at = (scores: Score[], manualWinners: ManualWinner[] = []) =>
+      liveCell({ game, squares: [sq(3, 4, "me")], live: halftime, scores, manualWinners })?.periodKey;
+    expect(at([score("q1", 7, 3)])).toBe("q2");
+    expect(at([score("q1", 7, 3), score("q2", 14, 3)])).toBe("q3");
+    // A host pick decides a period too.
+    expect(at([score("q1", 7, 3)], [{ periodKey: "q2", row: 0, col: 0, updatedAt: 0 }])).toBe("q3");
+    // Every period decided: back to the live period's own.
+    expect(at([score("q1", 7, 3), score("q2", 14, 3), score("q3", 14, 3), score("final", 14, 3)])).toBe("q2");
   });
 
   it("liveChanged ignores updatedAt", () => {
@@ -443,6 +477,18 @@ describe("live helpers", () => {
     expect(liveChanged(a, { ...a, clock: "4:45" })).toBe(true);
     expect(liveChanged(null, a)).toBe(true);
     expect(liveChanged(null, null)).toBe(false);
+  });
+
+  it("liveLabel says Final only for a finished game, never for a postponed one", () => {
+    const on = { state: "in" as const, period: 3, clock: "4:12", detail: "" };
+    expect(liveLabel(on, "locked")).toBe("Q3 4:12");
+    expect(liveLabel({ ...on, detail: "Halftime" }, "locked")).toBe("Halftime");
+    expect(liveLabel({ ...on, state: "post" }, "final")).toBe("Final");
+    expect(liveLabel({ ...on, state: "post", detail: "Final/OT" }, "locked")).toBe("Final");
+    // ESPN reports postponed and canceled games as "post" without completing them.
+    expect(liveLabel({ state: "post", period: 0, clock: "0:00", detail: "Postponed" }, "locked")).toBe("Postponed");
+    expect(liveLabel({ state: "post", period: 0, clock: "0:00", detail: "Canceled" }, "open")).toBe("Canceled");
+    expect(liveLabel({ state: "post", period: 0, clock: "0:00", detail: "" }, "open")).toBe("Postponed");
   });
 });
 

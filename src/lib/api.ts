@@ -17,7 +17,7 @@ import type {
   ScoreInput,
   UpdateGameInput,
 } from "../../shared/types";
-import { forgetGame, getAdminToken, getClientId, rememberGame, saveAdminToken } from "./identity";
+import { forgetGame, getAdminToken, getClientId, linkAdminToken, rememberGame, saveAdminToken, settleLinkAdminToken } from "./identity";
 
 /** "" on the web (same origin); "https://jaxsquares.com" in the native app. */
 export const API_BASE: string = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
@@ -116,7 +116,44 @@ export async function request<T>(method: Method, path: string, opts: RequestOpti
 }
 
 const g = (id: string, rest = "") => `/games/${encodeURIComponent(id)}${rest}`;
-const host = (id: string, token: string | null | undefined) => token ?? getAdminToken(id);
+
+/**
+ * Whether `token` is `gameId`'s host token (a host link's token, before a device
+ * trusts it): true or false once the server has answered, null when it couldn't
+ * be reached. A board that's gone counts as refused.
+ */
+export async function checkHostToken(gameId: string, token: string): Promise<boolean | null> {
+  try {
+    await request<{ ok: true }>("GET", g(gameId, "/host-check"), { adminToken: token });
+    return true;
+  } catch (err) {
+    return err instanceof ApiError && (err.status === 403 || err.status === 404) ? false : null;
+  }
+}
+
+/**
+ * A host-only call: an explicit token, else the one this device holds. If the server refuses the held
+ * one and a host link opened here offered a different token (captureHostLink never overwrites), that
+ * one is tried once and adopted only if it works.
+ */
+async function asHost<T>(method: Method, id: string, rest: string, adminToken: string | null | undefined, body?: unknown): Promise<T> {
+  const path = g(id, rest);
+  if (adminToken != null) return request<T>(method, path, { body, adminToken });
+  try {
+    return await request<T>(method, path, { body, adminToken: getAdminToken(id) });
+  } catch (err) {
+    const linked = linkAdminToken(id);
+    if (!linked || !(err instanceof ApiError && err.status === 403)) throw err;
+    try {
+      const res = await request<T>(method, path, { body, adminToken: linked });
+      settleLinkAdminToken(id, true);
+      return res;
+    } catch (retryErr) {
+      if (retryErr instanceof ApiError && retryErr.status === 403) settleLinkAdminToken(id, false);
+      throw retryErr;
+    }
+  }
+}
 
 type StateResponse = { state: GameState };
 export type ClaimResponse = { claimed: number; skipped: number; state: GameState };
@@ -137,10 +174,10 @@ export const api = {
   },
   getGame: (id: string, signal?: AbortSignal) => request<GameState>("GET", g(id), { signal }),
   updateGame: (id: string, input: UpdateGameInput, adminToken?: string | null) =>
-    request<StateResponse>("PATCH", g(id), { body: input, adminToken: host(id, adminToken) }),
+    asHost<StateResponse>("PATCH", id, "", adminToken, input),
   /** Deletes the board and forgets it on this device. */
   async deleteGame(id: string, adminToken?: string | null): Promise<{ ok: true }> {
-    const res = await request<{ ok: true }>("DELETE", g(id), { adminToken: host(id, adminToken) });
+    const res = await asHost<{ ok: true }>("DELETE", id, "", adminToken);
     forgetGame(id);
     return res;
   },
@@ -159,31 +196,26 @@ export const api = {
     request<StateResponse>("POST", g(id, "/release"), { body: { cells } satisfies CellsInput }),
 
   // ---- Host ----
-  lock: (id: string, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/lock"), { adminToken: host(id, adminToken) }),
+  lock: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/lock", adminToken),
   setScore: (id: string, input: ScoreInput, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/scores"), { body: input, adminToken: host(id, adminToken) }),
+    asHost<StateResponse>("POST", id, "/scores", adminToken, input),
   deleteScore: (id: string, periodKey: string, adminToken?: string | null) =>
-    request<StateResponse>("DELETE", g(id, `/scores/${encodeURIComponent(periodKey)}`), {
-      adminToken: host(id, adminToken),
-    }),
+    asHost<StateResponse>("DELETE", id, `/scores/${encodeURIComponent(periodKey)}`, adminToken),
   setWinner: (id: string, input: ManualWinnerInput, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/winners"), { body: input, adminToken: host(id, adminToken) }),
+    asHost<StateResponse>("POST", id, "/winners", adminToken, input),
   deleteWinner: (id: string, periodKey: string, adminToken?: string | null) =>
-    request<StateResponse>("DELETE", g(id, `/winners/${encodeURIComponent(periodKey)}`), {
-      adminToken: host(id, adminToken),
-    }),
+    asHost<StateResponse>("DELETE", id, `/winners/${encodeURIComponent(periodKey)}`, adminToken),
+  /** Host removes a player (public id) and frees their squares, while squares are still being picked. */
+  removePlayer: (id: string, playerId: string, adminToken?: string | null) =>
+    asHost<StateResponse>("DELETE", id, `/players/${encodeURIComponent(playerId)}`, adminToken),
   /** Host ends the game (POST /final). */
-  finish: (id: string, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/final"), { adminToken: host(id, adminToken) }),
+  finish: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/final", adminToken),
 
   // ---- Creating a board (the only payment in the product) ----
-  payTest: (id: string, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/pay/test"), { adminToken: host(id, adminToken) }),
-  payStripe: (id: string, adminToken?: string | null) =>
-    request<{ clientSecret: string }>("POST", g(id, "/pay/stripe"), { adminToken: host(id, adminToken) }),
+  payTest: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/pay/test", adminToken),
+  payStripe: (id: string, adminToken?: string | null) => asHost<{ clientSecret: string }>("POST", id, "/pay/stripe", adminToken),
   payIap: (id: string, transactionId: string, adminToken?: string | null) =>
-    request<StateResponse>("POST", g(id, "/pay/iap"), { body: { transactionId }, adminToken: host(id, adminToken) }),
+    asHost<StateResponse>("POST", id, "/pay/iap", adminToken, { transactionId }),
 
   // ---- Notifications ----
   registerPush: (registration: PushRegistration) => request<{ ok: true }>("POST", "/push/register", { body: registration }),

@@ -224,6 +224,40 @@ describe("validatePrizeNote", () => {
     }
   });
 
+  it("catches amounts stuck to a currency word, other currencies, and paying someone an amount", () => {
+    for (const bad of [
+      "Winner gets 20usd",
+      "Winner gets 20dollars",
+      "Loser owes 5bucks",
+      "Loser pays winner 25",
+      "Loser owes 20 each",
+      "Winner gets 50 quid",
+      "20 CAD",
+      "Apple Pay me 20",
+      "Google Pay the winner",
+      "Winner gets cash",
+      "Cash for the winner",
+      "Split the pot",
+      "Ten bucks a square",
+      "A buck a square",
+    ]) {
+      expect(validatePrizeNote(bad), bad).toBe(PRIZE_MONEY_ERROR);
+    }
+  });
+
+  it("doesn't mistake ordinary words for money", () => {
+    for (const ok of [
+      "Loser brings a pot of chili",
+      "Pot luck at Jim's",
+      "Loser wears a Bucks jersey",
+      "Loser takes a Cash cab",
+      "Loser pays for 2 pizzas",
+      "Loser owes the winner 3 beers",
+    ]) {
+      expect(validatePrizeNote(ok), ok).toBeNull();
+    }
+  });
+
   it("sees through case, full-width characters and zero-width tricks", () => {
     expect(validatePrizeNote("VENMO")).toBe(PRIZE_MONEY_ERROR);
     expect(validatePrizeNote("ｂｅｔ")).toBe(PRIZE_MONEY_ERROR);

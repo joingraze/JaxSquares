@@ -74,6 +74,18 @@ describe("buildDeliveries", () => {
       expect(bodyFor(ds, "client-sam-002")).toBe("Jax's square hit at Half.");
     });
 
+    it("quotes the shared note on an every-score board (its only prize slot)", () => {
+      const every = makeGame({
+        format: { periods: "every-score", reverse: false, boardSize: 100, freshNumbers: false },
+        prizes: { "*": "Loser buys wings" },
+      });
+      const ds = buildDeliveries(every, players, { ...event, periodKey: "s3", label: "Score 3" }, NOW);
+      expect(bodyFor(ds, "client-jax-001")).toBe("🎉 Your square hit on Score 3! 🏆 Loser buys wings");
+      // A period's own note still wins over the shared one.
+      const both = makeGame({ prizes: { q2: "Winner picks the music", "*": "Loser buys wings" } });
+      expect(bodyFor(buildDeliveries(both, players, event, NOW), "client-jax-001")).toBe("🎉 Your square hit at Half! 🏆 Winner picks the music");
+    });
+
     it("names both winners on a reverse board", () => {
       const ds = buildDeliveries(makeGame(), players, { ...event, periodKey: "q1", label: "Q1", playerIds: [pid("client-jax-001"), pid("client-sam-002")] }, NOW);
       expect(bodyFor(ds, HOST)).toBe("Jax and Sam hit in Q1.");

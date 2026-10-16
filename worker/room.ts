@@ -4,6 +4,11 @@
 //
 // Sockets opened with ?watch=0 are passive (Home following every board you're
 // in): they get every message but aren't counted in presence.
+//
+// D1 reads (loadState) aren't Durable Object storage, so the input gate doesn't
+// hold other requests back while one is awaited: a /broadcast or /close can run
+// in the middle of opening a socket. The room keeps the newest state it sent and
+// a deleted flag in memory so a socket opened across one still ends up right.
 
 import { isPlayerId } from "../shared/playerId";
 import type { Activity, GameState, LiveMessage } from "../shared/types";
@@ -18,6 +23,11 @@ export const POLL_LEAD_MS = 15 * 60_000;
 /** Give up on a game the provider never marked final. */
 const POLL_GIVE_UP_MS = 12 * 60 * 60_000;
 const SOCKET_OPEN = 1;
+/**
+ * Most sockets one room holds. Past it new ones are refused (the client falls
+ * back to polling), which also bounds the fan-out of every broadcast.
+ */
+export const MAX_SOCKETS = 500;
 
 interface Attachment {
   /** Public player id from ?player= (only used to count devices once). */
@@ -31,18 +41,17 @@ interface Attachment {
 export const CLOSE_DELETED = 4404;
 
 /**
- * Distinct devices watching: active sockets de-duplicated by player id, plus
- * active sockets without one (counted individually). Passive sockets don't count.
+ * Distinct devices watching: active sockets de-duplicated by player id. The app
+ * always sends one, so sockets without it (scripts) aren't counted, and neither
+ * are passive sockets.
  */
 export function countWatching(attachments: readonly (Attachment | null)[]): number {
   const devices = new Set<string>();
-  let anonymous = 0;
   for (const a of attachments) {
-    if (a?.passive) continue;
-    if (a?.playerId) devices.add(a.playerId);
-    else anonymous++;
+    if (a?.passive || !a?.playerId) continue;
+    devices.add(a.playerId);
   }
-  return devices.size + anonymous;
+  return devices.size;
 }
 
 export type PollPlan = { kind: "stop" } | { kind: "now" } | { kind: "at"; at: number };
@@ -62,8 +71,13 @@ export function pollPlan(state: GameState | null, now: number): PollPlan {
 // also loads under Vitest; the WebSocket Hibernation API is the same.
 export class GameRoom implements DurableObject {
   private gameId: string | null = null;
-  /** Highest state version sent; stale pushes arriving out of order are dropped. */
-  private lastVersion = 0;
+  /**
+   * Newest state sent: stale pushes arriving out of order are dropped, and a
+   * socket whose D1 read raced a broadcast starts from this one instead.
+   */
+  private latest: GameState | null = null;
+  /** /close ran: the board is gone, so nothing may reopen a socket, storage or the alarm. */
+  private deleted = false;
 
   constructor(
     private readonly ctx: DurableObjectState,
@@ -83,6 +97,8 @@ export class GameRoom implements DurableObject {
 
     if (request.method === "POST" && url.pathname === "/broadcast") {
       const body = (await request.json()) as { state: GameState; activity?: Activity; activities?: Activity[] };
+      // A change committed just before the delete can arrive after /close.
+      if (this.deleted) return new Response(null, { status: 204 });
       const activities = body.activities ?? (body.activity ? [body.activity] : []);
       await this.deliver(body.state, activities);
       await this.rememberGameId(gameId);
@@ -101,6 +117,8 @@ export class GameRoom implements DurableObject {
 
     if (request.method === "POST" && url.pathname === "/close") {
       // The game was deleted: tell clients, close their sockets (4404), stop polling.
+      this.deleted = true;
+      this.latest = null;
       // The explicit message comes first because a close frame can reach the
       // client late: local workerd holds the TCP connection ~10 s after the close
       // handshake, and the dev server only forwards the close once it ends.
@@ -127,9 +145,12 @@ export class GameRoom implements DurableObject {
   }
 
   private async openSocket(gameId: string, url: URL): Promise<Response> {
-    const state = await loadState(this.env, gameId);
-    if (!state) return new Response("Game not found", { status: 404 });
-    await this.rememberGameId(gameId);
+    if (this.ctx.getWebSockets().length >= MAX_SOCKETS) return new Response("Too many connections", { status: 503 });
+    const loaded = await loadState(this.env, gameId);
+    if (loaded) await this.rememberGameId(gameId);
+    // Deleted while the state was loading (/close can run during the D1 read):
+    // refused like any socket opened after deletion, so it can't miss `deleted`.
+    if (!loaded || this.deleted) return new Response("Game not found", { status: 404 });
 
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -141,10 +162,12 @@ export class GameRoom implements DurableObject {
     if (passive) attachment.passive = true;
     server.serializeAttachment(attachment);
 
-    // Current state first so the board renders instantly, then who's here.
-    // A passive socket doesn't change the count, so only it hears the number.
+    // Current state first so the board renders instantly, then who's here: the
+    // newest one, since a broadcast during the D1 read only reached the sockets
+    // accepted before this one. A passive socket doesn't change the count, so
+    // only it hears the number.
+    const state = this.remember(loaded);
     server.send(message({ type: "state", state }));
-    this.lastVersion = Math.max(this.lastVersion, state.version);
     if (passive) this.sendPresence(undefined, server);
     else this.sendPresence();
     await this.schedulePolling(state);
@@ -181,7 +204,7 @@ export class GameRoom implements DurableObject {
     if (!gameId) return;
     const state = await loadState(this.env, gameId);
     const plan = pollPlan(state, Date.now());
-    if (plan.kind === "stop" || !state?.game.linkedEvent) return;
+    if (plan.kind === "stop" || !state?.game.linkedEvent || this.deleted) return;
     if (plan.kind === "at") {
       await this.ctx.storage.setAlarm(plan.at);
       return;
@@ -199,17 +222,15 @@ export class GameRoom implements DurableObject {
     } catch (err) {
       console.error(`live poll ${gameId} failed`, err);
     }
-    await this.ctx.storage.setAlarm(Date.now() + next);
+    if (!this.deleted) await this.ctx.storage.setAlarm(Date.now() + next);
   }
 
   // ---- helpers ----
 
   private async deliver(state: GameState, activities: Activity[]): Promise<void> {
+    if (this.deleted) return;
     const out: string[] = [];
-    if (state.version >= this.lastVersion) {
-      this.lastVersion = state.version;
-      out.push(message({ type: "state", state }));
-    }
+    if (this.remember(state) === state) out.push(message({ type: "state", state }));
     for (const activity of activities) out.push(message({ type: "event", activity }));
     if (out.length === 0) return;
     for (const ws of this.ctx.getWebSockets()) {
@@ -221,6 +242,12 @@ export class GameRoom implements DurableObject {
         }
       }
     }
+  }
+
+  /** Keeps `state` if it's at least as new as the one held; returns the newest. */
+  private remember(state: GameState): GameState {
+    if (!this.latest || state.version >= this.latest.version) this.latest = state;
+    return this.latest;
   }
 
   /**
@@ -241,6 +268,7 @@ export class GameRoom implements DurableObject {
   }
 
   private async schedulePolling(state: GameState | null): Promise<void> {
+    if (this.deleted) return;
     const plan = pollPlan(state, Date.now());
     if (plan.kind === "stop") return;
     const current = await this.ctx.storage.getAlarm();
@@ -253,7 +281,7 @@ export class GameRoom implements DurableObject {
   }
 
   private async rememberGameId(gameId: string): Promise<void> {
-    if (this.gameId === gameId) return;
+    if (this.deleted || this.gameId === gameId) return;
     this.gameId = gameId;
     await this.ctx.storage.put("gameId", gameId);
   }

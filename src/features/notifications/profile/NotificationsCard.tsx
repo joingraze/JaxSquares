@@ -59,12 +59,13 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
 
   const turnOff = () => {
     setBusy("disable");
+    // Resolves once this device can't get pushes (even offline); rejects, still on, when it could.
     disablePush()
-      .catch(() => undefined) // turned off locally either way; the server drops dead devices on its own
+      .then(() => toast.show({ id: TOAST_ID, tone: "neutral", title: "Notifications off", description: "Turn them back on here anytime." }))
+      .catch(() => toast.show({ id: TOAST_ID, tone: "error", title: "Couldn't turn them off", description: "Check your connection and try again." }))
       .finally(() => {
         status.refresh();
         setBusy(null);
-        toast.show({ id: TOAST_ID, tone: "neutral", title: "Notifications off", description: "Turn them back on here anytime." });
       });
   };
 

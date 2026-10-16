@@ -168,6 +168,11 @@ export class GameStore {
     return this.server;
   }
 
+  /** A state from the network has been applied (until then getServerState() is only the cached one). */
+  hasNetworkState(): boolean {
+    return this.confirmed;
+  }
+
   /** What to render: the server state with pending patches applied. Stable reference until something changes. */
   getState = (): GameState | null => {
     if (this.dirty) {
@@ -621,6 +626,10 @@ export class LiveGame {
       this.clearReconnect();
       this.attempt = 0;
       this.connect();
+    } else if (this.ws.readyState === SOCKET_OPEN && this.deps.isOnline()) {
+      // A short blip: the socket outlived it, and its onopen (the only other
+      // place that says "live") won't fire again, so undo the "offline" here.
+      this.setStatus({ connection: "live" });
     }
   }
 

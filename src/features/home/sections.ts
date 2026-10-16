@@ -7,7 +7,7 @@ import type { GameState, GameSummary, Player, Team } from "../../../shared/types
 import { periodPhrase, prizeFor } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel } from "../../lib/format";
 import { lockIsTheMove } from "../host/hostModel";
-import { boardPeriods, liveCell, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
+import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
 
 export type SectionKey = "live" | "needs" | "next" | "final";
 
@@ -179,10 +179,7 @@ export function withState(g: GameSummary, s: GameState, me: string): GameSummary
 /** Same rule as the server's dashboard query: the live feed's score, else the latest recorded period's. */
 function latestScoreOf(s: GameState, results: PeriodResult[]): GameSummary["latestScore"] {
   const { live } = s;
-  if (live && live.state !== "pre") {
-    const label = live.state === "post" ? "Final" : live.detail.trim() || `Q${live.period} ${live.clock}`.trim();
-    return { scoreX: live.scoreX, scoreY: live.scoreY, label };
-  }
+  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, s.game.status) };
   const last = [...results].reverse().find((r) => r.score);
   if (last?.score) return { scoreX: last.score.scoreX, scoreY: last.score.scoreY, label: last.label };
   const byKey = new Map(s.scores.map((x) => [x.periodKey, x]));
@@ -293,7 +290,7 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
       scoreY: live.scoreY,
       hasScore: true,
       inProgress: live.state === "in",
-      clock: live.state === "post" ? "Final" : live.detail || `Q${live.period} ${live.clock}`.trim(),
+      clock: liveLabel(live, game.status),
       leader: now
         ? {
             playerId: leaderId,

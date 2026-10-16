@@ -5,6 +5,7 @@
 // Copy rules: short, fun, and never about money. A host's free-text prize note
 // may be quoted as-is.
 
+import { prizeFor } from "../../shared/formats";
 import type { Game, PeriodsPreset, Sport } from "../../shared/types";
 import type { Member } from "../db";
 import type { Delivery, NotifyEvent, NotifyKind, PushContent } from "./types";
@@ -88,7 +89,8 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       const winners = [...new Set(event.playerIds)];
       const tag = `${id}:win:${event.periodKey}`;
       const at = atPeriod(event.label);
-      const prize = game.prizes[event.periodKey]?.trim();
+      // Falls back to the shared "*" note (an every-score board's only prize slot).
+      const prize = prizeFor(game.prizes, event.periodKey)?.trim();
       const mine = base(game, event.kind, {
         body: `🎉 Your square hit ${at}!${prize ? ` 🏆 ${prize}` : ""}`,
         tag,

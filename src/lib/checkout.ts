@@ -6,7 +6,8 @@
 // Stripe.js and the IAP plugin are loaded on first use so they stay out of the
 // main bundle; call preloadCheckout() when the sheet opens to hide that latency.
 
-import type { NativePurchasesPlugin } from "@capgo/native-purchases";
+import type { NativePurchasesPlugin, Transaction } from "@capgo/native-purchases";
+import type { PluginListenerHandle } from "@capacitor/core";
 import type { Appearance, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
 import type { AppConfig, GameState, PaymentConfig } from "../../shared/types";
 import { getClientId } from "./identity";
@@ -20,17 +21,25 @@ export type PurchaseOutcome = { status: "paid"; state: GameState } | { status: "
 
 const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
 
-/** A failed checkout call. `status` 0 = never reached the server. `state` is set when the board is already open. */
+/**
+ * A failed checkout call. `status` 0 = never reached the server. `state` is set when the board is already open.
+ * `unused`: the server kept this App Store purchase but it opened nothing (board already open, or deleted);
+ * the message tells the host how to get a refund.
+ */
 export class CheckoutError extends Error {
   constructor(
     message: string,
     public status: number,
     public state?: GameState,
+    public unused = false,
   ) {
     super(message);
     this.name = "CheckoutError";
   }
 }
+
+/** The App Store charged the host but the server hasn't confirmed it yet. Trying again confirms that purchase; it never buys again. */
+export class UnconfirmedPurchaseError extends CheckoutError {}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const gamePath = (gameId: string, rest: string) => `/games/${encodeURIComponent(gameId)}${rest}`;
@@ -50,25 +59,28 @@ async function request<T>(method: "GET" | "POST", path: string, opts: { adminTok
   } catch {
     throw new CheckoutError("You're offline. Check your connection and try again.", 0);
   }
-  const data = (await res.json().catch(() => ({}))) as { error?: string; state?: GameState };
-  if (!res.ok) throw new CheckoutError(data.error ?? `Request failed (${res.status})`, res.status, data.state);
+  const data = (await res.json().catch(() => ({}))) as { error?: string; state?: GameState; unused?: boolean };
+  if (!res.ok) throw new CheckoutError(data.error ?? `Request failed (${res.status})`, res.status, data.state, data.unused === true);
   return data as T;
 }
 
 // ---- Config ----
 
-let configPromise: Promise<AppConfig> | null = null;
+/** How long a loaded config is reused: checkout can go live (or the price change) while a page is open. */
+const CONFIG_TTL_MS = 60_000;
 
-/** GET /api/config, cached for the session (pass refresh to re-read). */
+let config: { promise: Promise<AppConfig>; at: number } | null = null;
+
+/** GET /api/config, reused for a minute (pass refresh to re-read now). */
 export function fetchAppConfig(opts: { refresh?: boolean } = {}): Promise<AppConfig> {
-  if (!configPromise || opts.refresh) {
-    const p = request<AppConfig>("GET", "/config");
-    p.catch(() => {
-      if (configPromise === p) configPromise = null;
+  if (!config || opts.refresh || Date.now() - config.at > CONFIG_TTL_MS) {
+    const entry = { promise: request<AppConfig>("GET", "/config"), at: Date.now() };
+    entry.promise.catch(() => {
+      if (config === entry) config = null;
     });
-    configPromise = p;
+    config = entry;
   }
-  return configPromise;
+  return config.promise;
 }
 
 /** Which checkout this device uses. A "wallet" device still falls back to "card" via onUnavailable. */
@@ -172,12 +184,36 @@ function errorMessage(err: unknown): string {
   return String(err ?? "");
 }
 
-/** Buys one board in the App Store sheet, has the server verify it with Apple, then finishes the transaction. */
+/** The board an App Store transaction paid for, or null when it isn't a board purchase. */
+function boardOf(tx: Pick<Transaction, "productIdentifier" | "appAccountToken">, productId: string): string | null {
+  if (tx.productIdentifier !== productId || !tx.appAccountToken) return null;
+  return gameIdFromAccountToken(tx.appAccountToken);
+}
+
+/**
+ * Buys one board in the App Store sheet, has the server verify it with Apple, then finishes the transaction.
+ * A purchase for this board that was charged but never confirmed (offline, an App Store outage) or that a
+ * parent just approved is confirmed instead of buying again, and nothing is bought for a board that's
+ * already open (paid on another device) or gone.
+ */
 export async function payWithIAP(gameId: string, adminToken: string, productId?: string): Promise<PurchaseOutcome> {
   const [store, productIdentifier] = await Promise.all([
     nativePurchases(),
     productId ?? fetchAppConfig().then((c) => c.payments.iapProductId),
   ]);
+  let unfinished: Transaction[];
+  try {
+    ({ transactions: unfinished } = await store.getUnfinishedTransactions());
+  } catch {
+    // Without this check a retry could charge twice; better to not sell right now.
+    throw new CheckoutError("The App Store isn't ready yet. Try again in a moment.", 0);
+  }
+  const earlier = unfinished.find((tx) => boardOf(tx, productIdentifier) === gameId);
+  if (earlier) return { status: "paid", state: await redeemTransaction(store, gameId, adminToken, earlier.transactionId) };
+
+  const current = await request<GameState>("GET", gamePath(gameId, ""));
+  if (current.game.status !== "draft") throw new CheckoutError("This board is already active", 409, current);
+
   let transactionId: string;
   try {
     const tx = await store.purchaseProduct({
@@ -196,15 +232,39 @@ export async function payWithIAP(gameId: string, adminToken: string, productId?:
   return { status: "paid", state: await redeemTransaction(store, gameId, adminToken, transactionId) };
 }
 
-/** Server answers that won't change on retry (refunded, wrong product, used elsewhere, board gone). */
-const FINAL_STATUSES = new Set([400, 404, 409]);
+/**
+ * Server answers that are settled for good, so the transaction is finished: rejected (refunded, wrong
+ * product, bound to another board: 400), used by another board or kept as unused (409), kept for a
+ * deleted board (410). A bare 404 isn't one: nothing was recorded, so the purchase stays unfinished.
+ */
+const FINAL_STATUSES = new Set([400, 409, 410]);
 
-async function redeemTransaction(
+const UNCONFIRMED = "Your purchase went through but isn't confirmed yet. Tap again to finish. You won't be charged again for this board.";
+
+/** Confirmations in flight, by transaction id: a purchase, a resume and StoreKit's updates can all see the same one. */
+const redeeming = new Map<string, Promise<GameState>>();
+/** Settled (finished) in this run; StoreKit may still mention them once. */
+const settled = new Set<string>();
+
+function redeemTransaction(store: NativePurchasesPlugin, gameId: string, adminToken: string, transactionId: string): Promise<GameState> {
+  let p = redeeming.get(transactionId);
+  if (!p) {
+    p = confirmTransaction(store, gameId, adminToken, transactionId).finally(() => redeeming.delete(transactionId));
+    redeeming.set(transactionId, p);
+  }
+  return p;
+}
+
+async function confirmTransaction(
   store: NativePurchasesPlugin,
   gameId: string,
   adminToken: string,
   transactionId: string,
 ): Promise<GameState> {
+  const finish = async () => {
+    settled.add(transactionId);
+    await store.finishTransaction({ transactionId }).catch(() => {});
+  };
   let last: CheckoutError | null = null;
   // The host has already been charged, so ride out brief network or server blips.
   for (const delay of [0, 1000, 3000]) {
@@ -214,54 +274,128 @@ async function redeemTransaction(
         adminToken,
         body: { transactionId },
       });
-      await store.finishTransaction({ transactionId }).catch(() => {});
+      await finish();
       return state;
     } catch (err) {
       if (!(err instanceof CheckoutError)) throw err;
-      last = err;
       if (FINAL_STATUSES.has(err.status)) {
-        await store.finishTransaction({ transactionId }).catch(() => {});
+        await finish();
         throw err;
       }
+      last = err;
+      // Not the host, not found: that won't change in a few seconds.
+      if (err.status >= 400 && err.status < 500) break;
     }
   }
-  // Left unfinished on purpose: recoverIAPPurchases() completes it on the next launch.
-  throw last ?? new CheckoutError("Couldn't confirm the purchase. We'll retry next time you open the app.", 0);
+  // Left unfinished on purpose: the next tap, resume or launch confirms it (it's never bought again).
+  throw new UnconfirmedPurchaseError(UNCONFIRMED, last?.status ?? 0);
 }
 
-/**
- * Completes App Store purchases that were charged but never confirmed (app killed,
- * offline). Call once at launch in the iOS app with a lookup for this device's
- * admin tokens. Returns the boards it opened.
- */
-export async function recoverIAPPurchases(adminTokenFor: (gameId: string) => string | null): Promise<GameState[]> {
-  const { Capacitor } = await import("@capacitor/core");
-  if (Capacitor.getPlatform() !== "ios") return [];
-  const [store, config] = await Promise.all([nativePurchases(), fetchAppConfig()]);
-  const { transactions } = await store.getUnfinishedTransactions();
+/** Confirms the board purchases among `transactions` that nothing else is handling. Returns the boards it opened. */
+async function redeemBoardPurchases(
+  store: NativePurchasesPlugin,
+  transactions: Transaction[],
+  adminTokenFor: (gameId: string) => string | null,
+  onUnused?: (message: string) => void,
+): Promise<GameState[]> {
+  if (transactions.length === 0) return [];
+  const { payments } = await fetchAppConfig();
   const opened: GameState[] = [];
   for (const tx of transactions) {
-    if (tx.productIdentifier !== config.payments.iapProductId || !tx.appAccountToken) continue;
-    const gameId = gameIdFromAccountToken(tx.appAccountToken);
-    const adminToken = gameId ? adminTokenFor(gameId) : null;
-    if (!gameId || !adminToken) continue;
+    const gameId = boardOf(tx, payments.iapProductId);
+    if (!gameId || redeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
     try {
-      opened.push(await redeemTransaction(store, gameId, adminToken, tx.transactionId));
-    } catch {
-      // Still unfinished (or finished as final); the next launch tries again if needed.
+      // Sent even without this device's admin token (the board was deleted here): if
+      // it's gone on the server too, the purchase is kept there for a refund.
+      opened.push(await redeemTransaction(store, gameId, adminTokenFor(gameId) ?? "", tx.transactionId));
+    } catch (err) {
+      // Still unfinished (tried again next time), or settled; tell the host about a charge that opened nothing.
+      if (err instanceof CheckoutError && err.unused) onUnused?.(err.message);
     }
   }
   return opened;
 }
 
-// ---- Stripe (web) ----
+/**
+ * Completes App Store purchases that were charged but never confirmed (app killed,
+ * offline). Call at launch in the iOS app with a lookup for this device's admin
+ * tokens (watchIAPPurchases does, and again on every resume). Returns the boards it
+ * opened; `onUnused` hears about purchases kept without opening anything.
+ */
+export async function recoverIAPPurchases(
+  adminTokenFor: (gameId: string) => string | null,
+  onUnused?: (message: string) => void,
+): Promise<GameState[]> {
+  const { Capacitor } = await import("@capacitor/core");
+  if (Capacitor.getPlatform() !== "ios") return [];
+  const store = await nativePurchases();
+  const { transactions } = await store.getUnfinishedTransactions();
+  return redeemBoardPurchases(store, transactions, adminTokenFor, onUnused);
+}
+
+export interface IAPWatchOptions {
+  adminTokenFor: (gameId: string) => string | null;
+  /** A board this device paid for just opened. */
+  onOpened: (state: GameState) => void;
+  /** A purchase was kept but opened nothing (board already open, or deleted); the message says what to do. */
+  onUnused?: (message: string) => void;
+  /** Subscribes to the app returning to the foreground (onAppResume in lib/native). */
+  onResume?: (cb: () => void) => () => void;
+}
 
 /**
- * The board's PaymentIntent client secret (created once, then reused). Throws a
- * CheckoutError with status 409 and `state` set when the board is already open.
+ * Keeps App Store purchases moving while the iOS app runs: confirms what's
+ * unfinished now and on every resume, and whatever StoreKit delivers meanwhile (an
+ * Ask to Buy approval, a purchase on another device). With autoFinishTransactions
+ * off, StoreKit reports those only through `transactionUpdated`. Returns a stop function.
  */
-export function createStripeIntent(gameId: string, adminToken: string): Promise<{ clientSecret: string }> {
-  return request<{ clientSecret: string }>("POST", gamePath(gameId, "/pay/stripe"), { adminToken });
+export function watchIAPPurchases(opts: IAPWatchOptions): () => void {
+  let stopped = false;
+  let listener: PluginListenerHandle | null = null;
+  let stopResume: (() => void) | null = null;
+  const onUnused = (message: string) => !stopped && opts.onUnused?.(message);
+  const report = (opened: GameState[]) => !stopped && opened.forEach((state) => opts.onOpened(state));
+  const recover = () =>
+    recoverIAPPurchases(opts.adminTokenFor, onUnused).then(report, (err: unknown) => console.warn("App Store purchase recovery failed", err));
+
+  void (async () => {
+    const { Capacitor } = await import("@capacitor/core");
+    if (Capacitor.getPlatform() !== "ios" || stopped) return;
+    const store = await nativePurchases();
+    // Listening first, so nothing delivered during the launch pass is missed (duplicates are skipped).
+    const handle = await store.addListener("transactionUpdated", (tx) => {
+      // A refund arrives this way too; it opens nothing (an unfinished one is settled by recovery).
+      if (tx.revocationDate) return;
+      redeemBoardPurchases(store, [tx], opts.adminTokenFor, onUnused).then(report, () => {});
+    });
+    if (stopped) return void handle.remove();
+    listener = handle;
+    stopResume = opts.onResume?.(() => void recover()) ?? null;
+    await recover();
+  })().catch((err: unknown) => console.warn("App Store purchase watch failed", err));
+
+  return () => {
+    stopped = true;
+    void listener?.remove();
+    stopResume?.();
+  };
+}
+
+// ---- Stripe (web) ----
+
+/** The board's PaymentIntent: what to confirm, and the amount it charges (show this, not the config's price). */
+export interface StripeIntent {
+  clientSecret: string;
+  amountCents: number;
+  currency: string;
+}
+
+/**
+ * The board's PaymentIntent (created once, then reused). Throws a CheckoutError
+ * with status 409 and `state` set when the board is already open.
+ */
+export function createStripeIntent(gameId: string, adminToken: string): Promise<StripeIntent> {
+  return request<StripeIntent>("POST", gamePath(gameId, "/pay/stripe"), { adminToken });
 }
 
 /**

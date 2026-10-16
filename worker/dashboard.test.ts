@@ -26,6 +26,7 @@ const MIGRATIONS = [
   "migrations/0003_purchases.sql",
   "migrations/0004_push.sql",
   "migrations/0005_housekeeping.sql",
+  "migrations/0006_purchases_unused.sql",
 ];
 
 let t: TestD1;
@@ -150,10 +151,32 @@ describe("dashboard summary: latest score and leader", () => {
     // Ana's Q1 win still counts for her.
     expect(s.myWins).toEqual([{ periodKey: "q1", label: "Q1" }]);
   });
+
+  it("carries the board's version, which moves on when the host corrects a final", async () => {
+    const { id, admin } = await board();
+    await call("POST", `/games/${id}/lock`, { admin });
+    const locked = (await call<GameState>("GET", `/games/${id}`)).body;
+    expect((await summaryFor(ANA, id)).version).toBe(locked.version);
+
+    // A wrong final, then the host takes it back and types the right one.
+    await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "final", ...scoreFor(locked, 0, 0) } });
+    const wrong = (await call<GameState>("GET", `/games/${id}`)).body;
+    expect(wrong.game.status).toBe("final");
+    expect((await summaryFor(ANA, id)).version).toBe(wrong.version);
+    expect((await call("DELETE", `/games/${id}/scores/final`, { admin })).status).toBe(200);
+    await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "final", ...scoreFor(locked, 1, 1) } });
+    const fixed = (await call<GameState>("GET", `/games/${id}`)).body;
+    const s = await summaryFor(ANA, id);
+    expect(s.status).toBe("final");
+    expect(s.version).toBe(fixed.version);
+    expect(s.version).toBeGreaterThan(wrong.version);
+    expect(s.myWins).toEqual([]);
+  });
 });
 
 describe("latestScoreOf", () => {
-  const game: Pick<Game, "format" | "periods"> = {
+  const game: Pick<Game, "format" | "periods" | "status"> = {
+    status: "locked",
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
     periods: [
       { key: "q1", label: "Q1" },
@@ -171,7 +194,15 @@ describe("latestScoreOf", () => {
 
   it("uses the live clock, Final once the game is over, and ignores a pregame feed", () => {
     expect(latestScoreOf(game, [score("q1", 7, 3)], live({}))).toEqual({ scoreX: 17, scoreY: 13, label: "Q3 4:12" });
-    expect(latestScoreOf(game, [], live({ state: "post", scoreX: 27, scoreY: 24 }))).toEqual({ scoreX: 27, scoreY: 24, label: "Final" });
+    expect(latestScoreOf({ ...game, status: "final" }, [], live({ state: "post", scoreX: 27, scoreY: 24 }))).toEqual({ scoreX: 27, scoreY: 24, label: "Final" });
+    expect(latestScoreOf(game, [], live({ state: "post", detail: "Final/OT", scoreX: 27, scoreY: 24 }))).toEqual({ scoreX: 27, scoreY: 24, label: "Final" });
     expect(latestScoreOf(game, [score("q1", 7, 3)], live({ state: "pre" }))).toEqual({ scoreX: 7, scoreY: 3, label: "Q1" });
+  });
+
+  it("doesn't call a postponed or canceled game Final", () => {
+    // ESPN reports these as "post" without completing them; the board stays open or locked.
+    const postponed = live({ state: "post", period: 0, clock: "0:00", detail: "Postponed", scoreX: 0, scoreY: 0 });
+    expect(latestScoreOf(game, [], postponed)).toEqual({ scoreX: 0, scoreY: 0, label: "Postponed" });
+    expect(latestScoreOf({ ...game, status: "open" }, [], { ...postponed, detail: "Canceled" })?.label).toBe("Canceled");
   });
 });

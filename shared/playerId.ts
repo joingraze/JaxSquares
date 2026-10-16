@@ -20,6 +20,18 @@ export function isPlayerId(v: unknown): v is string {
   return typeof v === "string" && PLAYER_ID_RE.test(v);
 }
 
+/** What a device may send as `x-client-id`. The app's own ids are 32 or 36 chars. */
+export const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+
+/**
+ * A well-formed clientId, and never one shaped like a public id: someone could
+ * copy a player's public id (it's in every GameState) and send it as theirs,
+ * and the server would then take that player's activity for their own.
+ */
+export function isClientId(v: unknown): v is string {
+  return typeof v === "string" && CLIENT_ID_RE.test(v) && !PLAYER_ID_RE.test(v);
+}
+
 function base64url(bytes: Uint8Array): string {
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);

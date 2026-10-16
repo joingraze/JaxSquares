@@ -41,6 +41,13 @@ export function totalSquares(boardSize: BoardSize): number {
   return n * n;
 }
 
+/**
+ * Most players one board takes, the host included. Every open board carries
+ * every player in each state it sends, so this keeps that small; joining past
+ * it is refused (409) until the host removes someone.
+ */
+export const MAX_PLAYERS = 200;
+
 /** Stable string key for a grid coordinate, e.g. "1,4". */
 export const cellKey = (row: number, col: number): string => `${row},${col}`;
 
@@ -280,8 +287,10 @@ export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdat
 }
 
 /**
- * For every-score boards: the entry to append when the game score differs from
- * the latest recorded entry (0-0 before the first score). null when unchanged.
+ * For every-score boards: the entry to append when the game score has moved on
+ * from the latest recorded entry (0-0 before the first score). null when
+ * unchanged, and when either team is below it: that's a correction (a score
+ * overturned on review), not a new score; see retractedEntries.
  */
 export function nextEveryScoreEntry(scores: Score[], scoreX: number, scoreY: number): PeriodScore | null {
   let last: Score | null = null;
@@ -293,9 +302,32 @@ export function nextEveryScoreEntry(scores: Score[], scoreX: number, scoreY: num
       last = s;
     }
   }
-  if ((last?.scoreX ?? 0) === scoreX && (last?.scoreY ?? 0) === scoreY) return null;
+  const lastX = last?.scoreX ?? 0;
+  const lastY = last?.scoreY ?? 0;
+  if (lastX === scoreX && lastY === scoreY) return null;
+  if (scoreX < lastX || scoreY < lastY) return null;
   const p = everyScorePeriod(maxN + 1);
   return { periodKey: p.key, label: p.label, scoreX, scoreY };
+}
+
+/**
+ * For every-score boards: the feed's entries the live score has taken back
+ * (a touchdown overturned, a stat correction), newest first. Live entries
+ * the score is now below are dropped until it's at or above the latest one
+ * left; a host-entered entry is never dropped. With them gone,
+ * nextEveryScoreEntry gives the corrected score's entry, if any.
+ */
+export function retractedEntries(scores: Score[], scoreX: number, scoreY: number): string[] {
+  const entries = scores
+    .map((s) => ({ s, n: everyScoreIndex(s.periodKey) }))
+    .filter((e): e is { s: Score; n: number } => e.n !== null)
+    .sort((a, b) => b.n - a.n);
+  const out: string[] = [];
+  for (const { s } of entries) {
+    if (s.source !== "live" || (scoreX >= s.scoreX && scoreY >= s.scoreY)) break;
+    out.push(s.periodKey);
+  }
+  return out;
 }
 
 /** The fixed period in play for a live period number (1-4, 5+ = OT counts toward Final). */
@@ -310,15 +342,32 @@ export function periodKeyForLive(format: GameFormat, livePeriod: number): string
 }
 
 /**
+ * The fixed period the live game is playing for: the one covering the live
+ * period number, or the next undecided one once that's decided. ESPN keeps
+ * the period number through a break (2 all through halftime, 1 at "End of
+ * 1st") while the board has already recorded that period. null on
+ * every-score boards.
+ */
+export function periodInPlay(state: Pick<GameState, "game" | "scores" | "manualWinners">, livePeriod: number): string | null {
+  const key = periodKeyForLive(state.game.format, livePeriod);
+  if (key === null) return null;
+  const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
+  if (!done.has(key)) return key;
+  const keys = boardPeriods(state.game, state.scores).map((p) => p.key);
+  return keys.slice(keys.indexOf(key) + 1).find((k) => !done.has(k)) ?? key;
+}
+
+/**
  * The square the current live score points at — "if it ended now". Uses the
- * draw for the period in play. null until locked or without live data.
+ * draw for the period in play (see periodInPlay). null until locked or
+ * without live data.
  */
 export function liveCell(
-  state: Pick<GameState, "game" | "squares" | "live">,
+  state: Pick<GameState, "game" | "squares" | "live" | "scores" | "manualWinners">,
 ): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null } | null {
   const { game, live } = state;
   if (!game.numbers || !live || live.state === "pre") return null;
-  const periodKey = periodKeyForLive(game.format, live.period);
+  const periodKey = periodInPlay(state, live.period);
   const draw = drawFor(game, periodKey ?? SHARED_DRAW_KEY);
   if (!draw) return null;
   const cell = winningCell(live, draw);
@@ -357,6 +406,19 @@ export function upcomingPeriod(state: ResultsInput): Period | null {
   if (state.game.format.periods === "every-score") return null;
   const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
   return boardPeriods(state.game, state.scores).find((p) => !done.has(p.key)) ?? null;
+}
+
+/**
+ * How a summary labels the live feed's score: the provider's clock ("Q3 4:12")
+ * while the game is on, "Final" once it's over. A "post" that isn't final (the
+ * board isn't, and the provider doesn't say so) is a postponed or canceled
+ * game: it shows the provider's word for it ("Postponed"), never "Final".
+ */
+export function liveLabel(live: Pick<LiveStatus, "state" | "period" | "clock" | "detail">, status: Game["status"]): string {
+  const detail = live.detail.trim();
+  if (live.state !== "post") return detail || `Q${live.period} ${live.clock}`.trim();
+  if (status === "final" || /^final\b/i.test(detail)) return "Final";
+  return detail || "Postponed";
 }
 
 /** True when the live status differs in anything the board shows (ignores updatedAt). */

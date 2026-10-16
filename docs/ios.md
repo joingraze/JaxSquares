@@ -32,9 +32,10 @@ The repo already contains these, so don't redo them in Xcode:
   - `NativePurchases.autoFinishTransactions = false`. A StoreKit transaction
     stays open until the Worker has verified it with Apple, and only then does
     `src/lib/checkout.ts` finish it. If the app dies mid-purchase, the
-    transaction is still open on the next launch, and `recoverIAPPurchases()`
-    (called at startup on iOS from `src/App.tsx`) confirms it and opens the
-    board. See `docs/payments.md`.
+    transaction is still open on the next launch, and `watchIAPPurchases()`
+    (started on iOS from `src/App.tsx`) confirms it at launch and on every
+    resume, and redeems Ask to Buy approvals as StoreKit delivers them
+    (`transactionUpdated`). See `docs/payments.md`.
   - There is no `includePlugins` list: every Capacitor plugin in `package.json`
     is compiled in. Push uses `@capacitor-firebase/messaging` only.
     `@capacitor/push-notifications` was uninstalled and must not come back:
