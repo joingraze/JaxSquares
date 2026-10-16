@@ -86,6 +86,8 @@ export function JoinCodeSheet({ open, onClose }: JoinCodeSheetProps) {
         <Button
           block
           size="lg"
+          // Until there's a whole code, a plainly inactive grey button (not a dimmed volt one that still looks tappable).
+          variant={parsed.id ? "primary" : "secondary"}
           disabled={!parsed.id}
           loading={lookup.kind === "checking"}
           onClick={() => void submit()}

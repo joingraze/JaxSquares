@@ -12,7 +12,7 @@
 // trip per mutation, and the state it returns is exactly what was written.
 
 import { isPlayerId } from "../shared/playerId";
-import { myWins, resolveResults, totalSquares } from "../shared/squares";
+import { boardPeriods, liveCell, myWins, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
   Game,
@@ -641,13 +641,15 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
   const hostIds = await playerIdMap(rows.map((r) => r.host_client_id));
 
   const ids = JSON.stringify(rows.map((r) => r.id));
+  // Every square only where numbers are drawn: that's where a winner or the
+  // live leader can be someone else. Elsewhere nothing is decided yet.
+  const drawnIds = JSON.stringify(rows.filter((r) => r.numbers !== null).map((r) => r.id));
   const inIds = `game_id IN (SELECT value FROM json_each(?1))`;
-  const [live, scores, manual, mine] = await db.batch([
+  const [live, scores, manual, drawnSquares] = await db.batch([
     db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inIds}`).bind(ids),
-    // Only this device's squares are needed to tell whether a winning cell is "mine".
-    db.prepare(`SELECT game_id, row, col, client_id, claimed_at FROM squares WHERE ${inIds} AND client_id = ?2`).bind(ids, clientId),
+    db.prepare(`SELECT game_id, row, col, client_id, claimed_at FROM squares WHERE ${inIds}`).bind(drawnIds),
   ]);
 
   const group = <T extends { game_id: string }>(list: T[]) => {
@@ -658,16 +660,20 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
   const liveBy = group(live.results as (LiveRow & { game_id: string })[]);
   const scoresBy = group(scores.results as (ScoreRow & { game_id: string })[]);
   const manualBy = group(manual.results as (ManualWinnerRow & { game_id: string })[]);
-  const mineBy = group(mine.results as (SquareRow & { game_id: string })[]);
-  const toSquare = rowToSquare(new Map([[clientId, me]]));
+  const squareRows = drawnSquares.results as (SquareRow & { game_id: string })[];
+  const squaresBy = group(squareRows);
+  const toSquare = rowToSquare(await playerIdMap([clientId, ...squareRows.map((s) => s.client_id)]));
 
   return rows.map((r) => {
     const game = rowToGame(r, publicId(hostIds, r.host_client_id));
     const liveRow = liveBy.get(r.id)?.[0];
+    const liveStatus = liveRow ? rowToLive(liveRow) : null;
+    const squares = (squaresBy.get(r.id) ?? []).map(toSquare);
+    const boardScores = (scoresBy.get(r.id) ?? []).map(rowToScore);
     const results = resolveResults({
       game,
-      squares: (mineBy.get(r.id) ?? []).map(toSquare),
-      scores: (scoresBy.get(r.id) ?? []).map(rowToScore),
+      squares,
+      scores: boardScores,
       manualWinners: (manualBy.get(r.id) ?? []).map(rowToManual),
     });
     return {
@@ -683,7 +689,7 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       claimed: r.claimed,
       totalSquares: totalSquares(game.format.boardSize),
       playerCount: r.player_count,
-      live: liveRow ? rowToLive(liveRow) : null,
+      live: liveStatus,
       startsAt: game.linkedEvent?.startsAt ?? null,
       myWins: myWins(results, me).map((w) => ({
         periodKey: w.periodKey,
@@ -691,10 +697,41 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       })),
       lastActivityAt: r.updated_at,
       createdAt: game.createdAt,
+      latestScore: latestScoreOf(game, boardScores, liveStatus),
+      leaderPlayerId: leaderOf(game, squares, liveStatus, results),
     };
   });
 }
 
+/** The live feed's score while it's on (or final), else the latest recorded period's. */
+export function latestScoreOf(
+  game: Pick<Game, "format" | "periods">,
+  scores: Score[],
+  live: LiveStatus | null,
+): GameSummary["latestScore"] {
+  if (live && live.state !== "pre") {
+    const label = live.state === "post" ? "Final" : live.detail.trim() || `Q${live.period} ${live.clock}`.trim();
+    return { scoreX: live.scoreX, scoreY: live.scoreY, label };
+  }
+  const byKey = new Map(scores.map((s) => [s.periodKey, s]));
+  const last = boardPeriods(game, scores)
+    .filter((p) => byKey.has(p.key))
+    .at(-1);
+  const score = last ? byKey.get(last.key) : undefined;
+  return last && score ? { scoreX: score.scoreX, scoreY: score.scoreY, label: last.label } : null;
+}
+
+/** Who holds the square the live score points at; with no live square, the latest period's winner. */
+export function leaderOf(
+  game: Game,
+  squares: Square[],
+  live: LiveStatus | null,
+  results: ReturnType<typeof resolveResults>,
+): string | null {
+  const now = liveCell({ game, squares, live });
+  if (now) return now.playerId;
+  return results.at(-1)?.winnerPlayerId ?? null;
+}
 
 // ---- Rate limits (table from migrations/0005_housekeeping.sql) ----
 

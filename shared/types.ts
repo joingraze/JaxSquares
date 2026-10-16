@@ -254,6 +254,19 @@ export interface GameSummary {
   myWins: { periodKey: string; label: string }[];
   lastActivityAt: number;
   createdAt: number;
+  /**
+   * Newest score on the board: the live feed's while a linked game is on (or
+   * over), else the latest recorded period. `label` is the clock ("Q3 4:12",
+   * "Final") or the period ("Q1", "Half", "Score 3"). null before any score.
+   * Always sent by `GET /api/me/games`; optional only so older fixtures type-check.
+   */
+  latestScore?: { scoreX: number; scoreY: number; label: string } | null;
+  /**
+   * Public player id holding the square the live score points at, else the
+   * latest period's winner. null when there is none yet or nobody claimed
+   * that square. Always sent by `GET /api/me/games`.
+   */
+  leaderPlayerId?: string | null;
 }
 
 // ---- Live socket messages (server -> client) ----

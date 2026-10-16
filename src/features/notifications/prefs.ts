@@ -2,7 +2,10 @@
 // trigger, so the same contextual ask doesn't come back. A tap on a bell or a
 // "turn on" button is an explicit request and always opens it.
 
-export type AskTrigger = "claimed" | "created" | "joined";
+/** What prompted the ask: claiming squares, creating a board, joining one, or a general ask from Home. */
+export type AskTrigger = "claimed" | "created" | "joined" | "home";
+
+export const ASK_TRIGGERS: readonly AskTrigger[] = ["claimed", "created", "joined", "home"];
 
 const KEY = (trigger: AskTrigger) => `jaxsquares.notifyAsk.${trigger}`;
 /** A sheet opened this soon after a tap was opened by that tap (the bell), not by a timer. */
@@ -26,7 +29,7 @@ export function rememberAskDismissed(trigger: AskTrigger, now = Date.now()): voi
 
 /** Notifications are on: the asks are moot, so start fresh if they're ever turned off. */
 export function clearAskDismissals(): void {
-  for (const t of ["claimed", "created", "joined"] as const) {
+  for (const t of ASK_TRIGGERS) {
     try {
       localStorage.removeItem(KEY(t));
     } catch {

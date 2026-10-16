@@ -29,6 +29,71 @@ export function detectHelpEnv(): HelpEnv {
   return { app: native && p !== "web" ? p : null, ios, standalone };
 }
 
+/**
+ * Why notifications are off here, and so which fix to show:
+ * - "install": an iPhone Safari tab. There is no per-site switch; push needs the Home Screen app.
+ * - "ios-settings": the iOS app or the Home Screen web app. Settings > Notifications > JaxSquares.
+ * - "android-settings": the Android app. Settings > Apps > JaxSquares > Notifications.
+ * - "browser": any other browser. The site settings behind the address bar.
+ */
+export type BlockedKind = "install" | "ios-settings" | "android-settings" | "browser";
+
+export function blockedKind(env: HelpEnv): BlockedKind {
+  if (env.app === "android") return "android-settings";
+  if (env.app === "ios" || (env.ios && env.standalone)) return "ios-settings";
+  if (env.ios) return "install";
+  return "browser";
+}
+
+export interface BlockedHelp {
+  kind: BlockedKind;
+  /** Headline that names the real reason, e.g. "Turned off in iPhone Settings". */
+  title: string;
+  /** One line under it. */
+  description: string;
+  /** Short status for a settings row ("Off in iPhone Settings"). */
+  short: string;
+  steps: string[];
+}
+
+export function blockedHelp(env: HelpEnv): BlockedHelp {
+  const kind = blockedKind(env);
+  switch (kind) {
+    case "install":
+      return {
+        kind,
+        title: "iPhone needs JaxSquares on your Home Screen first",
+        description: "Safari tabs can't get notifications. Add the app, open it, then turn them on there.",
+        short: "Needs the Home Screen app",
+        steps: blockedSteps(env),
+      };
+    case "ios-settings":
+      return {
+        kind,
+        title: "Turned off in iPhone Settings",
+        description: "One switch in Settings brings them back. We'll notice when you return.",
+        short: "Off in iPhone Settings",
+        steps: blockedSteps(env),
+      };
+    case "android-settings":
+      return {
+        kind,
+        title: "Turned off in Android Settings",
+        description: "One switch in Settings brings them back. We'll notice when you return.",
+        short: "Off in Android Settings",
+        steps: blockedSteps(env),
+      };
+    default:
+      return {
+        kind,
+        title: "Blocked in this browser",
+        description: "Allow notifications for JaxSquares in the site settings, then come back.",
+        short: "Blocked in this browser",
+        steps: blockedSteps(env),
+      };
+  }
+}
+
 /** Steps to re-enable notifications that were blocked in system or browser settings. */
 export function blockedSteps(env: HelpEnv): string[] {
   if (env.app === "android") {

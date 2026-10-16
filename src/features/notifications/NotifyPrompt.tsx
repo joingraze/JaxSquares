@@ -1,63 +1,56 @@
 // The contextual "get notified" ask: a sheet that shows exactly what you'd get
-// (lock-screen style banners), then one tap to turn notifications on.
+// (lock-screen style banners about *this* board), then one tap to turn
+// notifications on.
 //
 // Handles every PushState: default (ask), granted (thank you, then close),
-// denied (how to switch it back on), unsupported (never shows), needs-install
-// (iPhone Safari tab: illustrated Add to Home Screen guide).
+// denied (the fix for this platform, illustrated, rechecked when you come
+// back), unsupported (never shows), needs-install (iPhone Safari tab:
+// illustrated Add to Home Screen guide).
 //
 // Never nags: closing it remembers the dismissal for that trigger, so the same
-// automatic ask doesn't come back. A tap (the bell) always opens it.
+// automatic ask doesn't come back. A tap (a bell, a "turn on" row) or
+// `explicit` always opens it. After a claim it waits for the confetti to land
+// before it slides up.
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BellIcon, CheckIcon } from "../../components/icons";
 import { BottomSheet, Button, LogoMark, celebrate } from "../../components/ui";
+import { getPlayerId } from "../../lib/identity";
 import { peekGame } from "../../lib/live";
-import { haptic } from "../../lib/native";
+import { haptic, onAppResume } from "../../lib/native";
 import { enablePush, getPushState, type PushState } from "../../lib/push";
+import { askCopy } from "./askCopy";
 import { BlockedGuide, InstallGuide } from "./Guides";
+import { blockedHelp, detectHelpEnv, type BlockedHelp } from "./platformHelp";
 import { clearAskDismissals, openedByTap, rememberAskDismissed, shouldShowAsk, type AskTrigger } from "./prefs";
 import "./notifications.css";
 
 export interface NotifyPromptProps {
-  gameId: string;
-  /** What just happened, so the ask can be specific. */
-  trigger: "claimed" | "created" | "joined";
+  /** The board the ask is about (its name and my squares fill the preview). Optional for the general Home ask. */
+  gameId?: string | null;
+  /** What just happened, so the ask can be specific. "home" = a general ask from the dashboard. */
+  trigger: AskTrigger;
   open: boolean;
   onClose: () => void;
   /**
-   * Opened by an explicit tap (a bell, a "turn on" row): shows even if this
-   * trigger's automatic ask was dismissed before. Defaults to detecting a tap
-   * that happened just before opening.
+   * Opened by an explicit tap (a bell, a "turn on" row): always opens, even if
+   * this trigger's automatic ask was dismissed before, and without waiting.
+   * Defaults to detecting a tap that happened just before opening.
    */
   explicit?: boolean;
+  /**
+   * How long an automatic ask waits before showing, so it doesn't land on top
+   * of a celebration. Defaults to letting the claim confetti finish.
+   */
+  settleMs?: number;
 }
 
 type Phase = "checking" | "ask" | "working" | "done" | "blocked" | "install" | "hidden";
 
 /** Shown this long after turning on before the sheet closes itself. */
 const DONE_MS = 1700;
-
-const COPY: Record<AskTrigger, { title: string; body: string }> = {
-  claimed: {
-    title: "Want a ping when your square hits?",
-    body: "We'll buzz you when the numbers drop and the moment one of your squares wins.",
-  },
-  created: {
-    title: "Know when your crew shows up",
-    body: "Get a ping when friends join, when your board fills up and when a square hits.",
-  },
-  joined: {
-    title: "Want a ping when it's go time?",
-    body: "We'll buzz you when the numbers drop and the moment your square wins.",
-  },
-};
-
-/** Real copy from the push service (docs/push.md), so the preview is honest. */
-const BANNERS: Record<AskTrigger, [back: string, front: string]> = {
-  claimed: ["🔢 Numbers are in. Find your squares.", "🎉 Your square hit at Half! 🏆"],
-  created: ["🦊 Maya joined your board. 8 players in.", "🔥 Your board is full. Time to draw numbers."],
-  joined: ["🔢 Numbers are in. Find your squares.", "🎉 Your square hit at Half! 🏆"],
-};
+/** The claim "pop" confetti lasts ~2.3 s and the board opens the ask 1.2 s in: wait out the rest. */
+export const CONFETTI_SETTLE_MS = 1300;
 
 function phaseFor(state: PushState): Phase {
   switch (state) {
@@ -73,9 +66,10 @@ function phaseFor(state: PushState): Phase {
   }
 }
 
-export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: NotifyPromptProps) {
+export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleMs }: NotifyPromptProps) {
   const [phase, setPhase] = useState<Phase>("checking");
   const [note, setNote] = useState<string | null>(null);
+  const [help, setHelp] = useState<BlockedHelp>(() => blockedHelp(detectHelpEnv()));
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -91,6 +85,7 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
     if (!open) return;
     const byTap = explicit ?? openedByTap();
     setNote(null);
+    setHelp(blockedHelp(detectHelpEnv()));
     if (!shouldShowAsk(trigger, byTap)) {
       setPhase("hidden");
       onCloseRef.current();
@@ -98,18 +93,29 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
     }
     setPhase("checking");
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const wait = byTap ? 0 : (settleMs ?? (trigger === "claimed" ? CONFETTI_SETTLE_MS : 0));
+    const started = Date.now();
     void getPushState()
       .catch((): PushState => "unsupported")
       .then((state) => {
         if (!alive) return;
         const next = phaseFor(state);
-        setPhase(next);
-        if (next === "hidden") onCloseRef.current();
+        if (next === "hidden") {
+          setPhase("hidden");
+          onCloseRef.current();
+          return;
+        }
+        const show = () => alive && setPhase(next);
+        const left = wait - (Date.now() - started);
+        if (left > 0) timer = setTimeout(show, left);
+        else show();
       });
     return () => {
       alive = false;
+      clearTimeout(timer);
     };
-  }, [open, trigger, explicit]);
+  }, [open, trigger, explicit, settleMs]);
 
   // Turned on: a moment of thanks, then out of the way.
   useEffect(() => {
@@ -123,9 +129,8 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
     onClose();
   };
 
-  const turnOn = () => {
-    // Safari only shows the permission prompt from inside the tap: call it before anything else.
-    const result = enablePush();
+  /** Follow an enablePush() through to the right step. */
+  const settle = useCallback((result: Promise<PushState>) => {
     setPhase("working");
     setNote(null);
     result
@@ -140,7 +145,7 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
           setNote("No worries. Tap again whenever you're ready.");
         } else {
           const next = phaseFor(state);
-          if (next === "hidden") onClose();
+          if (next === "hidden") onCloseRef.current();
           else setPhase(next);
         }
       })
@@ -149,17 +154,45 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
         setPhase("ask");
         setNote("Couldn't finish setting up. Check your connection and try again.");
       });
-  };
+  }, []);
+
+  // Safari only shows the permission prompt from inside the tap: enablePush() is the first call.
+  const turnOn = () => settle(enablePush());
+
+  /** Back from Settings (or tapped "I've turned them on"): look again, and finish setting up if they're allowed now. */
+  const recheck = useCallback(
+    (byTap: boolean) => {
+      void getPushState()
+        .catch((): PushState => "unsupported")
+        .then((state) => {
+          if (state === "granted") settle(enablePush());
+          else if (state === "default") setPhase("ask");
+          else if (byTap) {
+            void haptic("warning");
+            setNote(`Still off. ${help.steps[help.steps.length - 1] ?? "Switch them on"}, then come back.`);
+          }
+        });
+    },
+    [help, settle],
+  );
+
+  // While showing the fix, notice the moment they come back from Settings.
+  useEffect(() => {
+    if (!open || phase !== "blocked" || help.kind === "install") return;
+    return onAppResume(() => recheck(false));
+  }, [open, phase, help.kind, recheck]);
 
   const showing = open && phase !== "checking" && phase !== "hidden";
-  const boardName = peekGame(gameId)?.game.name ?? "JaxSquares";
-  const copy = COPY[trigger];
+  const state = gameId ? peekGame(gameId) : null;
+  const copy = askCopy(trigger, state, getPlayerId());
+  // A Safari tab that reports "blocked" really just needs the Home Screen app: show that guide.
+  const blockedInstall = phase === "blocked" && help.kind === "install";
 
   const header =
     phase === "install"
       ? { title: "Add JaxSquares to your Home Screen", description: "iPhone only sends notifications to Home Screen apps. Takes ten seconds." }
       : phase === "blocked"
-        ? { title: "Notifications are blocked", description: "They're switched off for JaxSquares. Here's how to turn them back on:" }
+        ? { title: help.title, description: help.description }
         : phase === "done"
           ? null
           : { title: copy.title, description: copy.body };
@@ -182,7 +215,16 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
               Not now
             </Button>
           </div>
-        ) : phase === "install" || phase === "blocked" ? (
+        ) : phase === "blocked" && !blockedInstall ? (
+          <div className="flex flex-col gap-1">
+            <Button size="lg" block haptic={false} onClick={() => recheck(true)}>
+              I've turned them on
+            </Button>
+            <Button variant="ghost" block onClick={dismiss} className="text-ink-muted">
+              Not now
+            </Button>
+          </div>
+        ) : phase === "install" || blockedInstall ? (
           <Button size="lg" block variant="secondary" onClick={dismiss}>
             Got it
           </Button>
@@ -191,10 +233,20 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
     >
       {(phase === "ask" || phase === "working") && (
         <div className="flex flex-col pt-3">
-          <PreviewBanners key={`${open}`} boardName={boardName} lines={BANNERS[trigger]} />
-          <p className="mt-4 flex items-center justify-center gap-1.5 text-footnote text-ink-subtle">
-            <BellIcon size={14} />
-            Game moments only. Mute any board in Profile.
+          <PreviewBanners key={`${open}`} boardName={copy.boardName} lines={copy.lines} />
+          <ul className="mt-4 flex flex-col gap-1.5" aria-label="What you'll get">
+            {copy.scope.map((s) => (
+              <li key={s} className="flex items-center gap-2 text-footnote font-semibold text-ink">
+                <span aria-hidden className="grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-brand-400/16 text-brand-300">
+                  <CheckIcon size={11} strokeWidth={3.4} />
+                </span>
+                {s}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 flex items-center gap-1.5 text-caption text-ink-subtle">
+            <BellIcon size={13} />
+            Nothing else. Mute any board in Profile.
           </p>
           {note && (
             <p role="status" className="mt-3 rounded-xl bg-surface-3 px-3 py-2 text-center text-footnote font-semibold text-ink">
@@ -204,11 +256,16 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit }: Notif
         </div>
       )}
 
-      {phase === "install" && <InstallGuide />}
+      {(phase === "install" || blockedInstall) && <InstallGuide />}
 
-      {phase === "blocked" && (
-        <div className="pt-2">
-          <BlockedGuide />
+      {phase === "blocked" && !blockedInstall && (
+        <div className="pt-1">
+          <BlockedGuide help={help} />
+          {note && (
+            <p role="status" className="mt-4 rounded-xl bg-surface-3 px-3 py-2 text-center text-footnote font-semibold text-ink">
+              {note}
+            </p>
+          )}
         </div>
       )}
 
@@ -239,7 +296,7 @@ export function PreviewBanners({ boardName, lines }: { boardName: string; lines:
               <span className="min-w-0 flex-1 truncate text-footnote font-bold text-ink">{boardName}</span>
               <span className="shrink-0 text-caption text-ink-muted">now</span>
             </span>
-            <span className="block truncate text-footnote text-ink">{line}</span>
+            <span className="block text-footnote leading-snug text-ink">{line}</span>
           </span>
         </div>
       ))}

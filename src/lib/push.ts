@@ -9,12 +9,13 @@
 //   getPushState()        -> what to show ("needs-install" = iOS Safari tab: show "Add to Home Screen")
 //   enablePush()          -> from a tap; asks permission and registers
 //   onNotificationTap(cb) -> route to the tapped notification's in-app URL
-//   disablePush()         -> "turn off on this device"; sticks until enablePush (see isPushOff)
+//   disablePush()         -> "turn off on this device"; sticks until enablePush (see isPushOff),
+//                            mirrored to Capacitor Preferences so iOS clearing WebView storage can't undo it
 
 import { Capacitor } from "@capacitor/core";
 import type { PushRegistration } from "../../shared/types";
 import { getClientId } from "./identity";
-import { onAppResume } from "./native";
+import { getStored, onAppResume, removeStored, setStored } from "./native";
 
 export type PushState =
   | "unsupported" // no push here (old browser, push not configured on the server)
@@ -207,6 +208,9 @@ function ensureNativeListeners(): Promise<void> {
     );
     // FCM rotates tokens; keep the server's copy current.
     await FirebaseMessaging.addListener("tokenReceived", async (e) => {
+      // Turned off in the app: a rotated token must not quietly sign this device back up.
+      await hydratePushOff();
+      if (isPushOff()) return;
       const { receive } = await FirebaseMessaging.checkPermissions();
       if (receive === "granted") await registerNative(e.token).catch((err) => console.warn("push re-register failed", err));
     });
@@ -325,12 +329,26 @@ export function isPushOff(): boolean {
 }
 
 function setPushOff(off: boolean): void {
-  try {
-    if (off) localStorage.setItem(OFF_KEY, "1");
-    else localStorage.removeItem(OFF_KEY);
-  } catch {
-    // storage unavailable: the server registration is what counts
-  }
+  // setStored/removeStored write localStorage synchronously (isPushOff reads it), and in the
+  // native app also Capacitor Preferences, which survives iOS clearing the WebView's storage.
+  void (off ? setStored(OFF_KEY, "1") : removeStored(OFF_KEY)).catch(() => undefined);
+  offReady = Promise.resolve();
+}
+
+let offReady: Promise<void> | null = null;
+
+/**
+ * Restores the "turned off in the app" flag from the native store into
+ * localStorage (iOS can clear a WebView's localStorage; without this the next
+ * silent re-sync would turn pushes back on). Runs once; safe to await anywhere.
+ */
+export function hydratePushOff(): Promise<void> {
+  offReady ??= getStored(OFF_KEY)
+    .then((value) => {
+      if (value === "1") void setStored(OFF_KEY, "1");
+    })
+    .catch(() => undefined);
+  return offReady;
 }
 
 // ---- Public API ----
@@ -404,6 +422,9 @@ export function syncPush(force = false): Promise<void> {
   if (!force && Date.now() - lastSync < SYNC_INTERVAL_MS) return Promise.resolve();
   syncing = (async () => {
     try {
+      // The flag may only be in the native store right now (WebView storage was cleared).
+      await hydratePushOff();
+      if (isPushOff()) return;
       if (isNative()) {
         const { FirebaseMessaging } = await loadFm();
         if ((await FirebaseMessaging.checkPermissions()).receive === "granted") await registerNative();

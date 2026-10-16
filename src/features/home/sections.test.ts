@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { Game, GameState, GameSummary, NumberDraw, Player } from "../../../shared/types";
-import { BUZZ_WINDOW_MS, finalSummary, groupBoards, headlineFor, hostAction, latestBuzz, liveSnapshot, primaryActionId, sectionOf } from "./sections";
+import {
+  actionFor,
+  atMoment,
+  boardBuzz,
+  BURST_MS,
+  BUZZ_WINDOW_MS,
+  cardModel,
+  finalSummary,
+  groupBoards,
+  headlineFor,
+  hostAction,
+  liveHits,
+  liveSnapshot,
+  momentOf,
+  primaryActionId,
+  sectionOf,
+  withState,
+} from "./sections";
 
 const ME = "me-public-id-000000000";
 const MAYA = "maya-public-id-0000000";
@@ -80,15 +97,21 @@ function state(over: Omit<Partial<GameState>, "game"> & { game?: Partial<Game> }
   };
 }
 
-describe("sectionOf / hostAction", () => {
-  it("puts boards where they need attention", () => {
+describe("sectionOf / hostAction / actionFor", () => {
+  it("puts everything you must act on under Needs you", () => {
     expect(sectionOf(summary({ status: "final" }))).toBe("final");
     expect(sectionOf(summary({ status: "locked" }))).toBe("live");
     expect(sectionOf(summary({ status: "open", isHost: true }))).toBe("needs");
     expect(sectionOf(summary({ status: "draft", isHost: true }))).toBe("needs");
-    expect(sectionOf(summary({ status: "open" }))).toBe("next");
+    // A friend's board with open squares and none of them yours: you need to pick.
+    expect(sectionOf(summary({ status: "open" }))).toBe("needs");
+    expect(actionFor(summary({ status: "open" }))).toBe("pick");
+    // Already in, or nothing left to pick: just waiting.
+    expect(sectionOf(summary({ status: "open", mySquares: 3 }))).toBe("next");
+    expect(sectionOf(summary({ status: "open", claimed: 100 }))).toBe("next");
     const live = { state: "in" as const, period: 1, clock: "9:00", detail: "Q1 9:00", scoreX: 0, scoreY: 0, updatedAt: 1 };
     expect(sectionOf(summary({ status: "open", isHost: true, live }))).toBe("live");
+    expect(actionFor(summary({ status: "open", isHost: true, live }))).toBeNull();
   });
 
   it("asks the host for the right next step", () => {
@@ -100,29 +123,97 @@ describe("sectionOf / hostAction", () => {
 });
 
 describe("groupBoards", () => {
-  it("orders host to-dos by urgency and upcoming boards by kickoff", () => {
+  it("orders to-dos by urgency and upcoming boards by kickoff", () => {
     const s = groupBoards([
       summary({ id: "draft", isHost: true, status: "draft" }),
       summary({ id: "fill", isHost: true, claimed: 40 }),
       summary({ id: "full", isHost: true, claimed: 100 }),
-      summary({ id: "later", startsAt: 3000 }),
-      summary({ id: "tbd", startsAt: null }),
-      summary({ id: "soon", startsAt: 2000 }),
+      summary({ id: "pick", claimed: 10 }),
+      summary({ id: "later", mySquares: 2, startsAt: 3000 }),
+      summary({ id: "tbd", mySquares: 2, startsAt: null }),
+      summary({ id: "soon", mySquares: 2, startsAt: 2000 }),
       summary({ id: "old-final", status: "final", lastActivityAt: 1 }),
       summary({ id: "new-final", status: "final", lastActivityAt: 9 }),
     ]);
-    expect(s.needs.map((g) => g.id)).toEqual(["full", "fill", "draft"]);
+    expect(s.needs.map((g) => g.id)).toEqual(["full", "pick", "fill", "draft"]);
     expect(s.next.map((g) => g.id)).toEqual(["soon", "later", "tbd"]);
     expect(s.final.map((g) => g.id)).toEqual(["new-final", "old-final"]);
     expect(s.live).toEqual([]);
   });
 
-  it("gives the filled button to one card only", () => {
-    const withTodo = groupBoards([summary({ id: "fill", isHost: true, claimed: 3 }), summary({ id: "pick" })]);
-    expect(primaryActionId(withTodo)).toBe("fill");
-    const players = groupBoards([summary({ id: "mine", mySquares: 4 }), summary({ id: "pick" })]);
-    expect(primaryActionId(players)).toBe("pick");
+  it("gives the filled button to the single most urgent action, whatever it is", () => {
+    expect(primaryActionId(groupBoards([summary({ id: "fill", isHost: true, claimed: 3 }), summary({ id: "full", isHost: true, claimed: 100 })]))).toBe("full");
+    expect(primaryActionId(groupBoards([summary({ id: "mine", mySquares: 4 }), summary({ id: "pick" })]))).toBe("pick");
+    expect(primaryActionId(groupBoards([summary({ id: "draft", isHost: true, status: "draft" })]))).toBe("draft");
     expect(primaryActionId(groupBoards([summary({ id: "full", claimed: 100 })]))).toBeNull();
+  });
+});
+
+describe("cardModel", () => {
+  const now = 1_000_000;
+  it("labels the role quietly and keeps game state separate", () => {
+    expect(cardModel(summary({ isHost: true, claimed: 58, mySquares: 10 }), now)).toMatchObject({
+      role: "Your board",
+      status: "42 left",
+      statusIsLeft: true,
+      meta: "10 yours",
+      action: { kind: "invite", label: "Invite" },
+      meter: true,
+      buzz: true,
+    });
+    const kickoff = cardModel(summary({ mySquares: 9, claimed: 37, startsAt: now + 3 * 24 * 3600_000 }), now);
+    expect(kickoff).toMatchObject({ role: "You're in", statusTone: "muted", meta: "9 yours", action: null, buzz: false });
+    expect(kickoff.status).toMatch(/^Kickoff /);
+  });
+
+  it("asks for the right thing on each kind of board", () => {
+    expect(cardModel(summary({ claimed: 84 }), now)).toMatchObject({ status: "16 left", action: { kind: "pick", label: "Pick squares" }, meta: "none yours yet" });
+    expect(cardModel(summary({ isHost: true, claimed: 100 }), now)).toMatchObject({ status: "Board's full", statusTone: "gold", action: { label: "Draw numbers" }, buzz: false });
+    expect(cardModel(summary({ isHost: true, status: "draft" }), now)).toMatchObject({ status: "Not open yet", action: { label: "Finish setup" }, meter: false });
+    expect(cardModel(summary({ mySquares: 5, claimed: 100 }), now)).toMatchObject({ status: "Board's full", action: null });
+  });
+});
+
+describe("withState", () => {
+  it("lays a live board state over a stale summary", () => {
+    const s = state({
+      game: { status: "open", numbers: null },
+      squares: [
+        { row: 0, col: 0, playerId: ME, claimedAt: 1 },
+        { row: 0, col: 1, playerId: MAYA, claimedAt: 2 },
+        { row: 0, col: 2, playerId: MAYA, claimedAt: 3 },
+      ],
+      activity: [{ id: "a1", type: "claimed", at: 50, actor: MAYA, data: { count: 2 } }],
+    });
+    const g = withState(summary({ claimed: 0, mySquares: 0, playerCount: 1, lastActivityAt: 10 }), s, ME);
+    expect(g).toMatchObject({ claimed: 3, mySquares: 1, playerCount: 2, status: "open", lastActivityAt: 50, latestScore: null, leaderPlayerId: null });
+  });
+
+  it("computes wins, the latest score and the leader like the server does", () => {
+    const s = state({
+      scores: [
+        { periodKey: "q1", scoreX: 17, scoreY: 13, source: "host", updatedAt: 1 },
+        { periodKey: "q2", scoreX: 14, scoreY: 10, source: "host", updatedAt: 2 },
+      ],
+    });
+    // q1 17-13 -> col 7, row 3 -> me; q2 14-10 -> col 4, row 0 -> Maya
+    const g = withState(summary({ status: "open" }), s, ME);
+    expect(g.status).toBe("locked");
+    expect(g.myWins).toEqual([{ periodKey: "q1", label: "Q1" }]);
+    expect(g.latestScore).toEqual({ scoreX: 14, scoreY: 10, label: "Half" });
+    expect(g.leaderPlayerId).toBe(MAYA);
+  });
+});
+
+describe("plain-language periods", () => {
+  it("says halftime, not Half", () => {
+    expect(momentOf("q2", "Half")).toBe("Halftime");
+    expect(momentOf("q1", "Q1")).toBe("End of Q1");
+    expect(momentOf("s3", "Score 3")).toBe("Score 3");
+    expect(atMoment("q2", "Half")).toBe("at halftime");
+    expect(atMoment("final", "Final")).toBe("at the Final");
+    expect(atMoment("q3", "Q3")).toBe("at the end of Q3");
+    expect(atMoment("s2", "Score 2")).toBe("on Score 2");
   });
 });
 
@@ -201,39 +292,74 @@ describe("finalSummary", () => {
 
 describe("headlineFor", () => {
   const now = 0;
-  it("leads with your winning square, then live games, then host to-dos", () => {
+  it("sums up the day: live games and your hits first, then to-dos, then kickoff", () => {
     const live = groupBoards([summary({ id: "a", status: "locked" }), summary({ id: "b", status: "locked" })]);
-    expect(headlineFor(live, { winning: { kind: "now", periodLabel: "Q3" }, now })).toMatchObject({ hot: "winning right now.", tone: "win" });
-    expect(headlineFor(live, { winning: { kind: "last", periodLabel: "Q1" }, now })).toMatchObject({ lead: "You won", hot: "Q1!" });
-    expect(headlineFor(live, { winning: null, now })).toMatchObject({ lead: "2 games", tone: "live" });
+    expect(headlineFor(live, { winningNow: true, hits: 0, now })).toMatchObject({ lead: "2 games live.", hot: "You're winning right now.", tone: "win" });
+    expect(headlineFor(live, { winningNow: false, hits: 2, now })).toMatchObject({ lead: "2 games live.", hot: "You've hit twice.", tone: "win" });
+    expect(headlineFor(live, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "2 games", hot: "live right now.", tone: "live" });
+    const one = groupBoards([summary({ status: "locked" })]);
+    expect(headlineFor(one, { winningNow: false, hits: 1, now })).toMatchObject({ lead: "Your game is live.", hot: "You've hit once." });
     const full = groupBoards([summary({ isHost: true, claimed: 100 })]);
-    expect(headlineFor(full, { winning: null, now }).hot).toBe("Draw the numbers.");
-    expect(headlineFor(groupBoards([summary({ isHost: true, claimed: 3 })]), { winning: null, now }).hot).toBe("Invite the crew.");
-    expect(headlineFor(groupBoards([summary({})]), { winning: null, now }).hot).toBe("Grab yours.");
+    expect(headlineFor(full, { winningNow: false, hits: 0, now }).hot).toBe("Draw the numbers.");
+    expect(headlineFor(groupBoards([summary({ isHost: true, claimed: 3 })]), { winningNow: false, hits: 0, now }).hot).toBe("Invite the crew.");
+    expect(headlineFor(groupBoards([summary({})]), { winningNow: false, hits: 0, now }).hot).toBe("Grab yours.");
     const kickoff = groupBoards([summary({ mySquares: 4, startsAt: now + 3 * 3600_000 })]);
-    expect(headlineFor(kickoff, { winning: null, now })).toMatchObject({ lead: "Kickoff in", hot: "3h 0m." });
-    expect(headlineFor(groupBoards([summary({ mySquares: 4 })]), { winning: null, now }).hot).toBe("Now we wait.");
+    expect(headlineFor(kickoff, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Kickoff in", hot: "3h 0m." });
+    expect(headlineFor(groupBoards([summary({ mySquares: 4 })]), { winningNow: false, hits: 0, now }).hot).toBe("Now we wait.");
     const done = groupBoards([summary({ status: "final" })]);
-    expect(headlineFor(done, { winning: null, now }).hot).toBe("Run it back?");
+    expect(headlineFor(done, { winningNow: false, hits: 0, now }).hot).toBe("Run it back?");
+  });
+
+  it("counts your hits on boards in play, once per period", () => {
+    const s = groupBoards([
+      summary({ id: "a", status: "locked", myWins: [{ periodKey: "q1", label: "Q1" }, { periodKey: "q1", label: "Q1 (reverse)" }] }),
+      summary({ id: "b", status: "locked", myWins: [{ periodKey: "q2", label: "Half" }] }),
+      summary({ id: "c", status: "final", myWins: [{ periodKey: "final", label: "Final" }] }),
+    ]);
+    expect(liveHits(s)).toBe(2);
   });
 });
 
-describe("latestBuzz", () => {
+describe("boardBuzz", () => {
   const now = 10 * BUZZ_WINDOW_MS;
-  const act = (over: Partial<GameState["activity"][number]>) => ({ id: Math.random().toString(), type: "claimed" as const, at: now - 1000, actor: MAYA, data: { count: 3 }, ...over });
+  let n = 0;
+  const act = (over: Partial<GameState["activity"][number]>): GameState["activity"][number] => ({
+    id: `a${++n}`,
+    type: "claimed",
+    at: now - 1000,
+    actor: MAYA,
+    data: { count: 1 },
+    ...over,
+  });
+  const open = (activity: GameState["activity"]) => state({ game: { status: "open", numbers: null }, activity });
 
-  it("shows the freshest thing a friend did", () => {
-    const s = state({ game: { status: "open", numbers: null }, activity: [act({ actor: ME }), act({}), act({ type: "joined", data: { name: "Maya" } })] });
-    expect(latestBuzz(s, ME, now)).toMatchObject({ text: "Maya grabbed 3 squares", player: { name: "Maya" } });
-    const one = state({ activity: [act({ data: { count: 1 } })] });
-    expect(latestBuzz(one, ME, now)?.text).toBe("Maya grabbed a square");
-    const joined = state({ activity: [act({ type: "joined", data: { name: "Maya" } })] });
-    expect(latestBuzz(joined, ME, now)?.text).toBe("Maya joined");
+  it("adds up one person's burst: five grabs read as five", () => {
+    const five = open([act({ at: now - 100 }), act({ at: now - 200 }), act({ at: now - 300 }), act({ at: now - 400 }), act({ at: now - 500 })]);
+    expect(boardBuzz(five, ME, now)).toMatchObject({ text: "Maya grabbed 5 squares", at: now - 100, others: 0 });
+    const joined = open([act({ data: { count: 3 } }), act({ type: "joined", at: now - 5000, data: { name: "Maya" } })]);
+    expect(boardBuzz(joined, ME, now)?.text).toBe("Maya grabbed 3 squares");
+    expect(boardBuzz(open([act({})]), ME, now)?.text).toBe("Maya grabbed a square");
+    expect(boardBuzz(open([act({ type: "joined", data: { name: "Maya" } })]), ME, now)?.text).toBe("Maya joined");
+  });
+
+  it("keeps separate bursts apart and counts other friends", () => {
+    const DRE = "dre-public-id-00000000";
+    const s = state({
+      game: { status: "open", numbers: null },
+      players: [player(ME, "Jordan"), player(MAYA, "Maya"), player(DRE, "Dre")],
+      activity: [
+        act({ at: now - 100, data: { count: 2 } }),
+        act({ at: now - 200, actor: DRE, data: { count: 4 } }),
+        act({ at: now - 100 - BURST_MS - 1, data: { count: 9 } }),
+      ],
+    });
+    expect(boardBuzz(s, ME, now)).toMatchObject({ text: "Maya grabbed 2 squares", others: 1 });
   });
 
   it("ignores my own moves, system events and old news", () => {
-    expect(latestBuzz(state({ activity: [act({ actor: ME })] }), ME, now)).toBeNull();
-    expect(latestBuzz(state({ activity: [act({ actor: null, type: "locked", data: {} })] }), ME, now)).toBeNull();
-    expect(latestBuzz(state({ activity: [act({ at: now - BUZZ_WINDOW_MS - 1 })] }), ME, now)).toBeNull();
+    expect(boardBuzz(open([act({ actor: ME })]), ME, now)).toBeNull();
+    expect(boardBuzz(open([act({ actor: null, type: "locked", data: {} })]), ME, now)).toBeNull();
+    expect(boardBuzz(open([act({ at: now - BUZZ_WINDOW_MS - 1 })]), ME, now)).toBeNull();
+    expect(boardBuzz(open([act({ type: "released" })]), ME, now)).toBeNull();
   });
 });

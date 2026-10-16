@@ -43,7 +43,11 @@ const CELLS: Cell[] = Array.from({ length: N * N }, (_, i) => {
 
 export function MiniBoard({ className }: { className?: string }) {
   return (
-    <div aria-hidden className={cx("mb-wrap relative mx-auto w-full max-w-[min(19rem,40dvh)] select-none", className)}>
+    <div
+      aria-hidden
+      // As big as the screen allows: everything else on the welcome needs about 27rem of height.
+      className={cx("mb-wrap relative mx-auto w-full max-w-[min(24rem,calc(100dvh-27rem))] min-w-[12rem] select-none", className)}
+    >
       <div className="mb-glow absolute -inset-10 rounded-full" />
 
       <div className="mb-board relative rounded-[1.25rem] bg-surface-2 p-2 shadow-float ring-1 ring-inset ring-line-strong">

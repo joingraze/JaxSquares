@@ -1,11 +1,68 @@
 // Per-board notifications switch (this device). On = you hear about this board.
 // Shows the last known setting instantly, then confirms with the server.
 
-import { useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { BellIcon, BellOffIcon } from "../../components/icons";
 import { Switch, cx } from "../../components/ui";
 import { ToastContext } from "../../components/ui/toastContext";
 import { isGameMuted, refreshGameMuted, setGameMuted } from "../../lib/push";
+
+export interface GameMute {
+  muted: boolean;
+  busy: boolean;
+  /** Optimistic; rolls back (and resolves false) if the server says no. */
+  setMuted: (muted: boolean) => Promise<boolean>;
+}
+
+/** This device's mute for one board: last known value now, the server's a moment later. */
+export function useGameMute(gameId: string, onChange?: (muted: boolean) => void): GameMute {
+  const toast = useContext(ToastContext);
+  const [muted, setMutedState] = useState(() => isGameMuted(gameId));
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // The server is the source of truth (another device, or storage was cleared).
+  useEffect(() => {
+    let alive = true;
+    setMutedState(isGameMuted(gameId));
+    refreshGameMuted(gameId)
+      .then((m) => {
+        if (alive && !busyRef.current) setMutedState(m);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
+  const setMuted = useCallback(
+    (next: boolean): Promise<boolean> => {
+      if (busyRef.current) return Promise.resolve(false);
+      busyRef.current = true;
+      setBusy(true);
+      setMutedState(next);
+      return setGameMuted(gameId, next)
+        .then(() => {
+          onChangeRef.current?.(next);
+          return true;
+        })
+        .catch(() => {
+          setMutedState(!next);
+          toast?.show({ id: "notify-settings", tone: "error", title: "Couldn't change that", description: "Check your connection and try again." });
+          return false;
+        })
+        .finally(() => {
+          busyRef.current = false;
+          setBusy(false);
+        });
+    },
+    [gameId, toast],
+  );
+
+  return { muted, busy, setMuted };
+}
 
 export interface MuteToggleProps {
   gameId: string;
@@ -19,47 +76,12 @@ export interface MuteToggleProps {
 }
 
 export function MuteToggle({ gameId, variant = "row", label, className, onChange }: MuteToggleProps) {
-  const toast = useContext(ToastContext);
-  const [muted, setMuted] = useState(() => isGameMuted(gameId));
-  const [busy, setBusy] = useState(false);
-  const busyRef = useRef(false);
-
-  // The server is the source of truth (another device, or storage was cleared).
-  useEffect(() => {
-    let alive = true;
-    setMuted(isGameMuted(gameId));
-    refreshGameMuted(gameId)
-      .then((m) => {
-        if (alive && !busyRef.current) setMuted(m);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, [gameId]);
-
-  const toggle = (on: boolean) => {
-    if (busyRef.current) return;
-    const next = !on;
-    busyRef.current = true;
-    setBusy(true);
-    setMuted(next);
-    setGameMuted(gameId, next)
-      .then(() => onChange?.(next))
-      .catch(() => {
-        setMuted(!next);
-        toast?.show({ tone: "error", title: "Couldn't change that", description: "Check your connection and try again." });
-      })
-      .finally(() => {
-        busyRef.current = false;
-        setBusy(false);
-      });
-  };
+  const { muted, busy, setMuted } = useGameMute(gameId, onChange);
 
   const control = (
     <Switch
       checked={!muted}
-      onChange={toggle}
+      onChange={(on) => void setMuted(!on)}
       disabled={busy}
       aria-label={label ? `Notifications for ${label}` : "Notifications for this board"}
     />

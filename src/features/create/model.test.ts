@@ -6,7 +6,11 @@ import {
   boardNameFor,
   buildCreateInput,
   customShortName,
+  CUSTOM_X_COLOR,
+  CUSTOM_Y_COLOR,
   describeBoard,
+  boardHeadlineParts,
+  firstBlocker,
   firstPrizeProblem,
   formatLine,
   inputSignature,
@@ -16,6 +20,10 @@ import {
   resolveCustomTeam,
   shortTeamName,
   kickoffParts,
+  matchupTeams,
+  POPULAR_TEAMS,
+  startsIn,
+  teamColorsFrom,
   upcomingEvents,
   winnersTag,
   type CreateDraft,
@@ -126,13 +134,66 @@ describe("kickoffParts", () => {
   });
 });
 
+describe("startsIn", () => {
+  const now = Date.UTC(2026, 9, 18, 14, 0);
+  it("counts down only when kickoff is close, in round words", () => {
+    expect(startsIn(now + 3 * 3_600_000, now)).toBe("in 3h");
+    expect(startsIn(now + 2.5 * 3_600_000, now)).toBe("in 2h 30m");
+    expect(startsIn(now + 45 * 60_000, now)).toBe("in 45m");
+    expect(startsIn(now + 7 * 3_600_000, now)).toBeNull();
+    expect(startsIn(now - 60_000, now)).toBeNull();
+  });
+});
+
+describe("team colors", () => {
+  it("takes NFL colors from the live schedule and gives typed teams the same color", () => {
+    const colors = teamColorsFrom([event(), event({ league: "ncaaf", home: { name: "Georgia Bulldogs", abbr: "UGA", color: "#ba0c2f" } })]);
+    expect(colors).toEqual({ KC: "#e31837", BUF: "#00338d" });
+    expect(resolveCustomTeam("chiefs", colors)?.team).toEqual({ name: "Kansas City Chiefs", abbr: "KC", color: "#e31837" });
+    // No live color: no color (the board's side color applies), and never for a non-NFL name.
+    expect(resolveCustomTeam("Packers", colors)?.team.color).toBeUndefined();
+    expect(resolveCustomTeam("Team Maya", colors)?.team.color).toBeUndefined();
+    const teams = matchupTeams({ kind: "custom", x: "Bills", y: "Chiefs" }, colors)!;
+    expect([teams.teamX.color, teams.teamY.color]).toEqual(["#00338d", "#e31837"]);
+  });
+
+  it("offers a handful of popular teams to tap", () => {
+    expect(POPULAR_TEAMS.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(POPULAR_TEAMS.map((t) => t.abbr)).size).toBe(POPULAR_TEAMS.length);
+  });
+});
+
+describe("firstBlocker", () => {
+  const f = defaultFormat();
+  const linked = { kind: "linked", event: event() } as const;
+  it("asks for what's missing in page order", () => {
+    expect(firstBlocker({ matchup: null, hostName: null, format: f, prizes: {} })?.field).toBe("game");
+    expect(firstBlocker({ matchup: { kind: "custom", x: " ", y: "" }, hostName: "", format: f, prizes: {} })).toEqual({
+      field: "team-x",
+      label: "Add both teams to continue",
+    });
+    expect(firstBlocker({ matchup: { kind: "custom", x: "Packers", y: "" }, hostName: "", format: f, prizes: {} })?.field).toBe("team-y");
+    expect(firstBlocker({ matchup: linked, hostName: " ", format: f, prizes: {} })).toEqual({ field: "host", label: "Add your name to continue" });
+    expect(firstBlocker({ matchup: linked, hostName: "Jordan", format: f, prizes: { q3: "$20" } })).toMatchObject({ field: "prize", key: "q3" });
+  });
+
+  it("is clear once everything is in (a device with a name skips the name)", () => {
+    expect(firstBlocker({ matchup: linked, hostName: null, format: f, prizes: { q1: "Loser buys wings" } })).toBeNull();
+  });
+});
+
 describe("format copy", () => {
-  it("counts winners, doubled by reverse", () => {
-    expect(winnersTag("quarters", false)).toBe("4 winners");
-    expect(winnersTag("quarters", true)).toBe("8 winners");
-    expect(winnersTag("final", false)).toBe("1 winner");
-    expect(winnersTag("every-score", false)).toBe("Winners all game");
-    expect(winnersTag("every-score", true)).toBe("2 winners a score");
+  it("keeps card tags stable (modifiers show up in the summary instead)", () => {
+    expect(winnersTag("quarters")).toBe("4 winners");
+    expect(winnersTag("halves")).toBe("2 winners");
+    expect(winnersTag("final")).toBe("1 winner");
+    expect(winnersTag("every-score")).toBe("1 winner per score");
+  });
+
+  it("doubles the summary's winners with reverse, in phrases that never split", () => {
+    expect(boardHeadlineParts({ ...defaultFormat(), reverse: true })).toEqual({ winners: "8 winners", size: "100 squares" });
+    expect(boardHeadlineParts({ ...defaultFormat(), periods: "every-score" }).winners).toBe("A winner every score");
+    expect(boardHeadlineParts({ ...defaultFormat(), periods: "every-score", reverse: true }).winners).toBe("2 winners every score");
   });
 
   it("explains the board in plain words", () => {
@@ -144,7 +205,7 @@ describe("format copy", () => {
     expect(describeBoard(quick)).toContain("overtime counts");
     expect(describeBoard(quick)).toContain("Flip the digits");
     expect(describeBoard(quick)).toContain("Two numbers per row");
-    expect(boardHeadline({ ...defaultFormat(), periods: "every-score" })).toBe("Every score wins · 100 squares");
+    expect(boardHeadline({ ...defaultFormat(), periods: "every-score" })).toBe("A winner every score · 100 squares");
     expect(describeBoard({ ...defaultFormat(), freshNumbers: true })).toContain("New numbers every quarter");
     // Fresh numbers only apply to quarters.
     expect(describeBoard({ ...defaultFormat(), periods: "halves", freshNumbers: true })).not.toContain("New numbers");
@@ -190,8 +251,9 @@ describe("buildCreateInput", () => {
     const input = buildCreateInput(base)!;
     expect(input.name).toBe("Packers vs Bears Squares");
     expect(input.league).toBe("custom");
-    expect(input.teamX).toEqual({ name: "Green Bay Packers", abbr: "GB" });
-    expect(input.teamY).toEqual({ name: "Chicago Bears", abbr: "CHI" });
+    // No live colors known: the board's side colors are stored, so every screen agrees.
+    expect(input.teamX).toEqual({ name: "Green Bay Packers", abbr: "GB", color: CUSTOM_X_COLOR });
+    expect(input.teamY).toEqual({ name: "Chicago Bears", abbr: "CHI", color: CUSTOM_Y_COLOR });
     expect(input.linkedEvent).toBeNull();
     expect(input.host).toEqual(host);
   });

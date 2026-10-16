@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onAppResume } from "../../lib/native";
-import { getPushState, isPushOff, type PushState } from "../../lib/push";
+import { getPushState, hydratePushOff, isPushOff, type PushState } from "../../lib/push";
 
 export interface PushStatus {
   /** null while checking. */
@@ -22,9 +22,9 @@ export function usePushStatus(active = true): PushStatus {
   const alive = useRef(true);
 
   const refresh = useCallback(() => {
-    void getPushState()
-      .catch((): PushState => "unsupported")
-      .then((s) => {
+    // The "turned off" flag may only be in the native store until it's hydrated.
+    void Promise.all([getPushState().catch((): PushState => "unsupported"), hydratePushOff()])
+      .then(([s]) => {
         if (!alive.current) return;
         setState(s);
         setOff(isPushOff());

@@ -1,5 +1,6 @@
 /* Home-only motion: the welcome mini board, the join-code caret, pull to
-   refresh and card entrances. The mini board runs one 8s story loop: friends'
+   refresh, card entrances, and the live touches (counts that bump when a
+   friend grabs a square, fresh activity, a win landing on the headline). The mini board runs one 8s story loop: friends'
    squares pop in, a toast slides by, the winning square flares and
    "Your square hits!" lands. */
 
@@ -106,7 +107,48 @@
   to { opacity: 1; transform: none; }
 }
 
+/* A count that just changed: a quick bump in volt, then back to normal. */
+.home-bump {
+  animation: home-bump 700ms var(--ease-spring) both;
+}
+@keyframes home-bump {
+  0% { transform: scale(1); color: inherit; }
+  25% { transform: scale(1.28); color: var(--color-brand-300); }
+  100% { transform: scale(1); }
+}
+
+/* Friend activity that happened while Home was open slides in with a soft volt wash. */
+.home-buzz-new {
+  border-radius: 0.5rem;
+  animation: home-buzz-new 1.6s var(--ease-out-quint) both;
+}
+@keyframes home-buzz-new {
+  0% { opacity: 0; transform: translate3d(0, 4px, 0); background-color: rgb(198 249 31 / 0.18); }
+  20% { opacity: 1; transform: none; }
+  100% { background-color: transparent; }
+}
+
+/* A win landing while the headline is on screen: the headline takes the news. */
+.home-headline-win {
+  animation: home-headline-win 900ms var(--ease-spring) both;
+  transform-origin: left center;
+}
+@keyframes home-headline-win {
+  0% { opacity: 0; transform: scale(0.86) translate3d(0, 6px, 0); }
+  55% { opacity: 1; transform: scale(1.06); }
+  100% { transform: none; }
+}
+
+/* Content fades out before it reaches the floating tab dock (instead of showing through it). */
+.home-dock-fade {
+  height: calc(var(--shell-bottom) + 1.25rem);
+  background: linear-gradient(to top, var(--color-canvas) 0%, var(--color-canvas) 62%, color-mix(in srgb, var(--color-canvas) 0%, transparent) 100%);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .home-bump,
+  .home-buzz-new,
+  .home-headline-win,
   .mb-board,
   .mb-pop,
   .mb-win,

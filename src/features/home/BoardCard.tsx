@@ -1,6 +1,7 @@
-// Dashboard card for a board that hasn't kicked off: matchup, name, role,
-// status, and (when there is one) the one thing to do next. The fill meter
-// runs along the card's bottom edge.
+// Dashboard card for a board that hasn't kicked off: matchup, name, a quiet
+// role label, the game state, what a friend just did, and a labeled fill
+// meter with the one thing to do next beside it. The whole card opens the
+// board; the action button sits above that layer.
 
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -9,47 +10,46 @@ import { Avatar, Button, cx } from "../../components/ui";
 import { relativeTime } from "../../lib/format";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
-import { Matchup, RoleBadge } from "./BoardBits";
-import type { Buzz } from "./sections";
+import { CountUp, FillMeter, Matchup, RoleLabel } from "./BoardBits";
+import type { Buzz, CardModel } from "./sections";
 
 export interface CardAction {
   label: string;
   icon?: ReactNode;
   onClick: () => void;
-  /** The single most important action on the screen gets the filled button. */
+  /** The single most urgent action on the page gets the filled button; every other one is outlined. */
   primary: boolean;
-  /** Filled color when primary. */
-  tone?: "brand" | "gold";
 }
 
 export interface BoardCardProps {
   game: GameSummary;
-  /** Status line under the name. */
-  status: ReactNode;
-  statusTone?: "muted" | "brand" | "gold";
-  /** Short trailing detail on the status line, e.g. "10 yours". */
-  meta?: ReactNode;
+  model: CardModel;
   action?: CardAction;
-  /** Emphasize the card (e.g. a full board waiting on the host). */
-  highlight?: "gold" | "brand";
-  /** A friend's latest move on this board, if it's fresh. */
+  /** A friend's latest moves on this board, if they're recent. */
   buzz?: Buzz | null;
+  /** The buzz happened while Home was open: give it the "new" treatment. */
+  buzzIsNew?: boolean;
   now?: number;
 }
 
-export function BoardCard({ game, status, statusTone = "muted", meta, action, highlight, buzz, now = Date.now() }: BoardCardProps) {
+const STATUS_TONE: Record<CardModel["statusTone"], string> = {
+  brand: "text-brand-300",
+  gold: "text-gold-300",
+  muted: "text-ink-muted",
+};
+
+export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = Date.now() }: BoardCardProps) {
+  const left = Math.max(0, game.totalSquares - game.claimed);
+  const gold = model.statusTone === "gold";
   return (
     <article
       className={cx(
         "relative overflow-hidden rounded-card bg-surface-2 py-3.5 pl-3.5 pr-4 shadow-card ring-1 ring-inset transition-transform duration-200 ease-spring",
         "has-[>a:active]:scale-[0.98] has-[>a:active]:duration-75",
-        highlight === "gold" ? "ring-gold-400/45" : "ring-line",
+        gold ? "ring-gold-400/40" : "ring-line",
       )}
     >
-      {highlight === "gold" && (
-        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgb(255_194_51/0.13),transparent_60%)]" />
-      )}
-      {/* The whole card opens the board; the action button sits above this layer. */}
+      {gold && <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgb(255_194_51/0.1),transparent_60%)]" />}
       <Link
         to={`/g/${game.id}`}
         onPointerDown={() => void prefetchGame(game.id)}
@@ -57,73 +57,62 @@ export function BoardCard({ game, status, statusTone = "muted", meta, action, hi
         aria-label={`Open ${game.name}`}
         className="absolute inset-0 z-0 rounded-card"
       />
-      <div className="pointer-events-none relative flex items-center gap-3">
+      <div className="pointer-events-none relative flex gap-3">
         <Matchup teamX={game.teamX} teamY={game.teamY} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="min-w-0 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
-            <RoleBadge isHost={game.isHost} />
+        <div className="min-w-0 flex-1 pt-0.5">
+          <div className="flex items-baseline gap-2">
+            <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
+            <RoleLabel isHost={game.isHost} />
           </div>
-          <div className={cx("flex items-center gap-3", action ? "mt-1.5" : "mt-0.5")}>
-            <p className="min-w-0 flex-1 truncate text-footnote">
-              <span
-                className={cx(
-                  "font-semibold",
-                  statusTone === "gold" ? "text-gold-300" : statusTone === "brand" ? "text-brand-300" : "text-ink-muted",
-                )}
-              >
-                {status}
-              </span>
-              {meta && <span className="text-ink-subtle"> · {meta}</span>}
-            </p>
-            {action && (
-              <div className="pointer-events-auto relative z-10 -my-0.5 shrink-0">
-                <Button
-                  size="sm"
-                  variant={action.primary ? (action.tone === "gold" ? "gold" : "primary") : "secondary"}
-                  haptic={action.primary ? "medium" : "light"}
-                  leading={action.icon}
-                  onClick={action.onClick}
-                >
-                  {action.label}
-                </Button>
-              </div>
-            )}
-          </div>
-          {buzz && (
-            <p className="mt-1.5 flex min-w-0 items-center gap-1.5 text-caption">
-              <Avatar name={buzz.player.name} color={buzz.player.color} emoji={buzz.player.emoji} size="xs" decorative className="!h-4.5 !w-4.5 !text-[0.6rem]" />
-              <span className="truncate font-semibold text-accent-300">{buzz.text}</span>
-              <span className="shrink-0 text-ink-subtle">· {relativeTime(buzz.at, now)}</span>
-            </p>
-          )}
+          <p className="mt-0.5 truncate text-footnote">
+            <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>
+              {model.statusIsLeft ? (
+                <>
+                  <CountUp value={left} /> left
+                </>
+              ) : (
+                model.status
+              )}
+            </span>
+            {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
+          </p>
+          {buzz && <BuzzLine buzz={buzz} isNew={buzzIsNew} now={now} />}
         </div>
       </div>
-      <EdgeMeter value={game.claimed} max={game.totalSquares} />
+      {(model.meter || action) && (
+        <div className="pointer-events-none relative mt-3 flex items-center gap-3 pl-[3.75rem]">
+          {model.meter ? <FillMeter value={game.claimed} max={game.totalSquares} className="flex-1" /> : <span className="flex-1" />}
+          {action && (
+            <div className="pointer-events-auto relative z-10 shrink-0">
+              <Button
+                size="sm"
+                variant={action.primary ? "primary" : "ghost"}
+                haptic={action.primary ? "medium" : "light"}
+                leading={action.icon}
+                onClick={action.onClick}
+                className={cx("!h-11 !rounded-[0.875rem] !px-4", !action.primary && "ring-1 ring-inset ring-line-strong")}
+              >
+                {action.label}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </article>
   );
 }
 
-/** Fill meter along the bottom edge of a card. Full boards go gold. */
-function EdgeMeter({ value, max }: { value: number; max: number }) {
-  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
-  const full = pct >= 100;
+/** "🦊 Maya grabbed 5 squares · just now": neutral text, the avatar carries the color; fresh news gets ink and a dot. */
+function BuzzLine({ buzz, isNew, now }: { buzz: Buzz; isNew: boolean; now: number }) {
   return (
-    <div
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuenow={value}
-      aria-label={`${value} of ${max} squares claimed`}
-      className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-white/6"
-    >
-      <div
-        className={cx(
-          "h-full rounded-r-full transition-[width] duration-700 ease-out-quint",
-          full ? "bg-gold-400 shadow-[0_0_10px_rgb(255_194_51/0.6)]" : "bg-brand-400 shadow-[0_0_10px_rgb(198_249_31/0.5)]",
-        )}
-        style={{ width: `${pct}%` }}
-      />
-    </div>
+    <p key={`${buzz.text}|${buzz.at}`} className={cx("mt-1.5 flex min-w-0 items-center gap-1.5 text-caption", isNew && "home-buzz-new")}>
+      <Avatar name={buzz.player.name} color={buzz.player.color} emoji={buzz.player.emoji} size="xs" decorative className="!h-4.5 !w-4.5 !text-[0.6rem]" />
+      <span className={cx("truncate", isNew ? "font-semibold text-ink" : "text-ink-muted")}>
+        {buzz.text}
+        {buzz.others > 0 && <span className="text-ink-subtle"> +{buzz.others} more</span>}
+      </span>
+      <span className="shrink-0 text-ink-subtle">· {relativeTime(buzz.at, now)}</span>
+      {isNew && <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-400" />}
+    </p>
   );
 }

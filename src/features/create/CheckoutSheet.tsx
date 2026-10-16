@@ -1,20 +1,25 @@
-// Checkout for opening a board (the only payment in JaxSquares). Follows
-// docs/payments.md "Client":
+// Opens an unpaid board (the only payment in JaxSquares). The create page only
+// shows this when a real web checkout needs its own tap (Apple Pay / Google Pay
+// button, card form); test mode and the App Store open straight from Create.
+// It is self-contained, so host controls can open it for an existing draft
+// (GET /api/games/:id + the saved admin token) with no create-page state:
 //   test   – no-charge test checkout, one tap
 //   wallet – Apple Pay / Google Pay (Stripe Express Checkout), card form fallback
 //   card   – Stripe Payment Element
-//   iap    – Apple In-App Purchase inside the iOS app (never shows the web price)
+//   iap    – Apple In-App Purchase inside the iOS app (shows the App Store's price)
 // Every primary confirm carries data-testid="pay-confirm".
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Game, GameState, PaymentConfig } from "../../../shared/types";
-import { AlertIcon, CheckIcon, SparklesIcon } from "../../components/icons";
+import { AlertIcon, CheckIcon } from "../../components/icons";
 import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, LiveDot, Skeleton, TeamMark } from "../../components/ui";
 import {
+  appStorePrice,
   CheckoutError,
   checkoutMethod,
   confirmStripePaid,
   createStripeIntent,
+  fetchAppConfig,
   formatPrice,
   mountCardForm,
   mountWalletButton,
@@ -29,6 +34,7 @@ import { kickoffLabel, readableTeamColor, withAlpha } from "../../lib/format";
 import { haptic, platform } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
 import { formatLine } from "./model";
+import { VsBadge } from "./VsBadge";
 
 export interface CheckoutDraft {
   game: Game;
@@ -38,12 +44,12 @@ export interface CheckoutDraft {
 export interface CheckoutSheetProps {
   open: boolean;
   draft: CheckoutDraft | null;
-  /** null while /api/config loads (or failed); the sheet retries on open. */
-  payments: PaymentConfig | null;
+  /** The payment config if the caller already has it; null/omitted and the sheet loads /api/config itself. */
+  payments?: PaymentConfig | null;
   onPaid: (gameId: string, state: GameState | null) => void;
   /** Closed without paying: the board stays a draft. */
   onClose: () => void;
-  /** Re-read /api/config (when it failed before the sheet opened). */
+  /** Also told when the sheet re-reads /api/config after a failure (optional). */
   onRetryConfig?: () => void;
 }
 
@@ -52,7 +58,10 @@ type Phase = "ready" | "paying" | "paid" | "pending";
 /** How long the "you're live" moment shows before the board opens. */
 const PAID_BEAT_MS = 520;
 
-export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
+export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
+  const [loaded, setLoaded] = useState<PaymentConfig | null>(null);
+  const [configFailed, setConfigFailed] = useState(false);
+  const payments = given ?? loaded;
   const [method, setMethod] = useState<CheckoutMethod | null>(null);
   const [phase, setPhase] = useState<Phase>("ready");
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +69,7 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [cardComplete, setCardComplete] = useState(false);
   const [cardReady, setCardReady] = useState(false);
+  const [storePrice, setStorePrice] = useState<string | null>(null);
   /** Bumped by "Try again" when the PaymentIntent couldn't be created. */
   const [attempt, setAttempt] = useState(0);
   const walletRef = useRef<HTMLDivElement>(null);
@@ -68,6 +78,18 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
   const paidTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameId = draft?.game.id ?? null;
   const adminToken = draft?.adminToken ?? null;
+
+  const loadConfig = useCallback((refresh: boolean) => {
+    setConfigFailed(false);
+    fetchAppConfig({ refresh })
+      .then((c) => setLoaded(c.payments))
+      .catch(() => setConfigFailed(true));
+  }, []);
+
+  // No config from the caller: fetch it (cached for the session) when the sheet opens.
+  useEffect(() => {
+    if (open && !given && !loaded) loadConfig(false);
+  }, [open, given, loaded, loadConfig]);
 
   // Fresh state for every opening / draft.
   useEffect(() => {
@@ -80,6 +102,16 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
     setMethod(payments ? checkoutMethod(payments, platform()) : null);
     if (payments) preloadCheckout(payments, platform());
   }, [open, gameId, payments]);
+
+  // The App Store's own price string for the IAP button.
+  useEffect(() => {
+    if (!open || method !== "iap" || !payments) return;
+    let live = true;
+    void appStorePrice(platform(), payments.iapProductId).then((p) => live && setStorePrice(p));
+    return () => {
+      live = false;
+    };
+  }, [open, method, payments]);
 
   useEffect(() => () => {
     if (paidTimer.current) clearTimeout(paidTimer.current);
@@ -212,15 +244,23 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
     }
   };
 
+  const retryConfig = () => {
+    onRetryConfig?.();
+    loadConfig(true);
+  };
+
   const busy = phase === "paying" || phase === "paid";
-  const price = payments ? formatPrice(payments.priceCents, payments.currency) : null;
-  const linked = draft?.game.linkedEvent ?? null;
+  const price = method === "iap" ? storePrice : payments ? formatPrice(payments.priceCents, payments.currency) : null;
 
   let action: ReactNode;
   if (!payments) {
-    action = (
-      <Button data-testid="pay-confirm" size="lg" block variant="secondary" onClick={onRetryConfig}>
+    action = configFailed ? (
+      <Button data-testid="pay-confirm" size="lg" block variant="secondary" onClick={retryConfig}>
         Try again
+      </Button>
+    ) : (
+      <Button data-testid="pay-confirm" size="lg" block loading>
+        Getting ready
       </Button>
     );
   } else if (phase === "paid") {
@@ -283,6 +323,18 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
     );
   }
 
+  // One quiet line about cost, never a pitch: the host already chose to make this board.
+  const costLine =
+    method === "test"
+      ? "No charge while checkout is in test mode."
+      : method === "iap"
+        ? price
+          ? `${price}, one time. You'll confirm with the App Store.`
+          : "You'll confirm with the App Store."
+        : price
+          ? `${price}, one time.`
+          : null;
+
   return (
     <BottomSheet
       open={open}
@@ -292,28 +344,6 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
       description={phase === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : undefined}
       footer={
         <div className="flex flex-col gap-3">
-          {method === "test" && phase !== "paid" ? (
-            <div className="flex items-center gap-3 rounded-2xl bg-gold-400/10 px-3.5 py-2.5 ring-1 ring-inset ring-gold-400/35">
-              <SparklesIcon size={18} className="shrink-0 text-gold-400" />
-              <div className="min-w-0 flex-1">
-                <p className="text-subhead font-extrabold text-gold-300">Test mode — no charge</p>
-                <p className="text-footnote text-ink-muted">Checkout isn't live yet. This one's on us.</p>
-              </div>
-              {price && <s className="shrink-0 text-subhead font-bold tabular-nums text-ink-subtle">{price}</s>}
-            </div>
-          ) : (
-            method !== "iap" &&
-            price &&
-            phase !== "paid" && (
-              <div className="flex items-baseline justify-between gap-3 px-1">
-                <div>
-                  <p className="text-callout font-bold text-ink">One board</p>
-                  <p className="text-footnote text-ink-muted">One-time. No subscription.</p>
-                </div>
-                <p className="font-display text-title-2 font-extrabold tabular-nums text-ink">{price}</p>
-              </div>
-            )
-          )}
           {error && (
             <p role="alert" className="flex items-start gap-1.5 px-1 text-footnote font-semibold text-danger-400 animate-fade-in">
               <AlertIcon size={15} className="mt-px shrink-0" />
@@ -322,7 +352,7 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
           )}
           {notice && !error && <p className="px-1 text-footnote text-ink-muted animate-fade-in">{notice}</p>}
           {action}
-          {method === "iap" && phase === "ready" && <p className="text-center text-caption text-ink-subtle">You'll confirm with the App Store.</p>}
+          {costLine && phase !== "paid" && phase !== "pending" && <p className="text-center text-footnote text-ink-subtle">{costLine}</p>}
         </div>
       }
     >
@@ -333,7 +363,6 @@ export function CheckoutSheet({ open, draft, payments, onPaid, onClose, onRetryC
           {!clientSecret && <Skeleton className="absolute inset-0 h-40 w-full rounded-btn" />}
         </div>
       )}
-      <Included linked={Boolean(linked)} />
     </BottomSheet>
   );
 }
@@ -351,9 +380,9 @@ function Ticket({ game }: { game: Game }) {
       style={{ backgroundImage: `radial-gradient(90% 120% at 0% 0%, ${glowX}, transparent 60%), radial-gradient(90% 120% at 100% 0%, ${glowY}, transparent 60%)` }}
     >
       <div className="flex flex-col items-center px-4 pb-4 pt-5 text-center">
-        <div className="flex items-center gap-3.5">
+        <div className="flex items-center gap-3">
           <TeamMark team={x} size="lg" className="-rotate-3" />
-          <span className="font-display text-caption font-extrabold tracking-[0.2em] text-ink-subtle">VS</span>
+          <VsBadge />
           <TeamMark team={y} size="lg" className="rotate-3" />
         </div>
         <p className="mt-3 max-w-full truncate font-display text-title-3 font-extrabold text-ink">{game.name}</p>
@@ -367,7 +396,7 @@ function Ticket({ game }: { game: Game }) {
       <div className="flex items-center justify-center gap-2 px-4 py-2.5 text-footnote font-semibold text-ink-muted">
         {linked ? (
           <>
-            <LiveDot tone="brand" />
+            <LiveDot tone="brand" pulse={false} />
             Live scores · {kickoffLabel(linked.startsAt)}
           </>
         ) : (
@@ -378,28 +407,5 @@ function Ticket({ game }: { game: Game }) {
         )}
       </div>
     </div>
-  );
-}
-
-function Included({ linked }: { linked: boolean }) {
-  const items: { lead: string; rest: string }[] = [
-    { lead: "A live board", rest: "that fills in as friends pick" },
-    { lead: "Unlimited friends,", rest: "no app or account needed" },
-    linked ? { lead: "Live scores", rest: "and winners, all automatic" } : { lead: "Instant winners", rest: "the moment you type a score" },
-    { lead: "Alerts", rest: "when numbers drop and squares win" },
-  ];
-  return (
-    <ul aria-label="What's included" className="mt-4 flex flex-col gap-2.5 px-1">
-      {items.map((it) => (
-        <li key={it.lead} className="flex items-center gap-3 text-callout text-ink-muted">
-          <span aria-hidden className="grid h-5.5 w-5.5 shrink-0 place-items-center rounded-full bg-brand-400 text-ink-inverse">
-            <CheckIcon size={13} strokeWidth={3.4} />
-          </span>
-          <span className="min-w-0">
-            <span className="font-bold text-ink">{it.lead}</span> {it.rest}
-          </span>
-        </li>
-      ))}
-    </ul>
   );
 }

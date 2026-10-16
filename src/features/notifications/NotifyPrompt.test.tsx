@@ -19,7 +19,7 @@ const prefs = await import("./prefs");
 
 function setup(props: Partial<Parameters<typeof NotifyPrompt>[0]> = {}) {
   const onClose = vi.fn();
-  render(<NotifyPrompt gameId="g1" trigger="claimed" open onClose={onClose} explicit={false} {...props} />);
+  render(<NotifyPrompt gameId="g1" trigger="claimed" open onClose={onClose} explicit={false} settleMs={0} {...props} />);
   return { onClose };
 }
 
@@ -71,8 +71,46 @@ describe("NotifyPrompt", () => {
     enablePush.mockResolvedValue("denied");
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Turn on notifications" }));
-    expect(await screen.findByText("Notifications are blocked")).toBeInTheDocument();
+    // Names the real reason for this platform (a desktop browser here), with the illustrated fix.
+    expect(await screen.findByText("Blocked in this browser")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: "Turn notifications back on" })).toBeInTheDocument();
+  });
+
+  it("finishes setting up when they come back with notifications allowed", async () => {
+    getPushState.mockResolvedValue("denied");
+    enablePush.mockResolvedValue("granted");
+    setup({ explicit: true });
+    fireEvent.click(await screen.findByRole("button", { name: "I've turned them on" }));
+    // Still blocked on the first look.
+    expect(await screen.findByText(/Still off/)).toBeInTheDocument();
+    getPushState.mockResolvedValue("granted");
+    fireEvent.click(screen.getByRole("button", { name: "I've turned them on" }));
+    expect(await screen.findByText("You're in!")).toBeInTheDocument();
+  });
+
+  it("waits for the claim confetti before sliding up", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      getPushState.mockResolvedValue("default");
+      setup({ settleMs: undefined });
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(screen.queryByText("Want a ping when your square hits?")).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.getByText("Want a ping when your square hits?")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks from Home without a board", async () => {
+    getPushState.mockResolvedValue("default");
+    setup({ trigger: "home", gameId: undefined, explicit: true });
+    expect(await screen.findByText("Get pinged when your square hits")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "What you'll get" })).toBeInTheDocument();
   });
 
   it("guides an iPhone Safari tab to the Home Screen", async () => {

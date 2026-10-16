@@ -1,10 +1,12 @@
 // Pure dashboard logic for Home: which section a board belongs in, what the
-// host should do next, and the glanceable "live" snapshot of a board in play.
-// No React or IO, so it is unit-tested in sections.test.ts.
+// card says and asks for, the glanceable "live" snapshot of a board in play,
+// friend activity grouped by person, and the headline. No React or IO, so it
+// is unit-tested in sections.test.ts.
 
-import type { GameState, GameSummary, Player } from "../../../shared/types";
-import { countdown } from "../../lib/format";
-import { boardPeriods, liveCell, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
+import type { GameState, GameSummary, Player, Team } from "../../../shared/types";
+import { prizeFor } from "../../../shared/formats";
+import { countdown, isHexColor, kickoffLabel } from "../../lib/format";
+import { boardPeriods, liveCell, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
 
 export type SectionKey = "live" | "needs" | "next" | "final";
 
@@ -13,15 +15,10 @@ export const SECTION_ORDER: readonly SectionKey[] = ["live", "needs", "next", "f
 /** Host to-dos on a board that isn't in play yet. */
 export type HostAction = "finish-setup" | "lock" | "invite";
 
-/** Where a board sits on the dashboard. */
-export function sectionOf(g: GameSummary): SectionKey {
-  if (g.status === "final") return "final";
-  if (g.status === "locked") return "live";
-  // A linked game that kicked off before the host drew numbers is still "live" news.
-  if (g.live?.state === "in") return "live";
-  if (g.isHost) return "needs";
-  return "next";
-}
+/** Anything the user has to do on a board: a host to-do, or picking squares on a friend's board. */
+export type BoardAction = HostAction | "pick";
+
+const DAY = 24 * 60 * 60 * 1000;
 
 export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSquares">): HostAction {
   if (g.status === "draft") return "finish-setup";
@@ -29,13 +26,33 @@ export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSqu
   return "invite";
 }
 
-const ACTION_RANK: Record<HostAction, number> = { lock: 0, invite: 1, "finish-setup": 2 };
+const inPlay = (g: GameSummary) => g.status === "locked" || g.live?.state === "in";
+
+/** What this board needs from you before kickoff, if anything. */
+export function actionFor(g: GameSummary): BoardAction | null {
+  if (g.status === "final" || inPlay(g)) return null;
+  if (g.isHost) return hostAction(g);
+  if (g.status === "open" && g.mySquares === 0 && g.claimed < g.totalSquares) return "pick";
+  return null;
+}
+
+/** Where a board sits on the dashboard: anything you must act on is under "Needs you". */
+export function sectionOf(g: GameSummary): SectionKey {
+  if (g.status === "final") return "final";
+  // A linked game that kicked off before the host drew numbers is still "live" news.
+  if (inPlay(g)) return "live";
+  if (actionFor(g)) return "needs";
+  return "next";
+}
+
+/** Most urgent first: a full board holds up the game; a board you're not on yet beats inviting more. */
+const ACTION_RANK: Record<BoardAction, number> = { lock: 0, pick: 1, invite: 2, "finish-setup": 3 };
 
 export type Sections = Record<SectionKey, GameSummary[]>;
 
 /**
  * Boards grouped by what they need, each group in its most useful order:
- * live by latest activity, host to-dos by urgency (full boards first),
+ * live by latest activity, to-dos by urgency (full boards first),
  * upcoming by kickoff (unscheduled last), finals newest first.
  */
 export function groupBoards(games: readonly GameSummary[]): Sections {
@@ -44,7 +61,7 @@ export function groupBoards(games: readonly GameSummary[]): Sections {
   const recent = (a: GameSummary, b: GameSummary) => b.lastActivityAt - a.lastActivityAt;
   out.live.sort(recent);
   out.final.sort(recent);
-  out.needs.sort((a, b) => ACTION_RANK[hostAction(a)] - ACTION_RANK[hostAction(b)] || kickoffOrder(a, b) || recent(a, b));
+  out.needs.sort((a, b) => ACTION_RANK[actionFor(a)!] - ACTION_RANK[actionFor(b)!] || kickoffOrder(a, b) || recent(a, b));
   out.next.sort((a, b) => kickoffOrder(a, b) || recent(a, b));
   return out;
 }
@@ -57,13 +74,158 @@ function kickoffOrder(a: GameSummary, b: GameSummary): number {
 }
 
 /**
- * The one card whose action gets the filled button: the most urgent host
- * to-do, else the first upcoming board where you have no squares yet.
+ * The one card whose action gets the filled button: the most urgent to-do on
+ * the page. Every other action is outlined, whatever it is.
  */
 export function primaryActionId(sections: Sections): string | null {
-  if (sections.needs[0]) return sections.needs[0].id;
-  const pick = sections.next.find((g) => g.mySquares === 0 && g.claimed < g.totalSquares);
-  return pick?.id ?? null;
+  return sections.needs[0]?.id ?? null;
+}
+
+// ---- Card copy ----
+
+export interface CardModel {
+  /** Quiet role label: your board, or one you're playing on. */
+  role: string;
+  /** Game state, e.g. "42 left", "Board's full", "Kickoff Sun 8:56 PM". */
+  status: string;
+  statusTone: "brand" | "gold" | "muted";
+  /** The status is the count of open squares (animated when it changes). */
+  statusIsLeft: boolean;
+  /** Trailing detail on the status line, e.g. "10 yours". */
+  meta: string | null;
+  action: { kind: BoardAction; label: string } | null;
+  /** Show the fill meter (not on drafts). */
+  meter: boolean;
+  /** Friend activity is news here (boards still filling that you host or haven't picked on). */
+  buzz: boolean;
+}
+
+export const ACTION_LABEL: Record<BoardAction, string> = {
+  lock: "Draw numbers",
+  invite: "Invite",
+  pick: "Pick squares",
+  "finish-setup": "Finish setup",
+};
+
+export function kickoffText(startsAt: number, now: number, short = false): string {
+  const ms = startsAt - now;
+  if (ms <= 0) return short ? "kicking off" : "Kicking off";
+  if (ms < 2 * DAY) return short ? `kicks off in ${countdown(ms)}` : `Kickoff in ${countdown(ms)}`;
+  return short ? kickoffLabel(startsAt, now) : `Kickoff ${kickoffLabel(startsAt, now)}`;
+}
+
+/** What a board card says and asks for, for a board that isn't in play or final. */
+export function cardModel(g: GameSummary, now: number): CardModel {
+  const left = Math.max(0, g.totalSquares - g.claimed);
+  const action = actionFor(g);
+  const role = g.isHost ? "Your board" : "You're in";
+  const mine = g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
+  const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null;
+  const base = { role, action: action ? { kind: action, label: ACTION_LABEL[action] } : null };
+
+  switch (action) {
+    case "finish-setup":
+      return { ...base, status: "Not open yet", statusTone: "brand", statusIsLeft: false, meta: "friends can join once it's open", meter: false, buzz: false };
+    case "lock":
+      return { ...base, status: "Board's full", statusTone: "gold", statusIsLeft: false, meta: kickoff ?? mine, meter: true, buzz: false };
+    case "invite":
+    case "pick":
+      return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
+    default: {
+      if (left === 0) {
+        return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta: "numbers drawn at kickoff", meter: true, buzz: false };
+      }
+      const soon = g.startsAt !== null && g.startsAt - now < DAY;
+      return g.startsAt !== null
+        ? { ...base, status: kickoffText(g.startsAt, now), statusTone: soon ? "brand" : "muted", statusIsLeft: false, meta: mine, meter: true, buzz: false }
+        : { ...base, status: `${left} left`, statusTone: "muted", statusIsLeft: true, meta: mine, meter: true, buzz: false };
+    }
+  }
+}
+
+// ---- Live board state on top of a summary ----
+
+/**
+ * The summary with everything a live board state knows more recently: counts,
+ * status, your squares and wins, the score and who leads. Home follows the
+ * boards you're in live, so this is how a card changes the moment a friend
+ * grabs a square, without waiting for the next summary refresh.
+ */
+export function withState(g: GameSummary, s: GameState, me: string): GameSummary {
+  const results = resolveResults(s);
+  return {
+    ...g,
+    name: s.game.name,
+    teamX: s.game.teamX,
+    teamY: s.game.teamY,
+    status: s.game.status,
+    format: s.game.format,
+    mySquares: s.squares.filter((q) => q.playerId === me).length,
+    claimed: s.squares.length,
+    playerCount: s.players.length,
+    live: s.live,
+    startsAt: s.game.linkedEvent?.startsAt ?? null,
+    myWins: myWins(results, me).map((w) => ({ periodKey: w.periodKey, label: w.reverse ? `${w.label} (reverse)` : w.label })),
+    lastActivityAt: Math.max(g.lastActivityAt, s.activity[0]?.at ?? 0),
+    latestScore: latestScoreOf(s, results),
+    leaderPlayerId: liveCell(s)?.playerId ?? results.at(-1)?.winnerPlayerId ?? null,
+  };
+}
+
+/** Same rule as the server's dashboard query: the live feed's score, else the latest recorded period's. */
+function latestScoreOf(s: GameState, results: PeriodResult[]): GameSummary["latestScore"] {
+  const { live } = s;
+  if (live && live.state !== "pre") {
+    const label = live.state === "post" ? "Final" : live.detail.trim() || `Q${live.period} ${live.clock}`.trim();
+    return { scoreX: live.scoreX, scoreY: live.scoreY, label };
+  }
+  const last = [...results].reverse().find((r) => r.score);
+  if (last?.score) return { scoreX: last.score.scoreX, scoreY: last.score.scoreY, label: last.label };
+  const byKey = new Map(s.scores.map((x) => [x.periodKey, x]));
+  const p = boardPeriods(s.game, s.scores).filter((x) => byKey.has(x.key)).at(-1);
+  const score = p ? byKey.get(p.key) : undefined;
+  return p && score ? { scoreX: score.scoreX, scoreY: score.scoreY, label: p.label } : null;
+}
+
+// ---- Team colors ----
+
+/** Same fallbacks the board uses (teamVars): sky for X, pink for Y, so a custom matchup never shows grey marks. */
+export const TEAM_X_FALLBACK = "#3ab7ff";
+export const TEAM_Y_FALLBACK = "#ff66a6";
+
+export function withTeamColors(teamX: Team, teamY: Team): [Team, Team] {
+  return [
+    isHexColor(teamX.color) ? teamX : { ...teamX, color: TEAM_X_FALLBACK },
+    isHexColor(teamY.color) ? teamY : { ...teamY, color: TEAM_Y_FALLBACK },
+  ];
+}
+
+// ---- Plain-language periods ----
+
+const MOMENT: Record<string, string> = { q1: "End of Q1", q2: "Halftime", q3: "End of Q3", final: "Final" };
+
+/** A period as a moment in the game: "Halftime", "End of Q1", "Final", "Score 3". */
+export function momentOf(periodKey: string, label: string): string {
+  return MOMENT[periodKey] ?? label.replace(/\s*\(reverse\)$/, "");
+}
+
+/** Mid-sentence, with its preposition: "at halftime", "at the end of Q1", "at the Final", "on Score 3". */
+export function atMoment(periodKey: string, label: string): string {
+  if (periodKey === "q2") return "at halftime";
+  if (periodKey === "final") return "at the Final";
+  if (periodKey === "q1" || periodKey === "q3") return `at the end of ${periodKey.toUpperCase()}`;
+  return `on ${label.replace(/\s*\(reverse\)$/, "")}`;
+}
+
+/** "SEA 22–26 ARI". */
+export function scoreWithTeams(g: Pick<GameSummary, "teamX" | "teamY">, scoreX: number, scoreY: number): string {
+  const abbr = (t: GameSummary["teamX"]) => t.abbr?.trim() || t.name;
+  return `${abbr(g.teamX)} ${scoreX}–${scoreY} ${abbr(g.teamY)}`;
+}
+
+/** "once", "twice", "3 times". */
+export function times(n: number): string {
+  return n === 1 ? "once" : n === 2 ? "twice" : `${n} times`;
 }
 
 // ---- Live snapshot ----
@@ -74,10 +236,13 @@ export interface Leader {
   player: Player | null;
   /** "now": the square the live score points at; "last": the latest period's winner. */
   kind: "now" | "last";
-  /** Period the square is for, e.g. "Q3", "Half". */
+  /** Period key and label the square is for, e.g. "q3"/"Q3", "q2"/"Half". */
+  periodKey: string | null;
   periodLabel: string;
   /** Digits of the square, X (columns) then Y (rows), e.g. [4, 0]. */
   digits: [number, number] | null;
+  /** The host's prize note for that period, e.g. "Loser buys wings". */
+  prize: string | null;
 }
 
 export interface LiveSnapshot {
@@ -95,8 +260,6 @@ export interface LiveSnapshot {
   /** Next fixed period still to be decided, e.g. "Q3". */
   nextLabel: string | null;
 }
-
-const AFTER_PERIOD: Record<string, string> = { q1: "End of Q1", q2: "Halftime", q3: "End of Q3", final: "Final" };
 
 function lastDigit(n: number): number {
   return ((Math.trunc(n) % 10) + 10) % 10;
@@ -129,8 +292,10 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
             playerId: leaderId,
             player: leaderId ? (playerById.get(leaderId) ?? null) : null,
             kind: live.state === "in" ? "now" : "last",
+            periodKey: now.periodKey,
             periodLabel: label,
             digits: [lastDigit(live.scoreX), lastDigit(live.scoreY)],
+            prize: now.periodKey ? prizeFor(game.prizes, now.periodKey) : null,
           }
         : null,
       meWinning: leaderId === me || reverseOwner === me,
@@ -148,49 +313,66 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
     scoreY: last.score?.scoreY ?? 0,
     hasScore: last.score !== null,
     inProgress: false,
-    clock: AFTER_PERIOD[last.periodKey] ?? last.label,
+    clock: momentOf(last.periodKey, last.label),
     leader: {
       playerId: leaderId,
       player: leaderId ? (playerById.get(leaderId) ?? null) : null,
       kind: "last",
+      periodKey: last.periodKey,
       periodLabel: last.label,
       digits: last.score ? [lastDigit(last.score.scoreX), lastDigit(last.score.scoreY)] : null,
+      prize: last.prize,
     },
     meWinning: leaderId === me || last.reverseWinnerPlayerId === me,
     nextLabel: next?.label ?? null,
   };
 }
 
-// ---- Buzz ----
+// ---- Buzz: friend activity, grouped by person ----
 
-/** Friend activity older than this isn't news on the dashboard. */
-export const BUZZ_WINDOW_MS = 6 * 60 * 60 * 1000;
+/** Friend activity older than this isn't news on a card. */
+export const BUZZ_WINDOW_MS = 15 * 60 * 1000;
+/** One person's moves this close to their latest read as one burst ("Maya grabbed 5 squares"). */
+export const BURST_MS = 10 * 60 * 1000;
 
 export interface Buzz {
   player: Player;
   text: string;
+  /** When their latest move happened. */
   at: number;
+  /** Other friends who were also active in the window. */
+  others: number;
 }
 
+type Activity = GameState["activity"][number];
+
+const isFriendMove = (a: Activity, me: string) =>
+  !!a.actor && a.actor !== me && (a.type === "claimed" || a.type === "released" || a.type === "joined");
+
+const countOf = (a: Activity) => Math.max(1, Math.trunc(Number(a.data.count)) || 1);
+
 /**
- * The freshest thing a friend did on a board that's still filling up
- * ("Maya grabbed 3 squares"), so a quiet card still feels alive. Your own
- * moves and system events don't count.
+ * What a friend just did on a board that's still filling up, with their
+ * burst added together: five separate grabs read "Maya grabbed 5 squares"
+ * (short enough to fit a card; a join alone reads "Maya joined"). Your own
+ * moves and system events don't count; nothing older than the window shows.
  */
-export function latestBuzz(state: GameState, me: string, now: number): Buzz | null {
+export function boardBuzz(state: GameState, me: string, now: number): Buzz | null {
   const byId = new Map(state.players.map((p) => [p.id, p]));
-  for (const a of state.activity) {
-    if (now - a.at > BUZZ_WINDOW_MS) return null; // newest first: the rest are older
-    if (!a.actor || a.actor === me) continue;
-    const player = byId.get(a.actor);
-    if (!player) continue;
-    if (a.type === "joined") return { player, text: `${player.name} joined`, at: a.at };
-    if (a.type === "claimed") {
-      const n = Number(a.data.count) || 1;
-      return { player, text: `${player.name} grabbed ${n === 1 ? "a square" : `${n} squares`}`, at: a.at };
-    }
-  }
-  return null;
+  const recent = state.activity.filter((a) => now - a.at <= BUZZ_WINDOW_MS && isFriendMove(a, me) && byId.has(a.actor!));
+  const latest = recent[0];
+  if (!latest) return null;
+  const player = byId.get(latest.actor!)!;
+  const burst = recent.filter((a) => a.actor === latest.actor && latest.at - a.at <= BURST_MS);
+  const net = burst.reduce((n, a) => n + (a.type === "claimed" ? countOf(a) : a.type === "released" ? -countOf(a) : 0), 0);
+  const joined = burst.some((a) => a.type === "joined");
+  const grabbed = net === 1 ? "grabbed a square" : `grabbed ${net} squares`;
+  let text: string;
+  if (net > 0) text = `${player.name} ${grabbed}`;
+  else if (joined) text = `${player.name} joined`;
+  else return null; // only let go of squares: not news here
+  const others = new Set(recent.filter((a) => a.actor !== latest.actor).map((a) => a.actor)).size;
+  return { player, text, at: latest.at, others };
 }
 
 // ---- Finals ----
@@ -225,38 +407,41 @@ export interface Headline {
 }
 
 /**
- * The one sentence at the top of Home, picked from the most exciting thing
- * going on: your square winning > live games > a host to-do > next kickoff.
+ * The one sentence at the top of Home: a summary of your day across boards
+ * (the cards carry the details). Live games and your hits there first, then
+ * the most urgent to-do, then the next kickoff.
  */
-export function headlineFor(
-  sections: Sections,
-  opts: { winning: Pick<Leader, "kind" | "periodLabel"> | null; now: number },
-): Headline {
-  if (opts.winning) {
-    return opts.winning.kind === "now"
-      ? { lead: "You're", hot: "winning right now.", tone: "win" }
-      : { lead: "You won", hot: `${opts.winning.periodLabel}!`, tone: "win" };
-  }
-  if (sections.live.length > 0) {
-    return sections.live.length === 1
-      ? { lead: "Your game is", hot: "on.", tone: "live" }
-      : { lead: `${sections.live.length} games`, hot: "on right now.", tone: "live" };
+export function headlineFor(sections: Sections, opts: { winningNow: boolean; hits: number; now: number }): Headline {
+  const live = sections.live.length;
+  if (live > 0) {
+    const lead = live === 1 ? "Your game is live." : `${live} games live.`;
+    if (opts.winningNow) return { lead, hot: "You're winning right now.", tone: "win" };
+    if (opts.hits > 0) return { lead, hot: `You've hit ${times(opts.hits)}.`, tone: "win" };
+    return live === 1 ? { lead: "Your game is", hot: "live.", tone: "live" } : { lead: `${live} games`, hot: "live right now.", tone: "live" };
   }
   const todo = sections.needs[0];
   if (todo) {
-    const action = hostAction(todo);
-    if (action === "lock") return { lead: "Your board is full.", hot: "Draw the numbers.", tone: "brand" };
-    if (action === "invite") return { lead: "Board's open.", hot: "Invite the crew.", tone: "brand" };
-    return { lead: "Almost there.", hot: "Finish your board.", tone: "brand" };
+    switch (actionFor(todo)) {
+      case "lock":
+        return { lead: "Your board is full.", hot: "Draw the numbers.", tone: "brand" };
+      case "pick":
+        return { lead: "Squares are open.", hot: "Grab yours.", tone: "brand" };
+      case "invite":
+        return { lead: "Board's open.", hot: "Invite the crew.", tone: "brand" };
+      default:
+        return { lead: "Almost there.", hot: "Finish your board.", tone: "brand" };
+    }
   }
   if (sections.next.length > 0) {
-    if (sections.next.some((g) => g.mySquares === 0 && g.claimed < g.totalSquares)) {
-      return { lead: "Squares are open.", hot: "Grab yours.", tone: "brand" };
-    }
     const kickoff = sections.next.find((g) => g.startsAt !== null && g.startsAt > opts.now)?.startsAt;
     return kickoff
       ? { lead: "Kickoff in", hot: `${countdown(kickoff - opts.now)}.`, tone: "brand" }
       : { lead: "You're in.", hot: "Now we wait.", tone: "brand" };
   }
   return { lead: "Good games.", hot: "Run it back?", tone: "brand" };
+}
+
+/** Your wins on boards that are in play (the headline's "you've hit twice"). */
+export function liveHits(sections: Sections): number {
+  return sections.live.reduce((n, g) => n + new Set(g.myWins.map((w) => w.periodKey)).size, 0);
 }

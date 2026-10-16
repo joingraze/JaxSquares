@@ -1,21 +1,20 @@
 // Profile (/me): who I am on the boards (name, sticker, color, with a live
-// preview square), my notifications, per-board mutes, host links and About.
+// preview square), my notifications (one card for every state), what each
+// board will ping about next (with per-board mutes), host links and About.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GameSummary } from "../../shared/types";
 import { LockIcon, PencilIcon, TrophyIcon } from "../components/icons";
 import { Button, Card, ListGroup, ListRow, TopBar, cx, useToast } from "../components/ui";
-import { MuteToggle } from "../features/notifications/MuteToggle";
 import { appVersion, WEB_VERSION } from "../features/notifications/profile/appVersion";
 import { HostLinksSheet } from "../features/notifications/profile/HostLinksSheet";
 import { LookSheet } from "../features/notifications/profile/LookSheet";
-import { MiniMatchup } from "../features/notifications/profile/MiniMatchup";
+import { BoardPings } from "../features/notifications/profile/BoardPings";
 import { NotificationsCard } from "../features/notifications/profile/NotificationsCard";
 import { boardsToSync, lookChanged, statsOf, syncLook, tagline, type MyStats } from "../features/notifications/profile/profileSync";
 import { SquarePreview } from "../features/notifications/profile/SquarePreview";
 import { pushIsOn, usePushStatus } from "../features/notifications/usePushStatus";
 import { api } from "../lib/api";
-import { pluralize, STATUS_LABEL } from "../lib/format";
+import { pluralize } from "../lib/format";
 import { getProfile, useProfile, type Profile as Look } from "../lib/identity";
 import { useMyGames } from "../lib/live";
 
@@ -65,7 +64,6 @@ export default function Profile() {
 
   const stats = games ? statsOf(games) : null;
   const named = profile.name.trim().length > 0;
-  const active = (games ?? []).filter((g) => g.status === "open" || g.status === "locked");
   const hostsAny = (games ?? []).some((g) => g.isHost);
 
   return (
@@ -74,21 +72,9 @@ export default function Profile() {
       <div className="flex flex-col gap-7 px-safe pt-3">
         <Hero profile={profile} stats={stats} named={named} onEdit={openLook} />
 
-        <NotificationsCard status={push} quiet={!named} boardName={active[0]?.name} />
+        <NotificationsCard status={push} games={games} />
 
-        {pushIsOn(push) && active.length > 0 && (
-          <ListGroup title="Pings by board" footer="Muting a board only affects this device.">
-            {active.map((g) => (
-              <ListRow
-                key={g.id}
-                leading={<MiniMatchup teamX={g.teamX} teamY={g.teamY} />}
-                title={g.name}
-                subtitle={boardLine(g)}
-                trailing={<MuteToggle gameId={g.id} variant="switch" label={g.name} />}
-              />
-            ))}
-          </ListGroup>
-        )}
+        {pushIsOn(push) && games && <BoardPings games={games} />}
 
         <ListGroup title="Hosting">
           <ListRow
@@ -122,12 +108,6 @@ export default function Profile() {
       <HostLinksSheet open={hostOpen} onClose={() => setHostOpen(false)} games={games ?? []} />
     </>
   );
-}
-
-function boardLine(g: GameSummary): string {
-  if (g.live?.state === "in") return `Live · ${g.live.detail}`;
-  if (g.status === "open") return `${STATUS_LABEL.open} · ${pluralize(Math.max(0, g.totalSquares - g.claimed), "square")} left`;
-  return STATUS_LABEL[g.status];
 }
 
 function Hero({ profile, stats, named, onEdit }: { profile: Look; stats: MyStats | null; named: boolean; onEdit: () => void }) {

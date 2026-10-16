@@ -16,13 +16,14 @@ export function Welcome() {
   const [joining, setJoining] = useState(false);
 
   return (
-    <div className="flex min-h-[calc(100dvh-var(--shell-bottom)-1.5rem)] flex-col px-safe">
+    <div className="flex min-h-[calc(100dvh-var(--shell-bottom)-1.5rem)] flex-col overflow-x-clip px-safe">
       <header className="flex h-(--topbar-h) items-center pt-safe" style={{ boxSizing: "content-box" }}>
         <Wordmark />
       </header>
 
-      <div className="flex flex-1 flex-col justify-center py-6">
-        <MiniBoard className="mt-6" />
+      {/* The board sits right under the logo with the pitch beneath it; the buttons stay down by your thumb. */}
+      <div className="pb-5 pt-8">
+        <MiniBoard />
       </div>
 
       <div className="home-enter">
@@ -31,12 +32,12 @@ export function Welcome() {
           <br />
           <span className="text-brand-400">live with your crew.</span>
         </h1>
-        <p className="mt-3 max-w-[22rem] text-callout text-ink-muted">
+        <p className="mt-2.5 max-w-[22rem] text-callout text-ink-muted">
           Make a board, text the link, and watch the squares fill up. Scores and winners land live.
         </p>
       </div>
 
-      <div className="home-enter mt-7 flex flex-col gap-3" style={{ animationDelay: "80ms" }}>
+      <div className="home-enter mt-auto flex flex-col gap-3 pt-6" style={{ animationDelay: "80ms" }}>
         <Link
           to="/new"
           data-testid="new-board"
@@ -49,7 +50,7 @@ export function Welcome() {
         <Button variant="secondary" size="lg" block onClick={() => setJoining(true)}>
           Join with a code
         </Button>
-        <p className="mt-1 text-center text-footnote text-ink-subtle">No accounts. Friends join from a link.</p>
+        <p className="text-center text-footnote text-ink-subtle">No accounts. Friends join from a link.</p>
       </div>
 
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />

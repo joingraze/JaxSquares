@@ -43,7 +43,10 @@ Tapping one opens `/g/<id>`.
 - "Turn off on this device" in Profile calls `disablePush()`: the device is
   unregistered and a local flag (`isPushOff()`) stops the silent re-sync from
   registering it again while the OS permission is still granted. `enablePush()`
-  clears the flag.
+  clears the flag. In the native app the flag is mirrored to Capacitor
+  Preferences (`setStored`/`getStored` in `src/lib/native.ts`), because iOS can
+  clear a WebView's localStorage; `hydratePushOff()` restores it before any
+  re-sync, and a rotated FCM token is ignored while the flag is set.
 
 ### Who an event is about (ids and `actor`)
 
@@ -57,6 +60,48 @@ Core sets it on host actions: `numbers-drawn` (`POST /lock`), `final`
 (`POST /final`, or a typed-in Final score) and `player-joined` (the joiner).
 `winner` never has an actor, so you hear about your own square even when you
 typed the score. Events from live scores (kickoff, auto-lock, winners) have none.
+
+## In the app: asking, settings and live alerts
+
+Client code lives in `src/features/notifications/`.
+
+**The ask** (`NotifyPrompt`) is a bottom sheet with a preview of the pushes you'd
+actually get, built from the board it's about (`askCopy.ts`):
+
+| `trigger` | When | Pitch and preview |
+|---|---|---|
+| `claimed` | right after your first claim (the board opens it ~1.2 s in; it waits another `CONFETTI_SETTLE_MS` so it doesn't land on the confetti) | your board, your square count, and your real numbers once they're drawn |
+| `created` | after a host makes a board | "Know when your crew shows up": friends joining (quietly), board full, numbers and winners |
+| `joined` | after joining a board | numbers drawn, then your square hitting |
+| `home` | the general ask from Home or Profile (`gameId` optional) | adapts to the board passed in: host pitch while it's open, results once drawn |
+
+- `explicit` (a tap on a bell or a "turn on" row) always opens it and skips the
+  wait. Automatic asks remember a dismissal per trigger (`prefs.ts`) and don't
+  come back; turning notifications on clears every dismissal.
+- Blocked (`denied`) shows the fix for the real reason (`blockedHelp()` in
+  `platformHelp.ts`): an iPhone Safari tab gets the illustrated Add to Home Screen
+  guide; the iOS app and Home Screen web app get a mock Settings > Notifications >
+  JaxSquares row; Android gets its Settings path; other browsers get the site
+  settings. "I've turned them on" (and coming back to the app) rechecks and
+  finishes setting up.
+
+**Profile** (`profile/NotificationsCard.tsx`) uses one card shell for every state
+(icon, title, one-line value, one action): ask, on, off ("You'll miss: numbers
+drawn on Sunday Night"), needs the Home Screen app, blocked, and not available
+(taps through to where notifications do work). "Pings by board"
+(`profile/BoardPings.tsx`, `profile/pings.ts`) lists boards live first, then by
+kickoff, says what each will ping about next ("Next: Q3 result · you have 17
+squares"), dims and tags muted boards with an Undo toast, and lists ended boards
+greyed out ("Ended boards don't ping").
+
+**Live alerts while the board is open** (`alerts.ts`, drawn by `BoardAlert.tsx`):
+one alert per moment. The Final's winner, the final score and your own wins are
+one summary card; your own win is flagged `banner: true` because the board's gold
+banner already says it; claims and joins collapse into one running count under
+the same `key`. Each alert names its subject (your avatar for your news, the
+winner's for theirs, a board glyph for system news), carries the score or your
+numbers as team-colored chips, and the square to jump to on tap (`cell`).
+Periods always read Q1, Half, Q3, Final, the same as the board and the pushes.
 
 ## 1. Web push (VAPID)
 

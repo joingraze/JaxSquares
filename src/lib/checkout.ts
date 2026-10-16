@@ -109,6 +109,42 @@ export function formatPrice(cents: number, currency = "usd", locale?: string): s
   }).format(amount);
 }
 
+/**
+ * The price to show for opening a board on this device, or null when there's
+ * nothing to pay (test mode). Web: the server's price. iOS: the App Store's own
+ * localized string (App Store guideline 3.1.1: the in-app price is Apple's),
+ * null when StoreKit can't say.
+ */
+export async function checkoutPrice(config: PaymentConfig, platform: Platform): Promise<string | null> {
+  const method = checkoutMethod(config, platform);
+  if (method === "test") return null;
+  if (method === "iap") return appStorePrice(platform, config.iapProductId);
+  return formatPrice(config.priceCents, config.currency);
+}
+
+const storePrices = new Map<string, Promise<string | null>>();
+
+/**
+ * The App Store's localized price for the board product (StoreKit's
+ * `priceString`, e.g. "$4.99" or "4,99 €"). Null off iOS or when the product
+ * can't be loaded. Cached per product, and never queried concurrently (the
+ * plugin's getProduct isn't safe to run in parallel).
+ */
+export function appStorePrice(platform: Platform, productId: string): Promise<string | null> {
+  if (platform !== "ios" || !productId) return Promise.resolve(null);
+  let p = storePrices.get(productId);
+  if (!p) {
+    p = nativePurchases()
+      .then((store) => store.getProduct({ productIdentifier: productId }))
+      .then(({ product }) => product.priceString?.trim() || null)
+      .catch(() => null);
+    // A failure (offline, StoreKit not ready) is retried on the next ask.
+    void p.then((price) => price === null && storePrices.get(productId) === p && storePrices.delete(productId));
+    storePrices.set(productId, p);
+  }
+  return p;
+}
+
 // ---- Test checkout ----
 
 export async function payTest(gameId: string, adminToken: string): Promise<GameState> {

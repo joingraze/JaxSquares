@@ -3,6 +3,7 @@
 
 import { BOARD_SIZE_INFO, periodsFor, PRESET_INFO, PRIZE_MAX_LENGTH, SHARED_DRAW_KEY, validatePrizeNote } from "../../../shared/formats";
 import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
+import { pluralize } from "../../lib/format";
 import type {
   CreateGameInput,
   GameFormat,
@@ -13,6 +14,14 @@ import type {
   ScheduleEvent,
   Team,
 } from "../../../shared/types";
+
+/**
+ * Side colors for a team with no live color (the board's own fallbacks, see
+ * teamVars). A custom board stores them on its teams so the board, invite,
+ * home cards and checkout all show the same two colors.
+ */
+export const CUSTOM_X_COLOR = "#3ab7ff";
+export const CUSTOM_Y_COLOR = "#ff66a6";
 
 /** Server limits (worker cleanTeam / create handler). */
 export const TEAM_NAME_MAX = 40;
@@ -84,18 +93,46 @@ export function shortTeamName(team: Team, league: League): string {
   return words.slice(0, -1).join(" ");
 }
 
+/** Team colors from live data, keyed by NFL abbreviation ("GB" -> "#204e32"). */
+export type TeamColors = Readonly<Record<string, string>>;
+
 /**
  * What a typed custom team becomes: an exact NFL match (abbreviation, nickname,
  * full name, or an unambiguous city) is upgraded to the full team with its
- * abbreviation; anything else is kept as typed. Null when blank.
+ * abbreviation, and its color when this week's live schedule has it; anything
+ * else is kept as typed. Null when blank.
  */
-export function resolveCustomTeam(text: string): { team: Team; nfl: NflTeam | null } | null {
+export function resolveCustomTeam(text: string, colors: TeamColors = {}): { team: Team; nfl: NflTeam | null } | null {
   const typed = text.trim().replace(/\s+/g, " ").slice(0, TEAM_NAME_MAX);
   if (!typed) return null;
   const nfl = matchNflTeam(typed);
-  if (nfl) return { team: nflTeamToTeam(nfl), nfl };
+  if (nfl) {
+    const color = colors[nfl.abbr];
+    return { team: color ? { ...nflTeamToTeam(nfl), color } : nflTeamToTeam(nfl), nfl };
+  }
   return { team: { name: typed }, nfl: null };
 }
+
+/**
+ * NFL team colors from the live schedule (the only place team colors come
+ * from), so a typed "Packers" gets the same green as the linked GB @ CHI game.
+ */
+export function teamColorsFrom(events: readonly ScheduleEvent[]): TeamColors {
+  const out: Record<string, string> = {};
+  for (const e of events) {
+    if (e.league !== "nfl") continue;
+    for (const t of [e.home, e.away]) {
+      const abbr = t.abbr?.toUpperCase();
+      if (abbr && t.color && nflByAbbr(abbr)) out[abbr] = t.color;
+    }
+  }
+  return out;
+}
+
+/** One-tap teams for a custom board, before anything is typed. */
+export const POPULAR_TEAMS: readonly NflTeam[] = ["KC", "PHI", "DAL", "GB", "BUF", "SF", "DET", "BAL"]
+  .map((abbr) => nflByAbbr(abbr))
+  .filter((t): t is NflTeam => Boolean(t));
 
 export function matchNflTeam(text: string): NflTeam | null {
   const q = text.trim().toLowerCase().replace(/\s+/g, " ");
@@ -168,6 +205,20 @@ export function kickoffParts(ts: number, now = Date.now()): { day: string; time:
   return { day, time };
 }
 
+/**
+ * Countdown for a kickoff that's close: "in 45m", "in 3h", "in 2h 30m". Null
+ * when it's more than six hours out (the day and time say enough) or started.
+ */
+export function startsIn(ts: number, now = Date.now()): string | null {
+  const ms = ts - now;
+  if (ms <= 0 || ms >= 6 * 3_600_000) return null;
+  const totalMin = Math.max(1, Math.round(ms / 60_000));
+  if (totalMin < 60) return `in ${totalMin}m`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m < 5 ? `in ${h}h` : `in ${h}h ${m}m`;
+}
+
 // ---- Format copy ----
 
 /** How many winning moments a preset has (null = one per score change). */
@@ -175,12 +226,14 @@ export function winnerCount(preset: PeriodsPreset): number | null {
   return preset === "every-score" ? null : periodsFor(preset).length;
 }
 
-/** Short tag for a format card: "4 winners", "8 winners" with reverse, "Winners all game". */
-export function winnersTag(preset: PeriodsPreset, reverse: boolean): string {
+/**
+ * Short, stable tag for a format card: "4 winners", "1 winner", "1 winner per
+ * score". Modifiers (reverse) don't change it; the summary shows their effect once.
+ */
+export function winnersTag(preset: PeriodsPreset): string {
   const n = winnerCount(preset);
-  if (n === null) return reverse ? "2 winners a score" : "Winners all game";
-  const total = reverse ? n * 2 : n;
-  return `${total} ${total === 1 ? "winner" : "winners"}`;
+  if (n === null) return "1 winner per score";
+  return `${n} ${n === 1 ? "winner" : "winners"}`;
 }
 
 const WHEN: Record<PeriodsPreset, string> = {
@@ -190,13 +243,22 @@ const WHEN: Record<PeriodsPreset, string> = {
   "every-score": "every time the score changes",
 };
 
-/** "4 winners · 100 squares", "8 winners · 25 squares", "Every score wins · 100 squares". */
-export function boardHeadline(format: GameFormat): string {
+/**
+ * The summary headline as two phrases that are each kept on one line:
+ * { winners: "8 winners", size: "100 squares" }, or "2 winners every score".
+ */
+export function boardHeadlineParts(format: GameFormat): { winners: string; size: string } {
   const size = `${format.boardSize} squares`;
   const n = winnerCount(format.periods);
-  if (n === null) return `${format.reverse ? "2 winners a score" : "Every score wins"} · ${size}`;
+  if (n === null) return { winners: format.reverse ? "2 winners every score" : "A winner every score", size };
   const total = format.reverse ? n * 2 : n;
-  return `${total} ${total === 1 ? "winner" : "winners"} · ${size}`;
+  return { winners: `${total} ${total === 1 ? "winner" : "winners"}`, size };
+}
+
+/** "4 winners · 100 squares", "8 winners · 25 squares", "A winner every score · 100 squares". */
+export function boardHeadline(format: GameFormat): string {
+  const { winners, size } = boardHeadlineParts(format);
+  return `${winners} · ${size}`;
 }
 
 /**
@@ -236,6 +298,18 @@ export function cleanPrizes(format: GameFormat, notes: Record<string, string>): 
   return out;
 }
 
+/** DOM id of a prize slot's input (the create page focuses it on a blocked submit). */
+export const prizeInputId = (key: string) => `prize-${key === "*" ? "all" : key}`;
+
+/** The details row's second line: "No square limit · No prizes yet". */
+export function detailsSummary(format: GameFormat, maxPerPlayer: number, prizes: Record<string, string>): string {
+  const prizeCount = Object.keys(cleanPrizes(format, prizes)).length;
+  return [
+    maxPerPlayer > 0 ? `Max ${pluralize(maxPerPlayer, "square")} each` : "No square limit",
+    prizeCount > 0 ? pluralize(prizeCount, "prize") : "No prizes yet",
+  ].join(" · ");
+}
+
 /** First prize slot whose note mentions money, with the message to show. */
 export function firstPrizeProblem(format: GameFormat, notes: Record<string, string>): { key: string; message: string } | null {
   for (const slot of prizeSlots(format)) {
@@ -253,16 +327,24 @@ export type Matchup =
   | { kind: "custom"; x: string; y: string };
 
 /** The two teams (and link) a matchup puts on the board, or null while incomplete. */
-export function matchupTeams(m: Matchup | null): { teamX: Team; teamY: Team; league: League; linkedEvent: LinkedEvent | null } | null {
+export function matchupTeams(
+  m: Matchup | null,
+  colors: TeamColors = {},
+): { teamX: Team; teamY: Team; league: League; linkedEvent: LinkedEvent | null } | null {
   if (!m) return null;
   if (m.kind === "linked") {
     const o = orientEvent(m.event);
-    return { teamX: o.teamX, teamY: o.teamY, league: m.event.league, linkedEvent: o.linkedEvent };
+    return { ...withSideColors(o.teamX, o.teamY), league: m.event.league, linkedEvent: o.linkedEvent };
   }
-  const x = resolveCustomTeam(m.x);
-  const y = resolveCustomTeam(m.y);
+  const x = resolveCustomTeam(m.x, colors);
+  const y = resolveCustomTeam(m.y, colors);
   if (!x || !y) return null;
-  return { teamX: x.team, teamY: y.team, league: "custom", linkedEvent: null };
+  return { ...withSideColors(x.team, y.team), league: "custom", linkedEvent: null };
+}
+
+/** Teams as the board will show them: a team without a color gets its side's color. */
+export function withSideColors(teamX: Team, teamY: Team): { teamX: Team; teamY: Team } {
+  return { teamX: { ...teamX, color: teamX.color ?? CUSTOM_X_COLOR }, teamY: { ...teamY, color: teamY.color ?? CUSTOM_Y_COLOR } };
 }
 
 /** Short names for the auto board name. */
@@ -278,6 +360,8 @@ export function matchupShortNames(m: Matchup | null): [string, string] | null {
 
 export interface CreateDraft {
   matchup: Matchup | null;
+  /** Live team colors for typed NFL teams (teamColorsFrom). */
+  colors?: TeamColors;
   format: GameFormat;
   name: string;
   maxPerPlayer: number;
@@ -287,7 +371,7 @@ export interface CreateDraft {
 
 /** The POST /api/games body, or null while the matchup is incomplete. */
 export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
-  const teams = matchupTeams(d.matchup);
+  const teams = matchupTeams(d.matchup, d.colors);
   if (!teams) return null;
   const short = matchupShortNames(d.matchup);
   const name = d.name.trim().slice(0, BOARD_NAME_MAX) || (short ? boardNameFor(short[0], short[1]) : "") || "Squares";
@@ -305,6 +389,35 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
     linkedEvent: teams.linkedEvent,
     host: { ...d.host, name: d.host.name.trim() },
   };
+}
+
+/** The first thing stopping Create, in page order, with the button's one-line ask. */
+export type CreateBlocker =
+  | { field: "game"; label: string }
+  | { field: "team-x" | "team-y"; label: string }
+  | { field: "host"; label: string }
+  | { field: "prize"; key: string; label: string };
+
+export function firstBlocker(d: {
+  matchup: Matchup | null;
+  /** Null when this device already has a name (the field isn't shown). */
+  hostName: string | null;
+  format: GameFormat;
+  prizes: Record<string, string>;
+}): CreateBlocker | null {
+  const m = d.matchup;
+  if (!m) return { field: "game", label: "Pick a game to continue" };
+  if (m.kind === "custom") {
+    const x = Boolean(m.x.trim());
+    const y = Boolean(m.y.trim());
+    if (!x && !y) return { field: "team-x", label: "Add both teams to continue" };
+    if (!x) return { field: "team-x", label: "Add the away team to continue" };
+    if (!y) return { field: "team-y", label: "Add the home team to continue" };
+  }
+  if (d.hostName !== null && !d.hostName.trim()) return { field: "host", label: "Add your name to continue" };
+  const prize = firstPrizeProblem(d.format, d.prizes);
+  if (prize) return { field: "prize", key: prize.key, label: "Fix the prize note to continue" };
+  return null;
 }
 
 /** Stable key for a request body, so re-tapping Create reuses the same unpaid draft. */

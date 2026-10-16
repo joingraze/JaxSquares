@@ -1,31 +1,49 @@
-// The dashboard for someone with boards: one headline sentence, then boards
-// grouped by what they need — Live now, Needs you, Up next, Final.
+// The dashboard for someone with boards: one headline sentence that sums up
+// the day, then boards grouped by what they need — Live now, Needs you,
+// Up next, Final.
+//
+// Everything on it is live: Home follows every board you're in that's still
+// moving (useHomeFeed), lays each board's live state over its summary, and
+// re-renders the moment a friend grabs a square, numbers drop or a score
+// lands. The summary list itself still refreshes in the background (new
+// boards, boards past the follow cap).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { GameSummary } from "../../../shared/types";
+import type { GameState, GameSummary } from "../../../shared/types";
 import { ArrowRightIcon, ShareIcon, WifiOffIcon } from "../../components/icons";
-import { Button, celebrate, cx, LiveDot, LogoMark, TopBar, useToast } from "../../components/ui";
+import { Button, celebrate, cx, LiveDot, useToast } from "../../components/ui";
 import { inviteUrl, type ApiError } from "../../lib/api";
-import { countdown, kickoffLabel } from "../../lib/format";
 import { getPlayerId, useProfile } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
-import { BoardCard } from "./BoardCard";
+import { celebratedWins, markCelebrated } from "../board/storage";
+import { ActivityBell } from "./ActivityInbox";
+import { BoardCard, type CardAction } from "./BoardCard";
 import { SectionHeader } from "./BoardBits";
-import { FinalList } from "./FinalList";
+import { FINALS_COLLAPSED, FinalList } from "./FinalList";
+import { HomeHeader } from "./HomeHeader";
 import { HowItWorks } from "./HowItWorks";
+import { buildInbox } from "./inbox";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { LiveCard } from "./LiveCard";
 import { LiveCarousel } from "./LiveCarousel";
-import { NotifyBell } from "./NotifyBell";
-import { groupBoards, headlineFor, hostAction, latestBuzz, liveSnapshot, primaryActionId, type Buzz, type Headline } from "./sections";
-import { celebratedWins, markCelebrated } from "../board/storage";
-import { useBoardDetails } from "./useBoardDetails";
+import { useHomeFeed } from "./homeFeed";
+import {
+  atMoment,
+  boardBuzz,
+  cardModel,
+  groupBoards,
+  headlineFor,
+  liveHits,
+  liveSnapshot,
+  primaryActionId,
+  scoreWithTeams,
+  withState,
+  type BoardAction,
+} from "./sections";
 import { useNow } from "./useNow";
 import { PULL_THRESHOLD, usePullToRefresh } from "./usePullToRefresh";
 import "./home.css";
-
-const DAY = 24 * 60 * 60 * 1000;
 
 export interface DashboardProps {
   games: GameSummary[];
@@ -33,12 +51,30 @@ export interface DashboardProps {
   refresh: () => Promise<void>;
 }
 
+/** Follow boards in play first, then your own boards, then the most recently active. */
+function followOrder(boards: GameSummary[]): string[] {
+  const rank = (g: GameSummary) => (g.status === "locked" || g.live?.state === "in" ? 2 : 0) + (g.isHost ? 1 : 0);
+  return boards
+    .filter((g) => g.status === "open" || g.status === "locked")
+    .sort((a, b) => rank(b) - rank(a) || b.lastActivityAt - a.lastActivityAt)
+    .map((g) => g.id);
+}
+
 export function Dashboard({ games, error, refresh }: DashboardProps) {
   const me = getPlayerId();
   const profile = useProfile();
-  const now = useNow();
-  const details = useBoardDetails(games);
-  const grouped = useMemo(() => groupBoards(games), [games]);
+  const now = useNow(15_000);
+  const [openedAt] = useState(() => Date.now());
+  const [finalsShown, setFinalsShown] = useState(FINALS_COLLAPSED);
+  const { snapshot, sync } = useHomeFeed();
+  const details = snapshot.states;
+
+  // Each summary with its board's live state on top (only states from the network: a cached one may be older).
+  const boards = useMemo(
+    () => games.map((g) => (snapshot.fresh.has(g.id) && details[g.id] ? withState(g, details[g.id], me) : g)),
+    [games, snapshot, details, me],
+  );
+  const grouped = useMemo(() => groupBoards(boards), [boards]);
   // Live boards: the one you're winning first (it matches the headline), then games with a running clock.
   const sections = useMemo(() => {
     const rank = (g: GameSummary) => {
@@ -48,30 +84,59 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
     };
     return { ...grouped, live: [...grouped.live].sort((a, b) => rank(b) - rank(a)) };
   }, [grouped, details, me]);
+
+  const liveKey = followOrder(boards).join(",");
+  const onceKey = sections.final
+    .slice(0, finalsShown)
+    .map((g) => g.id)
+    .join(",");
+  useEffect(() => {
+    sync(liveKey ? liveKey.split(",") : [], onceKey ? onceKey.split(",") : []);
+  }, [sync, liveKey, onceKey]);
+
   const [joining, setJoining] = useState(false);
   const { pull, refreshing } = usePullToRefresh(refresh);
-  useWinCelebration(games);
+  const [winPulse, setWinPulse] = useState(0);
+  useWinCelebration(boards, details, () => setWinPulse((n) => n + 1));
 
-  // Live boards are sorted with the one you're winning first, so the headline matches the first card.
-  const lead = sections.live[0] && details[sections.live[0].id] ? liveSnapshot(details[sections.live[0].id], me) : null;
-  const headline = headlineFor(sections, { winning: lead?.meWinning && lead.leader ? lead.leader : null, now });
+  const winningNow = sections.live.some((g) => {
+    const snap = details[g.id] ? liveSnapshot(details[g.id], me) : null;
+    return !!snap?.meWinning && snap.leader?.kind === "now";
+  });
+  const headline = headlineFor(sections, { winningNow, hits: liveHits(sections), now });
   const focus = sections.live[0] ?? sections.needs[0] ?? sections.next[0] ?? null;
   const primaryId = primaryActionId(sections);
-  const buzzOf = (g: GameSummary) => {
-    const s = details[g.id];
-    return s && g.status === "open" ? latestBuzz(s, me, now) : null;
-  };
+  const inbox = useMemo(() => buildInbox(boards, details, me, now), [boards, details, me, now]);
+  const actionFor = useCardAction();
 
   let delay = 0;
   const enter = () => ({ animationDelay: `${(delay++ * 45).toString()}ms` });
 
+  const card = (g: GameSummary) => {
+    const model = cardModel(g, now);
+    const s = details[g.id];
+    const buzz = model.buzz && s ? boardBuzz(s, me, now) : null;
+    return (
+      <div key={g.id} className="home-enter" style={enter()}>
+        <BoardCard
+          game={g}
+          model={model}
+          now={now}
+          buzz={buzz}
+          buzzIsNew={!!buzz && buzz.at >= openedAt}
+          action={model.action ? actionFor(g, model.action.kind, model.action.label, g.id === primaryId) : undefined}
+        />
+      </div>
+    );
+  };
+
   return (
     <>
-      <TopBar
-        title="Home"
-        leading={<LogoMark size={30} className="ml-2.5" />}
-        trailing={<NotifyBell gameId={focus?.id ?? null} isHost={focus?.isHost ?? false} />}
-        largeTitle={<HeadlineText headline={headline} name={profile.name} />}
+      <HomeHeader
+        name={profile.name}
+        headline={headline}
+        pulse={winPulse}
+        trailing={<ActivityBell items={inbox} now={now} focusGameId={focus?.id ?? null} focusIsHost={focus?.isHost ?? false} />}
       />
 
       <PullIndicator pull={pull} refreshing={refreshing} />
@@ -86,7 +151,7 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
             <p className="min-w-0 flex-1 text-footnote text-ink-muted">
               <span className="font-bold text-ink">{error.isNetwork ? "You're offline." : "Couldn't refresh."}</span> Showing your last update.
             </p>
-            <Button variant="ghost" size="sm" onClick={() => void refresh()}>
+            <Button variant="ghost" size="sm" className="!h-11" onClick={() => void refresh()}>
               Retry
             </Button>
           </div>
@@ -114,33 +179,21 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
         {sections.needs.length > 0 && (
           <section aria-labelledby="home-needs">
             <SectionHeader id="home-needs" title="Needs you" tone="brand" count={sections.needs.length} />
-            <div className="flex flex-col gap-3">
-              {sections.needs.map((g) => (
-                <div key={g.id} className="home-enter" style={enter()}>
-                  <NeedsCard game={g} now={now} primary={g.id === primaryId} buzz={buzzOf(g)} />
-                </div>
-              ))}
-            </div>
+            <div className="flex flex-col gap-3">{sections.needs.map(card)}</div>
           </section>
         )}
 
         {sections.next.length > 0 && (
           <section aria-labelledby="home-next">
             <SectionHeader id="home-next" title="Up next" count={sections.next.length} />
-            <div className="flex flex-col gap-3">
-              {sections.next.map((g) => (
-                <div key={g.id} className="home-enter" style={enter()}>
-                  <NextCard game={g} now={now} primary={g.id === primaryId} buzz={buzzOf(g)} />
-                </div>
-              ))}
-            </div>
+            <div className="flex flex-col gap-3">{sections.next.map(card)}</div>
           </section>
         )}
 
         {sections.final.length > 0 && (
           <section aria-labelledby="home-final" className="home-enter" style={enter()}>
             <SectionHeader id="home-final" title="Final" count={sections.final.length} />
-            <FinalList games={sections.final} details={details} />
+            <FinalList games={sections.final} details={details} me={me} onExpand={(all) => setFinalsShown(all ? sections.final.length : FINALS_COLLAPSED)} />
           </section>
         )}
 
@@ -156,112 +209,55 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
             void haptic("selection");
             setJoining(true);
           }}
-          className="pressable mx-auto flex items-center gap-1.5 rounded-full px-4 py-2 text-subhead font-bold text-ink-muted hover:text-ink"
+          className="pressable mx-auto flex min-h-11 items-center gap-1.5 rounded-full px-4 py-2 text-subhead font-bold text-ink-muted hover:text-ink"
         >
           Have a code? <span className="text-brand-400">Join a board</span>
           <ArrowRightIcon size={16} strokeWidth={2.6} className="text-brand-400" />
         </button>
       </div>
 
+      {/* Content fades out before it reaches the floating tab dock instead of showing through it. */}
+      <div aria-hidden className="home-dock-fade pointer-events-none fixed inset-x-0 bottom-0 z-30" />
+
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />
     </>
   );
 }
 
-function HeadlineText({ headline, name }: { headline: Headline; name: string }) {
-  return (
-    <span className="block">
-      <span className="mb-1.5 block font-sans text-subhead font-bold tracking-normal text-ink-muted">
-        {name ? `Hey ${name}` : "Hey there"}
-      </span>
-      <span className="block text-balance">
-        {headline.lead}{" "}
-        <span className={cx(headline.tone === "win" ? "text-foil" : headline.tone === "live" ? "text-live-400" : "text-brand-400")}>
-          {headline.hot}
-        </span>
-      </span>
-    </span>
-  );
-}
-
-function NeedsCard({ game, now, primary, buzz }: { game: GameSummary; now: number; primary: boolean; buzz: Buzz | null }) {
+/**
+ * Each card's one action. Deep links take the host straight to the step:
+ * the draw confirm (?draw=1) or checkout (?checkout=1).
+ */
+function useCardAction() {
   const navigate = useNavigate();
   const toast = useToast();
-  const action = hostAction(game);
-  const left = game.totalSquares - game.claimed;
-  const open = () => navigate(`/g/${game.id}`);
-
-  if (action === "lock") {
-    return (
-      <BoardCard
-        game={game}
-        buzz={buzz}
-        now={now}
-        highlight="gold"
-        status="Board's full!"
-        statusTone="gold"
-        action={{ label: "Draw numbers", onClick: open, primary, tone: "gold" }}
-      />
-    );
-  }
-  if (action === "finish-setup") {
-    return (
-      <BoardCard
-        game={game}
-        buzz={buzz}
-        now={now}
-        status="Not open yet"
-        statusTone="brand"
-        action={{ label: "Finish setup", onClick: open, primary }}
-      />
-    );
-  }
-
-  const share = async () => {
-    const outcome = await shareLink({
-      title: game.name,
-      text: `Grab a square on ${game.name}: ${game.teamX.name} vs ${game.teamY.name}`,
-      url: inviteUrl(game.id),
-    });
-    if (outcome === "copied") toast.success("Invite link copied", "Paste it in the group chat.");
-  };
-  return (
-    <BoardCard
-      game={game}
-      buzz={buzz}
-      now={now}
-      status={`${left} left${game.startsAt ? ` · ${kickoffText(game.startsAt, now, true)}` : ""}`}
-      statusTone="brand"
-      meta={game.mySquares > 0 ? `${game.mySquares} yours` : "none yours yet"}
-      action={{ label: "Invite", icon: <ShareIcon size={16} strokeWidth={2.4} />, onClick: () => void share(), primary }}
-    />
+  return useCallback(
+    (game: GameSummary, kind: BoardAction, label: string, primary: boolean): CardAction => {
+      switch (kind) {
+        case "invite":
+          return {
+            label,
+            primary,
+            icon: <ShareIcon size={16} strokeWidth={2.4} />,
+            onClick: () =>
+              void shareLink({
+                title: game.name,
+                text: `Grab a square on ${game.name}: ${game.teamX.name} vs ${game.teamY.name}`,
+                url: inviteUrl(game.id),
+              }).then((outcome) => {
+                if (outcome === "copied") toast.success("Invite link copied", "Paste it in the group chat.");
+              }),
+          };
+        case "lock":
+          return { label, primary, onClick: () => navigate(`/g/${game.id}?draw=1`) };
+        case "finish-setup":
+          return { label, primary, onClick: () => navigate(`/g/${game.id}?checkout=1`) };
+        default:
+          return { label, primary, onClick: () => navigate(`/g/${game.id}`) };
+      }
+    },
+    [navigate, toast],
   );
-}
-
-function NextCard({ game, now, primary, buzz }: { game: GameSummary; now: number; primary: boolean; buzz: Buzz | null }) {
-  const navigate = useNavigate();
-  const left = game.totalSquares - game.claimed;
-  const soon = game.startsAt !== null && game.startsAt - now < DAY;
-  const status = game.startsAt ? kickoffText(game.startsAt, now) : left > 0 ? "Squares open" : "Board's full";
-  const pick = game.mySquares === 0 && left > 0;
-  return (
-    <BoardCard
-      game={game}
-      buzz={buzz}
-      now={now}
-      status={status}
-      statusTone={soon ? "brand" : "muted"}
-      meta={game.mySquares > 0 ? `${game.mySquares} yours` : `${left} left`}
-      action={pick ? { label: "Pick squares", onClick: () => navigate(`/g/${game.id}`), primary } : undefined}
-    />
-  );
-}
-
-function kickoffText(startsAt: number, now: number, short = false): string {
-  const ms = startsAt - now;
-  if (ms <= 0) return "Kicking off";
-  if (ms < 2 * DAY) return short ? `kicks off in ${countdown(ms)}` : `Kickoff in ${countdown(ms)}`;
-  return short ? kickoffLabel(startsAt, now) : `Kickoff ${kickoffLabel(startsAt, now)}`;
 }
 
 function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean }) {
@@ -283,18 +279,46 @@ function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean
 }
 
 /**
- * Confetti + a toast when one of your squares wins while you're looking at
- * Home. Wins already on the board when Home opened stay quiet, and the
- * board's per-device ledger means a win is celebrated once, here or there.
+ * Confetti when one of your squares wins while you're looking at Home (wins
+ * already on the board when Home opened stay quiet, and the board's
+ * per-device ledger means a win is celebrated once, here or there). With the
+ * headline on screen it takes the news (no toast saying it twice); scrolled
+ * away, a toast carries it in plain words.
  */
-function useWinCelebration(games: GameSummary[]) {
+function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string, GameState>>, onHeadline: () => void) {
   const toast = useToast();
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
+  const statesRef = useRef(states);
+  statesRef.current = states;
+  const onHeadlineRef = useRef(onHeadline);
+  onHeadlineRef.current = onHeadline;
   const seen = useRef<Set<string> | null>(null);
+
+  const announce = useCallback(
+    (game: GameSummary, win: { periodKey: string; label: string }) => {
+      void haptic("success");
+      void celebrate("win");
+      if (typeof window !== "undefined" && window.scrollY < 120) {
+        onHeadlineRef.current();
+        return;
+      }
+      const s = statesRef.current[game.id];
+      const score = s?.scores.find((x) => x.periodKey === win.periodKey) ?? null;
+      const reverse = win.label.endsWith("(reverse)");
+      toast.show({
+        tone: "win",
+        title: `Your ${reverse ? "reverse " : ""}square hit ${atMoment(win.periodKey, win.label)}!`,
+        description: score ? `${game.name} · ${scoreWithTeams(game, score.scoreX, score.scoreY)}` : game.name,
+        action: { label: "See it", onClick: () => navigateRef.current(`/g/${game.id}`) },
+      });
+    },
+    [toast],
+  );
+
   useEffect(() => {
-    const wins = games.flatMap((g) => winIds(g).map((id) => ({ key: `${g.id}|${id}`, id, game: g })));
+    const wins = boards.flatMap((g) => winIds(g).map((id) => ({ key: `${g.id}|${id}`, id, game: g })));
     if (seen.current === null) {
       seen.current = new Set(wins.map((w) => w.key));
       return;
@@ -305,16 +329,9 @@ function useWinCelebration(games: GameSummary[]) {
     if (unclaimed.length === 0) return;
     for (const w of unclaimed) markCelebrated(w.game.id, [w.id]);
     const first = unclaimed[0];
-    const label = first.game.myWins.find((m) => winId(m) === first.id)?.label ?? "a period";
-    void haptic("success");
-    void celebrate("win");
-    toast.show({
-      tone: "win",
-      title: `You won ${label}!`,
-      description: `Your square hit on ${first.game.name}.`,
-      action: { label: "See it", onClick: () => navigateRef.current(`/g/${first.game.id}`) },
-    });
-  }, [games, toast]);
+    const win = first.game.myWins.find((m) => winId(m) === first.id) ?? { periodKey: first.id, label: first.id };
+    announce(first.game, win);
+  }, [boards, announce]);
 }
 
 /** Same ids the board uses for its celebration ledger: "q1", or "q1:reverse" for a reverse-only win. */

@@ -1,38 +1,67 @@
-// New board: pick the game, pick how squares win, (optionally) tweak details,
-// then one tap to create + open checkout. On payment the board opens with its
-// invite sheet up (/g/<id>?invite=1), so a host goes from "New board" to a
-// sent invite in a few taps.
+// New board on one screen: pick the game (the soonest one is already picked),
+// glance at the rules and details (one line each, open to change), tap Create.
+// That one tap creates the board and, in test mode or the iOS app, opens it
+// too: the button runs from "Setting up your board" to "You're live!" with
+// confetti and the board opens with its invite sheet up (/g/<id>?invite=1).
+// Only a real web checkout adds a step: the Apple Pay / Google Pay sheet.
 
-import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { defaultFormat, PRIZE_MONEY_ERROR } from "../../shared/formats";
-import type { GameFormat, PaymentConfig, ScheduleEvent } from "../../shared/types";
-import { ArrowRightIcon, CheckIcon } from "../components/icons";
+import { defaultFormat, PRESET_INFO, PRIZE_MONEY_ERROR } from "../../shared/formats";
+import type { Game, GameFormat, PaymentConfig, ScheduleEvent } from "../../shared/types";
+import { ArrowRightIcon, CheckIcon, SlidersIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
-import { ActionBar, Avatar, Button, cx, TextField, TopBar, useToast } from "../components/ui";
+import {
+  ActionBar,
+  Avatar,
+  Button,
+  celebrate,
+  CELEBRATION_COLORS,
+  cx,
+  prefersReducedMotion,
+  Spinner,
+  TextField,
+  TopBar,
+  useToast,
+} from "../components/ui";
 import { ApiError, api } from "../lib/api";
-import { fetchAppConfig, formatPrice, preloadCheckout } from "../lib/checkout";
+import { CheckoutError, checkoutMethod, checkoutPrice, fetchAppConfig, payTest, payWithIAP, preloadCheckout } from "../lib/checkout";
+import { readableTeamColor } from "../lib/format";
 import { NAME_MAX_LENGTH, setProfile, useProfile } from "../lib/identity";
 import { haptic, platform } from "../lib/native";
 import { CheckoutSheet, type CheckoutDraft } from "../features/create/CheckoutSheet";
-import { DetailsSection } from "../features/create/DetailsSection";
-import { FormatPicker } from "../features/create/FormatPicker";
+import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, TEAM_INPUT_ID } from "../features/create/CustomMatchup";
+import { DetailsPanel } from "../features/create/DetailsSection";
+import { Disclosure } from "../features/create/Disclosure";
+import { FormatGlyph, FormatPicker } from "../features/create/FormatPicker";
 import { GamePicker, type PickerTab } from "../features/create/GamePicker";
 import {
+  boardHeadline,
   boardNameFor,
   buildCreateInput,
-  firstPrizeProblem,
+  detailsSummary,
+  firstBlocker,
   inputSignature,
   matchupShortNames,
   matchupTeams,
+  prizeInputId,
+  teamColorsFrom,
+  type CreateBlocker,
   type Matchup,
 } from "../features/create/model";
-import { useSchedule } from "../features/create/useSchedule";
+import { useSchedule, type ScheduleLeague } from "../features/create/useSchedule";
 
 interface Draft extends CheckoutDraft {
   /** inputSignature of the body that created it, so an unchanged re-tap reuses it. */
   sig: string;
 }
+
+type Phase = "idle" | "working" | "live";
+
+/** How long "You're live!" and the confetti show before the board opens. */
+const LIVE_BEAT_MS = 650;
+const HOST_INPUT_ID = "host-name";
+const GAME_SECTION_ID = "create-game";
 
 export default function CreateGame() {
   useHideTabBar();
@@ -40,43 +69,53 @@ export default function CreateGame() {
   const toast = useToast();
   const profile = useProfile();
   const schedule = useSchedule();
+  const colors = useMemo(() => teamColorsFrom(schedule.nfl.events), [schedule.nfl.events]);
 
   // ---- form state ----
   const [tab, setTab] = useState<PickerTab>("nfl");
   const tabTouched = useRef(false);
-  const [event, setEvent] = useState<ScheduleEvent | null>(null);
+  /** Explicit picks per league; without one, the soonest game is picked. */
+  const [picked, setPicked] = useState<Partial<Record<ScheduleLeague, string>>>({});
   const [custom, setCustom] = useState({ x: "", y: "" });
   const [format, setFormat] = useState<GameFormat>(defaultFormat);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [maxPerPlayer, setMaxPerPlayer] = useState(0);
   const [prizes, setPrizes] = useState<Record<string, string>>({});
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Ask for the host's name only when this device has never set one.
   const [needsName] = useState(() => !profile.name.trim());
   const [hostName, setHostName] = useState(profile.name);
   const [showErrors, setShowErrors] = useState(false);
+  const [shake, setShake] = useState(0);
 
   // ---- create + checkout ----
   const [payments, setPayments] = useState<PaymentConfig | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [price, setPrice] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-
-  const gameRef = useRef<HTMLElement>(null);
-  const hostRef = useRef<HTMLInputElement>(null);
-
-  const loadConfig = (refresh = false) =>
-    fetchAppConfig({ refresh })
-      .then((c) => {
-        setPayments(c.payments);
-        preloadCheckout(c.payments, platform());
-        return c.payments;
-      })
-      .catch(() => null);
+  /** Quiet line under the button after a checkout ended without paying. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** False once the host has left the page: a create still in flight then doesn't pull them back. */
+  const mounted = useRef(true);
 
   useEffect(() => {
-    void loadConfig();
+    mounted.current = true;
+    fetchAppConfig()
+      .then((c) => {
+        if (!mounted.current) return;
+        setPayments(c.payments);
+        preloadCheckout(c.payments, platform());
+        return checkoutPrice(c.payments, platform()).then((p) => mounted.current && setPrice(p));
+      })
+      .catch(() => {});
+    return () => {
+      mounted.current = false;
+      if (liveTimer.current) clearTimeout(liveTimer.current);
+    };
   }, []);
 
   // Focused fields (and error scrolls) stop clear of the sticky top bar and the Create bar.
@@ -84,7 +123,7 @@ export default function CreateGame() {
     const root = document.documentElement;
     const prev = { top: root.style.scrollPaddingTop, bottom: root.style.scrollPaddingBottom };
     root.style.scrollPaddingTop = "calc(var(--safe-top) + var(--topbar-h) + 1rem)";
-    root.style.scrollPaddingBottom = "calc(var(--safe-bottom) + 8.5rem)";
+    root.style.scrollPaddingBottom = "calc(var(--safe-bottom) + 9.5rem)";
     return () => {
       root.style.scrollPaddingTop = prev.top;
       root.style.scrollPaddingBottom = prev.bottom;
@@ -99,82 +138,114 @@ export default function CreateGame() {
     else if (!nfl.loading && !ncaaf.loading) setTab(ncaaf.events.length ? "ncaaf" : "custom");
   }, [schedule]);
 
+  // The game in the open league: the one tapped there, else the soonest.
+  const leagueEvents = tab === "custom" ? [] : schedule[tab].events;
+  const explicit = tab === "custom" ? undefined : picked[tab];
+  const event: ScheduleEvent | null = leagueEvents.find((e) => e.eventId === explicit) ?? leagueEvents[0] ?? null;
+
   const matchup: Matchup | null = tab === "custom" ? { kind: "custom", x: custom.x, y: custom.y } : event ? { kind: "linked", event } : null;
-  const teams = matchupTeams(matchup);
+  const teams = matchupTeams(matchup, colors);
   const shortNames = matchupShortNames(matchup);
   const autoName = shortNames ? boardNameFor(shortNames[0], shortNames[1]) : "";
   const shownName = nameTouched ? name : autoName;
-  const gameDone = teams !== null;
-  const hostDone = hostName.trim().length > 0;
-
-  const price = payments && platform() !== "ios" ? formatPrice(payments.priceCents, payments.currency) : null;
+  const blocker = firstBlocker({ matchup, hostName: needsName ? hostName : null, format, prizes });
+  const blockedLabel = showErrors && blocker ? blocker.label : null;
 
   const pickTab = (next: PickerTab) => {
     tabTouched.current = true;
     setTab(next);
   };
 
-  const pickEvent = (e: ScheduleEvent) => {
-    setEvent((cur) => (cur?.eventId === e.eventId ? cur : e));
+  const pickEvent = (e: ScheduleEvent) => setPicked((p) => (p[e.league] === e.eventId ? p : { ...p, [e.league]: e.eventId }));
+
+  /** Brings the first problem into view: focus its field, centered clear of both bars. */
+  const showBlocker = (b: CreateBlocker) => {
+    if (b.field === "prize") setDetailsOpen(true);
+    const id = blockerTarget(b);
+    // Two frames: the details panel may be opening.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el instanceof HTMLInputElement) el.focus({ preventScroll: true });
+        el.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "center" });
+      }),
+    );
   };
 
-  const attention = (el: HTMLElement | null) => {
-    void haptic("warning");
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const openBoard = (id: string) => navigate(`/g/${encodeURIComponent(id)}?invite=1`, { replace: true });
+
+  /** The payoff: the button says you're live, confetti in the team colors, then the board + invite sheet. */
+  const goLive = (game: Game) => {
+    if (!mounted.current) return;
+    setPhase("live");
+    void haptic("success");
+    const burst = [readableTeamColor(game.teamX.color, CUSTOM_X_COLOR), readableTeamColor(game.teamY.color, CUSTOM_Y_COLOR), ...CELEBRATION_COLORS.slice(0, 2)];
+    void celebrate("pop", { colors: burst, origin: { x: 0.5, y: 0.9 } });
+    liveTimer.current = setTimeout(() => openBoard(game.id), LIVE_BEAT_MS);
   };
 
   const submit = async () => {
-    if (creating) return;
+    if (phase !== "idle") return;
+    if (blocker) {
+      setShowErrors(true);
+      setShake((n) => n + 1);
+      void haptic("error");
+      return showBlocker(blocker);
+    }
     const input = buildCreateInput({
       matchup,
+      colors,
       format,
       name: nameTouched ? name : "",
       maxPerPlayer,
       prizes,
       host: { name: hostName, color: profile.color, emoji: profile.emoji },
     });
-    if (!input) {
-      setShowErrors(true);
-      return attention(gameRef.current);
-    }
-    if (!hostDone) {
-      setShowErrors(true);
-      attention(hostRef.current);
-      hostRef.current?.focus({ preventScroll: true });
-      return;
-    }
-    const prizeProblem = firstPrizeProblem(format, prizes);
-    if (prizeProblem) {
-      setDetailsOpen(true);
-      void haptic("error");
-      requestAnimationFrame(() => attention(document.getElementById(`prize-${prizeProblem.key === "*" ? "all" : prizeProblem.key}`)));
-      return;
-    }
+    if (!input) return;
     if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
 
+    setNotice(null);
+    setPhase("working");
+    void haptic("medium");
     let current = draft;
-    const sig = inputSignature(input);
-    if (!current || current.sig !== sig) {
-      setCreating(true);
-      try {
+    try {
+      const sig = inputSignature(input);
+      if (!current || current.sig !== sig) {
         const res = await api.createGame(input);
-        // The settings changed after a cancelled checkout: drop the stale unpaid draft.
+        // The settings changed after a checkout that didn't finish: drop the stale unpaid draft.
         if (current) void api.deleteGame(current.game.id, current.adminToken).catch(() => {});
         current = { game: res.game, adminToken: res.adminToken, sig };
         setDraft(current);
-        if (!res.paymentRequired) return openBoard(res.game.id);
-      } catch (err) {
-        return createFailed(err);
-      } finally {
-        setCreating(false);
+        if (!res.paymentRequired) return goLive(current.game);
       }
+      const config = payments ?? (await fetchAppConfig().then((c) => c.payments, () => null));
+      const method = config ? checkoutMethod(config, platform()) : null;
+      if (method === "test") {
+        await payTest(current.game.id, current.adminToken);
+        return goLive(current.game);
+      }
+      if (method === "iap") {
+        // The App Store's own sheet is the confirm step.
+        const r = await payWithIAP(current.game.id, current.adminToken, config?.iapProductId);
+        if (r.status === "paid") return goLive(current.game);
+        setPhase("idle");
+        setNotice(r.status === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : "No charge. Your draft is saved on Home.");
+        return;
+      }
+      // A web checkout needs its own tap (Apple Pay / Google Pay must start from a press on their button).
+      setPhase("idle");
+      setSheetOpen(true);
+    } catch (err) {
+      // Already open (paid elsewhere, or a retried test checkout): that's the happy path.
+      if (err instanceof CheckoutError && err.status === 409 && err.state && current) return goLive(current.game);
+      setPhase("idle");
+      createFailed(err);
     }
-    if (!payments) void loadConfig(true);
-    void haptic("medium");
-    setSheetOpen(true);
   };
 
   const createFailed = (err: unknown) => {
+    void haptic("error");
     const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
     if (err instanceof ApiError && err.status === 400 && message === PRIZE_MONEY_ERROR) {
       setDetailsOpen(true);
@@ -188,9 +259,7 @@ export default function CreateGame() {
     toast.error("Couldn't make the board", message);
   };
 
-  const openBoard = (id: string) => navigate(`/g/${encodeURIComponent(id)}?invite=1`, { replace: true });
-
-  // The board fetches its own state (the socket has it too), so the paid state isn't needed here.
+  // The sheet celebrates on its own; the board fetches its own state.
   const onPaid = (id: string) => {
     setSheetOpen(false);
     openBoard(id);
@@ -198,19 +267,30 @@ export default function CreateGame() {
 
   const onCheckoutClose = () => {
     setSheetOpen(false);
-    toast.show({
-      title: "Saved as a draft",
-      description: "It's waiting on Home. Tap Create whenever you're ready.",
-      haptic: false,
-    });
+    setNotice("No charge. Your draft is saved on Home.");
   };
+
+  const rulesSubtitle = [boardHeadline(format), format.reverse && "Reverse", format.freshNumbers && format.periods === "quarters" && "New numbers each Q"]
+    .filter(Boolean)
+    .join(" · ");
+
+  let label: string;
+  let leading = null;
+  if (phase === "working") {
+    label = "Setting up your board…";
+    leading = <Spinner size={18} />;
+  } else if (phase === "live") {
+    label = "You're live!";
+    leading = <CheckIcon size={20} strokeWidth={3} />;
+  } else label = blockedLabel ?? "Create board";
 
   return (
     <>
-      <TopBar title="New board" subtitle="Pick the game, pick the rules, send the link." back />
+      {/* Opaque once collapsed, so nothing scrolling underneath reads through the title. */}
+      <TopBar title="New board" back className="[&.glass]:bg-[rgb(11_18_14)]!" />
 
-      <div className="flex flex-col gap-9 px-safe pb-4">
-        <Section ref={gameRef} step={1} title="Pick the game" done={gameDone}>
+      <div className="flex flex-col gap-6 px-safe pb-2">
+        <section id={GAME_SECTION_ID} aria-label="The game" className="scroll-mt-24">
           <GamePicker
             schedule={schedule}
             tab={tab}
@@ -219,115 +299,108 @@ export default function CreateGame() {
             onPickEvent={pickEvent}
             custom={custom}
             onCustomChange={(side, value) => setCustom((c) => ({ ...c, [side]: value }))}
-            showErrors={showErrors && !gameDone}
+            showErrors={showErrors && !teams}
+            colors={colors}
           />
-        </Section>
-
-        <Section step={2} title="How squares win" done={gameDone}>
-          <FormatPicker format={format} onChange={setFormat} teamX={teams?.teamX} teamY={teams?.teamY} />
-        </Section>
+        </section>
 
         {needsName && (
-          <Section step={3} title="You're the host" done={hostDone}>
-            <TextField
-              ref={hostRef}
-              data-testid="host-name"
-              label="Your name"
-              hideLabel
-              value={hostName}
-              maxLength={NAME_MAX_LENGTH}
-              placeholder="Your name"
-              autoComplete="given-name"
-              autoCapitalize="words"
-              enterKeyHint="done"
-              onChange={(e) => setHostName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-              leading={<Avatar name={hostName || "You"} color={profile.color} emoji={profile.emoji} size="sm" decorative />}
-              hint="Friends see this next to your squares."
-              error={showErrors && !hostDone ? "Add your name so friends know whose board it is." : undefined}
-              inputClassName="font-semibold"
-            />
-          </Section>
+          <TextField
+            id={HOST_INPUT_ID}
+            data-testid="host-name"
+            label="Your name"
+            value={hostName}
+            maxLength={NAME_MAX_LENGTH}
+            placeholder="What friends call you"
+            autoComplete="given-name"
+            autoCapitalize="words"
+            enterKeyHint="done"
+            onChange={(e) => setHostName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            leading={<Avatar name={hostName || "You"} color={profile.color} emoji={profile.emoji} size="sm" decorative />}
+            hint="You're the host. Friends see this next to your squares."
+            error={showErrors && !hostName.trim() ? "Add your name so friends know whose board it is." : undefined}
+            inputClassName="font-semibold"
+          />
         )}
 
-        <Section step={needsName ? 4 : 3} title="Details" optional>
-          <DetailsSection
+        <div className="overflow-hidden rounded-card bg-surface-2 ring-1 ring-inset ring-line shadow-card">
+          <Disclosure
+            open={rulesOpen}
+            onToggle={() => setRulesOpen((o) => !o)}
+            icon={<FormatGlyph preset={format.periods} />}
+            title={PRESET_INFO[format.periods].label}
+            subtitle={rulesSubtitle}
+            action="Change"
+          >
+            <FormatPicker format={format} onChange={setFormat} teamX={teams?.teamX} teamY={teams?.teamY} />
+          </Disclosure>
+          <div aria-hidden className="mx-4 h-px bg-line" />
+          <Disclosure
             open={detailsOpen}
             onToggle={() => setDetailsOpen((o) => !o)}
-            format={format}
-            name={shownName}
-            autoName={autoName}
-            onName={(v) => {
-              setNameTouched(true);
-              setName(v);
-            }}
-            maxPerPlayer={maxPerPlayer}
-            onMaxPerPlayer={setMaxPerPlayer}
-            prizes={prizes}
-            onPrize={(key, note) => setPrizes((p) => ({ ...p, [key]: note }))}
-          />
-        </Section>
+            icon={<SlidersIcon size={18} />}
+            title={shownName || autoName || "Name, limits and prizes"}
+            subtitle={detailsSummary(format, maxPerPlayer, prizes)}
+            action="Edit"
+          >
+            <DetailsPanel
+              format={format}
+              name={shownName}
+              autoName={autoName}
+              onName={(v) => {
+                setNameTouched(true);
+                setName(v);
+              }}
+              maxPerPlayer={maxPerPlayer}
+              onMaxPerPlayer={setMaxPerPlayer}
+              prizes={prizes}
+              onPrize={(key, note) => setPrizes((p) => ({ ...p, [key]: note }))}
+            />
+          </Disclosure>
+        </div>
       </div>
 
       <ActionBar>
-        <Button
-          data-testid="create-submit"
-          size="lg"
-          block
-          loading={creating}
-          onClick={() => void submit()}
-          haptic={false}
-          trailing={<ArrowRightIcon size={20} strokeWidth={2.6} />}
-          className={cx(!gameDone && "opacity-90")}
-        >
-          {price ? (
-            <>
-              Create board <span className="font-semibold opacity-60">·</span> {price}
-            </>
-          ) : (
-            "Create board"
-          )}
-        </Button>
-        <p className="mt-2 text-center text-caption text-ink-subtle">Friends join with just the link. No app or account.</p>
+        {/* Solid behind the button so fields and errors never show through; a short fade on top. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-linear-to-t from-canvas from-80% to-canvas/0" />
+        <div key={shake} className={cx(shake > 0 && "animate-shake")}>
+          <Button
+            data-testid="create-submit"
+            size="lg"
+            block
+            aria-busy={phase === "working" || undefined}
+            onClick={() => void submit()}
+            haptic={false}
+            leading={leading}
+            trailing={phase === "idle" && !blockedLabel ? <ArrowRightIcon size={20} strokeWidth={2.6} /> : undefined}
+            className={cx(phase === "live" && "animate-pop", phase === "working" && "cursor-progress")}
+          >
+            {label}
+          </Button>
+        </div>
+        <p aria-live="polite" className="mt-2 text-center text-caption text-ink-subtle">
+          {notice ?? (price ? `${price} to open, one time · Friends join with just the link` : "Friends join with just the link. No app or account.")}
+        </p>
       </ActionBar>
 
-      <CheckoutSheet
-        open={sheetOpen}
-        draft={draft}
-        payments={payments}
-        onPaid={onPaid}
-        onClose={onCheckoutClose}
-        onRetryConfig={() => void loadConfig(true)}
-      />
+      <CheckoutSheet open={sheetOpen} draft={draft} payments={payments} onPaid={onPaid} onClose={onCheckoutClose} />
     </>
   );
 }
 
-interface SectionProps {
-  step: number;
-  title: string;
-  done?: boolean;
-  optional?: boolean;
-  children: ReactNode;
+/** DOM id of the field (or section) a blocker points at. */
+function blockerTarget(b: CreateBlocker): string {
+  switch (b.field) {
+    case "game":
+      return GAME_SECTION_ID;
+    case "team-x":
+      return TEAM_INPUT_ID.x;
+    case "team-y":
+      return TEAM_INPUT_ID.y;
+    case "host":
+      return HOST_INPUT_ID;
+    case "prize":
+      return prizeInputId(b.key);
+  }
 }
-
-const Section = forwardRef<HTMLElement, SectionProps>(function Section({ step, title, done, optional, children }, ref) {
-  return (
-    <section ref={ref} className="scroll-mt-24">
-      <h2 className="mb-3 flex items-center gap-2.5 px-0.5">
-        <span
-          aria-hidden
-          className={cx(
-            "grid h-6 w-6 place-items-center rounded-full text-caption font-extrabold tabular-nums transition-colors duration-300",
-            done ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink-muted ring-1 ring-inset ring-line-strong",
-          )}
-        >
-          {done ? <CheckIcon key="done" size={14} strokeWidth={3.2} className="animate-pop" /> : step}
-        </span>
-        <span className="font-display text-title-3 font-extrabold text-ink">{title}</span>
-        {optional && <span className="ml-auto text-footnote font-semibold text-ink-subtle">Optional</span>}
-      </h2>
-      {children}
-    </section>
-  );
-});

@@ -4,7 +4,7 @@
 import type { ReactNode, SVGProps } from "react";
 import { BellIcon, BellOffIcon, ChevronLeftIcon, ChevronRightIcon } from "../../components/icons";
 import { LogoMark, cx } from "../../components/ui";
-import { blockedSteps, detectHelpEnv } from "./platformHelp";
+import { blockedHelp, detectHelpEnv, type BlockedHelp, type BlockedKind } from "./platformHelp";
 import "./notifications.css";
 
 // ---- iOS glyphs (not in the shared icon set) ----
@@ -143,20 +143,130 @@ export function InstallGuide({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/** Notifications were blocked in system/browser settings: how to undo it here. */
-export function BlockedGuide() {
-  const steps = blockedSteps(detectHelpEnv());
+function GearGlyph({ size = 20, className }: { size?: number; className?: string }) {
   return (
-    <ol className="flex flex-col gap-3" aria-label="Turn notifications back on">
-      {steps.map((s, i) => (
-        <li key={s} className="flex items-center gap-3">
-          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-surface-4 text-footnote font-extrabold text-ink">
-            {i + 1}
+    <Glyph size={size} className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </Glyph>
+  );
+}
+
+function ToggleGlyph({ size = 20, className }: { size?: number; className?: string }) {
+  return (
+    <Glyph size={size} className={className}>
+      <rect x="2.5" y="7" width="19" height="10" rx="5" />
+      <circle cx="16.5" cy="12" r="3" fill="currentColor" />
+    </Glyph>
+  );
+}
+
+function TuneGlyph({ size = 20, className }: { size?: number; className?: string }) {
+  return (
+    <Glyph size={size} className={className}>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </Glyph>
+  );
+}
+
+/** A bobbing finger pointing down at whatever sits under it. */
+function TapHint() {
+  return (
+    <span className="jxn-tap" aria-hidden>
+      <Glyph size={22} strokeWidth={2.6}>
+        <path d="M12 4v13M6.5 11.5 12 17l5.5-5.5" />
+      </Glyph>
+    </span>
+  );
+}
+
+/** The phone's Settings screen for JaxSquares, with the Allow switch flipping on. */
+export function SettingsArt({ os, className }: { os: "ios" | "android"; className?: string }) {
+  return (
+    <div aria-hidden className={cx("relative px-2 pt-8", className)}>
+      <div className="jxn-settings">
+        <div className="flex items-center gap-1 border-b border-white/8 px-3 py-2 text-caption font-semibold text-ink-muted">
+          <ChevronLeftIcon size={15} className="text-brand-300" />
+          <span className="text-brand-300">{os === "ios" ? "Notifications" : "App info"}</span>
+          <span className="flex-1 text-center font-bold text-ink">{os === "ios" ? "JaxSquares" : "Notifications"}</span>
+          <span className="w-[5.5rem]" />
+        </div>
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[9px] bg-canvas ring-1 ring-white/10">
+            <LogoMark size={32} />
           </span>
-          <span className="text-callout font-semibold text-ink">{s}</span>
-        </li>
-      ))}
-    </ol>
+          <span className="min-w-0 flex-1 text-callout font-semibold text-ink">
+            {os === "ios" ? "Allow Notifications" : "All JaxSquares notifications"}
+          </span>
+          <span className="relative">
+            <TapHint />
+            <span className="jxn-switch" />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A browser address bar with the site-settings button lit and Notifications set to Allow. */
+export function BrowserArt({ className }: { className?: string }) {
+  return (
+    <div aria-hidden className={cx("relative px-2 pt-8", className)}>
+      <div className="jxn-toolbar !justify-start gap-2.5 !px-3">
+        <span className="jxn-share-lit !h-9 !w-9">
+          <TapHint />
+          <TuneGlyph size={19} />
+        </span>
+        <span className="min-w-0 flex-1 truncate rounded-full bg-white/6 px-3 py-1.5 text-footnote text-ink-muted">jaxsquares.com</span>
+      </div>
+      <div className="relative z-[1] mx-3 -mt-1 flex items-center gap-2.5 rounded-2xl bg-surface-4 px-3 py-2.5 shadow-float ring-1 ring-inset ring-white/8">
+        <BellIcon size={17} className="text-ink-muted" />
+        <span className="flex-1 text-footnote font-semibold text-ink">Notifications</span>
+        <span className="rounded-lg bg-brand-400 px-2.5 py-1 text-caption font-extrabold text-ink-inverse">Allow</span>
+      </div>
+    </div>
+  );
+}
+
+const STEP_ICONS: Record<Exclude<BlockedKind, "install">, ReactNode[]> = {
+  "ios-settings": [
+    <GearGlyph size={24} className="text-ink" key="g" />,
+    <BellIcon size={23} className="text-brand-300" key="b" />,
+    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+  ],
+  "android-settings": [
+    <GearGlyph size={24} className="text-ink" key="g" />,
+    <BellIcon size={23} className="text-brand-300" key="b" />,
+    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+  ],
+  browser: [
+    <TuneGlyph size={24} className="text-brand-300" key="u" />,
+    <GearGlyph size={24} className="text-ink" key="g" />,
+    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+  ],
+};
+
+/**
+ * Notifications were blocked: the illustrated fix for this platform. An iPhone
+ * Safari tab gets the Home Screen guide (that's the real reason there).
+ */
+export function BlockedGuide({ help }: { help?: BlockedHelp }) {
+  const h = help ?? blockedHelp(detectHelpEnv());
+  if (h.kind === "install") return <InstallGuide />;
+  const icons = STEP_ICONS[h.kind];
+  return (
+    <div>
+      {h.kind === "browser" ? <BrowserArt className="mb-5" /> : <SettingsArt os={h.kind === "ios-settings" ? "ios" : "android"} className="mb-5" />}
+      <ol className="flex flex-col gap-4" aria-label="Turn notifications back on">
+        {h.steps.map((step, i) => (
+          <Step key={step} n={i + 1} visual={icons[i]}>
+            {step}
+          </Step>
+        ))}
+      </ol>
+    </div>
   );
 }
 

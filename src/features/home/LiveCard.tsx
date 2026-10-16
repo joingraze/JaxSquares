@@ -1,5 +1,7 @@
 // "Live now" hero card: scoreboard, clock, and who holds the square that's
-// winning right now (gold when it's you).
+// winning right now (gold when it's you). It carries the specifics of a win
+// ("Your square hit · Halftime · Loser buys wings"); the page headline only
+// summarizes the day.
 
 import { Link } from "react-router-dom";
 import type { GameState, GameSummary } from "../../../shared/types";
@@ -9,8 +11,8 @@ import { pluralize, teamVars } from "../../lib/format";
 import { useProfile } from "../../lib/identity";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
-import { RoleBadge, TickNumber } from "./BoardBits";
-import { liveSnapshot, type LiveSnapshot } from "./sections";
+import { RoleLabel, TickNumber } from "./BoardBits";
+import { atMoment, liveSnapshot, momentOf, withTeamColors, type LiveSnapshot } from "./sections";
 
 export interface LiveCardProps {
   game: GameSummary;
@@ -25,7 +27,12 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
   const fallback = !snap && game.live ? game.live : null;
   const inProgress = snap?.inProgress ?? fallback?.state === "in";
   // Hosts enter scores on custom boards: once one is in, the game is on.
-  const onAir = inProgress || (snap?.hasScore ?? false);
+  const onAir = inProgress || (snap?.hasScore ?? !!game.latestScore);
+  const [teamX, teamY] = withTeamColors(game.teamX, game.teamY);
+  const wins = new Set(game.myWins.map((w) => w.periodKey));
+  // The banner already says it when your square hit the latest period; the footer counts the rest.
+  const bannerIsMyWin = !!snap?.meWinning && snap.leader?.kind === "last";
+  const firstWin = game.myWins[0];
 
   return (
     <Link
@@ -57,24 +64,30 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
               <Badge tone="neutral">Numbers in</Badge>
             )}
             <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{game.name}</p>
-            <RoleBadge isHost={game.isHost} />
+            <RoleLabel isHost={game.isHost} />
           </div>
 
-          <Scoreboard game={game} snap={snap} fallback={fallback} compact={compact} />
+          <Scoreboard game={game} teams={[teamX, teamY]} snap={snap} fallback={fallback} compact={compact} />
 
-          {state ? <LeaderStrip snap={snap} /> : <Skeleton className="mt-3 h-14 w-full rounded-2xl" />}
+          {snap ? (
+            <LeaderStrip snap={snap} />
+          ) : game.leaderPlayerId === me && game.latestScore ? (
+            <MyWinBanner title="Your square's up!" sub="" digits={null} />
+          ) : (
+            <Skeleton className="mt-3 h-14 w-full rounded-2xl" />
+          )}
 
           <div className="mt-3 flex items-center gap-2 text-footnote text-ink-muted">
-            <span className="font-semibold">
-              {game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}
-            </span>
-            {game.myWins.length > 0 && (
-              <span className="inline-flex items-center gap-1 font-bold text-gold-300">
-                <TrophyIcon size={13} strokeWidth={2.4} />
-                {game.myWins.map((w) => w.label).join(", ")}
+            <span className="font-semibold">{game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}</span>
+            {wins.size > 0 && !(bannerIsMyWin && wins.size === 1) && (
+              <span className="inline-flex min-w-0 items-center gap-1 font-bold text-gold-300">
+                <TrophyIcon size={13} strokeWidth={2.4} className="shrink-0" />
+                <span className="truncate">
+                  {wins.size === 1 && firstWin ? `Hit ${atMoment(firstWin.periodKey, firstWin.label)}` : `${wins.size} hits`}
+                </span>
               </span>
             )}
-            <ChevronRightIcon size={16} className="ml-auto text-ink-subtle" />
+            <ChevronRightIcon size={16} className="ml-auto shrink-0 text-ink-subtle" />
           </div>
         </div>
       </article>
@@ -84,29 +97,30 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
 
 function Scoreboard({
   game,
+  teams,
   snap,
   fallback,
   compact,
 }: {
   game: GameSummary;
+  teams: [GameSummary["teamX"], GameSummary["teamY"]];
   snap: LiveSnapshot | null;
   fallback: GameSummary["live"];
   compact: boolean;
 }) {
-  const scoreX = snap?.hasScore ? snap.scoreX : fallback ? fallback.scoreX : null;
-  const scoreY = snap?.hasScore ? snap.scoreY : fallback ? fallback.scoreY : null;
-  const clock = snap?.clock ?? fallback?.detail ?? "Numbers drawn";
+  const summaryScore = !snap ? (game.latestScore ?? null) : null;
+  const scoreX = snap?.hasScore ? snap.scoreX : fallback ? fallback.scoreX : (summaryScore?.scoreX ?? null);
+  const scoreY = snap?.hasScore ? snap.scoreY : fallback ? fallback.scoreY : (summaryScore?.scoreY ?? null);
+  const clock = snap?.clock ?? fallback?.detail ?? summaryScore?.label ?? "Numbers drawn";
   const lead = scoreX !== null && scoreY !== null ? Math.sign(scoreX - scoreY) : 0;
   return (
     <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-      <TeamSide team={game.teamX} score={scoreX} dim={lead < 0} compact={compact} />
+      <TeamSide team={teams[0]} score={scoreX} dim={lead < 0} compact={compact} />
       <div className={cx("flex flex-col items-center text-center", compact ? "min-w-[4.5rem]" : "min-w-[5.5rem]")}>
         <span className="eyebrow text-ink">{clock}</span>
-        {snap?.nextLabel && !snap.inProgress && (
-          <span className="mt-1 text-caption font-semibold text-ink-subtle">{snap.nextLabel} up next</span>
-        )}
+        {snap?.nextLabel && !snap.inProgress && <span className="mt-1 text-caption font-semibold text-ink-subtle">{snap.nextLabel} up next</span>}
       </div>
-      <TeamSide team={game.teamY} score={scoreY} dim={lead > 0} compact={compact} reverse />
+      <TeamSide team={teams[1]} score={scoreY} dim={lead > 0} compact={compact} reverse />
     </div>
   );
 }
@@ -140,9 +154,7 @@ function TeamSide({
   );
 }
 
-function LeaderStrip({ snap }: { snap: LiveSnapshot | null }) {
-  const profile = useProfile();
-  if (!snap) return null;
+function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
   const leader = snap.leader;
 
   if (!leader) {
@@ -159,25 +171,24 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot | null }) {
   }
 
   const digits = leader.digits ? `${leader.digits[0]}·${leader.digits[1]}` : null;
+  const moment = momentOf(leader.periodKey ?? "", leader.periodLabel);
   if (snap.meWinning) {
-    return (
-      <div className="mt-3 flex animate-win-glow items-center gap-3 rounded-2xl bg-[linear-gradient(100deg,rgb(255_194_51/0.28),rgb(255_171_15/0.1))] px-3 py-2.5 ring-1 ring-inset ring-gold-400/60">
-        <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="md" ring="gold" decorative />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-headline font-extrabold text-foil">
-            {leader.kind === "now" ? `You're winning ${leader.periodLabel}!` : `You won ${leader.periodLabel}!`}
-          </p>
-          <p className="truncate text-caption font-semibold text-gold-200/80">
-            {leader.kind === "now" ? "Yours if it ends now" : "Your square hit"}
-          </p>
-        </div>
-        {digits && <DigitsChip digits={digits} tone="gold" />}
-      </div>
-    );
+    const sub =
+      leader.kind === "now"
+        ? `Yours if ${leader.periodKey === "final" || !leader.periodKey ? "the game" : leader.periodLabel} ends now`
+        : [moment, leader.prize].filter(Boolean).join(" · ");
+    return <MyWinBanner title={leader.kind === "now" ? "You're winning right now!" : "Your square hit!"} sub={sub} digits={digits} />;
   }
 
   const name = leader.player?.name ?? (leader.playerId ? "Someone" : "Nobody");
-  const verb = leader.kind === "now" ? `has ${leader.periodLabel} right now` : `won ${leader.periodLabel}`;
+  const verb =
+    leader.kind === "now"
+      ? leader.playerId
+        ? `has it if ${leader.periodKey === "final" || !leader.periodKey ? "the game" : leader.periodLabel} ends now`
+        : "has this square"
+      : leader.playerId
+        ? `hit ${atMoment(leader.periodKey ?? "", leader.periodLabel)}`
+        : `had the square ${atMoment(leader.periodKey ?? "", leader.periodLabel)}`;
   return (
     <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
       {leader.player ? (
@@ -191,6 +202,20 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot | null }) {
         <span className="font-extrabold text-ink">{name}</span> {verb}
       </p>
       {digits && <DigitsChip digits={digits} />}
+    </div>
+  );
+}
+
+function MyWinBanner({ title, sub, digits }: { title: string; sub: string; digits: string | null }) {
+  const profile = useProfile();
+  return (
+    <div className="mt-3 flex animate-win-glow items-center gap-3 rounded-2xl bg-[linear-gradient(100deg,rgb(255_194_51/0.28),rgb(255_171_15/0.1))] px-3 py-2.5 ring-1 ring-inset ring-gold-400/60">
+      <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="md" ring="gold" decorative />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-display text-headline font-extrabold text-foil">{title}</p>
+        {sub && <p className="truncate text-caption font-semibold text-gold-200/80">{sub}</p>}
+      </div>
+      {digits && <DigitsChip digits={digits} tone="gold" />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockedSteps } from "./platformHelp";
+import { blockedHelp, blockedSteps } from "./platformHelp";
 import { openedByTap, noteTap, rememberAskDismissed, shouldShowAsk, wasAskDismissed, clearAskDismissals } from "./prefs";
 
 describe("blockedSteps", () => {
@@ -19,6 +19,19 @@ describe("blockedSteps", () => {
   });
 });
 
+describe("blockedHelp", () => {
+  it("names the real reason per platform, so the headline matches the fix", () => {
+    expect(blockedHelp({ app: null, ios: true, standalone: false })).toMatchObject({
+      kind: "install",
+      title: "iPhone needs JaxSquares on your Home Screen first",
+    });
+    expect(blockedHelp({ app: null, ios: true, standalone: true })).toMatchObject({ kind: "ios-settings", title: "Turned off in iPhone Settings" });
+    expect(blockedHelp({ app: "ios", ios: true, standalone: false }).kind).toBe("ios-settings");
+    expect(blockedHelp({ app: "android", ios: false, standalone: false })).toMatchObject({ kind: "android-settings", title: "Turned off in Android Settings" });
+    expect(blockedHelp({ app: null, ios: false, standalone: false })).toMatchObject({ kind: "browser", title: "Blocked in this browser" });
+  });
+});
+
 describe("never nag", () => {
   it("remembers dismissals per trigger", () => {
     clearAskDismissals();
@@ -27,6 +40,7 @@ describe("never nag", () => {
     expect(wasAskDismissed("claimed")).toBe(true);
     expect(shouldShowAsk("claimed", false)).toBe(false);
     expect(shouldShowAsk("joined", false)).toBe(true);
+    expect(shouldShowAsk("home", false)).toBe(true);
     // An explicit tap always opens it.
     expect(shouldShowAsk("claimed", true)).toBe(true);
     clearAskDismissals();

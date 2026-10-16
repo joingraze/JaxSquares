@@ -7,6 +7,24 @@ const sub = {
   toJSON: () => ({ endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: "p", auth: "a" } }),
   unsubscribe: vi.fn(async () => true),
 };
+// The native store (Capacitor Preferences), simulated: survives localStorage being cleared.
+const nativeStore = vi.hoisted(() => new Map<string, string>());
+vi.mock("./native", async (orig) => {
+  const real = await orig<typeof import("./native")>();
+  return {
+    ...real,
+    setStored: vi.fn(async (k: string, v: string) => {
+      nativeStore.set(k, v);
+      return real.setStored(k, v);
+    }),
+    removeStored: vi.fn(async (k: string) => {
+      nativeStore.delete(k);
+      return real.removeStored(k);
+    }),
+    getStored: vi.fn(async (k: string) => nativeStore.get(k) ?? real.getStored(k)),
+  };
+});
+
 const reg = { pushManager: { getSubscription: vi.fn(async () => sub), subscribe: vi.fn(async () => sub) } };
 const calls: string[] = [];
 
@@ -40,6 +58,7 @@ afterAll(() => {
 beforeEach(() => {
   calls.length = 0;
   localStorage.clear();
+  nativeStore.clear();
 });
 
 const push = await import("./push");
@@ -68,5 +87,27 @@ describe("turning notifications off on this device", () => {
     calls.length = 0;
     await push.syncPush(true);
     expect(calls).toContain("/push/register");
+  });
+});
+
+describe("the off flag survives iOS clearing WebView storage", () => {
+  it("is mirrored to the native store", async () => {
+    await push.disablePush();
+    expect(nativeStore.get("jaxsquares.push.off")).toBe("1");
+    await push.enablePush();
+    expect(nativeStore.has("jaxsquares.push.off")).toBe(false);
+  });
+
+  it("is restored on the next launch before the silent re-sync", async () => {
+    await push.disablePush();
+    // iOS wiped localStorage between launches; Preferences still has the flag.
+    localStorage.clear();
+    vi.resetModules();
+    const fresh = await import("./push");
+    expect(fresh.isPushOff()).toBe(false);
+    calls.length = 0;
+    await fresh.syncPush(true);
+    expect(fresh.isPushOff()).toBe(true);
+    expect(calls).not.toContain("/push/register");
   });
 });

@@ -1,18 +1,24 @@
-// Two team fields with a VS divider and NFL autocomplete. Each side previews
-// the badge it will get on the board as you type.
+// Two typed teams, stacked full width with the VS between them. Before anything
+// is typed, popular teams sit underneath as one-tap chips (two taps make a
+// board); while typing, NFL autocomplete takes their place. A team that matches
+// a known NFL team gets that team's live colors everywhere (preview, chips,
+// board); anything else gets the board's side color.
 
 import { useRef, useState, type KeyboardEvent } from "react";
 import { searchNflTeams, type NflTeam } from "../../../shared/teams";
 import type { Team } from "../../../shared/types";
-import { AlertIcon } from "../../components/icons";
+import { AlertIcon, PlusIcon, XIcon } from "../../components/icons";
 import { cx, TeamMark } from "../../components/ui";
 import { withAlpha } from "../../lib/format";
 import { haptic } from "../../lib/native";
-import { matchNflTeam, resolveCustomTeam, TEAM_NAME_MAX } from "./model";
+import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, matchNflTeam, POPULAR_TEAMS, resolveCustomTeam, TEAM_NAME_MAX, type TeamColors } from "./model";
+import { VsBadge } from "./VsBadge";
 
-/** Board fallback colors (teamVars): custom boards show these, so the preview does too. */
-export const CUSTOM_X_COLOR = "#3ab7ff";
-export const CUSTOM_Y_COLOR = "#ff66a6";
+// Re-exported for the checkout ticket and the rules mini board.
+export { CUSTOM_X_COLOR, CUSTOM_Y_COLOR };
+
+/** DOM ids of the two inputs (the create page focuses one on a blocked submit). */
+export const TEAM_INPUT_ID = { x: "team-x", y: "team-y" } as const;
 
 export interface CustomMatchupProps {
   x: string;
@@ -22,142 +28,180 @@ export interface CustomMatchupProps {
   showErrors?: boolean;
   /** Muted line under the fields (e.g. why we're on custom). */
   note?: string;
+  /** Live NFL team colors (teamColorsFrom). */
+  colors?: TeamColors;
 }
 
 type Side = "x" | "y";
+const PLACEHOLDER: Record<Side, string> = { x: "Away team", y: "Home team" };
 
-export function CustomMatchup({ x, y, onChange, showErrors, note }: CustomMatchupProps) {
+export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }: CustomMatchupProps) {
   const [active, setActive] = useState<Side | null>(null);
   const refs = { x: useRef<HTMLInputElement>(null), y: useRef<HTMLInputElement>(null) };
 
   const values = { x, y };
   const activeValue = active ? values[active] : "";
-  const suggestions = active && activeValue.trim() && !matchNflTeam(activeValue) ? searchNflTeams(activeValue, 3) : [];
+  const typing = Boolean(active && activeValue.trim() && !matchNflTeam(activeValue));
+  const suggestions = typing ? searchNflTeams(activeValue, 3) : [];
+  const taken = new Set([matchNflTeam(x)?.abbr, matchNflTeam(y)?.abbr]);
+  const popular = POPULAR_TEAMS.filter((t) => !taken.has(t.abbr));
+  const showPopular = !typing && (!x.trim() || !y.trim());
 
-  const choose = (side: Side, team: NflTeam) => {
+  const sideColor = (side: Side) => (side === "x" ? CUSTOM_X_COLOR : CUSTOM_Y_COLOR);
+  // A chip shows exactly the tile it will become: the live color, else the color of the side it fills.
+  const chipTeam = (t: NflTeam, side: Side): Team => ({ name: t.nickname, abbr: t.abbr, color: colors[t.abbr] ?? sideColor(side) });
+
+  const fill = (side: Side, team: NflTeam) => {
     void haptic("selection");
     onChange(side, team.nickname);
-    if (side === "x" && !values.y.trim()) {
-      refs.y.current?.focus();
-    } else {
+    const other: Side = side === "x" ? "y" : "x";
+    // Keyboard already up: carry on to the other empty field. Otherwise don't pop it open.
+    if (active && !values[other].trim()) refs[other].current?.focus();
+    else if (active) {
       refs[side].current?.blur();
       setActive(null);
     }
   };
 
+  /** A popular chip fills the focused empty field, else the first empty one. */
+  const nextSide: Side = active && !values[active].trim() ? active : !x.trim() ? "x" : "y";
+
   const onKeyDown = (side: Side) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (suggestions.length === 1) return choose(side, suggestions[0]);
+    if (suggestions.length === 1) return fill(side, suggestions[0]);
     if (side === "x") refs.y.current?.focus();
     else e.currentTarget.blur();
   };
 
   const field = (side: Side) => {
     const value = values[side];
-    const resolved = resolveCustomTeam(value);
-    const color = side === "x" ? CUSTOM_X_COLOR : CUSTOM_Y_COLOR;
-    const preview: Team | null = resolved ? { ...resolved.team, color } : null;
+    const resolved = resolveCustomTeam(value, colors);
+    // Mid-word ("Pack") isn't a team yet: keep the slot empty-looking until it resolves or you move on.
+    const settled = resolved && (resolved.nfl || active !== side || !typing);
+    const preview: Team | null = settled ? { ...resolved.team, color: resolved.team.color ?? sideColor(side) } : null;
     const missing = showErrors && !value.trim();
+    const id = TEAM_INPUT_ID[side];
     return (
-      <div className="flex min-w-0 flex-col items-center gap-2.5">
-        <span className="relative grid h-15 w-15 place-items-center">
+      <div className="flex items-center gap-3">
+        <label htmlFor={id} className="grid h-11 w-11 shrink-0 cursor-text place-items-center">
           {preview ? (
-            <TeamMark key={preview.abbr ?? preview.name} team={preview} size="lg" className={cx("h-15 w-15 animate-pop", side === "x" ? "-rotate-3" : "rotate-3")} />
+            <TeamMark key={preview.abbr ?? preview.name} team={preview} className="animate-pop" />
           ) : (
             <span
               aria-hidden
-              className="grid h-15 w-15 place-items-center rounded-2xl border-2 border-dashed font-display text-title-3 font-extrabold"
-              style={{ borderColor: `${color}66`, color: `${color}b3` }}
+              className={cx(
+                "grid h-10 w-10 place-items-center rounded-xl border-2 border-dashed text-ink-subtle transition-colors",
+                missing ? "border-danger-500/70 text-danger-400" : "border-white/18",
+              )}
             >
-              {side === "x" ? "1" : "2"}
+              <PlusIcon size={18} strokeWidth={2.6} />
             </span>
           )}
-        </span>
+        </label>
         <div
           className={cx(
-            "flex h-12 w-full items-center rounded-btn bg-surface-3 px-3 ring-1 ring-inset transition-shadow focus-within:ring-2",
+            "flex h-12 min-w-0 flex-1 items-center gap-2 rounded-btn bg-surface-3 pl-3.5 pr-1.5 ring-1 ring-inset transition-shadow focus-within:ring-2",
             missing ? "animate-shake ring-danger-500" : "ring-line-strong focus-within:ring-brand-400 focus-within:shadow-[0_0_0_4px_rgb(198_249_31/0.14)]",
           )}
         >
           <input
             ref={refs[side]}
+            id={id}
             data-testid={side === "x" ? "team-x-input" : "team-y-input"}
-            aria-label={side === "x" ? "Team 1" : "Team 2"}
+            aria-label={PLACEHOLDER[side]}
             aria-invalid={missing || undefined}
             value={value}
             maxLength={TEAM_NAME_MAX}
-            placeholder={side === "x" ? "Packers" : "Bears"}
+            placeholder={PLACEHOLDER[side]}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="words"
             spellCheck={false}
             enterKeyHint={side === "x" ? "next" : "done"}
             onFocus={() => setActive(side)}
+            onBlur={() => setActive((cur) => (cur === side ? null : cur))}
             onKeyDown={onKeyDown(side)}
             onChange={(e) => onChange(side, e.target.value)}
-            className="h-full w-full min-w-0 bg-transparent text-center font-display text-headline font-bold text-ink outline-none placeholder:font-sans placeholder:font-normal"
+            className="h-full w-full min-w-0 bg-transparent font-display text-headline font-bold text-ink outline-none placeholder:font-sans placeholder:text-callout placeholder:font-medium placeholder:text-ink-subtle"
           />
+          {resolved?.nfl && (
+            <span className="shrink-0 truncate text-footnote font-semibold text-ink-subtle">{resolved.nfl.location}</span>
+          )}
+          {value && (
+            <button
+              type="button"
+              aria-label={`Clear ${PLACEHOLDER[side].toLowerCase()}`}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(side, "");
+                refs[side].current?.focus();
+              }}
+              className="tap-target grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-subtle hover:text-ink"
+            >
+              <XIcon size={16} />
+            </button>
+          )}
         </div>
-        <span className="h-4 max-w-full truncate text-caption font-semibold text-ink-subtle">
-          {resolved?.nfl ? `${resolved.nfl.location} ${resolved.nfl.nickname}` : side === "x" ? "Team 1" : "Team 2"}
-        </span>
       </div>
     );
   };
 
-  const suggestionRow = (side: Side) =>
-    active === side &&
-    suggestions.length > 0 && (
-      <div role="listbox" aria-label="Suggested teams" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 scrollbar-none animate-fade-in">
-        {suggestions.map((t) => (
-          <button
-            key={t.abbr}
-            type="button"
-            role="option"
-            aria-selected={false}
-            // Keep the input focused so the tap lands on the chip.
-            onPointerDown={(e) => e.preventDefault()}
-            onClick={() => choose(side, t)}
-            className="pressable inline-flex h-9 shrink-0 items-center gap-2 rounded-full bg-surface-4 pl-1 pr-3.5 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong"
-          >
-            <TeamMark team={{ name: t.nickname, abbr: t.abbr, color: side === "x" ? CUSTOM_X_COLOR : CUSTOM_Y_COLOR }} size="sm" className="rounded-full" />
-            {t.location} {t.nickname}
-          </button>
-        ))}
-      </div>
-    );
+  const chip = (t: NflTeam, side: Side, onPick: () => void, label: string) => (
+    <button
+      key={t.abbr}
+      type="button"
+      role="option"
+      aria-selected={false}
+      // Keep the input focused so the tap lands on the chip.
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={onPick}
+      className="pressable inline-flex h-11 shrink-0 items-center gap-2 rounded-full bg-surface-3 pl-1.5 pr-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong"
+    >
+      <TeamMark team={chipTeam(t, side)} size="sm" className="rounded-full" />
+      {label}
+    </button>
+  );
 
   const filled = Boolean(x.trim()) && Boolean(y.trim());
-  const glow = filled ? 0.3 : 0.14;
+  const glow = filled ? 0.22 : 0.1;
+  const xColor = resolveCustomTeam(x, colors)?.team.color ?? CUSTOM_X_COLOR;
+  const yColor = resolveCustomTeam(y, colors)?.team.color ?? CUSTOM_Y_COLOR;
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3">
       <div
-        className="relative rounded-card bg-surface-2 px-4 pb-3 pt-4 ring-1 ring-inset ring-line shadow-card transition-[background-image]"
+        className="rounded-card bg-surface-2 p-3 ring-1 ring-inset ring-line shadow-card transition-[background-image]"
         style={{
-          backgroundImage: `radial-gradient(70% 90% at 0% 0%, ${withAlpha(CUSTOM_X_COLOR, glow)}, transparent 70%), radial-gradient(70% 90% at 100% 0%, ${withAlpha(CUSTOM_Y_COLOR, glow)}, transparent 70%)`,
+          backgroundImage: `radial-gradient(60% 80% at 0% 0%, ${withAlpha(xColor, glow)}, transparent 70%), radial-gradient(60% 80% at 0% 100%, ${withAlpha(yColor, glow)}, transparent 70%)`,
         }}
       >
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-start gap-3">
-          {field("x")}
-          <span
-            aria-hidden
-            className={cx(
-              "mt-4 grid h-8 w-8 place-items-center rounded-full font-display text-caption font-extrabold tracking-wider transition-colors duration-300",
-              filled ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink-subtle ring-1 ring-inset ring-line-strong",
-            )}
-          >
-            VS
+        {field("x")}
+        <div aria-hidden className="flex items-center gap-3 py-1">
+          <span className="flex w-11 shrink-0 justify-center">
+            <VsBadge size="sm" />
           </span>
-          {field("y")}
+          <span className="h-px flex-1 bg-line" />
         </div>
+        {field("y")}
       </div>
-      {suggestionRow("x")}
-      {suggestionRow("y")}
+
+      {typing && suggestions.length > 0 && active ? (
+        <div role="listbox" aria-label="Suggested teams" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 scrollbar-none animate-fade-in">
+          {suggestions.map((t) => chip(t, active, () => fill(active, t), `${t.location} ${t.nickname}`))}
+        </div>
+      ) : showPopular ? (
+        <div className="animate-fade-in">
+          <p className="mb-2 px-1 text-footnote font-semibold text-ink-subtle">Popular teams · tap to add</p>
+          <div role="listbox" aria-label="Popular teams" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 scrollbar-none">
+            {popular.map((t) => chip(t, nextSide, () => fill(nextSide, t), t.nickname))}
+          </div>
+        </div>
+      ) : null}
+
       {showErrors && (!x.trim() || !y.trim()) ? (
-        <p className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
+        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
           <AlertIcon size={14} />
-          Add both teams to make the board.
+          {!x.trim() && !y.trim() ? "Add both teams to make the board." : "Add the other team to make the board."}
         </p>
       ) : (
         note && <p className="px-1 text-footnote text-ink-subtle">{note}</p>

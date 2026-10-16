@@ -1,33 +1,42 @@
-// Profile's notification controls, one shape per state: a big "turn on" ask,
-// the settings rows when on (switch + test ping), or the how-to when blocked
-// or when an iPhone needs the Home Screen app first.
+// Profile's notifications control. One card shell for every state (icon,
+// title, a one-line value, one action) so a state change reads as the same
+// control changing, not a different section:
+//
+//   ask        [bell]  Get pinged when your square hits    First up: …        [Turn on]
+//   on         [bell]  Notifications are on                Next: …            [switch]
+//   off        [off]   Notifications are off               You'll miss: …     [switch]
+//   install    [bell]  Get pings on your iPhone            Needs Home Screen  [Show me how]
+//   blocked    [off]   Off in iPhone Settings              You'll miss: …     [Fix it]
+//   unsupported[off]   Not available in this browser       Where they work    [›]
+//
+// "Show me how" / "Fix it" open the notifications sheet with the illustrated
+// guide for this platform (it rechecks when you come back from Settings).
 
-import { useState } from "react";
-import type { ReactNode } from "react";
-import { BellIcon, BellOffIcon, SparklesIcon } from "../../../components/icons";
-import { Button, Card, ListGroup, ListRow, Skeleton, Switch, cx, useToast } from "../../../components/ui";
+import { useState, type ReactNode } from "react";
+import type { GameSummary } from "../../../../shared/types";
+import { BellIcon, BellOffIcon, ChevronRightIcon, SparklesIcon } from "../../../components/icons";
+import { BottomSheet, Button, Skeleton, Switch, cx, useToast } from "../../../components/ui";
 import { haptic } from "../../../lib/native";
 import { disablePush, enablePush, sendTestPush } from "../../../lib/push";
-import { BlockedGuide, InstallGuide, StateIcon } from "../Guides";
-import { PreviewBanners } from "../NotifyPrompt";
+import { StateIcon } from "../Guides";
+import { NotifyPrompt } from "../NotifyPrompt";
+import { blockedHelp, detectHelpEnv } from "../platformHelp";
 import { clearAskDismissals } from "../prefs";
 import { pushIsOn, type PushStatus } from "../usePushStatus";
+import { pingBoards, wouldMiss } from "./pings";
 
-/** `quiet`: another action leads the screen (e.g. picking a name), so the ask doesn't shout. */
-export function NotificationsCard({
-  status,
-  quiet = false,
-  boardName = "Sunday Night Squares",
-}: {
-  status: PushStatus;
-  quiet?: boolean;
-  /** A board of mine for the preview banner, so the example feels like mine. */
-  boardName?: string;
-}) {
+const SCOPE = "Numbers drawn, kickoff and winning squares. Nothing else.";
+const TOAST_ID = "notify-settings";
+
+export function NotificationsCard({ status, games }: { status: PushStatus; games: readonly GameSummary[] | null }) {
   const toast = useToast();
   const [busy, setBusy] = useState<null | "enable" | "disable" | "test">(null);
+  const [guide, setGuide] = useState(false);
+  const [why, setWhy] = useState(false);
   const { state, off } = status;
   const on = pushIsOn(status);
+  const miss = wouldMiss(games ?? []);
+  const focus = pingBoards(games ?? []).active[0];
 
   const turnOn = () => {
     // Straight from the tap: Safari only prompts inside it.
@@ -39,12 +48,12 @@ export function NotificationsCard({
         if (s === "granted") {
           clearAskDismissals();
           void haptic("success");
-          toast.show({ tone: "success", title: "Notifications are on", description: "We'll ping you the second your square hits.", haptic: false });
+          toast.show({ id: TOAST_ID, tone: "success", title: "Notifications are on", description: "We'll ping you the second your square hits.", haptic: false });
         } else if (s === "denied") {
           void haptic("warning");
         }
       })
-      .catch(() => toast.error("Couldn't turn them on", "Check your connection and try again."))
+      .catch(() => toast.show({ id: TOAST_ID, tone: "error", title: "Couldn't turn them on", description: "Check your connection and try again." }))
       .finally(() => setBusy(null));
   };
 
@@ -55,7 +64,7 @@ export function NotificationsCard({
       .finally(() => {
         status.refresh();
         setBusy(null);
-        toast.show({ tone: "neutral", title: "Notifications off", description: "Turn them back on here anytime." });
+        toast.show({ id: TOAST_ID, tone: "neutral", title: "Notifications off", description: "Turn them back on here anytime." });
       });
   };
 
@@ -63,139 +72,225 @@ export function NotificationsCard({
     setBusy("test");
     sendTestPush()
       .then((sent) => {
-        if (sent > 0) toast.success("Test sent", "It should land in a few seconds.");
-        else toast.error("That didn't reach this device", "Turn notifications off and on, then try again.");
+        if (sent > 0) toast.show({ id: TOAST_ID, tone: "success", title: "Test sent", description: "It should land in a few seconds." });
+        else toast.show({ id: TOAST_ID, tone: "error", title: "That didn't reach this device", description: "Turn notifications off and on, then try again." });
       })
-      .catch(() => toast.error("Couldn't send a test", "Check your connection and try again."))
+      .catch(() => toast.show({ id: TOAST_ID, tone: "error", title: "Couldn't send a test", description: "Check your connection and try again." }))
       .finally(() => setBusy(null));
   };
 
+  const guideSheet = (
+    <NotifyPrompt
+      gameId={focus?.id}
+      trigger="home"
+      explicit
+      open={guide}
+      onClose={() => {
+        setGuide(false);
+        status.refresh();
+      }}
+    />
+  );
+
   if (state === null) {
     return (
-      <Card padding="md" className="flex items-center gap-3.5">
-        <Skeleton className="h-12 w-12 rounded-2xl" />
-        <span className="flex flex-1 flex-col gap-2">
-          <Skeleton className="h-4 w-3/5" />
-          <Skeleton className="h-3 w-4/5" />
-        </span>
-      </Card>
+      <Shell icon={<Skeleton className="h-12 w-12 rounded-2xl" />} title={<Skeleton className="h-4 w-3/5" />} value={<Skeleton className="mt-1 h-3 w-4/5" />} />
     );
   }
 
   if (state === "granted") {
+    const toggle = (
+      <Switch
+        checked={on}
+        disabled={busy === "enable" || busy === "disable"}
+        onChange={(next) => (next ? turnOn() : turnOff())}
+        aria-label="Notifications on this device"
+      />
+    );
     return (
-      <ListGroup title="Notifications" footer={on ? "Numbers drawn, kickoff and winning squares. Nothing else." : undefined}>
-        <ListRow
-          leading={<RowIcon tone={on ? "brand" : "muted"}><BellIcon size={19} /></RowIcon>}
-          title={on ? "Notifications are on" : "Notifications are off"}
-          subtitle={on ? "For this device" : "Turned off on this device"}
-          trailing={
-            <Switch
-              checked={on}
-              disabled={busy === "enable" || busy === "disable"}
-              onChange={(next) => (next ? turnOn() : turnOff())}
-              aria-label="Notifications on this device"
-            />
-          }
-        />
+      <Shell
+        tone={on ? "on" : "off"}
+        icon={<StateIcon tone={on ? "brand" : "muted"}>{on ? undefined : <BellOffIcon size={22} />}</StateIcon>}
+        title={on ? "Notifications are on" : "Notifications are off"}
+        value={on ? (miss ? `Next: ${miss}` : "On for this device") : miss ? `You'll miss: ${miss}` : "Off on this device"}
+        action={toggle}
+        footer={on ? SCOPE : undefined}
+      >
         {on && !off && (
-          <ListRow
-            leading={
-              <RowIcon tone="muted">
-                <SparklesIcon size={19} />
-              </RowIcon>
-            }
-            title="Send a test notification"
-            subtitle="Make sure pings reach this device"
-            onClick={busy ? undefined : test}
-            trailing={busy === "test" ? <span className="text-footnote font-semibold text-ink-muted">Sending…</span> : undefined}
-            chevron={busy !== "test"}
-          />
+          <button type="button" onClick={busy ? undefined : test} className="pressable flex min-h-13 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-white/3">
+            <span aria-hidden className="grid h-8 w-8 place-items-center rounded-full bg-surface-4 text-ink-muted">
+              <SparklesIcon size={17} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-subhead font-semibold text-ink">Send a test notification</span>
+              <span className="block text-footnote text-ink-muted">Make sure pings reach this device</span>
+            </span>
+            {busy === "test" ? (
+              <span className="text-footnote font-semibold text-ink-muted">Sending…</span>
+            ) : (
+              <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
+            )}
+          </button>
         )}
-      </ListGroup>
+      </Shell>
     );
   }
 
   if (state === "default") {
     return (
-      <Card tone={quiet ? "default" : "brand"} padding="lg">
-        <PreviewBanners boardName={boardName} lines={["🔢 Numbers are in. Find your squares.", "🎉 Your square hit at Half! 🏆"]} />
-        <h2 className="mt-5 font-display text-title-3 font-extrabold text-ink">Get a ping when your square hits</h2>
-        <p className="mt-1.5 text-subhead text-ink-muted">Numbers drawn, kickoff and every winning square. Nothing else.</p>
-        <Button
-          size="lg"
-          variant={quiet ? "secondary" : "primary"}
-          block
-          className="mt-5"
-          loading={busy === "enable"}
-          haptic={false}
-          onClick={turnOn}
-          data-testid="notify-enable"
-        >
-          Turn on notifications
-        </Button>
-      </Card>
+      <Shell
+        tone="ask"
+        icon={<StateIcon tone="brand" />}
+        title="Get pinged when your square hits"
+        value={miss ? `First up: ${miss}` : "Only the moments that matter on your boards."}
+        footer={SCOPE}
+        action={
+          <Button
+            size="sm"
+            loading={busy === "enable"}
+            haptic={false}
+            onClick={turnOn}
+            aria-label="Turn on notifications"
+            data-testid="notify-enable"
+            className="!h-10 !px-4"
+          >
+            Turn on
+          </Button>
+        }
+      />
     );
   }
 
   if (state === "needs-install") {
     return (
-      <Card padding="lg">
-        <div className="flex items-start gap-3.5">
-          <StateIcon tone="brand" />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-title-3 font-extrabold text-ink">Get pings on your iPhone</h2>
-            <p className="mt-1 text-subhead text-ink-muted">iPhone only sends notifications to apps on your Home Screen. Three taps:</p>
-          </div>
-        </div>
-        <InstallGuide />
-      </Card>
+      <>
+        <Shell
+          tone="ask"
+          icon={<StateIcon tone="brand" />}
+          title="Get pings on your iPhone"
+          value="iPhone needs JaxSquares on your Home Screen first. Takes ten seconds."
+          action={
+            <Button size="sm" onClick={() => setGuide(true)} aria-label="Show me how" className="!h-10 !px-4">
+              Set up
+            </Button>
+          }
+        />
+        {guideSheet}
+      </>
     );
   }
 
   if (state === "denied") {
+    const help = blockedHelp(detectHelpEnv());
     return (
-      <Card padding="lg">
-        <div className="flex items-start gap-3.5">
-          <StateIcon tone="danger" />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-title-3 font-extrabold text-ink">Notifications are blocked</h2>
-            <p className="mt-1 text-subhead text-ink-muted">Switch them back on so you don't miss your square:</p>
-          </div>
-        </div>
-        <div className="mt-5">
-          <BlockedGuide />
-        </div>
-      </Card>
+      <>
+        <Shell
+          tone="blocked"
+          icon={<StateIcon tone="danger" />}
+          title={help.kind === "install" ? "Get pings on your iPhone" : help.short}
+          value={miss ? `You'll miss: ${miss}` : help.kind === "install" ? "iPhone needs JaxSquares on your Home Screen first." : "One switch brings them back."}
+          action={
+            <Button size="sm" onClick={() => setGuide(true)} className="!h-10 !px-4">
+              {help.kind === "install" ? "Set up" : "Fix it"}
+            </Button>
+          }
+        />
+        {guideSheet}
+      </>
     );
   }
 
-  // unsupported
+  // unsupported: say where they do work, one tap away.
   return (
-    <ListGroup title="Notifications">
-      <ListRow
-        leading={
-          <RowIcon tone="muted">
-            <BellOffIcon size={19} />
-          </RowIcon>
-        }
-        title="Not available here"
-        subtitle="Get the JaxSquares app, or open this in Safari or Chrome"
+    <>
+      <Shell
+        tone="off"
+        onClick={() => setWhy(true)}
+        icon={<StateIcon tone="muted">{<BellOffIcon size={22} />}</StateIcon>}
+        title="Not available in this browser"
+        value="See where JaxSquares can ping you."
+        action={<ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />}
       />
-    </ListGroup>
+      <BottomSheet
+        open={why}
+        onClose={() => setWhy(false)}
+        title="Where notifications work"
+        description="This browser can't get push notifications. Your boards still update live while JaxSquares is open."
+        footer={
+          <Button size="lg" block variant="secondary" onClick={() => setWhy(false)}>
+            Got it
+          </Button>
+        }
+      >
+        <ul className="flex flex-col gap-3 pb-2">
+          {[
+            ["iPhone and iPad", "Open JaxSquares in Safari, add it to your Home Screen, then turn them on."],
+            ["Android and computers", "Chrome, Edge or Firefox, with notifications allowed for jaxsquares.com."],
+            ["The JaxSquares app", "Turn them on from Profile in the app."],
+          ].map(([where, how]) => (
+            <li key={where} className="flex gap-3 rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
+              <BellIcon size={18} className="mt-0.5 shrink-0 text-brand-300" />
+              <span>
+                <span className="block text-callout font-bold text-ink">{where}</span>
+                <span className="block text-footnote text-ink-muted">{how}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </BottomSheet>
+    </>
   );
 }
 
-function RowIcon({ tone, children }: { tone: "brand" | "muted"; children: ReactNode }) {
+/** The one shape every state shares: icon, title, one-line value, one action, optional rows below. */
+function Shell({
+  tone = "off",
+  icon,
+  title,
+  value,
+  action,
+  footer,
+  onClick,
+  children,
+}: {
+  tone?: "ask" | "on" | "off" | "blocked";
+  icon: ReactNode;
+  title: ReactNode;
+  value: ReactNode;
+  action?: ReactNode;
+  footer?: ReactNode;
+  onClick?: () => void;
+  children?: ReactNode;
+}) {
+  const head = (
+    <>
+      {icon}
+      <span className="min-w-0 flex-1">
+        <span className="block font-display text-headline font-extrabold leading-snug text-ink">{title}</span>
+        <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">{value}</span>
+      </span>
+      {action && <span className="flex shrink-0 items-center">{action}</span>}
+    </>
+  );
   return (
-    <span
-      aria-hidden
-      className={cx(
-        "grid h-9 w-9 place-items-center rounded-full",
-        tone === "brand" ? "bg-brand-400/15 text-brand-300 ring-1 ring-inset ring-brand-400/30" : "bg-surface-4 text-ink-muted",
-      )}
-    >
-      {children}
-    </span>
+    <section>
+      <h2 className="eyebrow mb-2 px-1 text-ink-subtle">Notifications</h2>
+      <div
+        className={cx(
+          "overflow-hidden rounded-card bg-surface-2 shadow-card ring-1 ring-inset [&>*+*]:border-t [&>*+*]:border-line",
+          tone === "ask" ? "ring-brand-400/30 bg-[linear-gradient(120deg,rgb(198_249_31/0.07),transparent_55%)]" : tone === "blocked" ? "ring-danger-500/25" : "ring-line",
+        )}
+      >
+        {onClick ? (
+          <button type="button" onClick={onClick} className="pressable flex w-full items-center gap-3.5 p-4 text-left hover:bg-white/3">
+            {head}
+          </button>
+        ) : (
+          <div className="flex items-center gap-3.5 p-4">{head}</div>
+        )}
+        {children}
+      </div>
+      {footer && <p className="mt-2 px-1 text-footnote text-ink-subtle">{footer}</p>}
+    </section>
   );
 }
