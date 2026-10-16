@@ -18,6 +18,7 @@ import {
   isUnchangedEntry,
   landingOrder,
   lockFacts,
+  lockIsTheMove,
   lockReadiness,
   numbersFor,
   parseScore,
@@ -100,17 +101,44 @@ const everyScore = (scores: Score[] = [], over: Parameters<typeof makeState>[0] 
   });
 
 describe("hostSummary", () => {
-  it("nudges to invite while the board is under half full", () => {
+  const filled = (n: number, size = 10) => Array.from({ length: n }, (_, i) => sq(Math.floor(i / size), i % size, i % 2 ? MAYA : ME));
+  const small = (n: number) =>
+    makeState({ game: { format: { periods: "quarters", reverse: false, boardSize: 25, freshNumbers: false } }, squares: filled(n, 5) });
+
+  it("keeps Invite primary, with the count left, while the board fills", () => {
     const s = makeState({ squares: [sq(0, 0, ME), sq(0, 1, MAYA)] });
-    expect(hostSummary(s).action.kind).toBe("invite");
+    expect(hostSummary(s).action).toEqual({ kind: "invite", label: "Invite (98 left)" });
+    const most = makeState({ squares: filled(58) });
+    expect(hostSummary(most).action).toEqual({ kind: "invite", label: "Invite (42 left)" });
+    expect(hostSummary(most).status).toBe("58 of 100 taken");
+    expect(hostSummary(makeState({ squares: filled(89) })).action.kind).toBe("invite");
   });
 
-  it("nudges to lock once half full, and celebrates a full board", () => {
-    const half = makeState({ squares: Array.from({ length: 50 }, (_, i) => sq(Math.floor(i / 10), i % 10, ME)) });
-    expect(hostSummary(half).action).toEqual({ kind: "lock", label: "Lock & draw" });
-    const full = makeState({ squares: Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, ME)) });
+  it("makes Lock & draw primary once the board is ~90% claimed, and celebrates a full board", () => {
+    const nearly = makeState({ squares: filled(90) });
+    expect(hostSummary(nearly).action).toEqual({ kind: "lock", label: "Lock & draw" });
+    expect(hostSummary(nearly).status).toBe("10 squares left · ready to draw");
+    expect(hostSummary(makeState({ squares: filled(99) })).status).toBe("1 square left · ready to draw");
+    const full = makeState({ squares: filled(100) });
+    expect(hostSummary(full).action.kind).toBe("lock");
     expect(hostSummary(full).status).toMatch(/full/);
     expect(hostSummary(full).progress).toBe(1);
+  });
+
+  it("uses the last-call rule on a 5x5 board (3 left is nearly full)", () => {
+    expect(hostSummary(small(21)).action.kind).toBe("invite");
+    expect(hostSummary(small(22)).action).toEqual({ kind: "lock", label: "Lock & draw" });
+  });
+
+  it("lockIsTheMove: full, 90% claimed or isUrgent; never on an empty board", () => {
+    expect(lockIsTheMove(0, 100)).toBe(false);
+    expect(lockIsTheMove(50, 100)).toBe(false);
+    expect(lockIsTheMove(89, 100)).toBe(false);
+    expect(lockIsTheMove(90, 100)).toBe(true);
+    expect(lockIsTheMove(100, 100)).toBe(true);
+    expect(lockIsTheMove(21, 25)).toBe(false);
+    expect(lockIsTheMove(22, 25)).toBe(true);
+    expect(lockIsTheMove(0, 0)).toBe(false);
   });
 
   it("points a typed-in locked board at the next period's score", () => {
@@ -156,7 +184,7 @@ describe("hostSummary", () => {
     expect(hostSummary(alone).action).toEqual({ kind: "invite", label: "Invite friends" });
     expect(invitedAnyone(alone)).toBe(false);
     expect(invitedAnyone(makeState())).toBe(true);
-    expect(hostSummary(makeState()).action).toEqual({ kind: "invite", label: "Invite" });
+    expect(hostSummary(makeState()).action).toEqual({ kind: "invite", label: "Invite (100 left)" });
   });
 });
 

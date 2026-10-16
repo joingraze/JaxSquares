@@ -3,12 +3,15 @@
 // period if it ended now, and how close am I (in plain football terms).
 // Every-score boards ask a different question, "where does the next score
 // land?", so they get the four likeliest scores and whose square each hits.
+//
+// Kept to two short rows so the whole grid still fits on the first screen.
 
 import type { ReactNode } from "react";
+import { periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
 import { FootballIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
-import { periodNoun, playName, type NowView, type ScoringPlay } from "./boardModel";
+import { nowSentence, playName, type NowView, type ScoringPlay } from "./boardModel";
 
 export interface RightNowProps {
   now: NowView;
@@ -29,6 +32,7 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
   const owner = now.ownerId ? (byId.get(now.ownerId) ?? null) : null;
   const teamOf: TeamOf = (side) => (side === "x" ? teamX : teamY);
   const score = `${now.scoreX}–${now.scoreY}`;
+  const period = periodPhrase(now.periodKey ?? "", now.label);
 
   return (
     <section
@@ -46,38 +50,45 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
       {now.everyScore ? (
         <NextScore now={now} byId={byId} me={me} teamOf={teamOf} score={score} onShow={onShow} />
       ) : (
-        <button type="button" onClick={onShow} className="pressable flex w-full items-center gap-3 px-3.5 pb-3 pt-2.5 text-left">
-          <div className="min-w-0 flex-1">
-            <Header now={now} text={now.live ? `Right now · ${now.detail ?? now.label}` : `${now.label} · if nobody scores`} />
-            <div className="mt-2 flex min-w-0 items-center gap-3">
-              {owner || now.mine ? (
-                <Avatar
-                  name={owner?.name ?? "You"}
-                  color={owner?.color ?? "#c6f91f"}
-                  emoji={owner?.emoji}
-                  size="lg"
-                  ring={now.mine ? "brand" : "none"}
-                  decorative
-                  className={now.live && !now.mine ? "ring-2 ring-live-500 ring-offset-2 ring-offset-surface-2" : undefined}
-                />
+        <button type="button" onClick={onShow} className="pressable flex w-full items-center gap-3 px-3 py-2.5 text-left">
+          {owner || now.mine ? (
+            <Avatar
+              name={owner?.name ?? "You"}
+              color={owner?.color ?? "#c6f91f"}
+              emoji={owner?.emoji}
+              size="md"
+              ring={now.mine ? "brand" : "none"}
+              decorative
+              className={now.live && !now.mine ? "ring-2 ring-live-500 ring-offset-2 ring-offset-surface-2" : undefined}
+            />
+          ) : (
+            <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-dashed border-line-strong text-headline text-ink-subtle">
+              ?
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 items-center gap-2">
+              {now.live ? (
+                <span className="eyebrow inline-flex h-5 shrink-0 items-center gap-1 rounded-md bg-live-500 px-1.5 text-white">
+                  <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                  Live
+                </span>
               ) : (
-                <span aria-hidden className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-dashed border-line-strong text-title-3 text-ink-subtle">
-                  ?
+                <span className="eyebrow inline-flex h-5 shrink-0 items-center rounded-md bg-surface-4 px-1.5 text-ink-muted ring-1 ring-inset ring-line-strong">
+                  {period.short}
                 </span>
               )}
-              <div className="min-w-0">
-                <p className={cx("truncate font-display text-title-2 font-extrabold leading-none", now.mine ? "text-brand-300" : "text-ink")}>
-                  {now.mine ? "You!" : owner ? owner.name : "Empty square"}
-                </p>
-                <p className="mt-1 line-clamp-2 text-footnote font-semibold leading-snug text-ink-muted">{leaderLine(now, !!owner, score)}</p>
-              </div>
-            </div>
-          </div>
-          {/* The square's numbers, labeled by team (never by color alone). */}
-          <div aria-label={`${teamX.name} ${now.digits.x}, ${teamY.name} ${now.digits.y}`} className="flex shrink-0 flex-col gap-1.5">
-            <DigitTag abbr={abbrOf(teamX)} digit={now.digits.x} side="x" hot={now.live} />
-            <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
-          </div>
+              <span className={cx("min-w-0 truncate font-display text-headline font-extrabold leading-tight", now.mine ? "text-brand-300" : "text-ink")}>
+                {now.mine ? "You!" : owner ? owner.name : "Empty square"}
+              </span>
+              {/* The square's numbers, labeled by team (never by color alone). */}
+              <span aria-label={`${teamX.name} ${now.digits.x}, ${teamY.name} ${now.digits.y}`} className="ml-auto flex shrink-0 items-center gap-1">
+                <DigitTag abbr={abbrOf(teamX)} digit={now.digits.x} side="x" hot={now.live} />
+                <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
+              </span>
+            </span>
+            <span className="mt-0.5 block text-footnote font-semibold leading-snug text-ink-muted">{nowSentence(now)}</span>
+          </span>
         </button>
       )}
       <PathLine now={now} byId={byId} me={me} teamOf={teamOf} />
@@ -85,37 +96,16 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
   );
 }
 
-function leaderLine(now: NowView, owned: boolean, score: string): string {
-  const when = now.live ? "if it ended now" : `if it stays ${score}`;
-  const noun = periodNoun({ key: now.periodKey, label: now.label });
-  if (now.mine) return `take ${noun} ${when}`;
-  return owned ? `takes ${noun} ${when}` : `Nobody takes ${noun} ${when}`;
-}
-
-function Header({ now, text }: { now: NowView; text: string }) {
-  return (
-    <p className="flex min-w-0 items-center gap-2">
-      {now.live && (
-        <span className="eyebrow inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md bg-live-500 px-1.5 text-white">
-          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-          Live
-        </span>
-      )}
-      <span className={cx("eyebrow truncate", now.live ? "text-live-300" : "text-ink-muted")}>{text}</span>
-    </p>
-  );
-}
-
 function DigitTag({ abbr, digit, side, hot }: { abbr: string; digit: string; side: "x" | "y"; hot: boolean }) {
   return (
-    <span className="flex h-8 min-w-[5.25rem] items-center justify-between gap-2 rounded-xl bg-black/30 py-1 pl-2 pr-1 ring-1 ring-inset ring-line-strong">
-      <span className="flex items-center gap-1.5 text-caption font-extrabold tracking-wide text-ink-muted">
-        <span aria-hidden className={cx("h-2 w-2 rounded-full", side === "x" ? "bg-team-x" : "bg-team-y")} />
+    <span aria-hidden className="flex h-6 items-center gap-1 rounded-lg bg-black/30 py-0.5 pl-1.5 pr-0.5 ring-1 ring-inset ring-line-strong">
+      <span className="flex items-center gap-1 text-[0.625rem] font-extrabold tracking-wide text-ink-muted">
+        <span className={cx("h-1.5 w-1.5 rounded-full", side === "x" ? "bg-team-x" : "bg-team-y")} />
         {abbr}
       </span>
       <span
         className={cx(
-          "grid h-6 min-w-6 place-items-center rounded-lg px-1 font-display text-callout font-extrabold tabular-nums",
+          "grid h-5 min-w-5 place-items-center rounded-md px-1 font-display text-footnote font-extrabold tabular-nums",
           hot ? "bg-live-500 text-white" : "bg-ink text-ink-inverse",
         )}
       >
@@ -129,7 +119,7 @@ function TeamChip({ side, team, points }: { side: ScoringPlay["team"]; team: Tea
   return (
     <span
       className={cx(
-        "inline-flex h-6 shrink-0 items-center rounded-md px-1.5 text-caption font-extrabold tabular-nums",
+        "inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[0.6875rem] font-extrabold tabular-nums",
         side === "x" ? "bg-team-x text-team-x-ink" : "bg-team-y text-team-y-ink",
       )}
     >
@@ -155,12 +145,22 @@ function NextScore({
   onShow: () => void;
 }) {
   return (
-    <div className="px-3.5 pb-3 pt-2.5">
-      <button type="button" onClick={onShow} className="flex w-full items-center justify-between gap-2 text-left">
-        <Header now={now} text={now.live && now.detail ? `Next score wins · ${now.detail}` : "Next score wins"} />
+    <div className="px-3 pb-2.5 pt-2">
+      <button type="button" onClick={onShow} className="flex min-h-7 w-full items-center justify-between gap-2 text-left">
+        <span className="flex min-w-0 items-center gap-2">
+          {now.live && (
+            <span className="eyebrow inline-flex h-5 shrink-0 items-center gap-1 rounded-md bg-live-500 px-1.5 text-white">
+              <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+              Live
+            </span>
+          )}
+          <span className={cx("eyebrow truncate", now.live ? "text-live-300" : "text-ink-muted")}>
+            {now.live && now.detail ? `Next score wins · ${now.detail}` : "Next score wins"}
+          </span>
+        </span>
         <span className="shrink-0 text-caption font-bold tabular-nums text-ink-muted">Now {score}</span>
       </button>
-      <ul className="mt-2.5 grid grid-cols-2 gap-1.5">
+      <ul className="mt-1.5 grid grid-cols-2 gap-1.5">
         {now.outcomes.map((o) => {
           const p = o.ownerId ? byId.get(o.ownerId) : undefined;
           const mine = o.ownerId !== null && o.ownerId === me;
@@ -168,7 +168,7 @@ function NextScore({
             <li
               key={`${o.play.team}${o.play.points}`}
               className={cx(
-                "flex min-w-0 items-center gap-1.5 rounded-xl py-1.5 pl-1.5 pr-2 ring-1 ring-inset",
+                "flex h-8 min-w-0 items-center gap-1.5 rounded-xl pl-1.5 pr-2 ring-1 ring-inset",
                 mine ? "bg-brand-400/15 ring-brand-400/70" : "bg-black/20 ring-line",
               )}
             >
@@ -203,11 +203,11 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
   const nameOf = (id: string | null) => (id === me ? "you" : (byId.get(id ?? "")?.name ?? (id ? "someone" : "an empty square")));
   const leading = now.mine && !now.everyScore;
 
-  let icon = <FootballIcon size={15} />;
+  let icon = <FootballIcon size={13} />;
   let text: ReactNode;
   let chips: ScoringPlay[] = [];
   if (leading) {
-    icon = <TrophyIcon size={15} filled />;
+    icon = <TrophyIcon size={13} filled />;
     text = now.threat ? (
       <>
         <b className="font-extrabold text-brand-300">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf))} would hand it to {nameOf(now.threat.ownerId)}.
@@ -235,16 +235,16 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
     .filter((t) => t.points.length > 0);
 
   return (
-    <div className="flex items-center gap-2.5 border-t border-line bg-black/20 px-3.5 py-2.5">
+    <div className="jx-now-path flex items-center gap-2 border-t border-line bg-black/20 px-3 py-1.5">
       <span
         aria-hidden
-        className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", leading ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink")}
+        className={cx("grid h-6 w-6 shrink-0 place-items-center rounded-full", leading ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink")}
       >
         {icon}
       </span>
-      <p className="min-w-0 flex-1 text-footnote leading-snug text-ink-muted">{text}</p>
+      <p className="min-w-0 flex-1 text-caption leading-snug text-ink-muted">{text}</p>
       {perTeam.length > 0 && (
-        <span className="flex shrink-0 flex-col items-end gap-1">
+        <span className="flex shrink-0 flex-col items-end gap-0.5">
           {perTeam.map((t) => (
             <TeamChip key={t.side} side={t.side} team={teamOf(t.side)} points={t.points} />
           ))}

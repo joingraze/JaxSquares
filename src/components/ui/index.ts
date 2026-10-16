@@ -1,8 +1,9 @@
 // The JaxSquares component kit. Import from "components/ui".
 export { ActionBar, type ActionBarProps } from "./ActionBar";
-export { Avatar, AvatarGroup, type AvatarPerson, type AvatarProps, type AvatarSize } from "./Avatar";
+export { Avatar, AvatarGroup, avatarInitial, type AvatarPerson, type AvatarProps, type AvatarSize } from "./Avatar";
 export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export { BottomSheet, type BottomSheetProps } from "./BottomSheet";
+export { useBottomChrome } from "./bottomChrome";
 export { Button, type ButtonProps } from "./Button";
 export { buttonStyles, type ButtonSize, type ButtonStyleOptions, type ButtonVariant } from "./buttonStyles";
 export { Card, type CardProps, type CardTone } from "./Card";

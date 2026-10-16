@@ -24,6 +24,7 @@ import {
   type PeriodResult,
 } from "../../../shared/squares";
 import type { Game, GameState, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
+import { isUrgent } from "../invite/inviteModel";
 
 /** Highest score the API accepts. */
 export const MAX_SCORE = 999;
@@ -42,7 +43,7 @@ export interface HostAction {
 }
 
 export interface HostSummary {
-  /** One-line status for the host bar, e.g. "58 of 100 taken · 6 players". */
+  /** One-line status for the host bar, e.g. "58 of 100 taken", "8 squares left · ready to draw". */
   status: string;
   /** 0..1 fill for the bar's meter (squares taken while open, periods decided after). */
   progress: number;
@@ -63,20 +64,27 @@ export function isLinked(game: Pick<Game, "linkedEvent">): boolean {
 export function hostSummary(state: GameState): HostSummary {
   const { game } = state;
   const { claimed, total } = claimedOf(state);
-  const players = state.players.length;
-  const playersText = `${players} ${players === 1 ? "player" : "players"}`;
 
   if (game.status === "draft") {
     return { status: "Not open yet · friends can't pick squares", progress: 0, action: { kind: "checkout", label: "Open board" }, slim: false };
   }
   if (game.status === "open") {
-    const full = claimed >= total;
-    // Half full or more: locking is the move. Before that, getting people in is.
-    const ready = full || claimed / total >= 0.5;
+    const left = Math.max(0, total - claimed);
+    const full = left === 0;
+    // Getting people in stays the move until the board is (nearly) full; then it's locking.
+    if (lockIsTheMove(claimed, total)) {
+      return {
+        status: full ? "Board's full. Draw time!" : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
+        progress: claimed / total,
+        action: { kind: "lock", label: "Lock & draw" },
+        slim: false,
+      };
+    }
     return {
-      status: full ? "Board's full. Draw time!" : ready ? `Ready to lock · ${playersText}` : claimed === 0 ? "Nobody's picked a square yet" : `${claimed} of ${total} squares taken`,
+      // Short: it shares the row with "Invite (42 left)"; who's in is on the board's header.
+      status: claimed === 0 ? "Nobody's picked a square yet" : `${claimed} of ${total} taken`,
       progress: claimed / total,
-      action: ready ? { kind: "lock", label: "Lock & draw" } : { kind: "invite", label: invitedAnyone(state) ? "Invite" : "Invite friends" },
+      action: { kind: "invite", label: invitedAnyone(state) ? `Invite (${left} left)` : "Invite friends" },
       slim: false,
     };
   }
@@ -119,6 +127,20 @@ export function hostSummary(state: GameState): HostSummary {
   if (everyScore) return { status, progress, action: { kind: "score", label: "Add score" }, slim: false };
   const next = upcomingPeriod(state);
   return { status, progress, action: { kind: "score", label: next ? `${next.label} score` : "Scores" }, slim: false };
+}
+
+/** Share of the board taken at which locking becomes the host's main move. */
+export const LOCK_READY_SHARE = 0.9;
+
+/**
+ * Locking is the move once the board is full or nearly there: every square
+ * taken, 90% claimed, or few enough left to call last call (isUrgent). Before
+ * that, inviting stays primary; the host can still lock any time from Host tools.
+ */
+export function lockIsTheMove(claimed: number, total: number): boolean {
+  if (total <= 0 || claimed <= 0) return false;
+  const left = Math.max(0, total - claimed);
+  return left === 0 || claimed / total >= LOCK_READY_SHARE || isUrgent(left, total);
 }
 
 /** Decided prizes whose square nobody owns (and the host hasn't handed out). */

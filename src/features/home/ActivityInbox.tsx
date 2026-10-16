@@ -17,12 +17,11 @@ import { readSeenAt, unreadCount, writeSeenAt, type InboxItem } from "./inbox";
 export interface ActivityBellProps {
   items: InboxItem[];
   now: number;
-  /** Board the notifications ask is about (the most relevant one on the dashboard). */
+  /** Board whose name and squares fill the alerts preview (the most relevant one on the dashboard), if any. */
   focusGameId: string | null;
-  focusIsHost: boolean;
 }
 
-export function ActivityBell({ items, now, focusGameId, focusIsHost }: ActivityBellProps) {
+export function ActivityBell({ items, now, focusGameId }: ActivityBellProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [asking, setAsking] = useState(false);
@@ -89,18 +88,17 @@ export function ActivityBell({ items, now, focusGameId, focusIsHost }: ActivityB
           </div>
         )}
       </BottomSheet>
-      {focusGameId && (
-        <NotifyPrompt
-          gameId={focusGameId}
-          trigger={focusIsHost ? "created" : "joined"}
-          open={asking}
-          explicit
-          onClose={() => {
-            setAsking(false);
-            push.refresh();
-          }}
-        />
-      )}
+      {/* The general ask from the dashboard: about your boards, not one you just made or joined. */}
+      <NotifyPrompt
+        gameId={focusGameId}
+        trigger="home"
+        open={asking}
+        explicit
+        onClose={() => {
+          setAsking(false);
+          push.refresh();
+        }}
+      />
     </>
   );
 }

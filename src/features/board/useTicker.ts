@@ -1,5 +1,9 @@
 // State for the board screen's bottom ticker: one note at a time, each
 // leaving on its own after ~2 s. Rendered by <Ticker>.
+//
+// A note with a `key` is a running story (claims piling up, a period's score
+// then its winner): a newer note with the same key replaces the one showing
+// in place, without sliding in again.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -13,6 +17,10 @@ export interface TickerNote {
   tone?: TickerTone;
   /** ms on screen. */
   duration?: number;
+  /** Same key as the note showing: update it in place instead of sliding in a new one. */
+  key?: string;
+  /** Tapping the note does this (and dismisses it); without it a tap just dismisses. */
+  onTap?: () => void;
 }
 
 export interface TickerApi {
@@ -30,6 +38,8 @@ const EXIT_MS = 180;
 
 export function useTicker(): { ticker: TickerApi; note: Shown | null; dismiss: () => void } {
   const [note, setNote] = useState<Shown | null>(null);
+  const noteRef = useRef<Shown | null>(null);
+  noteRef.current = note;
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const seq = useRef(0);
 
@@ -47,12 +57,17 @@ export function useTicker(): { ticker: TickerApi; note: Shown | null; dismiss: (
     () => ({
       show(next) {
         clearTimers();
-        const which = ++seq.current;
-        setNote({ ...next, seq: which, leaving: false });
+        const cur = noteRef.current;
+        // Same story still on screen: keep its slot (no re-entry), refresh the words and the clock.
+        const which = next.key && cur && !cur.leaving && cur.key === next.key ? cur.seq : ++seq.current;
+        const shown = { ...next, seq: which, leaving: false };
+        noteRef.current = shown;
+        setNote(shown);
         timers.current.push(setTimeout(() => leave(which), next.duration ?? DEFAULT_MS));
       },
       clear() {
         clearTimers();
+        noteRef.current = null;
         setNote(null);
       },
     }),
@@ -67,4 +82,3 @@ export function useTicker(): { ticker: TickerApi; note: Shown | null; dismiss: (
 
   return { ticker, note, dismiss };
 }
-

@@ -1,7 +1,8 @@
-// Dashboard card for a board that hasn't kicked off: matchup, name, a quiet
-// role label, the game state, what a friend just did, and a labeled fill
-// meter with the one thing to do next beside it. The whole card opens the
-// board; the action button sits above that layer.
+// Dashboard card for a board that hasn't kicked off, kept dense so a host
+// with a handful of boards sees most of them at once: matchup, name, a quiet
+// role label, then one count ("42 left") with a slim fill meter under it and
+// the one thing to do next beside them, and what a friend just did. The whole
+// card opens the board; the action button sits above that layer.
 
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -44,7 +45,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
   return (
     <article
       className={cx(
-        "relative overflow-hidden rounded-card bg-surface-2 py-3.5 pl-3.5 pr-4 shadow-card ring-1 ring-inset transition-transform duration-200 ease-spring",
+        "relative overflow-hidden rounded-card bg-surface-2 py-3 pl-3 pr-3 shadow-card ring-1 ring-inset transition-transform duration-200 ease-spring",
         "has-[>a:active]:scale-[0.98] has-[>a:active]:duration-75",
         gold ? "ring-gold-400/40" : "ring-line",
       )}
@@ -59,45 +60,47 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
       />
       <div className="pointer-events-none relative flex gap-3">
         <Matchup teamX={game.teamX} teamY={game.teamY} />
-        <div className="min-w-0 flex-1 pt-0.5">
+        <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
             <RoleLabel isHost={game.isHost} />
           </div>
-          <p className="mt-0.5 truncate text-footnote">
-            <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>
-              {model.statusIsLeft ? (
-                <>
-                  <CountUp value={left} /> left
-                </>
-              ) : (
-                model.status
-              )}
-            </span>
-            {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
-          </p>
+          {/* One count ("42 left") with the fill meter right under it, and the action beside them. */}
+          <div className="flex min-h-7 items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-footnote">
+                <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>
+                  {model.statusIsLeft ? (
+                    <>
+                      <CountUp value={left} /> left
+                    </>
+                  ) : (
+                    model.status
+                  )}
+                </span>
+                {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
+              </p>
+              {model.meter && <FillMeter value={game.claimed} max={game.totalSquares} gold={gold} className="mt-1.5" />}
+            </div>
+            {action && (
+              <div className="pointer-events-auto relative z-10 shrink-0">
+                <Button
+                  size="sm"
+                  variant={action.primary ? "primary" : "ghost"}
+                  haptic={action.primary ? "medium" : "light"}
+                  leading={action.icon}
+                  onClick={action.onClick}
+                  // 36pt to keep the card compact; tap-target keeps the hit area 44pt.
+                  className={cx("tap-target !h-9 !rounded-xl !px-3.5", !action.primary && "ring-1 ring-inset ring-line-strong")}
+                >
+                  {action.label}
+                </Button>
+              </div>
+            )}
+          </div>
           {buzz && <BuzzLine buzz={buzz} isNew={buzzIsNew} now={now} />}
         </div>
       </div>
-      {(model.meter || action) && (
-        <div className="pointer-events-none relative mt-3 flex items-center gap-3 pl-[3.75rem]">
-          {model.meter ? <FillMeter value={game.claimed} max={game.totalSquares} className="flex-1" /> : <span className="flex-1" />}
-          {action && (
-            <div className="pointer-events-auto relative z-10 shrink-0">
-              <Button
-                size="sm"
-                variant={action.primary ? "primary" : "ghost"}
-                haptic={action.primary ? "medium" : "light"}
-                leading={action.icon}
-                onClick={action.onClick}
-                className={cx("!h-11 !rounded-[0.875rem] !px-4", !action.primary && "ring-1 ring-inset ring-line-strong")}
-              >
-                {action.label}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
     </article>
   );
 }
@@ -105,7 +108,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
 /** "🦊 Maya grabbed 5 squares · just now": neutral text, the avatar carries the color; fresh news gets ink and a dot. */
 function BuzzLine({ buzz, isNew, now }: { buzz: Buzz; isNew: boolean; now: number }) {
   return (
-    <p key={`${buzz.text}|${buzz.at}`} className={cx("mt-1.5 flex min-w-0 items-center gap-1.5 text-caption", isNew && "home-buzz-new")}>
+    <p key={`${buzz.text}|${buzz.at}`} className={cx("mt-2 flex min-w-0 items-center gap-1.5 text-caption", isNew && "home-buzz-new")}>
       <Avatar name={buzz.player.name} color={buzz.player.color} emoji={buzz.player.emoji} size="xs" decorative className="!h-4.5 !w-4.5 !text-[0.6rem]" />
       <span className={cx("truncate", isNew ? "font-semibold text-ink" : "text-ink-muted")}>
         {buzz.text}

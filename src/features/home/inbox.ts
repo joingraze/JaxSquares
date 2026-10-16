@@ -6,7 +6,7 @@
 
 import { resolveResults } from "../../../shared/squares";
 import type { Activity, GameState, GameSummary, Player } from "../../../shared/types";
-import { atMoment, BURST_MS, scoreWithTeams } from "./sections";
+import { BURST_MS, phraseOf, scoreWithTeams } from "./sections";
 
 export interface InboxItem {
   id: string;
@@ -105,7 +105,7 @@ function boardItems(g: GameSummary, s: GameState, me: string, since: number): In
           id: `${g.id}:${a.id}`,
           at: a.at,
           tone: "win",
-          text: `Your ${reverseOnly ? "reverse " : ""}square hit ${atMoment(periodKey, label)}`,
+          text: `Your ${reverseOnly ? "reverse " : ""}square hit ${phraseOf(periodKey, label).moment}`,
           detail,
           player: null,
         });
@@ -116,7 +116,7 @@ function boardItems(g: GameSummary, s: GameState, me: string, since: number): In
           id: `${g.id}:${a.id}`,
           at: a.at,
           tone: "live",
-          text: `${joinNames(names)} hit ${atMoment(periodKey, label)}`,
+          text: `${joinNames(names)} hit ${phraseOf(periodKey, label).moment}`,
           detail,
           player: byId.get(winners[0]) ?? null,
         });

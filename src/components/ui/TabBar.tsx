@@ -4,16 +4,25 @@ import { useProfile } from "../../lib/identity";
 import { haptic } from "../../lib/native";
 import { HomeIcon, PlusIcon } from "../icons";
 import { Avatar } from "./Avatar";
+import { useBottomChrome } from "./bottomChrome";
 import { cx } from "./cx";
+
+/** Distance from the bottom of the viewport to the top of the dock. */
+const DOCK_TOP = "calc(var(--tabbar-h) + max(var(--safe-bottom), 0.5rem))";
 
 export interface TabBarProps {
   hidden?: boolean;
 }
 
-/** Floating bottom dock: Home, the New board keycap, and Profile (your avatar). */
+/**
+ * Floating bottom dock: Home, the New board keycap, and Profile (your avatar).
+ * Content scrolling down fades into the canvas before it reaches the dock, so
+ * nothing ghosts through it.
+ */
 export function TabBar({ hidden = false }: TabBarProps) {
   const ref = useRef<HTMLElement>(null);
   const profile = useProfile();
+  useBottomChrome(hidden ? null : DOCK_TOP);
 
   useEffect(() => {
     if (ref.current) ref.current.inert = hidden;
@@ -30,6 +39,10 @@ export function TabBar({ hidden = false }: TabBarProps) {
         hidden && "invisible translate-y-[calc(100%+1rem)]",
       )}
     >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[calc(100%+1.75rem)] bg-linear-to-t from-canvas from-55% to-transparent"
+      />
       <div className="glass pointer-events-auto mx-auto flex h-(--tabbar-h) max-w-md items-center gap-1 rounded-[1.75rem] px-2 shadow-float ring-1 ring-inset ring-line-strong">
         <Tab to="/" end label="Home" icon={(active) => <HomeIcon size={24} filled={active} strokeWidth={active ? 1.6 : 2} />} />
         <NavLink

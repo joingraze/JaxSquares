@@ -197,6 +197,35 @@ describe("public payloads never contain a clientId", () => {
     const live = roomCalls.filter((r) => r.url.includes("/live"));
     expect(live.map((r) => r.url)).toEqual([`https://room/live?player=${pid(ANA)}`, "https://room/live"]);
   });
+
+  it("forwards ?watch=0 (passive: not counted as watching) and nothing else", async () => {
+    const { id } = await openBoard();
+    const headers = { upgrade: "websocket" };
+    await call("GET", `/games/${id}/live?player=${pid(ANA)}&watch=0&x=1`, { client: null, headers });
+    await call("GET", `/games/${id}/live?watch=yes`, { client: null, headers });
+    const live = roomCalls.filter((r) => r.url.includes("/live"));
+    expect(live.map((r) => r.url)).toEqual([`https://room/live?player=${pid(ANA)}&watch=0`, "https://room/live"]);
+  });
+});
+
+describe("deleting a board", () => {
+  it("tells the room to close (deleted message + 4404) once the host deletes it", async () => {
+    const { id, admin } = await openBoard();
+    expect((await call("DELETE", `/games/${id}`, { client: ANA, admin: "nope" })).status).toBe(403);
+    expect(roomCalls.some((r) => r.url === "https://room/close")).toBe(false);
+    expect((await call("DELETE", `/games/${id}`, { admin })).body).toEqual({ ok: true });
+    expect(roomCalls.filter((r) => r.url === "https://room/close")).toHaveLength(1);
+    expect((await call("GET", `/games/${id}`, { client: null })).status).toBe(404);
+  });
+
+  it("housekeeping closes the rooms of the stale drafts it deletes", async () => {
+    const stale = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, stale);
+    const tick = Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE);
+    await worker.scheduled({ scheduledTime: tick, cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
+    expect(roomCalls.filter((r) => r.url === "https://room/close")).toHaveLength(1);
+    expect(t.query(`SELECT 1 FROM games WHERE id = ?`, stale)).toEqual([]);
+  });
 });
 
 describe("notify actors", () => {

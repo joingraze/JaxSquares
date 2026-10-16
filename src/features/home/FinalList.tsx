@@ -10,7 +10,7 @@ import { scoreLine } from "../../lib/format";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
 import { Matchup } from "./BoardBits";
-import { atMoment, finalSummary, times } from "./sections";
+import { finalSummary, phraseOf, times } from "./sections";
 
 /** Rows shown before "Show all". */
 export const FINALS_COLLAPSED = 3;
@@ -59,7 +59,7 @@ function FinalRow({ game, state, me }: { game: GameSummary; state: GameState | u
   const others = summary?.winners.map((w) => w.player).filter((p) => p.id !== me) ?? [];
 
   let subtitle: string;
-  if (wins.length === 1) subtitle = `You hit ${atMoment(wins[0].periodKey, wins[0].label)}`;
+  if (wins.length === 1) subtitle = `You hit ${phraseOf(wins[0].periodKey, wins[0].label).moment}`;
   else if (wins.length > 1) subtitle = `You hit ${times(wins.length)}`;
   else if (others.length > 0) subtitle = `${others[0].name}${others.length > 1 ? ` +${others.length - 1}` : ""} won`;
   else subtitle = game.isHost ? "You hosted" : "Good game";

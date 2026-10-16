@@ -72,8 +72,9 @@ the same value synchronously.) It is stable per device and one-way.
 - Cron trigger (every minute) wakes the `GameRoom` of linked games that start within
   the next 15 minutes or are in progress, so polling starts on time. Once an hour
   (UTC minute 17) it also runs housekeeping (`worker/housekeeping.ts`): deletes
-  boards still in `draft` (never paid) 7 days after creation, prunes activity
-  beyond the newest 200 per game, and drops expired rate-limit windows.
+  boards still in `draft` (never paid) 7 days after creation (closing their
+  rooms like a host delete), prunes activity beyond the newest 200 per game, and
+  drops expired rate-limit windows.
 
 ## HTTP API
 
@@ -88,7 +89,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on a money prize note; 429 |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on a money prize note |
-| DELETE | `/api/games/:id` | C H | – | `{ ok: true }` |
+| DELETE | `/api/games/:id` | C H | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404 |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename) |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
@@ -98,8 +99,8 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
-| GET | `/api/games/:id/live?player=<public id>` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
-| GET | `/api/me/games` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined) |
+| GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
+| GET | `/api/me/games` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; activates draft) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret }` (PaymentIntent for this board) |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates) |
@@ -130,23 +131,67 @@ Non-API routes:
 
 ## Live socket
 
-`GET /api/games/:id/live?player=<public player id>` upgrades to a WebSocket held
-by the game's `GameRoom` (hibernatable). The `player` param only de-duplicates
-the watcher count across tabs; the Worker forwards it only when it is a
-well-formed public id and ignores everything else in the query.
+`GET /api/games/:id/live?player=<public player id>[&watch=0]` upgrades to a
+WebSocket held by the game's `GameRoom` (hibernatable). The Worker forwards only
+`player` (when it is a well-formed public id) and `watch=0`; everything else in
+the query is ignored.
+
+- `player` only de-duplicates the watcher count across tabs and devices.
+- `watch=0` makes the socket **passive**: it receives every message (state,
+  events, presence, deleted) but is not counted in `presence.watching`, and
+  opening or closing it doesn't send presence to anyone else (it hears the
+  current count once, on connect). Home uses it to follow every board you're in
+  without inflating "N watching". Any other value (or none) is an active socket.
+  A device with an active and a passive socket on the same board counts once.
 
 Server → client (`LiveMessage`, JSON):
 - `{ type: "state", state }` first on connect, then after every mutation. Clients
   keep the highest `version` (equal versions are re-applied).
 - `{ type: "event", activity }` once per new activity (toasts, haptics).
-- `{ type: "presence", watching }` whenever a device connects or leaves.
+- `{ type: "presence", watching }` whenever an active socket connects or leaves:
+  distinct active devices (sockets without `player` count individually).
+- `{ type: "deleted" }` when the board is deleted (host `DELETE`, or housekeeping
+  removing a stale draft). It is the last message; the room then closes the
+  socket with code **4404** and drops its storage and alarm.
+
+Board deleted: treat `{ type: "deleted" }` **or** close code 4404 as "gone": stop
+reconnecting and polling and show "not found" (Home drops the board). Don't
+wait for the close: a close frame can arrive late. Under `npm run dev` it takes
+about 10 s, because local workerd keeps the TCP connection open for ~10 s after
+the close handshake and the dev server's socket bridge (miniflare's
+`coupleWebSocket`) only forwards the close once that connection ends; the
+`deleted` message arrives within ~100 ms. A socket opened after deletion is
+refused (HTTP 404), and `GET /api/games/:id` answers 404.
 
 Keepalive: the client sends the text `ping` every 25 s and the room answers
 `pong` without waking from hibernation (a JSON `{"type":"ping"}` gets
 `{"type":"pong"}`). A client that hears nothing for 70 s drops the socket and
 reconnects (backoff 0.5–15 s, polling `GET /api/games/:id` every 15 s
-meanwhile). Close code **4404** means the board was deleted: stop reconnecting
-and show "not found".
+meanwhile).
+
+Messages are additive: clients ignore a `type` they don't know, so new message
+types never break an older app build.
+
+## Dashboard summaries
+
+`GET /api/me/games` returns a `GameSummary` per board this device hosts or has
+joined (most recently active first): board-level counts plus per-device fields
+(`isHost`, `mySquares`, `myWins`) computed server-side from the caller's
+`x-client-id`, which never appears in the response. Two fields let
+Home render a board in play without fetching its full state (both always sent;
+optional in the type only so older fixtures type-check):
+
+- `latestScore: { scoreX, scoreY, label } | null`: the live feed's score while a
+  linked game is on or over (`label` is the provider's clock, e.g. "Q3 4:12",
+  or "Final"), else the latest recorded period's score (`label` = that
+  period's label: "Q1", "Half", "Score 3"). null before any score.
+- `leaderPlayerId: string | null`: public id of whoever holds the square the
+  live score points at right now; with no live square, the latest resolved
+  period's winner. null when there is none yet or nobody claimed that square.
+
+Home follows boards that are still moving over passive sockets (`watch=0`, at
+most 12) and lays each board's live state over its summary; the summary list
+itself refreshes on focus and every 30 s.
 
 ## Activity
 
@@ -206,6 +251,28 @@ rows per game in D1.
 - Invite links are `https://jaxsquares.com/g/<id>`; universal links open the app,
   everyone else gets the web app with no install needed.
 
+## Board deep links (client)
+
+Query flags on `/g/<id>` that open a step on arrival. Each is handled once and
+then removed from the URL (`replace`), so back/refresh doesn't repeat it.
+
+| Flag | From | Handled by | Does |
+|---|---|---|---|
+| `?invite=1` | create flow, after the board opens | `GameView` | opens the invite sheet (even while still `draft` waiting on a payment webhook; it re-checks until open) |
+| `?checkout=1` | Home card "Finish setup" (unpaid board) | `HostControls` | opens `CheckoutSheet` for the draft, if this device holds the admin token and the board is still `draft` |
+| `?draw=1` | Home card "Draw numbers", inbox "Your board is full" | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet |
+| `?host=<adminToken>` | a host link ("Host from another phone") | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar |
+
+Checkout for drafts: `CheckoutSheet` (`src/features/create/CheckoutSheet.tsx`)
+is self-contained: given the board (`GET /api/games/:id`), the saved admin token
+and `PaymentConfig` (`GET /api/config`), it runs whichever checkout applies
+(test, Apple Pay / Google Pay, card, or Apple IAP in the iOS app) against the
+`/pay/*` endpoints. The create page only shows it when a live web checkout needs
+its own tap (test mode and the App Store open the board straight from Create).
+For an existing unpaid board, `HostControls` lazy-loads it from the host bar's
+"Open board" action or `?checkout=1`; once paid it applies the new state and
+opens the invite sheet. Its primary confirm is `data-testid="pay-confirm"`.
+
 ## Cross-module function contracts
 
 `worker/service.ts` (core) — used by payments, push and the room:
@@ -215,6 +282,8 @@ loadState(env: Env, gameId: string): Promise<GameState | null>
 broadcast(env: Env, gameId: string, activity?: Activity): Promise<GameState | null>
 /** draft -> open after a successful payment. Idempotent. */
 activateGame(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "iap"; reference: string; amountCents: number }): Promise<GameState | null>
+/** The game was deleted: the room sends { type: "deleted" }, closes sockets with 4404, drops its storage. Never throws. */
+closeRoom(env: Env, gameId: string): Promise<void>
 isHost(env: Env, gameId: string, adminToken: string): Promise<boolean>
 /** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries. */
 applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>

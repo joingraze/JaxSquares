@@ -18,7 +18,11 @@ export interface SegmentedControlProps<T extends string | number> {
   className?: string;
 }
 
-/** Equal-width segments with a sliding thumb. Arrow keys move the selection (radio group semantics). */
+/**
+ * Equal-width segments with a sliding thumb. Arrow keys move the selection
+ * (radio group semantics). Every segment is at least 44pt tall: `sm` only
+ * tightens the type and the inset around the thumb.
+ */
 export function SegmentedControl<T extends string | number>({
   options,
   value,
@@ -58,16 +62,20 @@ export function SegmentedControl<T extends string | number>({
       aria-label={aria["aria-label"]}
       onKeyDown={onKeyDown}
       className={cx(
-        "relative grid rounded-2xl bg-surface-2 p-1 ring-1 ring-inset ring-line",
-        size === "sm" ? "h-11" : "h-12",
+        "relative grid rounded-2xl bg-surface-2 ring-1 ring-inset ring-line",
+        // Segment = height - 2 x inset >= 44px.
+        size === "sm" ? "h-12 p-0.5" : "h-13 p-1",
         className,
       )}
       style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
     >
       <span
         aria-hidden
-        className="absolute inset-y-1 left-1 rounded-xl bg-surface-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_4px_12px_-4px_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line-strong transition-transform duration-300 ease-spring"
-        style={{ width: `calc((100% - 0.5rem) / ${n})`, transform: `translateX(${index * 100}%)` }}
+        className={cx(
+          "absolute bg-surface-4 shadow-[inset_0_1px_0_rgb(255_255_255/0.08),0_4px_12px_-4px_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line-strong transition-transform duration-300 ease-spring",
+          size === "sm" ? "inset-y-0.5 left-0.5 rounded-[0.875rem]" : "inset-y-1 left-1 rounded-xl",
+        )}
+        style={{ width: `calc((100% - ${size === "sm" ? "0.25rem" : "0.5rem"}) / ${n})`, transform: `translateX(${index * 100}%)` }}
       />
       {options.map((opt, i) => {
         const selected = i === index;
@@ -85,7 +93,7 @@ export function SegmentedControl<T extends string | number>({
             disabled={opt.disabled}
             onClick={() => select(i)}
             className={cx(
-              "relative z-10 inline-flex min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 font-bold transition-colors",
+              "relative z-10 inline-flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 font-bold transition-colors",
               size === "sm" ? "text-footnote" : "text-subhead",
               selected ? "text-ink" : "text-ink-subtle hover:text-ink-muted",
               "disabled:opacity-40",

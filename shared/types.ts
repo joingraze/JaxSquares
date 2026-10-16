@@ -271,14 +271,18 @@ export interface GameSummary {
 
 // ---- Live socket messages (server -> client) ----
 // Connect to /api/games/:id/live?player=<public player id> (the param only
-// de-duplicates the watcher count; never send the clientId). Plain-text "ping"
-// is answered with "pong" (also {"type":"ping"} -> {"type":"pong"}). Close code
-// 4404 means the board was deleted.
+// de-duplicates the watcher count; never send the clientId). Add `&watch=0` for
+// a passive socket (e.g. Home following every board you're in): it receives
+// every message but isn't counted in `presence.watching`. Plain-text "ping" is
+// answered with "pong" (also {"type":"ping"} -> {"type":"pong"}).
+// The board was deleted: `{ type: "deleted" }` arrives first, then the socket
+// closes with code 4404. Treat either one as "gone" and stop reconnecting.
 
 export type LiveMessage =
   | { type: "state"; state: GameState }
   | { type: "presence"; watching: number }
-  | { type: "event"; activity: Activity };
+  | { type: "event"; activity: Activity }
+  | { type: "deleted" };
 
 // ---- Request payloads ----
 // Every request identifies the device with the `x-client-id` header (secret,

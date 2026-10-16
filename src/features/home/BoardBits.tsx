@@ -107,35 +107,26 @@ export function CountUp({ value, className }: { value: number; className?: strin
 }
 
 /**
- * Squares claimed, as a labeled meter inside the card: a track with a fill
- * that never shrinks to an invisible sliver, and "58/100" beside it. Full
- * boards go gold.
+ * Squares claimed, as a slim meter under the card's count (the count itself
+ * is said once, in words: "42 left"). The fill never shrinks to an invisible
+ * sliver; full boards (and ones ready to draw, `gold`) go gold.
  */
-export function FillMeter({ value, max, className }: { value: number; max: number; className?: string }) {
+export function FillMeter({ value, max, gold = false, className }: { value: number; max: number; gold?: boolean; className?: string }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
-  const full = pct >= 100;
+  const full = gold || pct >= 100;
   return (
-    <div className={cx("flex min-w-0 items-center gap-2.5", className)}>
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      aria-label={`${value} of ${max} squares claimed`}
+      className={cx("relative h-1.5 min-w-0 overflow-hidden rounded-full bg-white/8 ring-1 ring-inset ring-white/4", className)}
+    >
       <div
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={max}
-        aria-valuenow={value}
-        aria-label={`${value} of ${max} squares claimed`}
-        className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-white/8 ring-1 ring-inset ring-white/4"
-      >
-        <div
-          className={cx(
-            "h-full rounded-full transition-[width] duration-700 ease-out-quint",
-            full ? "bg-gold-400" : "bg-brand-400",
-          )}
-          style={{ width: `${pct}%`, minWidth: value > 0 ? "0.5rem" : 0 }}
-        />
-      </div>
-      <span aria-hidden className="shrink-0 text-caption font-bold tabular-nums text-ink-muted">
-        <CountUp value={value} className={full ? "text-gold-300" : "text-ink"} />
-        <span className="text-ink-subtle">/{max}</span>
-      </span>
+        className={cx("h-full rounded-full transition-[width] duration-700 ease-out-quint", full ? "bg-gold-400" : "bg-brand-400")}
+        style={{ width: `${pct}%`, minWidth: value > 0 ? "0.375rem" : 0 }}
+      />
     </div>
   );
 }

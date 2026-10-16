@@ -46,6 +46,8 @@ export interface BoardProps {
 /** Whole columns visible when zoomed (cell size follows from the board width). */
 const ZOOM_COLUMNS = 6;
 
+type Side = "above" | "below";
+
 export function Board({
   game,
   cells,
@@ -168,30 +170,72 @@ export function Board({
   const calloutCell = callout ? cells.flat().find((c) => c.key === callout.key) : undefined;
   const calloutRef = useRef<HTMLDivElement>(null);
 
-  // Keep the callout on screen: slide it sideways (the pointer stays on the square).
+  // Place the callout: above the square (below on the top rows), kept on screen by sliding it
+  // sideways (the pointer stays on the square), and never over the square in play: if it would
+  // cover the live square it flips to the other side, or slides clear of it.
   useLayoutEffect(() => {
     const el = calloutRef.current;
-    if (!el) return;
-    el.style.setProperty("--dx", "0px");
-    // Measure unscaled (it pops in from 90%): the center is the same either way.
-    const r = el.getBoundingClientRect();
-    const center = r.left + r.width / 2;
-    const left = center - el.offsetWidth / 2;
-    const right = center + el.offsetWidth / 2;
-    const edge = 10;
+    const board = boardRef.current;
+    if (!el || !board || !calloutCell) return;
+    const own = `[data-row="${calloutCell.row}"][data-col="${calloutCell.col}"]`;
+    const avoid = [...board.querySelectorAll<HTMLElement>('[data-live="true"], [data-live-reverse="true"]')]
+      .filter((c) => !c.matches(own))
+      .map((c) => c.getBoundingClientRect());
     const vw = document.documentElement.clientWidth;
-    const dx = left < edge ? edge - left : right > vw - edge ? vw - edge - right : 0;
-    el.style.setProperty("--dx", `${Math.round(dx)}px`);
-  }, [callout, zoom]);
+    const EDGE = 10;
+    const PAD = 3;
+    /** Pointer must stay this far inside the callout's sides. */
+    const POINTER = 18;
+    const preferred: Side = calloutCell.row < 2 ? "below" : "above";
+    const sides: Side[] = preferred === "above" ? ["above", "below"] : ["below", "above"];
+
+    const measure = (side: Side) => {
+      el.dataset.side = side;
+      el.style.setProperty("--dx", "0px");
+      // Measure unscaled (it pops in from 90%): the center is the same either way.
+      const r = el.getBoundingClientRect();
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2, pointer: cx };
+    };
+    const covers = (b: ReturnType<typeof measure>, dx: number) =>
+      avoid.some((a) => b.right + dx > a.left - PAD && b.left + dx < a.right + PAD && b.bottom > a.top - PAD && b.top < a.bottom + PAD);
+
+    let fallback: { side: Side; dx: number } | null = null;
+    for (const side of sides) {
+      const b = measure(side);
+      const lo = Math.max(EDGE - b.left, b.pointer + POINTER - b.right);
+      const hi = Math.min(vw - EDGE - b.right, b.pointer - POINTER - b.left);
+      const clamp = (dx: number) => Math.min(Math.max(dx, lo), hi);
+      const base = b.left < EDGE ? EDGE - b.left : b.right > vw - EDGE ? vw - EDGE - b.right : 0;
+      fallback ??= { side, dx: base };
+      // Slide options: as placed, or just clear of each square in play on either side.
+      const options = [base, ...avoid.flatMap((a) => [a.left - PAD - b.right, a.right + PAD - b.left])]
+        .map(clamp)
+        .sort((x, y) => Math.abs(x - base) - Math.abs(y - base));
+      const fit = options.find((dx) => !covers(b, dx));
+      if (fit !== undefined) {
+        el.dataset.side = side;
+        el.style.setProperty("--dx", `${Math.round(fit)}px`);
+        return;
+      }
+    }
+    if (fallback) {
+      el.dataset.side = fallback.side;
+      el.style.setProperty("--dx", `${Math.round(fallback.dx)}px`);
+    }
+  }, [callout, zoom, calloutCell]);
 
   return (
     <div
       ref={wrapRef}
-      className={cx("jx-board-wrap grid grid-cols-[14px_minmax(0,1fr)] gap-0.5", accessory ? "grid-rows-[32px_auto]" : "grid-rows-[18px_auto]")}
+      className={cx("jx-board-wrap grid grid-cols-[14px_minmax(0,1fr)] gap-0.5", accessory ? "grid-rows-[44px_auto]" : "grid-rows-[18px_auto]")}
     >
       <div aria-hidden />
       <div className="relative flex min-w-0 items-center">
-        <div className={cx("flex min-w-0 flex-1 items-center", !!accessory && "px-[4.5rem]")}>
+        <div className={cx("flex min-w-0 flex-1 items-center", !!accessory && "px-[5rem]")}>
           <TeamBand axis="x" name={game.teamX.name} />
         </div>
         {accessory && <div className="absolute inset-y-0 right-0 flex items-center">{accessory}</div>}
@@ -260,7 +304,6 @@ export function Board({
               role="status"
               className="jx-callout"
               data-tone={callout.tone ?? "neutral"}
-              data-side={calloutCell.row < 2 ? "below" : "above"}
               style={{ "--r": calloutCell.row, "--c": calloutCell.col } as CSSProperties}
             >
               {callout.children}

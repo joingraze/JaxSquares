@@ -41,6 +41,19 @@ export async function pushToRoom(env: Env, gameId: string, state: GameState, act
   }
 }
 
+/**
+ * The game was deleted: the room sends `{ type: "deleted" }` to every open
+ * socket, closes them with 4404 and drops its storage (alarm included). Never throws.
+ */
+export async function closeRoom(env: Env, gameId: string): Promise<void> {
+  try {
+    const res = await roomStub(env, gameId).fetch("https://room/close", { method: "POST", headers: { "x-game-id": gameId } });
+    if (!res.ok) console.error(`room close ${gameId}: ${res.status}`);
+  } catch (err) {
+    console.error(`room close ${gameId} failed`, err);
+  }
+}
+
 /** Runs notify for each event, logging (not throwing) failures. */
 export async function notifyAll(env: Env, gameId: string, events: NotifyEvent[]): Promise<void> {
   const results = await Promise.allSettled(events.map((e) => notify(env, gameId, e)));

@@ -8,6 +8,10 @@
 // server state and are rebased onto every new server state until their request
 // settles.
 //
+// LiveGame.start({ initialFetch: false }) skips that first GET when the socket
+// will deliver the state anyway; { passive: true } listens without counting
+// toward the board's "watching" (Home following your boards).
+//
 // useMyGames(): the dashboard list, refetched on focus and every 30s.
 //
 // The connection logic lives in LiveGame (no React) so it can be tested with a
@@ -62,21 +66,31 @@ export function backoffDelay(attempt: number, random: () => number = Math.random
   return Math.round(ceiling / 2 + random() * (ceiling / 2));
 }
 
+export interface SocketUrlOptions {
+  /**
+   * A passive listener (e.g. Home following your boards): gets every update
+   * but isn't counted in the board's "watching" (adds `watch=0`).
+   */
+  passive?: boolean;
+}
+
 /**
- * ws(s)://.../api/games/:id/live?player=<public player id>, derived from
- * API_BASE (native app) or the page origin (web). The player id only lets the
- * room count this device once across tabs; it is public, unlike the clientId.
+ * ws(s)://.../api/games/:id/live?player=<public player id>[&watch=0], derived
+ * from API_BASE (native app) or the page origin (web). The player id only lets
+ * the room count this device once across tabs; it is public, unlike the clientId.
  */
 export function liveSocketUrl(
   gameId: string,
   playerId: string,
   apiBase: string = API_BASE,
   loc: Pick<Location, "protocol" | "host"> = location,
+  options: SocketUrlOptions = {},
 ): string {
   const base = apiBase
     ? apiBase.replace(/^http(s?):\/\//i, (_m, s: string) => `ws${s}://`).replace(/\/+$/, "")
     : `${loc.protocol === "https:" ? "wss:" : "ws:"}//${loc.host}`;
-  return `${base}/api/games/${encodeURIComponent(gameId)}/live?player=${encodeURIComponent(playerId)}`;
+  const watch = options.passive ? "&watch=0" : "";
+  return `${base}/api/games/${encodeURIComponent(gameId)}/live?player=${encodeURIComponent(playerId)}${watch}`;
 }
 
 export function parseLiveMessage(data: unknown): LiveMessage | null {
@@ -93,6 +107,7 @@ export function parseLiveMessage(data: unknown): LiveMessage | null {
     return { type: "state", state: m.state as GameState };
   }
   if (m.type === "presence" && typeof m.watching === "number") return { type: "presence", watching: m.watching };
+  if (m.type === "deleted") return { type: "deleted" };
   if (m.type === "event" && m.activity && typeof (m.activity as Activity).id === "string") {
     return { type: "event", activity: m.activity as Activity };
   }
@@ -296,7 +311,7 @@ export interface SocketLike {
 export interface LiveDeps {
   fetchState(id: string, signal: AbortSignal): Promise<GameState>;
   openSocket(url: string): SocketLike;
-  socketUrl(id: string): string;
+  socketUrl(id: string, options?: SocketUrlOptions): string;
   random(): number;
   now(): number;
   isOnline(): boolean;
@@ -319,11 +334,22 @@ export interface LiveStatus {
 
 const SOCKET_OPEN = 1;
 
+export interface LiveStartOptions {
+  /**
+   * GET the board right away (default true). Pass false when the socket will
+   * deliver the state anyway (it sends one on connect), e.g. when following
+   * many boards at once; a socket that can't connect still falls back to a GET.
+   */
+  initialFetch?: boolean;
+  /** Listen without counting toward the board's "watching" (socket URL gets `watch=0`). Default false. */
+  passive?: boolean;
+}
+
 export function browserLiveDeps(): LiveDeps {
   return {
     fetchState: (id, signal) => api.getGame(id, signal),
     openSocket: (url) => new WebSocket(url),
-    socketUrl: (id) => liveSocketUrl(id, getPlayerId()),
+    socketUrl: (id, options) => liveSocketUrl(id, getPlayerId(), API_BASE, location, options),
     random: Math.random,
     now: Date.now,
     isOnline: () => (typeof navigator === "undefined" ? true : navigator.onLine !== false),
@@ -348,6 +374,7 @@ export class LiveGame {
   private statusListeners = new Set<() => void>();
 
   private running = false;
+  private passive = false;
   private ws: SocketLike | null = null;
   private attempt = 0;
   private lastMessageAt = 0;
@@ -375,15 +402,16 @@ export class LiveGame {
     return () => this.statusListeners.delete(listener);
   };
 
-  start(): void {
+  start({ initialFetch = true, passive = false }: LiveStartOptions = {}): void {
     if (this.running) return;
     this.running = true;
+    this.passive = passive;
     this.unsubs.push(
       this.deps.onResume(() => this.wake()),
       this.deps.onNetwork((online) => (online ? this.wake() : this.setStatus({ connection: "offline" }))),
     );
     this.pollTimer = setInterval(() => this.pollTick(), POLL_INTERVAL_MS);
-    void this.refresh();
+    if (initialFetch) void this.refresh();
     this.connect();
   }
 
@@ -471,7 +499,7 @@ export class LiveGame {
     }
     let ws: SocketLike;
     try {
-      ws = this.deps.openSocket(this.deps.socketUrl(this.gameId));
+      ws = this.deps.openSocket(this.deps.socketUrl(this.gameId, this.passive ? { passive: true } : undefined));
     } catch {
       this.onSocketDown(true);
       return;
@@ -494,6 +522,7 @@ export class LiveGame {
       if (!msg) return;
       if (msg.type === "state") this.accept(msg.state);
       else if (msg.type === "presence") this.setStatus({ watching: msg.watching });
+      else if (msg.type === "deleted") this.gone(); // the 4404 close follows; either one is enough
       else this.store.receiveActivity(msg.activity);
     };
     ws.onclose = (ev) => {
@@ -630,7 +659,7 @@ export class LiveGame {
 // React bindings
 // ---------------------------------------------------------------------------
 
-export interface UseGameOptions {
+export interface UseGameOptions extends LiveStartOptions {
   /** New activity (claims, joins, scores, winners...) for toasts and haptics. Not called for history already on the board. */
   onActivity?: ActivityListener;
 }
@@ -655,9 +684,12 @@ const getIdle = () => IDLE_STATUS;
 export function useGame(id: string | undefined, options: UseGameOptions = {}): UseGameResult {
   const live = useMemo(() => (id ? new LiveGame(id, browserLiveDeps()) : null), [id]);
 
+  // Read once per board: changing them mid-flight would mean a new connection.
+  const startOptions = useRef<LiveStartOptions>({});
+  startOptions.current = { initialFetch: options.initialFetch, passive: options.passive };
   useEffect(() => {
     if (!live) return;
-    live.start();
+    live.start(startOptions.current);
     return () => live.stop();
   }, [live]);
 

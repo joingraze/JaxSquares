@@ -4,8 +4,9 @@
 // is unit-tested in sections.test.ts.
 
 import type { GameState, GameSummary, Player, Team } from "../../../shared/types";
-import { prizeFor } from "../../../shared/formats";
+import { periodPhrase, prizeFor } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel } from "../../lib/format";
+import { lockIsTheMove } from "../host/hostModel";
 import { boardPeriods, liveCell, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
 
 export type SectionKey = "live" | "needs" | "next" | "final";
@@ -20,9 +21,10 @@ export type BoardAction = HostAction | "pick";
 
 const DAY = 24 * 60 * 60 * 1000;
 
+/** Same rule as the host bar: invite until the board is (nearly) full, then draw. */
 export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSquares">): HostAction {
   if (g.status === "draft") return "finish-setup";
-  if (g.claimed >= g.totalSquares) return "lock";
+  if (lockIsTheMove(g.claimed, g.totalSquares)) return "lock";
   return "invite";
 }
 
@@ -45,7 +47,7 @@ export function sectionOf(g: GameSummary): SectionKey {
   return "next";
 }
 
-/** Most urgent first: a full board holds up the game; a board you're not on yet beats inviting more. */
+/** Most urgent first: a (nearly) full board holds up the game; a board you're not on yet beats inviting more. */
 const ACTION_RANK: Record<BoardAction, number> = { lock: 0, pick: 1, invite: 2, "finish-setup": 3 };
 
 export type Sections = Record<SectionKey, GameSummary[]>;
@@ -127,7 +129,9 @@ export function cardModel(g: GameSummary, now: number): CardModel {
     case "finish-setup":
       return { ...base, status: "Not open yet", statusTone: "brand", statusIsLeft: false, meta: "friends can join once it's open", meter: false, buzz: false };
     case "lock":
-      return { ...base, status: "Board's full", statusTone: "gold", statusIsLeft: false, meta: kickoff ?? mine, meter: true, buzz: false };
+      return left === 0
+        ? { ...base, status: "Board's full", statusTone: "gold", statusIsLeft: false, meta: kickoff ?? mine, meter: true, buzz: false }
+        : { ...base, status: `${left} left`, statusTone: "gold", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
     case "invite":
     case "pick":
       return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
@@ -202,19 +206,18 @@ export function withTeamColors(teamX: Team, teamY: Team): [Team, Team] {
 
 // ---- Plain-language periods ----
 
-const MOMENT: Record<string, string> = { q1: "End of Q1", q2: "Halftime", q3: "End of Q3", final: "Final" };
-
-/** A period as a moment in the game: "Halftime", "End of Q1", "Final", "Score 3". */
-export function momentOf(periodKey: string, label: string): string {
-  return MOMENT[periodKey] ?? label.replace(/\s*\(reverse\)$/, "");
+/**
+ * The app's one period vocabulary (periodPhrase), for a label that may carry
+ * a "(reverse)" suffix: `short` for chips and clocks ("Q1", "Half", "Final"),
+ * `moment` inside sentences ("at halftime", "at the end of Q1", "on score 3").
+ */
+export function phraseOf(periodKey: string, label = ""): { short: string; moment: string } {
+  return periodPhrase(periodKey, label.replace(/\s*\(reverse\)$/, ""));
 }
 
-/** Mid-sentence, with its preposition: "at halftime", "at the end of Q1", "at the Final", "on Score 3". */
-export function atMoment(periodKey: string, label: string): string {
-  if (periodKey === "q2") return "at halftime";
-  if (periodKey === "final") return "at the Final";
-  if (periodKey === "q1" || periodKey === "q3") return `at the end of ${periodKey.toUpperCase()}`;
-  return `on ${label.replace(/\s*\(reverse\)$/, "")}`;
+/** "at halftime" -> "At halftime", for a moment that starts a line. */
+export function capitalize(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
 /** "SEA 22–26 ARI". */
@@ -252,13 +255,15 @@ export interface LiveSnapshot {
   hasScore: boolean;
   /** A real live feed is mid-game. */
   inProgress: boolean;
-  /** "Q3 4:12", "Halftime", "End of Q1", "Numbers drawn". */
+  /** "Q3 4:12" (live feed), "Half", "Q1", "Final" (latest recorded period), "Numbers drawn". */
   clock: string;
   leader: Leader | null;
   /** This device holds the leading square (or its reverse). */
   meWinning: boolean;
-  /** Next fixed period still to be decided, e.g. "Q3". */
+  /** Next fixed period still to be decided, e.g. "Q3" (periodPhrase short). */
   nextLabel: string | null;
+  /** The same period mid-sentence, e.g. "at the end of Q3" (periodPhrase moment). */
+  nextMoment: string | null;
 }
 
 function lastDigit(n: number): number {
@@ -272,6 +277,8 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
   const playerById = new Map(state.players.map((p) => [p.id, p]));
   const results = resolveResults(state);
   const next = upcomingPeriod(state);
+  const nextPhrase = next ? phraseOf(next.key, next.label) : null;
+  const upNext = { nextLabel: nextPhrase?.short ?? null, nextMoment: nextPhrase?.moment || null };
 
   if (live && live.state !== "pre") {
     const now = liveCell(state);
@@ -299,13 +306,13 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
           }
         : null,
       meWinning: leaderId === me || reverseOwner === me,
-      nextLabel: next?.label ?? null,
+      ...upNext,
     };
   }
 
   const last: PeriodResult | undefined = results.at(-1);
   if (!last) {
-    return { scoreX: 0, scoreY: 0, hasScore: false, inProgress: false, clock: "Numbers drawn", leader: null, meWinning: false, nextLabel: next?.label ?? null };
+    return { scoreX: 0, scoreY: 0, hasScore: false, inProgress: false, clock: "Numbers drawn", leader: null, meWinning: false, ...upNext };
   }
   const leaderId = last.winnerPlayerId;
   return {
@@ -313,7 +320,7 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
     scoreY: last.score?.scoreY ?? 0,
     hasScore: last.score !== null,
     inProgress: false,
-    clock: momentOf(last.periodKey, last.label),
+    clock: phraseOf(last.periodKey, last.label).short,
     leader: {
       playerId: leaderId,
       player: leaderId ? (playerById.get(leaderId) ?? null) : null,
@@ -324,7 +331,7 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
       prize: last.prize,
     },
     meWinning: leaderId === me || last.reverseWinnerPlayerId === me,
-    nextLabel: next?.label ?? null,
+    ...upNext,
   };
 }
 
@@ -423,7 +430,7 @@ export function headlineFor(sections: Sections, opts: { winningNow: boolean; hit
   if (todo) {
     switch (actionFor(todo)) {
       case "lock":
-        return { lead: "Your board is full.", hot: "Draw the numbers.", tone: "brand" };
+        return { lead: todo.claimed >= todo.totalSquares ? "Your board is full." : "Almost full.", hot: "Draw the numbers.", tone: "brand" };
       case "pick":
         return { lead: "Squares are open.", hot: "Grab yours.", tone: "brand" };
       case "invite":

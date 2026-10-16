@@ -1,6 +1,7 @@
-// Home's live feed: one live connection per board you're in that's still
-// moving (filling up or in play), so counts, activity and scores change on
-// Home within a second of happening, exactly like on the board itself. Each
+// Home's live feed: one passive live connection (`watch=0`) per board you're
+// in that's still moving (filling up or in play), so counts, activity and
+// scores change on Home within a second of happening, exactly like on the
+// board itself, without showing up in that board's "N watching". Each
 // connection is the board's own LiveGame (socket, reconnect with backoff,
 // polling fallback, catch-up on resume), so Home gets the same guarantees.
 // Finished boards never change: they're fetched once, and only the ones on
@@ -37,7 +38,11 @@ export function browserFeedDeps(): FeedDeps {
   return {
     follow(id) {
       const live = new LiveGame(id, browserLiveDeps());
-      live.start();
+      // Home already has this board's summary, and the socket sends the full
+      // state on connect, so skip the first GET (a socket that can't connect
+      // still falls back to one). Passive: Home following your boards doesn't
+      // count toward a board's "N watching".
+      live.start({ initialFetch: false, passive: true });
       return {
         getState: () => live.store.getServerState(),
         subscribe: live.store.subscribe,

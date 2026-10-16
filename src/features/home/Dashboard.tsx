@@ -29,13 +29,13 @@ import { LiveCard } from "./LiveCard";
 import { LiveCarousel } from "./LiveCarousel";
 import { useHomeFeed } from "./homeFeed";
 import {
-  atMoment,
   boardBuzz,
   cardModel,
   groupBoards,
   headlineFor,
   liveHits,
   liveSnapshot,
+  phraseOf,
   primaryActionId,
   scoreWithTeams,
   withState,
@@ -136,13 +136,13 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
         name={profile.name}
         headline={headline}
         pulse={winPulse}
-        trailing={<ActivityBell items={inbox} now={now} focusGameId={focus?.id ?? null} focusIsHost={focus?.isHost ?? false} />}
+        trailing={<ActivityBell items={inbox} now={now} focusGameId={focus?.id ?? null} />}
       />
 
       <PullIndicator pull={pull} refreshing={refreshing} />
 
       <div
-        className="flex flex-col gap-7 px-safe transition-transform duration-300 ease-out-quint"
+        className="flex flex-col gap-6 px-safe transition-transform duration-300 ease-out-quint"
         style={pull > 0 ? { transform: `translate3d(0, ${pull.toFixed(1)}px, 0)`, transitionDuration: refreshing ? undefined : "0ms" } : undefined}
       >
         {error && (
@@ -309,7 +309,7 @@ function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string
       const reverse = win.label.endsWith("(reverse)");
       toast.show({
         tone: "win",
-        title: `Your ${reverse ? "reverse " : ""}square hit ${atMoment(win.periodKey, win.label)}!`,
+        title: `Your ${reverse ? "reverse " : ""}square hit ${phraseOf(win.periodKey, win.label).moment}!`,
         description: score ? `${game.name} · ${scoreWithTeams(game, score.scoreX, score.scoreY)}` : game.name,
         action: { label: "See it", onClick: () => navigateRef.current(`/g/${game.id}`) },
       });

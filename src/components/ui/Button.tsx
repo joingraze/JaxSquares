@@ -31,7 +31,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   },
   ref,
 ) {
-  const feel = hapticKind ?? (variant === "secondary" || variant === "ghost" ? false : "light");
+  const feel = hapticKind ?? (variant === "secondary" || variant === "outline" || variant === "ghost" ? false : "light");
   const handleClick = (e: MouseEvent<HTMLButtonElement>) => {
     if (feel) void haptic(feel);
     onClick?.(e);

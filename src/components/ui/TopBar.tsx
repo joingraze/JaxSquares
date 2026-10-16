@@ -72,7 +72,8 @@ export function TopBar({ title, subtitle, large = true, largeTitle, back, leadin
         ref={barRef}
         className={cx(
           "sticky top-0 z-30 pt-safe transition-[background-color,box-shadow,backdrop-filter] duration-200",
-          collapsed ? "glass shadow-[0_1px_0_var(--color-line)]" : "bg-transparent",
+          // Solid once content scrolls under it: nothing ghosts through behind the title.
+          collapsed ? "bar-solid" : "bg-transparent",
           className,
         )}
       >

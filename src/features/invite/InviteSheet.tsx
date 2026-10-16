@@ -15,15 +15,17 @@ import "./invite.css";
 import {
   boardCode,
   crewLine,
+  displayLink,
   hostOf,
   invitePitch,
   inviteMessage,
   inviteStage,
-  linkCardTitle,
-  linkDomain,
   matchupLabel,
+  nameMentionsTeams,
   peopleInOrder,
   previewStatus,
+  shortMatchup,
+  shortTeam,
   spelledCode,
 } from "./inviteModel";
 import { QrCode } from "./QrCode";
@@ -64,12 +66,14 @@ export interface InviteSheetProps {
 }
 
 type Flash = "copied-link" | "shared" | "share-copied" | null;
-/** Matchup size on the preview card: it shares the row with the mini board, so long names step down sooner. */
-function cardMatchupText(game: GameState["game"]): string {
-  const len = [...game.teamX.name.trim()].length + [...game.teamY.name.trim()].length;
-  return len <= 11 ? "text-title-2" : len <= 18 ? "text-title-3" : "text-headline";
+/** Title size on the preview card: it shares the row with the mini board, so long names step down sooner. */
+function cardTitleText(title: string): string {
+  const len = [...title.trim()].length;
+  return len <= 14 ? "text-title-2" : len <= 22 ? "text-title-3" : "text-headline";
 }
 const FLASH_MS = 2000;
+/** Team marks shrunk to sit inline with the card's matchup line. */
+const MINI_MARK = "!h-5 !w-auto min-w-6 !rounded-md px-1 !text-[0.5625rem]";
 
 export function InviteSheet({ state, open, onClose, justCreated = false }: InviteSheetProps) {
   const { game } = state;
@@ -241,6 +245,7 @@ interface TextPreviewProps {
 function TextPreview({ state, sender, message, url, copied, onCopy }: TextPreviewProps) {
   const { game } = state;
   const host = hostOf(state);
+  const title = game.name.trim() || shortMatchup(game);
   const status = previewStatus(state);
   return (
     <figure className="m-0 flex animate-fade-in flex-col gap-2">
@@ -275,16 +280,9 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
                       <span className="truncate">{host.name} invited you</span>
                     </p>
                   )}
-                  <div className="mt-2.5 flex items-center gap-1.5">
-                    <TeamMark team={game.teamX} size="sm" />
-                    <span aria-hidden className="text-micro font-extrabold text-ink-muted">
-                      VS
-                    </span>
-                    <TeamMark team={game.teamY} size="sm" />
-                  </div>
-                  <p className={cx("mt-1 line-clamp-2 font-display font-extrabold leading-tight text-ink", cardMatchupText(game))}>
-                    {matchupLabel(game)}
-                  </p>
+                  {/* One title (the board's name), the matchup in short under it. */}
+                  <p className={cx("mt-2 line-clamp-2 font-display font-extrabold leading-tight text-ink", cardTitleText(title))}>{title}</p>
+                  <MatchupLine game={game} />
                   <span
                     className={cx(
                       "mt-2 self-start truncate rounded-full px-2 py-0.5 text-caption font-extrabold",
@@ -310,8 +308,8 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
             </div>
             <div className="flex items-center gap-3 px-3.5 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-subhead font-bold leading-snug text-ink">{linkCardTitle(game)}</p>
-                <p className="truncate text-caption text-ink-muted">{linkDomain(url)}</p>
+                <p className="truncate text-subhead font-bold leading-snug text-ink">Join on JaxSquares</p>
+                <p className="truncate text-caption text-ink-muted">{displayLink(url)}</p>
               </div>
               <span aria-hidden className={cx("shrink-0", copied ? "text-brand-300" : "text-ink-subtle")}>
                 {copied ? <CheckIcon size={18} strokeWidth={3} /> : <CopyIcon size={18} />}
@@ -324,6 +322,30 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
         {copied ? "Copied. Paste it anywhere." : "Tap the card to copy the link."}
       </p>
     </figure>
+  );
+}
+
+/**
+ * The card's subtitle: the matchup in short. Each team's mark, plus its short
+ * name unless the board's name already says it ("Packers vs Bears Squares"
+ * gets just GB vs CHI).
+ */
+function MatchupLine({ game }: { game: GameState["game"] }) {
+  const names = !nameMentionsTeams(game);
+  const side = (team: GameState["game"]["teamX"]) => (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <TeamMark team={team} size="sm" className={MINI_MARK} />
+      {names && <span className="truncate">{shortTeam(team, game.league)}</span>}
+    </span>
+  );
+  return (
+    <p aria-label={shortMatchup(game)} className="mt-1.5 flex min-w-0 items-center gap-1.5 text-caption font-bold text-ink-muted">
+      {side(game.teamX)}
+      <span aria-hidden className="shrink-0 text-micro font-extrabold uppercase text-ink-subtle">
+        vs
+      </span>
+      {side(game.teamY)}
+    </p>
   );
 }
 

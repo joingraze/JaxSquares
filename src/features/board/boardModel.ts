@@ -2,7 +2,7 @@
 // tap rules, period cards, player stats and activity wording. No React, no IO,
 // so the rules the grid follows are unit-tested (boardModel.test.ts).
 
-import { PRESET_INFO, SHARED_DRAW_KEY, everyScoreIndex, everyScorePeriod, prizeFor } from "../../../shared/formats";
+import { PRESET_INFO, SHARED_DRAW_KEY, everyScoreIndex, everyScorePeriod, periodPhrase, prizeFor } from "../../../shared/formats";
 import {
   boardPeriods,
   cellKey,
@@ -522,6 +522,19 @@ export function periodNoun(period: { key: string | null; label: string }): strin
   if (period.key === "q2") return "the half";
   if (period.key === "final") return "the final";
   return period.label;
+}
+
+/**
+ * The "Right now" card's line under the name, in the app's period wording:
+ * live "Wins if it's 17–13 at the end of Q3", otherwise (the last recorded
+ * score) "Wins at halftime if it stays 14–10". Mine reads "Yours …".
+ */
+export function nowSentence(now: Pick<NowView, "live" | "periodKey" | "label" | "scoreX" | "scoreY" | "mine" | "ownerId">): string {
+  const { moment } = periodPhrase(now.periodKey ?? "", now.label);
+  const score = `${now.scoreX}–${now.scoreY}`;
+  const verb = now.mine ? "Yours" : now.ownerId ? "Wins" : "Nobody wins";
+  const line = now.live ? `${verb} if it's ${score} ${moment}` : `${verb} ${moment} if it stays ${score}`;
+  return line.replace(/\s+/g, " ").trim();
 }
 
 // ---- Period cards (results strip) ----

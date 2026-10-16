@@ -36,7 +36,7 @@ import { pushRoutes, type NotifyEvent } from "./push";
 import { RATE_LIMITS, checkRate, type RateRule } from "./rateLimit";
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
-import { loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
+import { closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
 
 export { GameRoom } from "./room";
 
@@ -354,7 +354,8 @@ api.delete("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
   await hostState(c, id);
   await db.deleteGame(c.env.DB, id);
-  defer(c, roomStub(c.env, id).fetch("https://room/close", { method: "POST", headers: { "x-game-id": id } }));
+  // Open boards get { type: "deleted" } and a 4404 close.
+  defer(c, closeRoom(c.env, id));
   return c.json({ ok: true });
 });
 
@@ -596,11 +597,14 @@ api.get("/games/:id/live", async (c) => {
   if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
     return c.json({ error: "Expected a WebSocket upgrade" }, 426);
   }
-  // ?player=<public player id> only de-duplicates the watcher count. Nothing
-  // else from the query is forwarded (a stray ?clientId= is ignored).
-  const player = new URL(c.req.url).searchParams.get("player");
+  // ?player=<public player id> only de-duplicates the watcher count; ?watch=0
+  // makes the socket passive (gets everything, isn't counted as watching).
+  // Nothing else from the query is forwarded (a stray ?clientId= is ignored).
+  const query = new URL(c.req.url).searchParams;
+  const player = query.get("player");
   const target = new URL("https://room/live");
   if (isPlayerId(player)) target.searchParams.set("player", player);
+  if (query.get("watch") === "0") target.searchParams.set("watch", "0");
   const headers = new Headers(c.req.raw.headers);
   headers.set("x-game-id", id);
   return roomStub(c.env, id).fetch(target.toString(), { headers });
@@ -709,10 +713,16 @@ async function wakeLinkedGames(env: Env, now: number): Promise<void> {
   for (const r of results) if (r.status === "rejected") console.error("wake failed", r.reason);
 }
 
+/** Hourly cleanup; boards it deleted (stale drafts) are closed like a host delete. */
+async function housekeep(env: Env, now: number): Promise<void> {
+  const { drafts } = await housekeeping(env, now);
+  await Promise.all(drafts.map((id) => closeRoom(env, id)));
+}
+
 async function scheduled(controller: ScheduledController, env: Env): Promise<void> {
   const now = Date.now();
   const jobs = [wakeLinkedGames(env, now)];
-  if (isHousekeepingTick(controller.scheduledTime || now)) jobs.push(housekeeping(env, now).then(() => undefined));
+  if (isHousekeepingTick(controller.scheduledTime || now)) jobs.push(housekeep(env, now));
   const results = await Promise.allSettled(jobs);
   for (const r of results) if (r.status === "rejected") console.error("cron job failed", r.reason);
 }

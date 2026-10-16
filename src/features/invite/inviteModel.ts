@@ -6,7 +6,9 @@
 // run every message through validatePrizeNote to keep it that way.
 
 import { totalSquares } from "../../../shared/squares";
-import type { Game, GameState, GameStatus, Player } from "../../../shared/types";
+import { NFL_TEAMS } from "../../../shared/teams";
+import type { Game, GameState, GameStatus, Player, Team } from "../../../shared/types";
+import { shortTeamName } from "../create/model";
 
 // ---- Matchup + board code ----
 
@@ -16,6 +18,35 @@ export function matchupLabel(game: Pick<Game, "teamX" | "teamY" | "name">): stri
   const y = game.teamY.name.trim();
   if (x && y) return `${x} vs ${y}`;
   return game.name.trim() || "squares";
+}
+
+/**
+ * The name friends use for a team: "Green Bay Packers" -> "Packers" (an NFL
+ * team, linked or typed), "Penn State Nittany Lions" -> "Penn State"
+ * (college), anything typed stays as typed.
+ */
+export function shortTeam(team: Team, league: Game["league"]): string {
+  const name = team.name.trim().replace(/\s+/g, " ");
+  const nfl = NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
+  if (nfl) return nfl.nickname;
+  if (league === "custom") return name || team.abbr?.trim() || "";
+  return shortTeamName(team, league) || name;
+}
+
+/** "Packers vs Bears": the matchup in the words people text; the board name if teams are missing. */
+export function shortMatchup(game: Pick<Game, "teamX" | "teamY" | "name" | "league">): string {
+  const x = shortTeam(game.teamX, game.league);
+  const y = shortTeam(game.teamY, game.league);
+  if (x && y) return `${x} vs ${y}`;
+  return game.name.trim() || "squares";
+}
+
+/** The board's name already says who's playing ("Packers vs Bears Squares"), so a subtitle needn't repeat the names. */
+export function nameMentionsTeams(game: Pick<Game, "teamX" | "teamY" | "name" | "league">): boolean {
+  const name = game.name.toLowerCase();
+  const x = shortTeam(game.teamX, game.league).toLowerCase();
+  const y = shortTeam(game.teamY, game.league).toLowerCase();
+  return !!x && !!y && name.includes(x) && name.includes(y);
 }
 
 /** The board id as a code to read aloud: uppercase (ids avoid look-alike characters). */
@@ -86,7 +117,7 @@ export function squaresLeftLabel(left: number): string {
  */
 export function inviteMessage(state: Pick<GameState, "game" | "squares" | "players">, viewerId: string | null): string {
   const { game } = state;
-  const matchup = matchupLabel(game);
+  const matchup = shortMatchup(game);
   const whose = viewerId && viewerId === game.hostPlayerId ? "my" : "our";
   const { left, total } = boardStats(state);
   switch (game.status) {

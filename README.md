@@ -36,7 +36,38 @@ Formats (`shared/formats.ts`):
 
 Options: **Classic 10×10** (100 squares) or **Quick 5×5** (25 squares, two digits
 per row/column), **reverse winners** (the square with the digits swapped wins
-too), and **new numbers each quarter** (quarters format).
+too), and **new numbers each quarter** (quarters format). Every screen names
+periods the same way (`periodPhrase` in `shared/formats.ts`: "Q1", "Half",
+"Final" on chips; "at halftime", "at the end of Q1" in sentences).
+
+## What's in the app
+
+- **One-tap create**: the soonest real game is pre-picked; one tap creates and
+  opens the board (test checkout and the App Store), with Apple Pay / Google Pay
+  as the one extra step on the live web checkout.
+- **Live board**: every claim, draw and score lands on every open phone within
+  a second, with a scorebug, a "right now" winner, toasts and haptics, and a
+  "N watching" count.
+- **Live dashboard (Home)**: boards grouped Live now / Needs you / Up next /
+  Final, each card updating in real time (Home follows your boards over the
+  same sockets, without counting toward "watching"), with the latest score and
+  who's winning, and one next action per card (invite, draw numbers, finish
+  setup).
+- **Activity inbox**: the bell on Home collects wins, friends joining and
+  grabbing squares, numbers drawn, finals and "your board is full" across every
+  board, with an unread count.
+- **Invite**: a text-first share sheet (the message and link preview your
+  friends get), plus a QR code and a six-character board code for people in
+  the same room; "Join with a code" on Home takes the code or a pasted link.
+  Links preview as "Join <board name>" in chat apps.
+- **Host tools**: a host bar on the board with the next move (open, invite,
+  lock & draw, enter a score), score entry, picking a winner by hand, editing
+  the name, prize notes and square limit, ending or deleting the board, and a
+  host link to run the board from another phone.
+- **Notifications**: web push and native pushes for numbers drawn, kickoff,
+  your square hitting, board full, friends joining (quietly) and game over;
+  mute any single board; live alerts while a board is open
+  ([docs/push.md](docs/push.md)).
 
 The host's device keeps an admin token for the board; everyone else is
 identified only by an anonymous device id. See "Identity" in
@@ -62,7 +93,7 @@ shared/          Types + pure game logic (used by client AND worker, unit-tested
 worker/          Cloudflare Worker
   index.ts       Core routes, well-known files, invite previews, cron
   db.ts          Core D1 access
-  room.ts        GameRoom Durable Object (sockets, presence, live polling)
+  room.ts        GameRoom Durable Object (sockets, presence, live polling, delete)
   service.ts     Shared core operations (state, broadcast, live updates)
   scores/        ESPN schedule + live scores
   payments/      Stripe, Apple IAP, test checkout
@@ -70,7 +101,8 @@ worker/          Cloudflare Worker
 migrations/      D1 migrations
 src/             React app
   pages/         Routes (Home, CreateGame, GameView, Profile, Kit, ...)
-  features/      Board, create, host, invite, notifications
+  features/      Board, create (+ checkout), home (dashboard, inbox), host,
+                 invite (QR, code), notifications
   components/ui  Component kit (browse at /kit in dev)
   lib/           api client, identity, live (useGame), native bridges, push, checkout
 docs/            Architecture contract, payments, push, iOS, App Store

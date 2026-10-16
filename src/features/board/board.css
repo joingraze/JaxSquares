@@ -738,6 +738,16 @@
   }
 }
 
+/*
+ * Short phones (iPhone SE): the grid comes first. "How close am I" is also in
+ * Your squares right under the grid, so the card's second row steps aside.
+ */
+@media (max-height: 720px) {
+  .jx-now-path {
+    display: none;
+  }
+}
+
 /* Ticker at the bottom of the board screen (in place of top toasts). */
 .jx-ticker {
   animation: jx-ticker-in 260ms var(--ease-spring) both;

@@ -1,6 +1,9 @@
 // GameRoom: one Durable Object per game (idFromName(gameId)). Holds the game's
 // hibernatable WebSockets, fans out state pushed by the Worker, tracks who is
 // watching, and polls live scores with an alarm while a linked game is on.
+//
+// Sockets opened with ?watch=0 are passive (Home following every board you're
+// in): they get every message but aren't counted in presence.
 
 import { isPlayerId } from "../shared/playerId";
 import type { Activity, GameState, LiveMessage } from "../shared/types";
@@ -20,6 +23,26 @@ interface Attachment {
   /** Public player id from ?player= (only used to count devices once). */
   playerId: string | null;
   connectedAt: number;
+  /** ?watch=0: receives everything, never counted as watching. Absent on sockets from before it existed. */
+  passive?: boolean;
+}
+
+/** Close code (and the `{ type: "deleted" }` message before it) for a deleted board. */
+export const CLOSE_DELETED = 4404;
+
+/**
+ * Distinct devices watching: active sockets de-duplicated by player id, plus
+ * active sockets without one (counted individually). Passive sockets don't count.
+ */
+export function countWatching(attachments: readonly (Attachment | null)[]): number {
+  const devices = new Set<string>();
+  let anonymous = 0;
+  for (const a of attachments) {
+    if (a?.passive) continue;
+    if (a?.playerId) devices.add(a.playerId);
+    else anonymous++;
+  }
+  return devices.size + anonymous;
 }
 
 export type PollPlan = { kind: "stop" } | { kind: "now" } | { kind: "at"; at: number };
@@ -77,10 +100,19 @@ export class GameRoom implements DurableObject {
     }
 
     if (request.method === "POST" && url.pathname === "/close") {
-      // The game was deleted: tell clients (4404) and stop polling.
+      // The game was deleted: tell clients, close their sockets (4404), stop polling.
+      // The explicit message comes first because a close frame can reach the
+      // client late: local workerd holds the TCP connection ~10 s after the close
+      // handshake, and the dev server only forwards the close once it ends.
+      const deleted = message({ type: "deleted" });
       for (const ws of this.ctx.getWebSockets()) {
         try {
-          ws.close(4404, "Game not found");
+          ws.send(deleted);
+        } catch {
+          // closing; the close below (or the client's own) finishes it
+        }
+        try {
+          ws.close(CLOSE_DELETED, "Game not found");
         } catch {
           // already closing
         }
@@ -104,12 +136,17 @@ export class GameRoom implements DurableObject {
     const server = pair[1];
     this.ctx.acceptWebSocket(server);
     const player = url.searchParams.get("player");
-    server.serializeAttachment({ playerId: isPlayerId(player) ? player : null, connectedAt: Date.now() } satisfies Attachment);
+    const passive = url.searchParams.get("watch") === "0";
+    const attachment: Attachment = { playerId: isPlayerId(player) ? player : null, connectedAt: Date.now() };
+    if (passive) attachment.passive = true;
+    server.serializeAttachment(attachment);
 
     // Current state first so the board renders instantly, then who's here.
+    // A passive socket doesn't change the count, so only it hears the number.
     server.send(message({ type: "state", state }));
     this.lastVersion = Math.max(this.lastVersion, state.version);
-    this.sendPresence();
+    if (passive) this.sendPresence(undefined, server);
+    else this.sendPresence();
     await this.schedulePolling(state);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -132,11 +169,11 @@ export class GameRoom implements DurableObject {
     } catch {
       // already closed
     }
-    this.sendPresence(ws);
+    if (!isPassive(ws)) this.sendPresence(ws);
   }
 
   async webSocketError(ws: WebSocket): Promise<void> {
-    this.sendPresence(ws);
+    if (!isPassive(ws)) this.sendPresence(ws);
   }
 
   async alarm(): Promise<void> {
@@ -186,18 +223,15 @@ export class GameRoom implements DurableObject {
     }
   }
 
-  /** Distinct devices watching (sockets without a player id count individually). */
-  private sendPresence(exclude?: WebSocket): void {
+  /**
+   * Sends the watcher count (see countWatching) to every open socket, or only
+   * to `only`. `exclude` is a socket that is going away.
+   */
+  private sendPresence(exclude?: WebSocket, only?: WebSocket): void {
     const sockets = this.ctx.getWebSockets().filter((ws) => ws !== exclude && ws.readyState === SOCKET_OPEN);
-    const devices = new Set<string>();
-    let anonymous = 0;
-    for (const ws of sockets) {
-      const a = ws.deserializeAttachment() as Attachment | null;
-      if (a?.playerId) devices.add(a.playerId);
-      else anonymous++;
-    }
-    const m = message({ type: "presence", watching: devices.size + anonymous });
-    for (const ws of sockets) {
+    const watching = countWatching(sockets.map((ws) => ws.deserializeAttachment() as Attachment | null));
+    const m = message({ type: "presence", watching });
+    for (const ws of only ? [only] : sockets) {
       try {
         ws.send(m);
       } catch {
@@ -232,4 +266,12 @@ export class GameRoom implements DurableObject {
 
 function message(m: LiveMessage): string {
   return JSON.stringify(m);
+}
+
+function isPassive(ws: WebSocket): boolean {
+  try {
+    return (ws.deserializeAttachment() as Attachment | null)?.passive === true;
+  } catch {
+    return false;
+  }
 }

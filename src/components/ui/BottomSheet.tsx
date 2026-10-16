@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { XIcon } from "../icons";
+import { useBottomChrome } from "./bottomChrome";
 import { cx } from "./cx";
 import { IconButton } from "./IconButton";
 import { focusablesIn, lockBackground } from "./modalLock";
@@ -72,6 +73,26 @@ export function BottomSheet({
   const titleId = useId();
   const descId = useId();
   const keyboard = useKeyboardInset(mounted);
+
+  // While open, toasts sit just above the sheet's footer (or its bottom edge), over the sheet.
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [footerH, setFooterH] = useState(0);
+  const hasFooter = Boolean(footer);
+  useLayoutEffect(() => {
+    const el = footerRef.current;
+    if (!el) {
+      setFooterH(0);
+      return;
+    }
+    const update = () => setFooterH(el.offsetHeight);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [mounted, hasFooter]);
+  const bottomSpace = keyboard ? "12px" : "max(1rem, var(--safe-bottom))";
+  useBottomChrome(shown && open ? `calc(${keyboard}px + ${footerH}px + ${bottomSpace})` : null, true);
 
   // Mount, then flip to "shown" on the next frames so the enter transition runs.
   useEffect(() => {
@@ -288,7 +309,7 @@ export function BottomSheet({
           {(title || dismissible) && (
             <div className={cx("flex items-start gap-3", title ? "mt-3" : "mt-1 justify-end")}>
               {title && (
-                <div className="min-w-0 flex-1 pt-1">
+                <div className="min-w-0 flex-1 pt-2.5">
                   <h2 id={titleId} className="font-display text-title-3 font-extrabold text-ink">
                     {title}
                   </h2>
@@ -299,15 +320,21 @@ export function BottomSheet({
                   )}
                 </div>
               )}
-              {dismissible && <IconButton label="Close" icon={<XIcon size={18} />} variant="solid" size="sm" onClick={requestClose} />}
+              {dismissible && (
+                <IconButton label="Close" icon={<XIcon size={20} />} variant="solid" size="md" className="-mr-1.5" onClick={requestClose} />
+              )}
             </div>
           )}
         </div>
         <div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-4 pt-2">
           {children}
         </div>
-        {footer && <div className="shrink-0 border-t border-line px-5 pt-3">{footer}</div>}
-        <div aria-hidden className="shrink-0" style={{ height: keyboard ? 12 : "max(1rem, var(--safe-bottom))" }} />
+        {footer && (
+          <div ref={footerRef} className="shrink-0 border-t border-line px-5 pt-3">
+            {footer}
+          </div>
+        )}
+        <div aria-hidden className="shrink-0" style={{ height: bottomSpace }} />
       </div>
     </div>,
     document.body,

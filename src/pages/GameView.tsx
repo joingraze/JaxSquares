@@ -6,15 +6,20 @@
 // ended now (the "Right now" card and the lit square), and how close am I.
 // Board notices go to a bottom ticker or a callout on the square, never over
 // the top bar or the scoreboard.
+//
+// The grid is what people came for: everything above it is a compact row, so
+// the whole board is on the first screen of an iPhone in every state; the
+// rest (find a player, my numbers, results, players, activity) sits below it.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { periodPhrase } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, gridSize, resolveResults, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
 import { GridIcon, SearchIcon, ShareIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
-import { ActivityFeed, ActivityGlyph } from "../features/board/ActivityFeed";
+import { ActivityFeed } from "../features/board/ActivityFeed";
 import { Board, type BoardCallout } from "../features/board/Board";
 import {
   EMPTY_SELECTION,
@@ -29,9 +34,9 @@ import {
   lostToOthers,
   drawTabs,
   headlineScore,
-  isSystemActivity,
   myNumbers,
   myWinIds,
+  nowSentence,
   periodCards,
   playerRows,
   pruneSelection,
@@ -47,22 +52,26 @@ import { RightNow } from "../features/board/RightNow";
 import { Scorebug } from "../features/board/Scorebug";
 import { celebratedWins, markCelebrated } from "../features/board/storage";
 import { Ticker } from "../features/board/Ticker";
-import { useTicker, type TickerTone } from "../features/board/useTicker";
+import { useTicker } from "../features/board/useTicker";
 import { useNow } from "../features/board/useNow";
 import { HostControls } from "../features/host/HostControls";
 import { InviteHero } from "../features/invite/InviteHero";
 import { InviteSheet } from "../features/invite/InviteSheet";
+import { JoinedCard } from "../features/invite/JoinedCard";
 import { JoinSheet } from "../features/invite/JoinSheet";
-import { describeActivity } from "../features/notifications/activity";
+import { boardAlert } from "../features/notifications/alerts";
+import { alertTickerNote } from "../features/notifications/BoardAlert";
 import { NotifyPrompt } from "../features/notifications/NotifyPrompt";
 import { api, errorMessage, inviteUrl } from "../lib/api";
 import { pluralize, teamVars } from "../lib/format";
-import { getPlayerId, isHostOf } from "../lib/identity";
+import { getAdminToken, getPlayerId, isHostOf } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 
 type Cell = { row: number; col: number };
 type Spotlight = { kind: "period" | "cell" | "player"; id: string };
+/** My wins being celebrated (period keys, board order); `burst` only for one that just happened. */
+type Glory = { periods: string[]; burst: boolean };
 
 /** How long a callout stays pinned to a square. */
 const CALLOUT_MS = 2600;
@@ -79,32 +88,32 @@ export default function GameView() {
   const now = useNow();
   useHideTabBar();
 
-  // ---- live activity -> the bottom ticker ----
+  // ---- live activity -> the bottom ticker (one alert per moment; tap one to see its square) ----
+  // Read through a ref: the jump needs the board's current draw tabs and scroll position.
+  const jumpRef = useRef<(cell: Cell, periodKey: string | null) => void>(() => {});
   const onActivity = useCallback(
     (a: Activity, s: GameState) => {
-      let ann: ReturnType<typeof describeActivity> = null;
+      let alert: ReturnType<typeof boardAlert> = null;
       try {
-        ann = describeActivity(a, s, me);
+        alert = boardAlert(a, s, me);
       } catch {
-        ann = null;
+        alert = null;
       }
-      if (!ann) return;
-      // My own win gets the gold banner (and a buzz) from the win effect below; no need to say it twice.
-      if (a.type === "winner" && ann.celebrate) return;
-      const actor = a.actor ? s.players.find((p) => p.id === a.actor) : undefined;
-      const tone: TickerTone = ann.tone === "win" ? "win" : ann.tone === "live" ? "live" : a.type === "joined" || a.type === "claimed" ? "social" : "neutral";
+      // My own win: the gold banner says it (and buzzes) from the win effect below.
+      if (!alert || alert.banner) return;
+      const note = alertTickerNote(alert, s, me);
+      const cell = note.cell;
+      const periodKey = typeof (a.data as Record<string, unknown> | null)?.periodKey === "string" ? String((a.data as Record<string, unknown>).periodKey) : null;
       ticker.show({
-        title: ann.text,
-        tone,
-        // System events (numbers drawn, scores, winners, final) always wear their own glyph; people wear their avatar.
-        icon: isSystemActivity(a.type) ? (
-          <ActivityGlyph type={a.type} size={32} className="rounded-xl" />
-        ) : actor ? (
-          <Avatar name={actor.name} color={actor.color} emoji={actor.emoji} size="md" decorative />
-        ) : undefined,
-        duration: tone === "win" ? 2800 : 2200,
+        key: note.key,
+        title: note.title,
+        detail: note.detail,
+        icon: note.icon,
+        tone: note.tone,
+        duration: note.duration,
+        onTap: cell ? () => jumpRef.current(cell, periodKey) : undefined,
       });
-      if (ann.haptic) void haptic(ann.haptic);
+      if (alert.haptic) void haptic(alert.haptic);
     },
     [me, ticker],
   );
@@ -122,6 +131,11 @@ export default function GameView() {
   // Landed here from checkout (stays true after the invite sheet closes).
   const [fromCheckout, setFromCheckout] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
+  // The "get notified" ask for a board I just created (after its invite sheet closes).
+  const [createdAsk, setCreatedAsk] = useState(false);
+  // A newcomer just joined: the "You're in" card (with "Bring a friend") sits above the board until dismissed.
+  const [welcome, setWelcome] = useState(false);
+  const welcomeRef = useRef(false);
   const [zoom, setZoom] = useState(false);
   const [spot, setSpot] = useState<Spotlight | null>(null);
   const [drawPick, setDrawPick] = useState<string | null>(null);
@@ -129,8 +143,8 @@ export default function GameView() {
   const pickResolve = useRef<((cell: Cell | null) => void) | null>(null);
   const [busy, setBusy] = useState(false);
   const [callout, setCallout] = useState<BoardCallout | null>(null);
-  /** Period key of a win being celebrated right now (the big banner), else null. */
-  const [glory, setGlory] = useState<string | null>(null);
+  /** Wins being celebrated right now (the gold banner), else null. */
+  const [glory, setGlory] = useState<Glory | null>(null);
   const gloryRef = useRef<HTMLElement>(null);
   const hadState = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -234,8 +248,9 @@ export default function GameView() {
     return () => clearInterval(t);
   }, [draftAfterCheckout, refresh]);
 
-  // My square won: a buzz, the gold banner and a short burst on it, once per win per device.
-  // A win first seen later (opened mid-game, a later period already decided) just gets a note.
+  // My square won: a buzz and the gold banner, once per win per device; a short burst on it when
+  // the win just happened. A win first seen later (opened mid-game) gets the same banner, quietly:
+  // inline above the board, never a note floating over it.
   useEffect(() => {
     if (!game || winIds.length === 0) return;
     const seen = celebratedWins(game.id);
@@ -245,18 +260,16 @@ export default function GameView() {
     const latest = results[results.length - 1];
     const freshPeriods = new Set(fresh.map((w) => w.split(":")[0]));
     void haptic("success");
-    if (latest && freshPeriods.has(latest.periodKey)) {
-      setGlory(latest.periodKey);
-    } else {
-      const label = results.filter((r) => freshPeriods.has(r.periodKey)).map((r) => r.label);
-      ticker.show({ title: `You won ${label.join(" + ")} 🏆`, detail: "It's on the Winners card below.", tone: "win", duration: 2400 });
-    }
-  }, [game, winIds, results, ticker]);
+    setGlory({
+      periods: results.filter((r) => freshPeriods.has(r.periodKey)).map((r) => r.periodKey),
+      burst: !!latest && freshPeriods.has(latest.periodKey),
+    });
+  }, [game, winIds, results]);
 
   // The celebration is a moment: one burst on the banner, then it folds into the Winners card.
   useEffect(() => {
     if (!glory) return;
-    const raf = requestAnimationFrame(() => burstOn(gloryRef.current));
+    const raf = glory.burst ? requestAnimationFrame(() => burstOn(gloryRef.current)) : 0;
     const t = setTimeout(() => setGlory(null), GLORY_MS);
     return () => {
       cancelAnimationFrame(raf);
@@ -320,10 +333,20 @@ export default function GameView() {
     boardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
-  // NotifyPrompt decides for itself whether to ask (it remembers dismissals per trigger and closes itself otherwise).
-  const maybeAskNotify = useCallback(() => {
-    setTimeout(() => setNotifyOpen(true), 1200);
-  }, []);
+  // A ticker alert was tapped: light up its square (under that period's numbers on fresh-number boards).
+  jumpRef.current = (cell, periodKey) => {
+    const g = stateRef.current?.game;
+    if (!g || pickingRef.current) return;
+    void haptic("selection");
+    setCallout(null);
+    if (periodKey && g.format.freshNumbers) setDrawPick(drawKeyOf(g, periodKey));
+    setSpot({ kind: "cell", id: cellKey(cell.row, cell.col) });
+    scrollToBoard();
+  };
+
+  // NotifyPrompt decides for itself whether to ask (it remembers dismissals per trigger and closes
+  // itself otherwise), and an automatic ask after a claim waits for the confetti on its own.
+  const maybeAskNotify = useCallback(() => setNotifyOpen(true), []);
 
   const claim = useCallback(
     async (cellsToClaim: Cell[]) => {
@@ -336,7 +359,8 @@ export default function GameView() {
         if (res.claimed > 0) {
           void haptic("success");
           void celebrate("pop", { origin: { x: 0.5, y: 0.82 } });
-          if (firstSquares) {
+          // (A newcomer's "You're in" card says this already.)
+          if (firstSquares && !welcomeRef.current) {
             const after = stateRef.current;
             const mineNow = after?.squares.find((sq) => sq.playerId === getPlayerId() && cellsToClaim.some((c) => c.row === sq.row && c.col === sq.col));
             const first = mineNow ?? cellsToClaim[0];
@@ -409,11 +433,18 @@ export default function GameView() {
       setJoinOpen(false);
       const picked = cellsOf(selectionRef.current.claim);
       setSelection(EMPTY_SELECTION);
+      // The welcome card ("You're in", what you got, Bring a friend) takes it from here.
+      welcomeRef.current = true;
+      setWelcome(true);
       if (picked.length > 0) void claim(picked);
-      else ticker.show({ title: "You're in!", detail: "Tap any open square to claim it.", tone: "success" });
     },
-    [receive, claim, ticker],
+    [receive, claim],
   );
+
+  const dismissWelcome = useCallback(() => {
+    welcomeRef.current = false;
+    setWelcome(false);
+  }, []);
 
   // A sheet may close itself right before reporting the join; let onJoined win.
   const onJoinClose = useCallback(() => {
@@ -525,7 +556,9 @@ export default function GameView() {
     const where = axis.drawn
       ? `${s.game.teamX.abbr || s.game.teamX.name} ${axis.x[cell.col]} · ${s.game.teamY.abbr || s.game.teamY.name} ${axis.y[cell.row]}`
       : "Numbers get drawn at lock";
-    const won = cell.wins.length ? `Won ${cell.wins.map((w) => (w.reverse ? `${w.label} (reverse)` : w.label)).join(", ")}` : null;
+    const won = cell.wins.length
+      ? `Won ${cell.wins.map((w) => `${periodPhrase(w.periodKey, w.label).short}${w.reverse ? " (reverse)" : ""}`).join(", ")}`
+      : null;
     void haptic("light");
     setCallout({
       key: cell.key,
@@ -536,7 +569,7 @@ export default function GameView() {
           title={cell.mine ? "Your square" : `${owner?.name ?? "Someone"}'s square`}
           detail={where}
           extra={won}
-          now={cell.live ? (nowView?.live ? `Takes ${nowView.label} if it ended now` : nowView ? `Takes ${nowView.label} if nobody scores` : null) : null}
+          now={cell.live && nowView && !nowView.everyScore ? nowSentence({ ...nowView, mine: false, ownerId: cell.ownerId }) : null}
         />
       ),
     });
@@ -547,10 +580,11 @@ export default function GameView() {
   const brag = useCallback(async () => {
     if (!state) return;
     const won = new Set(myWinIds(results, me).map((w) => w.split(":")[0]));
-    const label = results.filter((r) => won.has(r.periodKey)).at(-1)?.label ?? "a square";
+    const last = results.filter((r) => won.has(r.periodKey)).at(-1);
+    const when = last ? periodPhrase(last.periodKey, last.label).moment : "";
     const outcome = await shareLink({
       title: state.game.name,
-      text: `My square just hit for ${label} on ${state.game.name} 🏆`,
+      text: `My square just hit${when ? ` ${when}` : ""} on ${state.game.name} 🏆`,
       url: inviteUrl(state.game.id),
     });
     if (outcome === "copied") ticker.show({ title: "Link copied", detail: "Paste it in the group chat.", tone: "success" });
@@ -624,7 +658,7 @@ export default function GameView() {
     (nowOnBoard ? cellKey(nowOnBoard.cell.row, nowOnBoard.cell.col) : null) ??
     (firstMine ? cellKey(firstMine.row, firstMine.col) : null);
   const myWinResults = results.filter((r) => r.winnerPlayerId === me || r.reverseWinnerPlayerId === me);
-  const gloryResult = glory ? (results.find((r) => r.periodKey === glory) ?? null) : null;
+  const gloryResults = glory ? results.filter((r) => glory.periods.includes(r.periodKey)) : [];
   const headline = headlineScore(state);
   const abbr = (t: typeof game.teamX) => t.abbr || t.name;
   const compactTitle =
@@ -643,6 +677,13 @@ export default function GameView() {
       ? `These are the ${tabs.find((t) => t.key === drawKey)?.label ?? ""} numbers. The square in play is on the ${tabs.find((t) => t.key === nowView.drawKey)?.label ?? "current"} tab.`
       : null;
   const playerSpot = spot?.kind === "player" ? spot.id : null;
+  // Host tools render only on the device holding the admin token.
+  const hostBar = isHost && !!getAdminToken(game.id);
+  const showSpot = (periodKey: string) => {
+    setSpot({ kind: "period", id: periodKey });
+    if (game.format.freshNumbers) setDrawPick(drawKeyOf(game, periodKey));
+    scrollToBoard();
+  };
 
   return (
     <div style={teamVars(game.teamX, game.teamY)} className="flex flex-1 flex-col">
@@ -653,9 +694,9 @@ export default function GameView() {
         trailing={<IconButton label="Invite friends" icon={<ShareIcon size={22} />} onClick={share} haptic="light" />}
       />
 
-      <div className="flex flex-col gap-4 px-safe pt-1">
+      <div className="flex flex-col gap-3 px-safe pt-1">
         {connection === "offline" && (
-          <p className="flex items-center gap-2 rounded-2xl bg-danger-500/12 px-3.5 py-2.5 text-footnote font-semibold text-danger-300 ring-1 ring-inset ring-danger-500/30">
+          <p className="flex items-center gap-2 rounded-2xl bg-danger-500/12 px-3.5 py-2 text-footnote font-semibold text-danger-300 ring-1 ring-inset ring-danger-500/30">
             <WifiOffIcon size={16} />
             You're offline. Showing the last update.
           </p>
@@ -670,31 +711,27 @@ export default function GameView() {
           )}
         </div>
 
-        {gloryResult ? (
-          <WinBanner
-            anchorRef={gloryRef}
-            label={gloryResult.label}
-            prize={gloryResult.prize}
-            onBrag={() => void brag()}
-            onShow={() => {
-              setSpot({ kind: "period", id: gloryResult.periodKey });
-              scrollToBoard();
-            }}
-          />
-        ) : (
-          phase === "final" &&
-          myWinResults.length > 0 && (
-            <WinShelf
-              labels={myWinResults.map((r) => r.label)}
-              prize={myWinResults[myWinResults.length - 1].prize}
+        {/* My wins, one slim row. Out of the way while the host taps a square. */}
+        {!pick &&
+          (gloryResults.length > 0 ? (
+            <WinBanner
+              anchorRef={gloryRef}
+              periods={gloryResults.map((r) => ({ key: r.periodKey, label: r.label }))}
+              prize={gloryResults[gloryResults.length - 1].prize}
               onBrag={() => void brag()}
-              onShow={() => {
-                setSpot({ kind: "period", id: myWinResults[myWinResults.length - 1].periodKey });
-                scrollToBoard();
-              }}
+              onShow={() => showSpot(gloryResults[gloryResults.length - 1].periodKey)}
             />
-          )
-        )}
+          ) : (
+            phase === "final" &&
+            myWinResults.length > 0 && (
+              <WinShelf
+                labels={myWinResults.map((r) => periodPhrase(r.periodKey, r.label).short)}
+                prize={myWinResults[myWinResults.length - 1].prize}
+                onBrag={() => void brag()}
+                onShow={() => showSpot(myWinResults[myWinResults.length - 1].periodKey)}
+              />
+            )
+          ))}
 
         {isHost && (
           <div className="empty:hidden">
@@ -702,20 +739,19 @@ export default function GameView() {
           </div>
         )}
 
-        {game.status === "draft" && (
-          <p className="rounded-2xl bg-surface-2 px-4 py-3 text-subhead text-ink-muted ring-1 ring-inset ring-line">
-            {isHost
-              ? fromCheckout
-                ? "Confirming your payment. This usually takes a few seconds."
-                : "Finish checkout to open this board for squares."
-              : "The host is still setting this board up. Check back in a bit."}
+        {/* Host tools say "Open board" for an unpaid board; right after checkout the payment is just landing. */}
+        {game.status === "draft" && isHost && fromCheckout && (
+          <p className="rounded-2xl bg-surface-2 px-3.5 py-2.5 text-footnote text-ink-muted ring-1 ring-inset ring-line">
+            Confirming your payment. This usually takes a few seconds.
           </p>
         )}
+
+        {welcome && joined && <JoinedCard state={state} onDismiss={dismissWelcome} />}
 
         {/* ---- the grid ---- */}
         <section ref={boardRef} aria-label="Squares" className="-mx-2 scroll-mt-24">
           {nowView && !pick ? (
-            <div className="mb-3 px-2">
+            <div className="mb-2 px-2">
               <RightNow
                 now={nowView}
                 players={state.players}
@@ -731,15 +767,16 @@ export default function GameView() {
             </div>
           ) : (
             !newcomer &&
-            !pick && (
-              <div className="mb-2 flex min-h-6 items-center gap-2 px-3 text-footnote leading-snug text-ink-muted">
-                <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} />
+            !pick &&
+            !(phase === "draft" && hostBar) && (
+              <div className="mb-1 flex min-h-6 items-center gap-2 px-3 text-footnote leading-snug text-ink-muted">
+                <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} />
               </div>
             )
           )}
 
           {tabs.length > 1 && (
-            <div className="mb-3 px-2">
+            <div className="mb-1 px-2">
               <SegmentedControl
                 size="sm"
                 aria-label="Numbers for period"
@@ -752,13 +789,13 @@ export default function GameView() {
           )}
 
           {pick && (
-            <div className="mx-2 mb-3 flex items-center gap-3 rounded-2xl bg-gold-400 px-3.5 py-2.5 text-ink-inverse shadow-glow-gold animate-pop">
+            <div className="mx-2 mb-2 flex items-center gap-3 rounded-2xl bg-gold-400 px-3.5 py-2 text-ink-inverse shadow-glow-gold animate-pop">
               <TrophyIcon size={18} filled className="shrink-0" />
               <p className="min-w-0 flex-1 text-subhead font-extrabold leading-snug">{pick.prompt}</p>
               <button
                 type="button"
                 onClick={() => endPick(null)}
-                className="pressable shrink-0 rounded-full bg-black/15 px-3 py-1.5 text-footnote font-extrabold"
+                className="pressable flex h-11 shrink-0 items-center rounded-full bg-black/15 px-3.5 text-footnote font-extrabold"
               >
                 Cancel
               </button>
@@ -797,11 +834,11 @@ export default function GameView() {
                     aria-pressed={zoom}
                     aria-label={zoom ? "Fit the whole board" : "Zoom in on the board"}
                     className={cx(
-                      "pressable tap-target flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-footnote font-extrabold ring-1 ring-inset",
+                      "pressable flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-footnote font-extrabold ring-1 ring-inset",
                       zoom ? "bg-brand-400 text-ink-inverse ring-brand-400" : "bg-surface-3 text-ink ring-line-strong",
                     )}
                   >
-                    {zoom ? <GridIcon size={14} /> : <SearchIcon size={14} />}
+                    {zoom ? <GridIcon size={15} /> : <SearchIcon size={15} />}
                     {zoom ? "Fit" : "Zoom"}
                   </button>
                 ) : undefined
@@ -833,7 +870,7 @@ export default function GameView() {
           <section aria-label="Results">
             <div className="mb-2 flex items-center justify-between gap-2 px-1">
               <p className="eyebrow text-ink-subtle">{phase === "open" || phase === "draft" ? "What's up for grabs" : "Winners"}</p>
-              {myWinResults.length > 0 && !gloryResult && phase !== "final" && (
+              {myWinResults.length > 0 && gloryResults.length === 0 && phase !== "final" && (
                 <button
                   type="button"
                   onClick={() => void brag()}
@@ -934,7 +971,7 @@ export default function GameView() {
         </ActionBar>
       )}
 
-      <Ticker note={tickerNote} lifted={showBar} onDismiss={dismissTicker} />
+      <Ticker note={tickerNote} onDismiss={dismissTicker} />
 
       <InviteSheet
         state={state}
@@ -943,11 +980,14 @@ export default function GameView() {
         justCreated={justCreated}
         onClose={() => {
           setInviteOpen(false);
+          // Fresh from creating the board: now's the moment to offer notifications.
+          if (justCreated) setCreatedAsk(true);
           setJustCreated(false);
         }}
       />
       <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} />
       <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
+      <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
     </div>
   );
 }
@@ -980,13 +1020,15 @@ function BoardHint({
   joined,
   mineCount,
   left,
+  isHost,
 }: {
   phase: ReturnType<typeof boardPhase>;
   joined: boolean;
   mineCount: number;
   left: number | null;
+  isHost: boolean;
 }) {
-  if (phase === "draft") return <span>Squares open once the board is live.</span>;
+  if (phase === "draft") return <span>{isHost ? "Open the board so friends can pick squares." : "The host is still setting this board up."}</span>;
   if (phase === "open") {
     if (!joined) return <b className="font-bold text-ink">Tap any open square to jump in.</b>;
     if (mineCount === 0) return <b className="font-bold text-ink">Tap open squares to pick yours.</b>;
@@ -1007,32 +1049,44 @@ function BoardHint({
   );
 }
 
+/**
+ * My square just hit: one slim gold row above the board (it never covers the grid or the
+ * chips under it), then it folds into the Winners card. Several wins first seen together share it.
+ */
 function WinBanner({
   anchorRef,
-  label,
+  periods,
   prize,
   onBrag,
   onShow,
 }: {
   anchorRef: Ref<HTMLElement>;
-  label: string;
+  periods: { key: string; label: string }[];
   prize: string | null;
   onBrag: () => void;
   onShow: () => void;
 }) {
+  // One win reads as a moment ("hit at halftime"); several list their periods like chips ("hit Q1 + Half").
+  const line =
+    periods.length > 1
+      ? `Your squares hit ${periods.map((p) => periodPhrase(p.key, p.label).short).join(" + ")}`
+      : `Your square hit ${periods[0] ? periodPhrase(periods[0].key, periods[0].label).moment : ""}`.trim();
   return (
     <section
       ref={anchorRef}
       aria-label="You won"
-      className="jx-shine jx-glory relative flex items-center gap-3 overflow-hidden rounded-card bg-[linear-gradient(140deg,var(--color-gold-300),var(--color-gold-500)_60%,var(--color-gold-600))] p-3.5 pr-3 text-ink-inverse shadow-glow-gold"
+      className="jx-shine jx-glory relative flex items-center gap-2.5 overflow-hidden rounded-2xl bg-[linear-gradient(140deg,var(--color-gold-300),var(--color-gold-500)_60%,var(--color-gold-600))] py-1.5 pl-1.5 pr-1.5 text-ink-inverse shadow-glow-gold"
     >
-      <button type="button" onClick={onShow} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-pitch-950 text-gold-300 shadow-[inset_0_1px_0_rgb(255_255_255/0.15)]">
-          <TrophyIcon size={26} filled />
+      <button type="button" onClick={onShow} aria-label={`You won! ${line}. Show the square`} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 text-left">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-pitch-950 text-gold-300 shadow-[inset_0_1px_0_rgb(255_255_255/0.15)]">
+          <TrophyIcon size={22} filled />
         </span>
         <span className="min-w-0">
-          <span className="block font-display text-title-3 font-extrabold leading-tight">You won {label}!</span>
-          <span className="block truncate text-footnote font-semibold opacity-80">{prize ?? "Tap to see your square"}</span>
+          <span className="block font-display text-headline font-extrabold leading-tight">You won!</span>
+          <span className="block truncate text-caption font-semibold opacity-80">
+            {line}
+            {prize ? ` · ${prize}` : ""}
+          </span>
         </span>
       </button>
       <Button variant="secondary" size="sm" onClick={onBrag} className="shrink-0 !bg-pitch-950 !text-gold-200 ring-0">
@@ -1048,8 +1102,8 @@ function WinShelf({ labels, prize, onBrag, onShow }: { labels: string[]; prize: 
   const joinedLabels = list.join(" + ");
   const title = list.length === 1 ? `You won ${list[0]}!` : joinedLabels.length <= 12 ? `You won ${joinedLabels}!` : `You won ${list.length} times!`;
   return (
-    <section aria-label="Your wins" className="flex items-center gap-2.5 rounded-2xl bg-gold-400/12 py-1.5 pl-2 pr-1.5 ring-1 ring-inset ring-gold-400/40">
-      <button type="button" onClick={onShow} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+    <section aria-label="Your wins" className="flex items-center gap-2.5 rounded-2xl bg-gold-400/12 py-1 pl-2 pr-1 ring-1 ring-inset ring-gold-400/40">
+      <button type="button" onClick={onShow} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 text-left">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gold-400 text-ink-inverse">
           <TrophyIcon size={17} filled />
         </span>
@@ -1067,8 +1121,8 @@ function WinShelf({ labels, prize, onBrag, onShow }: { labels: string[]; prize: 
 
 function BoardSkeleton() {
   return (
-    <div className="flex flex-col gap-4 px-safe pt-1" aria-busy="true" aria-label="Loading board">
-      <Skeleton className="h-[8.5rem] w-full rounded-card" />
+    <div className="flex flex-col gap-3 px-safe pt-1" aria-busy="true" aria-label="Loading board">
+      <Skeleton className="h-[6.75rem] w-full rounded-card" />
       <Skeleton className="h-4 w-48" />
       <div className="-mx-2 grid grid-cols-[18px_minmax(0,1fr)] gap-1 p-1.5">
         <span />

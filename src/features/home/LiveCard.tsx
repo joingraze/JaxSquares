@@ -12,7 +12,7 @@ import { useProfile } from "../../lib/identity";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
 import { RoleLabel, TickNumber } from "./BoardBits";
-import { atMoment, liveSnapshot, momentOf, withTeamColors, type LiveSnapshot } from "./sections";
+import { capitalize, liveSnapshot, phraseOf, withTeamColors, type LiveSnapshot } from "./sections";
 
 export interface LiveCardProps {
   game: GameSummary;
@@ -77,13 +77,13 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
             <Skeleton className="mt-3 h-14 w-full rounded-2xl" />
           )}
 
-          <div className="mt-3 flex items-center gap-2 text-footnote text-ink-muted">
+          <div className="mt-2.5 flex items-center gap-2 text-footnote text-ink-muted">
             <span className="font-semibold">{game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}</span>
             {wins.size > 0 && !(bannerIsMyWin && wins.size === 1) && (
               <span className="inline-flex min-w-0 items-center gap-1 font-bold text-gold-300">
                 <TrophyIcon size={13} strokeWidth={2.4} className="shrink-0" />
                 <span className="truncate">
-                  {wins.size === 1 && firstWin ? `Hit ${atMoment(firstWin.periodKey, firstWin.label)}` : `${wins.size} hits`}
+                  {wins.size === 1 && firstWin ? `Hit ${phraseOf(firstWin.periodKey, firstWin.label).moment}` : `${wins.size} hits`}
                 </span>
               </span>
             )}
@@ -114,7 +114,7 @@ function Scoreboard({
   const clock = snap?.clock ?? fallback?.detail ?? summaryScore?.label ?? "Numbers drawn";
   const lead = scoreX !== null && scoreY !== null ? Math.sign(scoreX - scoreY) : 0;
   return (
-    <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+    <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
       <TeamSide team={teams[0]} score={scoreX} dim={lead < 0} compact={compact} />
       <div className={cx("flex flex-col items-center text-center", compact ? "min-w-[4.5rem]" : "min-w-[5.5rem]")}>
         <span className="eyebrow text-ink">{clock}</span>
@@ -164,19 +164,22 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
           🎲
         </span>
         <p className="text-subhead font-semibold text-ink-muted">
-          Numbers are in. {snap.nextLabel ? `First score decides ${snap.nextLabel}.` : "First score wins."}
+          Numbers are in. {snap.nextMoment ? `First winner ${snap.nextMoment}.` : "First score wins."}
         </p>
       </div>
     );
   }
 
   const digits = leader.digits ? `${leader.digits[0]}·${leader.digits[1]}` : null;
-  const moment = momentOf(leader.periodKey ?? "", leader.periodLabel);
+  // "at halftime", "at the end of Q3", "on score 4": the one period vocabulary.
+  const moment = leader.periodKey ? phraseOf(leader.periodKey, leader.periodLabel).moment : "";
   if (snap.meWinning) {
     const sub =
       leader.kind === "now"
-        ? `Yours if ${leader.periodKey === "final" || !leader.periodKey ? "the game" : leader.periodLabel} ends now`
-        : [moment, leader.prize].filter(Boolean).join(" · ");
+        ? moment
+          ? `Yours ${moment} if the score holds`
+          : "Yours if the score holds"
+        : [capitalize(moment), leader.prize].filter(Boolean).join(" · ");
     return <MyWinBanner title={leader.kind === "now" ? "You're winning right now!" : "Your square hit!"} sub={sub} digits={digits} />;
   }
 
@@ -184,11 +187,13 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
   const verb =
     leader.kind === "now"
       ? leader.playerId
-        ? `has it if ${leader.periodKey === "final" || !leader.periodKey ? "the game" : leader.periodLabel} ends now`
+        ? moment
+          ? `wins ${moment} if it holds`
+          : "has the square right now"
         : "has this square"
       : leader.playerId
-        ? `hit ${atMoment(leader.periodKey ?? "", leader.periodLabel)}`
-        : `had the square ${atMoment(leader.periodKey ?? "", leader.periodLabel)}`;
+        ? `hit ${moment}`.trim()
+        : `had the square ${moment}`.trim();
   return (
     <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
       {leader.player ? (

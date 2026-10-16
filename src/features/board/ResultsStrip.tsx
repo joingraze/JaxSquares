@@ -2,7 +2,10 @@
 // note. Tapping a decided period spotlights its square on the board.
 // Fixed periods lay out two by two; every-score boards get a swipeable strip,
 // newest first, so it always opens on whole cards with the score in play.
+// A period whose square nobody took says so plainly ("Nobody had 7–3"); the
+// host can pick a winner from host tools.
 
+import { periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
@@ -69,7 +72,7 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className={cx("eyebrow", card.status === "done" ? "text-gold-300" : "text-ink-muted")}>{card.label}</span>
+              <span className={cx("eyebrow", card.status === "done" ? "text-gold-300" : "text-ink-muted")}>{periodPhrase(card.key, card.label).short}</span>
               {card.status === "live" && (
                 <span className="eyebrow flex items-center gap-1 text-live-400">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-live-500" />
@@ -96,14 +99,14 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
                     <span className="text-subhead text-ink-muted">Host's pick</span>
                   )}
                 </div>
-                <WinnerLine player={winner ?? null} me={me} empty={!r.winnerPlayerId} />
+                <WinnerLine player={winner ?? null} me={me} empty={!r.winnerPlayerId} score={r.score ?? null} />
                 {reverse && r.reverseCell && (r.reverseWinnerPlayerId !== r.winnerPlayerId || !r.winnerPlayerId) && (
                   <span className="flex min-w-0 items-center gap-1 text-caption text-ink-muted">
                     <RefreshIcon size={12} className="shrink-0" />
                     <span className="truncate">
                       Reverse:{" "}
                       <b className={cx("font-bold", r.reverseWinnerPlayerId === me ? "text-brand-300" : "text-ink")}>
-                        {r.reverseWinnerPlayerId === me ? "You" : (revWinner?.name ?? "Empty")}
+                        {r.reverseWinnerPlayerId === me ? "You" : (revWinner?.name ?? "nobody")}
                       </b>
                     </span>
                   </span>
@@ -119,7 +122,7 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
                 <div className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
                   <span className="shrink-0">If it ended now:</span>
                 </div>
-                <WinnerLine player={liveOwner ?? null} me={me} empty={!liveNow.playerId} />
+                <WinnerLine player={liveOwner ?? null} me={me} empty={!liveNow.playerId} score={liveNow} live />
               </>
             ) : (
               <>
@@ -162,9 +165,23 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
   );
 }
 
-function WinnerLine({ player, me, empty }: { player: Player | null; me: string; empty: boolean }) {
+function WinnerLine({
+  player,
+  me,
+  empty,
+  score,
+  live = false,
+}: {
+  player: Player | null;
+  me: string;
+  empty: boolean;
+  /** The score that pointed at the square, for "Nobody had 7–3". */
+  score: { scoreX: number; scoreY: number } | null;
+  live?: boolean;
+}) {
   if (empty || !player) {
-    return <span className="text-footnote font-semibold text-ink-subtle">{empty ? "Empty square" : "Someone"}</span>;
+    const nobody = score ? `Nobody ${live ? "has" : "had"} ${score.scoreX}–${score.scoreY}` : "Nobody had it";
+    return <span className="text-footnote font-semibold text-ink-subtle">{empty ? nobody : "Someone"}</span>;
   }
   const mine = player.id === me;
   return (

@@ -11,7 +11,7 @@ import { contrastText } from "../../lib/format";
 import { getPlayerId, getProfile, hasProfileName, NAME_MAX_LENGTH, PLAYER_COLORS, PLAYER_EMOJIS, setProfile } from "../../lib/identity";
 import { haptic } from "../../lib/native";
 import "./invite.css";
-import { boardStats, defaultLook, hostOf, joinLabel, matchupLabel, nameClash, nameProblem, shuffleLook, type Look } from "./inviteModel";
+import { boardStats, defaultLook, hostOf, joinLabel, nameClash, nameProblem, shortMatchup, shuffleLook, type Look } from "./inviteModel";
 
 export interface JoinSheetProps {
   state: GameState;
@@ -133,7 +133,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
       dismissible={!busy}
       initialFocusRef={nameRef}
       title={welcome ? `Welcome back, ${returningName}!` : "What should we call you?"}
-      description={`${matchupLabel(game)}${host ? ` · ${host.name}'s board` : ""}`}
+      description={`${shortMatchup(game)}${host ? ` · ${host.name}'s board` : ""}`}
       footer={
         <div className="flex flex-col gap-2">
           {error && (

@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Game, GameState, GameSummary, NumberDraw, Player } from "../../../shared/types";
 import {
   actionFor,
-  atMoment,
   boardBuzz,
   BURST_MS,
   BUZZ_WINDOW_MS,
+  capitalize,
   cardModel,
   finalSummary,
   groupBoards,
@@ -13,7 +13,7 @@ import {
   hostAction,
   liveHits,
   liveSnapshot,
-  momentOf,
+  phraseOf,
   primaryActionId,
   sectionOf,
   withState,
@@ -119,6 +119,10 @@ describe("sectionOf / hostAction / actionFor", () => {
     expect(hostAction(summary({ claimed: 100 }))).toBe("lock");
     expect(hostAction(summary({ claimed: 25, totalSquares: 25 }))).toBe("lock");
     expect(hostAction(summary({ claimed: 58 }))).toBe("invite");
+    // Nearly full counts, same as the host bar: 90% claimed, or last call on a 5x5.
+    expect(hostAction(summary({ claimed: 89 }))).toBe("invite");
+    expect(hostAction(summary({ claimed: 92 }))).toBe("lock");
+    expect(hostAction(summary({ claimed: 22, totalSquares: 25 }))).toBe("lock");
   });
 });
 
@@ -169,6 +173,7 @@ describe("cardModel", () => {
   it("asks for the right thing on each kind of board", () => {
     expect(cardModel(summary({ claimed: 84 }), now)).toMatchObject({ status: "16 left", action: { kind: "pick", label: "Pick squares" }, meta: "none yours yet" });
     expect(cardModel(summary({ isHost: true, claimed: 100 }), now)).toMatchObject({ status: "Board's full", statusTone: "gold", action: { label: "Draw numbers" }, buzz: false });
+    expect(cardModel(summary({ isHost: true, claimed: 92 }), now)).toMatchObject({ status: "8 left", statusIsLeft: true, statusTone: "gold", action: { label: "Draw numbers" } });
     expect(cardModel(summary({ isHost: true, status: "draft" }), now)).toMatchObject({ status: "Not open yet", action: { label: "Finish setup" }, meter: false });
     expect(cardModel(summary({ mySquares: 5, claimed: 100 }), now)).toMatchObject({ status: "Board's full", action: null });
   });
@@ -206,14 +211,12 @@ describe("withState", () => {
 });
 
 describe("plain-language periods", () => {
-  it("says halftime, not Half", () => {
-    expect(momentOf("q2", "Half")).toBe("Halftime");
-    expect(momentOf("q1", "Q1")).toBe("End of Q1");
-    expect(momentOf("s3", "Score 3")).toBe("Score 3");
-    expect(atMoment("q2", "Half")).toBe("at halftime");
-    expect(atMoment("final", "Final")).toBe("at the Final");
-    expect(atMoment("q3", "Q3")).toBe("at the end of Q3");
-    expect(atMoment("s2", "Score 2")).toBe("on Score 2");
+  it("speaks the app's one vocabulary (periodPhrase), ignoring a reverse suffix", () => {
+    expect(phraseOf("q2", "Half")).toEqual({ short: "Half", moment: "at halftime" });
+    expect(phraseOf("q1", "Q1 (reverse)")).toEqual({ short: "Q1", moment: "at the end of Q1" });
+    expect(phraseOf("final", "Final").moment).toBe("at the final whistle");
+    expect(phraseOf("s2", "Score 2")).toEqual({ short: "Score 2", moment: "on score 2" });
+    expect(capitalize("at halftime")).toBe("At halftime");
   });
 });
 
@@ -228,6 +231,7 @@ describe("liveSnapshot", () => {
     expect(snap.clock).toBe("Numbers drawn");
     expect(snap.leader).toBeNull();
     expect(snap.nextLabel).toBe("Q1");
+    expect(snap.nextMoment).toBe("at the end of Q1");
   });
 
   it("names the latest period winner on boards without a live feed", () => {
@@ -240,7 +244,7 @@ describe("liveSnapshot", () => {
       }),
       ME,
     )!;
-    expect(snap).toMatchObject({ scoreX: 14, scoreY: 10, clock: "Halftime", nextLabel: "Q3", meWinning: false, inProgress: false });
+    expect(snap).toMatchObject({ scoreX: 14, scoreY: 10, clock: "Half", nextLabel: "Q3", nextMoment: "at the end of Q3", meWinning: false, inProgress: false });
     // 14-10 -> col 4, row 0 -> Maya
     expect(snap.leader).toMatchObject({ playerId: MAYA, kind: "last", periodLabel: "Half", digits: [4, 0] });
     expect(snap.leader?.player?.name).toBe("Maya");
@@ -301,6 +305,8 @@ describe("headlineFor", () => {
     expect(headlineFor(one, { winningNow: false, hits: 1, now })).toMatchObject({ lead: "Your game is live.", hot: "You've hit once." });
     const full = groupBoards([summary({ isHost: true, claimed: 100 })]);
     expect(headlineFor(full, { winningNow: false, hits: 0, now }).hot).toBe("Draw the numbers.");
+    const nearly = groupBoards([summary({ isHost: true, claimed: 93 })]);
+    expect(headlineFor(nearly, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Almost full.", hot: "Draw the numbers." });
     expect(headlineFor(groupBoards([summary({ isHost: true, claimed: 3 })]), { winningNow: false, hits: 0, now }).hot).toBe("Invite the crew.");
     expect(headlineFor(groupBoards([summary({})]), { winningNow: false, hits: 0, now }).hot).toBe("Grab yours.");
     const kickoff = groupBoards([summary({ mySquares: 4, startsAt: now + 3 * 3600_000 })]);

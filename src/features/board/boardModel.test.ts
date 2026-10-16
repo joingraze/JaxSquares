@@ -18,6 +18,7 @@ import {
   myWinIds,
   nearestPath,
   nextChange,
+  nowSentence,
   periodCards,
   periodNoun,
   playerRows,
@@ -529,6 +530,15 @@ describe("right now", () => {
       ],
       cell: { row: 6, col: 7 },
     });
+  });
+
+  it("says who takes the period in the app's period wording", () => {
+    const base = { live: true, periodKey: "q3", label: "Q3", scoreX: 17, scoreY: 13, mine: false, ownerId: "p1" };
+    expect(nowSentence(base)).toBe("Wins if it's 17–13 at the end of Q3");
+    expect(nowSentence({ ...base, mine: true, ownerId: ME })).toBe("Yours if it's 17–13 at the end of Q3");
+    expect(nowSentence({ ...base, ownerId: null })).toBe("Nobody wins if it's 17–13 at the end of Q3");
+    expect(nowSentence({ ...base, live: false, periodKey: "q2", label: "Half", scoreX: 14, scoreY: 10 })).toBe("Wins at halftime if it stays 14–10");
+    expect(nowSentence({ ...base, live: false, periodKey: "final", label: "Final" })).toBe("Wins at the final whistle if it stays 17–13");
   });
 
   it("speaks periods like a friend would", () => {

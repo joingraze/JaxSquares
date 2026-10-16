@@ -167,7 +167,7 @@ describe("Home", () => {
     // Roles are quiet labels, not chips that read like game state.
     expect(screen.getAllByText("You're in").length).toBeGreaterThan(0);
     expect(screen.getByText("Your board")).toBeInTheDocument();
-    expect(screen.getByText(/You hit at the Final/)).toBeInTheDocument();
+    expect(screen.getByText(/You hit at the final whistle/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Sunday Funday" })).toHaveAttribute("href", "/g/next");
   });
 
@@ -210,6 +210,13 @@ describe("Home", () => {
     });
     serve([summary({ id: "inbox", name: "Probe Board", isHost: true, claimed: 1, playerCount: 2 })], { inbox: state });
     renderHome();
+    // Home follows the board passively (not counted as watching) and takes its state from the socket, no extra GET.
+    await waitFor(() => expect(sockets.get("inbox")).toBeDefined());
+    const socket = sockets.get("inbox")!;
+    expect(socket.url).toContain("watch=0");
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/api/games/inbox"))).toBe(false);
+    act(() => socket.open());
+    act(() => socket.push({ type: "state", state }));
     const bell = await screen.findByRole("button", { name: "Activity, 1 new" });
     fireEvent.click(bell);
     const sheet = await screen.findByRole("dialog");

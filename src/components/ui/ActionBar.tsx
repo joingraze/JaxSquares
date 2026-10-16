@@ -1,8 +1,12 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useShell } from "../shell";
+import { useBottomChrome } from "./bottomChrome";
 import { cx } from "./cx";
 import { useKeyboardInset } from "./useKeyboardInset";
+
+/** The bar's top padding is a fade into the canvas, not content: toasts may sit over it. */
+const FADE_PX = 20;
 
 export interface ActionBarProps {
   children: ReactNode;
@@ -25,12 +29,16 @@ export function ActionBar({ children, className }: ActionBarProps) {
     if (!el) return;
     const update = () => setHeight(el.offsetHeight);
     update();
+    if (typeof ResizeObserver === "undefined") return;
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
   }, [overlayRoot]);
 
   const bottom = keyboard ? keyboard : tabBarVisible ? "calc(var(--tabbar-h) + max(var(--safe-bottom), 0.5rem))" : 0;
+  const bottomCss = typeof bottom === "number" ? `${bottom}px` : bottom;
+  // Toasts land just above the bar's content.
+  useBottomChrome(height > 0 ? `calc(${bottomCss} + ${Math.max(0, height - FADE_PX)}px)` : null);
   const bar = (
     <div ref={ref} className="pointer-events-none fixed inset-x-0 z-30" style={{ bottom }}>
       <div

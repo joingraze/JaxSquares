@@ -136,10 +136,17 @@ describe("HostControls", () => {
 
   it("shows the host bar with the next move when the device is the host", () => {
     identity.saveAdminToken("hst123", "tok");
-    const squares = Array.from({ length: 60 }, (_, i) => sq(Math.floor(i / 10), i % 10, "maya"));
+    const squares = Array.from({ length: 92 }, (_, i) => sq(Math.floor(i / 10), i % 10, "maya"));
     renderHost(makeState({}, { squares }));
     expect(screen.getByTestId("host-open")).toHaveTextContent("Host tools");
     expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Lock & draw");
+  });
+
+  it("keeps Invite as the bar's move, with the count left, until the board is nearly full", () => {
+    identity.saveAdminToken("hst123", "tok");
+    const squares = Array.from({ length: 58 }, (_, i) => sq(Math.floor(i / 10), i % 10, "maya"));
+    renderHost(makeState({}, { squares }));
+    expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Invite (42 left)");
   });
 
   it("invites straight from the bar while the board is filling", () => {

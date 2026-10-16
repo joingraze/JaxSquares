@@ -53,6 +53,7 @@ import {
   invitedAnyone,
   isLinked,
   lockFacts,
+  lockIsTheMove,
   lockReadiness,
   parseScore,
   resolvedKey,
@@ -561,7 +562,8 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
   const { game } = state;
   const f = lockFacts(state);
   const full = f.empty === 0;
-  const ready = full || f.claimed / f.total >= 0.5;
+  // Same rule as the host bar: Invite leads until the board is (nearly) full.
+  const ready = lockIsTheMove(f.claimed, f.total);
   const nobody = lockReadiness(f) === "empty";
   const kickoff = game.linkedEvent?.startsAt ?? null;
   return (

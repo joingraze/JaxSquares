@@ -92,6 +92,15 @@ describe("liveSocketUrl", () => {
     expect(liveSocketUrl("abc", "c", "http://localhost:8787/")).toBe("ws://localhost:8787/api/games/abc/live?player=c");
   });
 
+  it("adds watch=0 for a passive listener, and nothing by default", () => {
+    expect(liveSocketUrl("abc", "c", "https://jaxsquares.com", undefined, { passive: true })).toBe(
+      "wss://jaxsquares.com/api/games/abc/live?player=c&watch=0",
+    );
+    expect(liveSocketUrl("abc", "c", "https://jaxsquares.com", undefined, { passive: false })).toBe(
+      "wss://jaxsquares.com/api/games/abc/live?player=c",
+    );
+  });
+
   it("uses the page origin when there is no API base", () => {
     expect(liveSocketUrl("a b", "c", "", { protocol: "https:", host: "jaxsquares.com" })).toBe(
       "wss://jaxsquares.com/api/games/a%20b/live?player=c",
@@ -109,16 +118,19 @@ describe("browserLiveDeps", () => {
     expect(url).toContain(`player=${encodeURIComponent(getPlayerId())}`);
     expect(url).not.toContain(getClientId());
     expect(url).not.toContain("clientId");
+    expect(url).not.toContain("watch=");
+    expect(browserLiveDeps().socketUrl("abc", { passive: true })).toMatch(/&watch=0$/);
   });
 });
 
 describe("parseLiveMessage", () => {
-  it("parses the three server messages", () => {
+  it("parses the server messages", () => {
     const state = makeState(3);
     expect(parseLiveMessage(JSON.stringify({ type: "state", state }))).toEqual({ type: "state", state });
     expect(parseLiveMessage(JSON.stringify({ type: "presence", watching: 4 }))).toEqual({ type: "presence", watching: 4 });
     const a = activity("a1", 1);
     expect(parseLiveMessage(JSON.stringify({ type: "event", activity: a }))).toEqual({ type: "event", activity: a });
+    expect(parseLiveMessage(JSON.stringify({ type: "deleted" }))).toEqual({ type: "deleted" });
   });
 
   it("ignores keepalive replies, junk and unknown types", () => {
@@ -310,7 +322,7 @@ function harness(fetchImpl?: () => Promise<GameState>) {
       sockets.push(s);
       return s;
     },
-    socketUrl: (id) => `wss://test/api/games/${id}/live`,
+    socketUrl: (id, opts) => `wss://test/api/games/${id}/live${opts?.passive ? "?watch=0" : ""}`,
     random: () => 0,
     now: () => Date.now(),
     isOnline: () => online,
@@ -362,6 +374,61 @@ describe("LiveGame", () => {
     h.sockets[0].message({ type: "presence", watching: 7 });
     expect(live.getStatus().watching).toBe(7);
     h.sockets[0].message("pong");
+    live.stop();
+  });
+
+  it("by default GETs on start and opens a counted (non-passive) socket", async () => {
+    const h = harness();
+    const live = new LiveGame("g-defaults", h.deps, null);
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).toHaveBeenCalledTimes(1);
+    expect(h.sockets[0].url).not.toContain("watch=0");
+    live.stop();
+  });
+
+  it("initialFetch: false skips the GET and takes the state from the socket", async () => {
+    const h = harness(() => Promise.resolve(makeState(9)));
+    const live = new LiveGame("g-nofetch", h.deps, null);
+    live.start({ initialFetch: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).not.toHaveBeenCalled();
+    expect(h.sockets).toHaveLength(1);
+    h.sockets[0].open();
+    h.sockets[0].message({ type: "state", state: makeState(3) });
+    expect(live.store.getState()?.version).toBe(3);
+    // Still no GET while the socket is live.
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 2);
+    expect(h.fetchState).not.toHaveBeenCalled();
+    live.stop();
+  });
+
+  it("initialFetch: false still falls back to a GET when the socket can't connect", async () => {
+    const h = harness(() => Promise.resolve(makeState(4)));
+    const live = new LiveGame("g-nofetch-fallback", h.deps, null);
+    live.start({ initialFetch: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).not.toHaveBeenCalled();
+    h.sockets[0].drop(1006); // handshake failed: never opened
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).toHaveBeenCalledTimes(1);
+    expect(live.store.getState()?.version).toBe(4);
+    expect(live.getStatus().connection).toBe("polling");
+    live.stop();
+  });
+
+  it("passive: every socket, including reconnects, asks not to be counted as watching", async () => {
+    const h = harness();
+    const live = new LiveGame("g-passive", h.deps, null);
+    live.start({ passive: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.fetchState).toHaveBeenCalledTimes(1); // passive alone keeps the initial GET
+    expect(h.sockets[0].url).toContain("watch=0");
+    h.sockets[0].open();
+    h.sockets[0].drop();
+    await vi.advanceTimersByTimeAsync(250);
+    expect(h.sockets).toHaveLength(2);
+    expect(h.sockets[1].url).toContain("watch=0");
     live.stop();
   });
 
@@ -420,6 +487,23 @@ describe("LiveGame", () => {
     expect(live.getStatus().notFound).toBe(true);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(h.sockets).toHaveLength(1);
+    live.stop();
+  });
+
+  it("treats a { type: 'deleted' } message as a deleted board, even before the close arrives", async () => {
+    const h = harness();
+    const live = new LiveGame("g-deleted", h.deps, null);
+    live.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const s = h.sockets[0];
+    s.open();
+    s.message({ type: "deleted" });
+    expect(live.getStatus().notFound).toBe(true);
+    expect(s.closedWith).toBe(1000);
+    h.fetchState.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(h.sockets).toHaveLength(1);
+    expect(h.fetchState).not.toHaveBeenCalled();
     live.stop();
   });
 

@@ -198,7 +198,9 @@ describe("InviteSheet", () => {
     render(<InviteSheet state={state} open onClose={() => {}} />);
     expect(await screen.findByRole("heading", { name: "Your board's live. Who's first?" })).toBeInTheDocument();
     expect(screen.getByText("Grab a square on my Chiefs vs Bills board 🏈")).toBeInTheDocument();
-    expect(screen.getByText("Join Sunday Night Squares on JaxSquares")).toBeInTheDocument();
+    // The card has one title (the board's name) and the short matchup under it; nothing repeats.
+    expect(screen.getAllByText("Sunday Night Squares")).toHaveLength(1);
+    expect(screen.getByText("Join on JaxSquares")).toBeInTheDocument();
     expect(screen.getByTestId("invite-share")).toHaveTextContent("Text your crew");
   });
 

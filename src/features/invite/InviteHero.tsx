@@ -7,7 +7,7 @@ import type { GameState } from "../../../shared/types";
 import { Avatar, AvatarGroup, Button, cx, TeamMark } from "../../components/ui";
 import { kickoffLabel, teamVars } from "../../lib/format";
 import "./invite.css";
-import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, matchupLabel, peopleInOrder, squaresLeftLabel } from "./inviteModel";
+import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, peopleInOrder, shortMatchup, squaresLeftLabel } from "./inviteModel";
 import { useNewArrival } from "./useNewArrival";
 
 export interface InviteHeroProps {
@@ -84,7 +84,7 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
                 "You're invited"
               )}
             </p>
-            <h2 className="truncate font-display text-title-3 font-extrabold leading-tight text-ink">{matchupLabel(game)}</h2>
+            <h2 className="truncate font-display text-title-3 font-extrabold leading-tight text-ink">{shortMatchup(game)}</h2>
           </div>
           <div aria-hidden className="flex shrink-0 gap-1">
             <TeamMark team={game.teamX} size="sm" />

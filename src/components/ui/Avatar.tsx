@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { contrastText, initialsOf } from "../../lib/format";
+import { contrastText } from "../../lib/format";
 import { cx } from "./cx";
 
 export type AvatarSize = "xs" | "sm" | "md" | "lg" | "xl";
@@ -21,7 +21,13 @@ export interface AvatarProps extends AvatarPerson {
   decorative?: boolean;
 }
 
-/** A player as an emoji (or initials) on their color: a glossy sticker. */
+/** One letter for a player with no emoji: the first character of their name ("Tess" -> "T"). */
+export function avatarInitial(name: string): string {
+  const first = [...name.trim()][0];
+  return first ? first.toLocaleUpperCase() : "?";
+}
+
+/** A player as an emoji (or one initial) on their color: a glossy sticker. */
 export function Avatar({ name, color, emoji, size = "md", ring = "none", className, decorative }: AvatarProps) {
   const px = PX[size];
   const style: CSSProperties = {
@@ -29,7 +35,7 @@ export function Avatar({ name, color, emoji, size = "md", ring = "none", classNa
     height: px,
     backgroundColor: color,
     color: contrastText(color),
-    fontSize: emoji ? px * 0.56 : px * 0.4,
+    fontSize: emoji ? px * 0.56 : px * 0.48,
   };
   return (
     <span
@@ -48,7 +54,7 @@ export function Avatar({ name, color, emoji, size = "md", ring = "none", classNa
       )}
     >
       <span aria-hidden className={emoji ? "translate-y-[0.04em]" : undefined}>
-        {emoji || initialsOf(name)}
+        {emoji || avatarInitial(name)}
       </span>
     </span>
   );
