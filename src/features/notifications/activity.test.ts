@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Activity, ActivityType, GameState, NumberDraw, Player, Square } from "../../../shared/types";
-import { BURST_WINDOW_MS, describeActivity, joinNames, myNumberPairs, periodPhrase } from "./activity";
+import { BURST_WINDOW_MS, atMoment, capitalize, describeActivity, joinNames, myNumberPairs } from "./activity";
 
 const ME = "me_public_id_000000000";
 const MAYA = "maya_public_id_0000000";
@@ -79,7 +79,7 @@ describe("describeActivity: my own actions", () => {
   it("still celebrates my win when I typed the score myself", () => {
     const a = act("winner", ME, { periodKey: "q1", label: "Q1", playerIds: [ME], cell: { row: 0, col: 0 }, prize: null });
     const ann = describeActivity(a, withActivity(makeState(), a), ME);
-    expect(ann).toMatchObject({ text: "Your square hit at Q1! 🎉", tone: "win", haptic: "success", celebrate: true });
+    expect(ann).toMatchObject({ text: "Your square hit at the end of Q1! 🎉", tone: "win", haptic: "success", celebrate: true });
   });
 });
 
@@ -258,9 +258,9 @@ describe("describeActivity: locked", () => {
 describe("describeActivity: score", () => {
   it("announces a period score", () => {
     const a = act("score", null, { periodKey: "q1", label: "Q1", scoreX: 7, scoreY: 3, source: "live" });
-    expect(describeActivity(a, withActivity(makeState(), a), ME)).toMatchObject({ text: "End of Q1: KC 7–3 BUF", tone: "live", haptic: "light" });
+    expect(describeActivity(a, withActivity(makeState(), a), ME)).toMatchObject({ text: "At the end of Q1: KC 7–3 BUF", tone: "live", haptic: "light" });
     const half = act("score", null, { periodKey: "q2", label: "Half", scoreX: 14, scoreY: 10, source: "live" });
-    expect(describeActivity(half, withActivity(makeState(), half), ME)!.text).toBe("End of Half: KC 14–10 BUF");
+    expect(describeActivity(half, withActivity(makeState(), half), ME)!.text).toBe("At halftime: KC 14–10 BUF");
     const fin = act("score", MAYA, { periodKey: "final", label: "Final", scoreX: 27, scoreY: 24, source: "host" });
     expect(describeActivity(fin, withActivity(makeState(), fin), ME)!.text).toBe("Final: KC 27–24 BUF");
     const every = act("score", null, { periodKey: "s3", label: "Score 3", scoreX: 10, scoreY: 7, source: "live" });
@@ -276,7 +276,7 @@ describe("describeActivity: score", () => {
   it("uses the team name when there's no abbreviation", () => {
     const s = makeState({ game: { teamX: { name: "Packers" }, teamY: { name: "Bears" } } });
     const a = act("score", null, { periodKey: "q3", label: "Q3", scoreX: 21, scoreY: 17, source: "live" });
-    expect(describeActivity(a, withActivity(s, a), ME)!.text).toBe("End of Q3: Packers 21–17 Bears");
+    expect(describeActivity(a, withActivity(s, a), ME)!.text).toBe("At the end of Q3: Packers 21–17 Bears");
   });
 });
 
@@ -287,7 +287,7 @@ describe("describeActivity: winner", () => {
   it("celebrates my square", () => {
     const a = win([ME], { prize: "Loser buys wings" });
     expect(describeActivity(a, withActivity(makeState(), a), ME)).toEqual({
-      text: "Your square hit at Q1! 🎉 Loser buys wings",
+      text: "Your square hit at the end of Q1! 🎉 Loser buys wings",
       tone: "win",
       haptic: "success",
       celebrate: true,
@@ -299,14 +299,14 @@ describe("describeActivity: winner", () => {
   it("shares the moment when I split it with someone", () => {
     const a = win([MAYA, ME]);
     const ann = describeActivity(a, withActivity(makeState(), a), ME)!;
-    expect(ann.text).toBe("You and Maya both hit at Q1! 🎉");
+    expect(ann.text).toBe("You and Maya both hit at the end of Q1! 🎉");
     expect(ann.celebrate).toBe(true);
   });
 
   it("names someone else's win without confetti", () => {
     const a = win([MAYA]);
     expect(describeActivity(a, withActivity(makeState(), a), ME)).toEqual({
-      text: "Maya wins Q1 🎉",
+      text: "Maya wins at the end of Q1 🎉",
       tone: "win",
       haptic: "light",
       // The winner's face, not whoever typed the score.
@@ -314,24 +314,24 @@ describe("describeActivity: winner", () => {
       cell: { row: 1, col: 1 },
     });
     const two = win([MAYA, SAM]);
-    expect(describeActivity(two, withActivity(makeState(), two), ME)!.text).toBe("Maya & Sam win Q1 🎉");
+    expect(describeActivity(two, withActivity(makeState(), two), ME)!.text).toBe("Maya & Sam win at the end of Q1 🎉");
   });
 
-  it("uses the board's words for Half and the Final", () => {
+  it("speaks the app's one vocabulary for halftime and the final whistle", () => {
     const half = act("winner", null, { periodKey: "q2", label: "Half", playerIds: [MAYA] });
-    expect(describeActivity(half, withActivity(makeState(), half), ME)!.text).toBe("Maya wins Half 🎉");
+    expect(describeActivity(half, withActivity(makeState(), half), ME)!.text).toBe("Maya wins at halftime 🎉");
     const fin = act("winner", null, { periodKey: "final", label: "Final", playerIds: [ME] });
-    expect(describeActivity(fin, withActivity(makeState(), fin), ME)!.text).toBe("Your square hit at the Final! 🎉");
+    expect(describeActivity(fin, withActivity(makeState(), fin), ME)!.text).toBe("Your square hit at the final whistle! 🎉");
   });
 
   it("handles a host pick of an empty square", () => {
     const a = win([], { manual: true });
-    expect(describeActivity(a, withActivity(makeState(), a), ME)).toMatchObject({ text: "Nobody had the winning square at Q1", tone: "info" });
+    expect(describeActivity(a, withActivity(makeState(), a), ME)).toMatchObject({ text: "Nobody had the winning square at the end of Q1", tone: "info" });
   });
 
   it("ignores junk in playerIds", () => {
     const a = win([MAYA, 3, "", MAYA] as unknown as string[]);
-    expect(describeActivity(a, withActivity(makeState(), a), ME)!.text).toBe("Maya wins Q1 🎉");
+    expect(describeActivity(a, withActivity(makeState(), a), ME)!.text).toBe("Maya wins at the end of Q1 🎉");
   });
 });
 
@@ -385,12 +385,13 @@ describe("helpers", () => {
     expect(joinNames(["Maya", "Sam", "Lee"])).toBe("Maya, Sam & Lee");
   });
 
-  it("phrases periods", () => {
-    expect(periodPhrase("Q1", "q1")).toBe("Q1");
-    expect(periodPhrase("Half", "q2")).toBe("Half");
-    expect(periodPhrase("Halftime", "q2")).toBe("Half");
-    expect(periodPhrase("Final", "final")).toBe("the Final");
-    expect(periodPhrase("Score 4", "s4")).toBe("Score 4");
+  it("phrases periods mid-sentence with the shared vocabulary", () => {
+    expect(atMoment("q1", "Q1")).toBe(" at the end of Q1");
+    expect(atMoment("q2", "Halftime")).toBe(" at halftime");
+    expect(atMoment("final", "Final")).toBe(" at the final whistle");
+    expect(atMoment("s4", "Score 4")).toBe(" on score 4");
+    expect(atMoment("", "")).toBe("");
+    expect(capitalize("at halftime")).toBe("At halftime");
   });
 
   it("never throws on unknown types", () => {

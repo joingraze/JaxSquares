@@ -287,7 +287,7 @@ export default function CreateGame() {
   return (
     <>
       {/* Opaque once collapsed, so nothing scrolling underneath reads through the title. */}
-      <TopBar title="New board" back className="[&.glass]:bg-[rgb(11_18_14)]!" />
+      <TopBar title="New board" back />
 
       <div className="flex flex-col gap-6 px-safe pb-2">
         <section id={GAME_SECTION_ID} aria-label="The game" className="scroll-mt-24">

@@ -9,6 +9,9 @@ import {
   readableTeamColor,
   relativeTime,
   scoreLine,
+  shortMatchup,
+  shortTeam,
+  shortTeamName,
   teamVars,
   withAlpha,
 } from "../lib/format";
@@ -91,5 +94,46 @@ describe("distinctFrom", () => {
     const y = distinctFrom("#3d5a8a", "#3a5f8f");
     expect(y).not.toBe("#3a5f8f");
     expect(["#ff66a6", "#ffc233", "#3ab7ff"]).toContain(y);
+  });
+});
+
+describe("shortTeamName", () => {
+  it("uses the NFL nickname", () => {
+    expect(shortTeamName({ name: "Kansas City Chiefs", abbr: "KC" }, "nfl")).toBe("Chiefs");
+    expect(shortTeamName({ name: "Los Angeles Rams" }, "nfl")).toBe("Rams");
+    expect(shortTeamName({ name: "Unknown Team" }, "nfl")).toBe("Unknown Team");
+  });
+
+  it("drops the college mascot, including two-word ones", () => {
+    expect(shortTeamName({ name: "Georgia Bulldogs" }, "ncaaf")).toBe("Georgia");
+    expect(shortTeamName({ name: "Ohio State Buckeyes" }, "ncaaf")).toBe("Ohio State");
+    expect(shortTeamName({ name: "Alabama Crimson Tide" }, "ncaaf")).toBe("Alabama");
+    expect(shortTeamName({ name: "Penn State Nittany Lions" }, "ncaaf")).toBe("Penn State");
+    expect(shortTeamName({ name: "North Texas Mean Green" }, "ncaaf")).toBe("North Texas");
+    expect(shortTeamName({ name: "Bowling Green Falcons" }, "ncaaf")).toBe("Bowling Green");
+    expect(shortTeamName({ name: "Army" }, "ncaaf")).toBe("Army");
+  });
+
+  it("doesn't confuse college abbreviations with NFL ones", () => {
+    expect(shortTeamName({ name: "Miami Hurricanes", abbr: "MIA" }, "ncaaf")).toBe("Miami");
+  });
+});
+
+describe("shortTeam / shortMatchup", () => {
+  const game = { name: "Sunday Night Squares", league: "custom" as const, teamX: { name: "Chiefs" }, teamY: { name: "Bills" } };
+
+  it("shortens the matchup to the names people text", () => {
+    const packers = { name: "Green Bay Packers", abbr: "GB" };
+    const bears = { name: "Chicago Bears", abbr: "CHI" };
+    // A typed NFL team is stored with its full name; a linked one too.
+    expect(shortMatchup({ ...game, teamX: packers, teamY: bears })).toBe("Packers vs Bears");
+    expect(shortMatchup({ ...game, league: "nfl", teamX: packers, teamY: bears })).toBe("Packers vs Bears");
+    expect(shortTeam({ name: "Penn State Nittany Lions", abbr: "PSU" }, "ncaaf")).toBe("Penn State");
+    expect(shortTeam({ name: "Ohio State Buckeyes", abbr: "OSU" }, "ncaaf")).toBe("Ohio State");
+    expect(shortTeam({ name: "Kansas City Chiefs", abbr: "KC" }, "nfl")).toBe("Chiefs");
+    // Typed custom teams stay as typed.
+    expect(shortMatchup(game)).toBe("Chiefs vs Bills");
+    expect(shortMatchup({ ...game, teamX: { name: "The Smiths" }, teamY: { name: "The Joneses" } })).toBe("The Smiths vs The Joneses");
+    expect(shortMatchup({ ...game, teamY: { name: " " } })).toBe("Sunday Night Squares");
   });
 });

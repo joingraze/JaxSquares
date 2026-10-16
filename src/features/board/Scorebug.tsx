@@ -8,7 +8,7 @@
 import type { GameState } from "../../../shared/types";
 import { WifiOffIcon } from "../../components/icons";
 import { AvatarGroup, Badge, LiveDot, ProgressRing, TeamMark, cx } from "../../components/ui";
-import { countdown, kickoffLabel } from "../../lib/format";
+import { countdown, kickoffLabel, shortTeam } from "../../lib/format";
 import type { ConnectionState } from "../../lib/live";
 import { boardPhase, claimedCount, headlineScore, type BoardPhase } from "./boardModel";
 
@@ -48,9 +48,9 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
       <div aria-hidden className="absolute inset-y-0 right-0 w-1 bg-team-y" />
 
       <div className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-3.5 py-2.5">
-        <TeamSide side="x" name={game.teamX.name} team={game.teamX} score={score?.scoreX ?? null} dim={leader < 0} stacked={!picking} />
+        <TeamSide side="x" name={shortTeam(game.teamX, game.league)} team={game.teamX} score={score?.scoreX ?? null} dim={leader < 0} stacked={!picking} />
         <Center phase={phase} state={state} detail={score?.detail ?? null} nextLabel={nextLabel} now={now} watching={picking ? 0 : watching} connection={connection} />
-        <TeamSide side="y" name={game.teamY.name} team={game.teamY} score={score?.scoreY ?? null} dim={leader > 0} stacked={!picking} />
+        <TeamSide side="y" name={shortTeam(game.teamY, game.league)} team={game.teamY} score={score?.scoreY ?? null} dim={leader > 0} stacked={!picking} />
       </div>
 
       {picking && (
@@ -221,7 +221,7 @@ function Crowd({ watching, connection }: { watching: number; connection: Connect
   if (watching < 2) return null;
   return (
     <span className="flex items-center gap-1 whitespace-nowrap text-caption text-ink-muted">
-      <LiveDot tone="brand" />
+      <LiveDot />
       <b className="font-bold tabular-nums text-ink">{watching}</b> watching
     </span>
   );
@@ -232,8 +232,8 @@ function ConnectionPill({ connection, watching }: { connection: ConnectionState;
     // Alone on the board ("1 watching" is just you): say nothing.
     if (watching < 2) return null;
     return (
-      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-brand-400/10 py-0.5 pl-2 pr-2.5 text-footnote text-ink-muted ring-1 ring-inset ring-brand-400/20">
-        <LiveDot tone="brand" />
+      <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-surface-3 py-0.5 pl-2 pr-2.5 text-footnote text-ink-muted ring-1 ring-inset ring-line">
+        <LiveDot />
         <b className="font-bold tabular-nums text-ink">{watching}</b> watching
       </span>
     );

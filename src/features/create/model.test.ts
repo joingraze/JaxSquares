@@ -18,7 +18,6 @@ import {
   orientEvent,
   prizeSlots,
   resolveCustomTeam,
-  shortTeamName,
   kickoffParts,
   matchupTeams,
   POPULAR_TEAMS,
@@ -42,28 +41,6 @@ const event = (over: Partial<ScheduleEvent> = {}): ScheduleEvent => ({
 });
 
 const host = { name: "Jordan", color: "#ff6b35", emoji: "🏈" };
-
-describe("shortTeamName", () => {
-  it("uses the NFL nickname", () => {
-    expect(shortTeamName({ name: "Kansas City Chiefs", abbr: "KC" }, "nfl")).toBe("Chiefs");
-    expect(shortTeamName({ name: "Los Angeles Rams" }, "nfl")).toBe("Rams");
-    expect(shortTeamName({ name: "Unknown Team" }, "nfl")).toBe("Unknown Team");
-  });
-
-  it("drops the college mascot, including two-word ones", () => {
-    expect(shortTeamName({ name: "Georgia Bulldogs" }, "ncaaf")).toBe("Georgia");
-    expect(shortTeamName({ name: "Ohio State Buckeyes" }, "ncaaf")).toBe("Ohio State");
-    expect(shortTeamName({ name: "Alabama Crimson Tide" }, "ncaaf")).toBe("Alabama");
-    expect(shortTeamName({ name: "Penn State Nittany Lions" }, "ncaaf")).toBe("Penn State");
-    expect(shortTeamName({ name: "North Texas Mean Green" }, "ncaaf")).toBe("North Texas");
-    expect(shortTeamName({ name: "Bowling Green Falcons" }, "ncaaf")).toBe("Bowling Green");
-    expect(shortTeamName({ name: "Army" }, "ncaaf")).toBe("Army");
-  });
-
-  it("doesn't confuse college abbreviations with NFL ones", () => {
-    expect(shortTeamName({ name: "Miami Hurricanes", abbr: "MIA" }, "ncaaf")).toBe("Miami");
-  });
-});
 
 describe("custom teams", () => {
   it("matches NFL teams exactly by nickname, abbreviation, full name or a unique city", () => {

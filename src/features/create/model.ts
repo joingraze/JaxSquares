@@ -3,7 +3,7 @@
 
 import { BOARD_SIZE_INFO, periodsFor, PRESET_INFO, PRIZE_MAX_LENGTH, SHARED_DRAW_KEY, validatePrizeNote } from "../../../shared/formats";
 import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
-import { pluralize } from "../../lib/format";
+import { pluralize, shortTeamName } from "../../lib/format";
 import type {
   CreateGameInput,
   GameFormat,
@@ -29,68 +29,10 @@ export const BOARD_NAME_MAX = 60;
 
 // ---- Team names ----
 
-/** College mascots that are two words, so "Penn State Nittany Lions" shortens to "Penn State". */
-const TWO_WORD_MASCOTS = [
-  "crimson tide",
-  "fighting irish",
-  "fighting illini",
-  "fighting hawks",
-  "nittany lions",
-  "tar heels",
-  "blue devils",
-  "blue hens",
-  "blue raiders",
-  "yellow jackets",
-  "sun devils",
-  "red raiders",
-  "red wolves",
-  "horned frogs",
-  "golden bears",
-  "golden gophers",
-  "golden hurricane",
-  "golden flashes",
-  "golden eagles",
-  "golden lions",
-  "golden panthers",
-  "scarlet knights",
-  "demon deacons",
-  "mean green",
-  "green wave",
-  "rainbow warriors",
-  "black knights",
-  "black bears",
-  "thundering herd",
-  "ragin' cajuns",
-  "wolf pack",
-  "big green",
-  "big red",
-  "mountain hawks",
-];
-
 function nflByAbbr(abbr: string | undefined): NflTeam | undefined {
   if (!abbr) return undefined;
   const a = abbr.toUpperCase();
   return NFL_TEAMS.find((t) => t.abbr === a);
-}
-
-/**
- * The name fans use in conversation: "Kansas City Chiefs" -> "Chiefs" (NFL),
- * "Penn State Nittany Lions" -> "Penn State" (college: the school, mascot dropped).
- */
-export function shortTeamName(team: Team, league: League): string {
-  const name = team.name.trim().replace(/\s+/g, " ");
-  if (league === "nfl") {
-    const nfl = nflByAbbr(team.abbr) ?? NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
-    if (nfl) return nfl.nickname;
-    return name;
-  }
-  if (league === "custom") return name;
-  const words = name.split(" ");
-  if (words.length < 2) return name;
-  const lower = name.toLowerCase();
-  const two = TWO_WORD_MASCOTS.find((m) => lower.endsWith(` ${m}`));
-  if (two && words.length > 2) return words.slice(0, -2).join(" ");
-  return words.slice(0, -1).join(" ");
 }
 
 /** Team colors from live data, keyed by NFL abbreviation ("GB" -> "#204e32"). */

@@ -110,6 +110,7 @@ export default function Kit() {
           </Button>
           <div className="grid grid-cols-2 gap-3">
             <Button variant="secondary">Secondary</Button>
+            <Button variant="outline">Outline</Button>
             <Button variant="ghost">Ghost</Button>
             <Button variant="danger" leading={<Icons.TrashIcon size={18} />}>
               Delete
@@ -128,10 +129,14 @@ export default function Kit() {
             </Button>
             <Button disabled>Disabled</Button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm">Small</Button>
+          {/* sm keeps the 44pt touch target; it only tightens padding and type. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm">Small · 44pt</Button>
             <Button size="sm" variant="secondary">
               Small
+            </Button>
+            <Button size="sm" variant="outline">
+              Outline
             </Button>
             <IconButton label="Share" icon={<Icons.ShareIcon size={20} />} variant="solid" />
             <IconButton label="Notifications" icon={<Icons.BellIcon size={20} />} variant="solid" badge={3} />
@@ -176,7 +181,8 @@ export default function Kit() {
 
         <Section title="Status">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="live" icon={<LiveDot tone="muted" pulse={false} className="!bg-white" />}>
+            {/* Same white dot as Home's live card: LiveDot is red, which vanishes on the red badge. */}
+            <Badge tone="live" icon={<span aria-hidden className="block h-1.5 w-1.5 animate-pulse rounded-full bg-white" />}>
               Live
             </Badge>
             <Badge tone="brand">Host</Badge>

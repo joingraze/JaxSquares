@@ -198,7 +198,7 @@ function PushRow({ status, onAsk, onSettings }: { status: PushStatus; onAsk: () 
         <p className="text-subhead font-bold text-ink">{copy.title}</p>
         <p className="text-caption text-ink-muted">{copy.body}</p>
       </div>
-      <Button size="sm" variant="primary" className="!h-11 !rounded-[0.875rem]" onClick={copy.act}>
+      <Button size="sm" variant="primary" className="!rounded-[0.875rem]" onClick={copy.act}>
         {copy.cta}
       </Button>
     </div>

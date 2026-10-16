@@ -3,7 +3,10 @@
 // scores change on Home within a second of happening, exactly like on the
 // board itself, without showing up in that board's "N watching". Each
 // connection is the board's own LiveGame (socket, reconnect with backoff,
-// polling fallback, catch-up on resume), so Home gets the same guarantees.
+// polling fallback, catch-up on resume), so Home gets the same guarantees:
+// a followed socket that falls back to polling keeps feeding Home through the
+// same store. A board deleted while Home follows it (the room's `deleted`, a
+// 4404 close, or a 404 from the fallback GET) drops off Home right away.
 // Finished boards never change: they're fetched once, and only the ones on
 // screen.
 //
@@ -21,7 +24,9 @@ export const MAX_FOLLOWED = 12;
 export interface Follow {
   /** Latest server state (cached until the first network one arrives). */
   getState(): GameState | null;
-  /** Called after every state from the network. */
+  /** The board was deleted (it stops reconnecting and polling on its own). */
+  isGone(): boolean;
+  /** Called after every state from the network (socket or polling) and when the board goes away. */
   subscribe(cb: () => void): () => void;
   /** New activity (claims, joins, scores, winners) as it happens. */
   onActivity(cb: (activity: Activity, state: GameState) => void): () => void;
@@ -45,7 +50,16 @@ export function browserFeedDeps(): FeedDeps {
       live.start({ initialFetch: false, passive: true });
       return {
         getState: () => live.store.getServerState(),
-        subscribe: live.store.subscribe,
+        isGone: () => live.getStatus().notFound,
+        subscribe: (cb) => {
+          const offState = live.store.subscribe(cb);
+          // Status too: a socket that gives up because the board is gone says so only there.
+          const offStatus = live.subscribeStatus(cb);
+          return () => {
+            offState();
+            offStatus();
+          };
+        },
         onActivity: (cb) => live.store.onActivity(cb),
         stop: () => live.stop(),
       };
@@ -66,6 +80,8 @@ export interface FeedSnapshot {
   states: Readonly<Record<string, GameState>>;
   /** Boards whose state came from the network while Home was open: trust these over the summary. */
   fresh: ReadonlySet<string>;
+  /** Boards deleted while Home followed them: hide them until the summary list catches up. */
+  gone: ReadonlySet<string>;
 }
 
 export class HomeFeed {
@@ -73,7 +89,8 @@ export class HomeFeed {
   private fetches = new Map<string, AbortController>();
   private states: Record<string, GameState> = {};
   private fresh = new Set<string>();
-  private snap: FeedSnapshot = { states: this.states, fresh: this.fresh };
+  private gone = new Set<string>();
+  private snap: FeedSnapshot = { states: this.states, fresh: this.fresh, gone: this.gone };
   private listeners = new Set<() => void>();
   private activityListeners = new Set<FeedActivityListener>();
 
@@ -101,11 +118,11 @@ export class HomeFeed {
    * given), fetch `once` boards a single time, and stop following the rest.
    */
   sync(live: readonly string[], once: readonly string[] = []): void {
-    const want = new Set(live.slice(0, MAX_FOLLOWED));
+    const want = new Set(live.filter((id) => !this.gone.has(id)).slice(0, MAX_FOLLOWED));
     for (const id of [...this.follows.keys()]) if (!want.has(id)) this.unfollow(id);
     for (const id of want) if (!this.follows.has(id)) this.startFollow(id);
     for (const id of once) {
-      if (want.has(id) || this.fetches.has(id) || this.fresh.has(id)) continue;
+      if (want.has(id) || this.fetches.has(id) || this.fresh.has(id) || this.gone.has(id)) continue;
       const cached = this.deps.peek(id);
       // A finished board never changes, so a cached one is as good as new.
       if (cached && cached.game.status === "final") {
@@ -142,6 +159,10 @@ export class HomeFeed {
     if (initial) this.put(id, initial, false);
     const unsubs = [
       follow.subscribe(() => {
+        if (follow.isGone()) {
+          this.drop(id);
+          return;
+        }
         const s = follow.getState();
         if (s) this.put(id, s, true);
       }),
@@ -166,6 +187,19 @@ export class HomeFeed {
     f.follow.stop();
   }
 
+  /** The board was deleted: stop following it and forget its state. */
+  private drop(id: string): void {
+    if (this.gone.has(id)) return;
+    this.unfollow(id);
+    const states = { ...this.states };
+    delete states[id];
+    this.states = states;
+    this.fresh = new Set(this.fresh);
+    this.fresh.delete(id);
+    this.gone = new Set(this.gone).add(id);
+    this.emit();
+  }
+
   private put(id: string, s: GameState, fromNetwork: boolean): void {
     const cur = this.states[id];
     if (cur && s.version < cur.version) return;
@@ -173,7 +207,11 @@ export class HomeFeed {
     if (cur === s && !freshChanged) return;
     if (cur !== s) this.states = { ...this.states, [id]: s };
     if (freshChanged) this.fresh = new Set(this.fresh).add(id);
-    this.snap = { states: this.states, fresh: this.fresh };
+    this.emit();
+  }
+
+  private emit(): void {
+    this.snap = { states: this.states, fresh: this.fresh, gone: this.gone };
     for (const l of this.listeners) l();
   }
 }

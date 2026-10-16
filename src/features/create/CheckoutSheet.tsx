@@ -11,8 +11,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { Game, GameState, PaymentConfig } from "../../../shared/types";
-import { AlertIcon, CheckIcon } from "../../components/icons";
-import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, LiveDot, Skeleton, TeamMark } from "../../components/ui";
+import { AlertIcon, CheckIcon, LiveIcon, PencilIcon } from "../../components/icons";
+import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, Skeleton, TeamMark } from "../../components/ui";
 import {
   appStorePrice,
   CheckoutError,
@@ -396,12 +396,12 @@ function Ticket({ game }: { game: Game }) {
       <div className="flex items-center justify-center gap-2 px-4 py-2.5 text-footnote font-semibold text-ink-muted">
         {linked ? (
           <>
-            <LiveDot tone="brand" pulse={false} />
+            <LiveIcon size={15} className="shrink-0 text-ink-subtle" />
             Live scores · {kickoffLabel(linked.startsAt)}
           </>
         ) : (
           <>
-            <LiveDot tone="brand" pulse={false} />
+            <PencilIcon size={15} className="shrink-0 text-ink-subtle" />
             You run the score · winners pop instantly
           </>
         )}

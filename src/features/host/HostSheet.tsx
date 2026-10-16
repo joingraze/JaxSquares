@@ -5,6 +5,7 @@
 // confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { periodPhrase } from "../../../shared/formats";
 import { resolveResults } from "../../../shared/squares";
 import type { GameState } from "../../../shared/types";
 import {
@@ -148,6 +149,8 @@ export function HostSheet(props: HostSheetProps) {
   const targets = useMemo(() => scoreTargets(state), [state]);
   const target = targets.find((t) => t.key === entry.key) ?? targets[targets.length - 1];
   const label = target?.label ?? "this period";
+  // Mid-sentence: "Maya wins at halftime", "see who wins on score 3".
+  const moment = target ? periodPhrase(resolvedKey(state, target.key), target.label).moment : "this period";
 
   const saveScore = async () => {
     const scoreX = parseScore(entry.draft.x);
@@ -172,7 +175,7 @@ export function HostSheet(props: HostSheetProps) {
       winner
         ? {
             tone: "win",
-            title: winner.id === me ? `Saved · you win ${label}!` : `Saved · ${winner.name} wins ${label}`,
+            title: winner.id === me ? `Saved · you win ${moment}!` : `Saved · ${winner.name} wins ${moment}`,
             detail: result?.prize ?? "Everyone sees it now.",
             player: winner,
           }
@@ -461,7 +464,7 @@ export function HostSheet(props: HostSheetProps) {
     if (scoring) {
       footer = (
         <div style={teamVars(game.teamX, game.teamY)}>
-          <ScorePreview state={state} entry={entry} label={label} me={me} notice={noticeLive} />
+          <ScorePreview state={state} entry={entry} label={label} moment={moment} me={me} notice={noticeLive} />
           <Button
             data-testid="score-save"
             size="lg"

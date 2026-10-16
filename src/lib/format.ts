@@ -2,7 +2,8 @@
 // Pure functions (no React, no IO) so they are easy to test.
 
 import type { CSSProperties } from "react";
-import type { GameStatus, Team } from "../../shared/types";
+import { NFL_TEAMS } from "../../shared/teams";
+import type { Game, GameStatus, League, Team } from "../../shared/types";
 
 // ---- Names ----
 
@@ -11,6 +12,88 @@ export function initialsOf(name: string): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return [...parts[0]].slice(0, 2).join("").toUpperCase();
   return ([...parts[0]][0] + [...parts[parts.length - 1]][0]).toUpperCase();
+}
+
+// ---- Team names ----
+
+/** College mascots that are two words, so "Penn State Nittany Lions" shortens to "Penn State". */
+const TWO_WORD_MASCOTS = [
+  "crimson tide",
+  "fighting irish",
+  "fighting illini",
+  "fighting hawks",
+  "nittany lions",
+  "tar heels",
+  "blue devils",
+  "blue hens",
+  "blue raiders",
+  "yellow jackets",
+  "sun devils",
+  "red raiders",
+  "red wolves",
+  "horned frogs",
+  "golden bears",
+  "golden gophers",
+  "golden hurricane",
+  "golden flashes",
+  "golden eagles",
+  "golden lions",
+  "golden panthers",
+  "scarlet knights",
+  "demon deacons",
+  "mean green",
+  "green wave",
+  "rainbow warriors",
+  "black knights",
+  "black bears",
+  "thundering herd",
+  "ragin' cajuns",
+  "wolf pack",
+  "big green",
+  "big red",
+  "mountain hawks",
+];
+
+/**
+ * The name fans use in conversation: "Kansas City Chiefs" -> "Chiefs" (NFL),
+ * "Penn State Nittany Lions" -> "Penn State" (college: the school, mascot dropped).
+ */
+export function shortTeamName(team: Team, league: League): string {
+  const name = team.name.trim().replace(/\s+/g, " ");
+  if (league === "nfl") {
+    const abbr = team.abbr?.toUpperCase();
+    const nfl = (abbr ? NFL_TEAMS.find((t) => t.abbr === abbr) : undefined) ?? NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
+    if (nfl) return nfl.nickname;
+    return name;
+  }
+  if (league === "custom") return name;
+  const words = name.split(" ");
+  if (words.length < 2) return name;
+  const lower = name.toLowerCase();
+  const two = TWO_WORD_MASCOTS.find((m) => lower.endsWith(` ${m}`));
+  if (two && words.length > 2) return words.slice(0, -2).join(" ");
+  return words.slice(0, -1).join(" ");
+}
+
+/**
+ * The name friends use for a team: "Green Bay Packers" -> "Packers" (an NFL
+ * team, linked or typed), "Penn State Nittany Lions" -> "Penn State"
+ * (college), anything typed stays as typed.
+ */
+export function shortTeam(team: Team, league: Game["league"]): string {
+  const name = team.name.trim().replace(/\s+/g, " ");
+  const nfl = NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
+  if (nfl) return nfl.nickname;
+  if (league === "custom") return name || team.abbr?.trim() || "";
+  return shortTeamName(team, league) || name;
+}
+
+/** "Packers vs Bears": the matchup in the words people text; the board name if teams are missing. */
+export function shortMatchup(game: Pick<Game, "teamX" | "teamY" | "name" | "league">): string {
+  const x = shortTeam(game.teamX, game.league);
+  const y = shortTeam(game.teamY, game.league);
+  if (x && y) return `${x} vs ${y}`;
+  return game.name.trim() || "squares";
 }
 
 export function pluralize(n: number, one: string, many = `${one}s`): string {

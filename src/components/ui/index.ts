@@ -3,7 +3,7 @@ export { ActionBar, type ActionBarProps } from "./ActionBar";
 export { Avatar, AvatarGroup, avatarInitial, type AvatarPerson, type AvatarProps, type AvatarSize } from "./Avatar";
 export { Badge, type BadgeProps, type BadgeTone } from "./Badge";
 export { BottomSheet, type BottomSheetProps } from "./BottomSheet";
-export { useBottomChrome } from "./bottomChrome";
+export { useBottomChrome, useBottomChromeOffset } from "./bottomChrome";
 export { Button, type ButtonProps } from "./Button";
 export { buttonStyles, type ButtonSize, type ButtonStyleOptions, type ButtonVariant } from "./buttonStyles";
 export { Card, type CardProps, type CardTone } from "./Card";

@@ -5,9 +5,9 @@
 // square is the fastest way in.
 import type { GameState } from "../../../shared/types";
 import { Avatar, AvatarGroup, Button, cx, TeamMark } from "../../components/ui";
-import { kickoffLabel, teamVars } from "../../lib/format";
+import { kickoffLabel, shortMatchup, teamVars } from "../../lib/format";
 import "./invite.css";
-import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, peopleInOrder, shortMatchup, squaresLeftLabel } from "./inviteModel";
+import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, peopleInOrder, squaresLeftLabel } from "./inviteModel";
 import { useNewArrival } from "./useNewArrival";
 
 export interface InviteHeroProps {

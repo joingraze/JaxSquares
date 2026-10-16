@@ -229,12 +229,16 @@ export function ScorePreview({
   state,
   entry,
   label,
+  moment,
   me,
   notice,
 }: {
   state: GameState;
   entry: ScoreEntry;
+  /** The period as a noun ("Q1", "Half", "Score 3"). */
   label: string;
+  /** The period mid-sentence ("at the end of Q1", "at halftime", "on score 3"). */
+  moment: string;
   me: string;
   notice?: SavedNotice | null;
 }) {
@@ -274,7 +278,7 @@ export function ScorePreview({
           ? `Type the ${label} score, or tap "${entry.suggestion.label}".`
           : blank
             ? `Type the ${label} score to see who wins.`
-            : `Enter both scores to see who wins ${label}.`}
+            : `Enter both scores to see who wins ${moment}.`}
       </Hint>
     );
   }
@@ -299,11 +303,11 @@ export function ScorePreview({
   } else if (owner) {
     title = mine ? (
       <>
-        <b className="font-extrabold text-brand-300">You</b> {verb} {label}
+        <b className="font-extrabold text-brand-300">You</b> {verb} {moment}
       </>
     ) : (
       <>
-        <b className="font-extrabold text-ink">{owner.name}</b> {verb} {label}
+        <b className="font-extrabold text-ink">{owner.name}</b> {verb} {moment}
       </>
     );
   } else {

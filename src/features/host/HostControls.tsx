@@ -11,6 +11,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { periodPhrase } from "../../../shared/formats";
 import type { GameState, NumberDraw, PaymentConfig } from "../../../shared/types";
 import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, SparklesIcon, TrophyIcon, UsersIcon } from "../../components/icons";
 import { celebrate, cx, useToast } from "../../components/ui";
@@ -178,7 +179,8 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
     setOpen(false);
     later(async () => {
       setPicking(label);
-      const cell = await pickCell(`Tap the square that wins ${label}`).finally(() => setPicking(null));
+      const { short, moment } = periodPhrase(periodKey, label);
+      const cell = await pickCell(`Tap the square that wins ${moment}`).finally(() => setPicking(null));
       if (!cell) {
         openSheet("home");
         return;
@@ -191,7 +193,7 @@ function HostPanel({ state, apply, pickCell, onInvite }: HostControlsProps) {
       toast.show({
         id: player ? "activity-winner" : "host-saved",
         tone: player ? "win" : "neutral",
-        title: player ? `${player.id === me ? "You win" : `${player.name} wins`} ${label}` : `${label}: empty square picked`,
+        title: player ? `${player.id === me ? "You win" : `${player.name} wins`} ${moment}` : `${short}: empty square picked`,
         description: player ? "Your pick. Everyone sees it now." : "Nobody owns that square, so nobody wins it.",
       });
       if (player) void celebrate("pop", { origin: { x: 0.5, y: 0.4 }, colors: ["#ffd56b", "#ffc233", "#ffab0f", "#ffffff"] });
@@ -322,10 +324,8 @@ function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: 
           className="pressable flex min-h-11 items-center gap-3 rounded-2xl text-left"
         >
           <Crown size="md" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-headline font-extrabold leading-tight text-ink">Your board isn't open yet</span>
-            <span className="block text-footnote leading-snug text-ink-muted">Open it so friends can pick squares.</span>
-          </span>
+          {/* The board's own hint already says friends pick once it's open. */}
+          <span className="min-w-0 flex-1 text-headline font-extrabold leading-tight text-ink">Your board isn't open yet</span>
           <ChevronRightIcon size={16} strokeWidth={2.6} className="shrink-0 text-ink-subtle" />
         </button>
         <button

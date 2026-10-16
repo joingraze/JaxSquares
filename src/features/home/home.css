@@ -139,12 +139,6 @@
   100% { transform: none; }
 }
 
-/* Content fades out before it reaches the floating tab dock (instead of showing through it). */
-.home-dock-fade {
-  height: calc(var(--shell-bottom) + 1.25rem);
-  background: linear-gradient(to top, var(--color-canvas) 0%, var(--color-canvas) 62%, color-mix(in srgb, var(--color-canvas) 0%, transparent) 100%);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .home-bump,
   .home-buzz-new,

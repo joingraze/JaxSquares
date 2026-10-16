@@ -5,8 +5,7 @@
 
 import type { ReactNode } from "react";
 import { CheckIcon, ChevronRightIcon, InfoIcon, LiveIcon, TrophyIcon, UsersIcon } from "../../components/icons";
-import { cx } from "../../components/ui";
-import { useBottomChromeOffset } from "../../components/ui/bottomChrome";
+import { cx, useBottomChromeOffset } from "../../components/ui";
 import type { Shown, TickerTone } from "./useTicker";
 
 const TONE: Record<TickerTone, { icon: ReactNode; chip: string }> = {

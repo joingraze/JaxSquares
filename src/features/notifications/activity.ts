@@ -7,15 +7,17 @@
 // - Never announce my own actions (I just did it; the UI already reacted).
 //   Winners are the exception: a win is news even when I typed the score.
 // - Be specific: names, counts, labels, "only 6 left".
-// - One vocabulary for periods, the board's own: Q1, Half, Q3, Final.
+// - One vocabulary for periods, the app's (periodPhrase in shared/formats.ts):
+//   chips say "Q1", "Half", "Final"; sentences say "at the end of Q1",
+//   "at halftime", "at the final whistle", "on score 3".
 // - Group bursts: a run of claims by one person reads "Maya grabbed 2 more · 5 total".
 // - Skip noise: releases only matter when the board is nearly full, and a score
 //   that produced a winner is announced by the winner line instead.
 // - Say whose news it is (`subject`): mine for "You…", the winner's for
-//   "Dre wins Q3", the board's for system news. Never the host who typed it.
+//   "Dre wins at the end of Q3", the board's for system news. Never the host who typed it.
 
 import { drawFor, myWins, resolveResults, squaresLeft, winCounts } from "../../../shared/squares";
-import { SHARED_DRAW_KEY, drawKeys } from "../../../shared/formats";
+import { SHARED_DRAW_KEY, drawKeys, periodPhrase } from "../../../shared/formats";
 import type { Activity, ActivityType, GameState, Team } from "../../../shared/types";
 
 /** Who the news is about, which decides the avatar an alert wears. */
@@ -90,20 +92,15 @@ export function joinNames(names: string[]): string {
 
 export const teamShort = (t: Team): string => t.abbr?.trim() || t.name;
 
-/**
- * How a period reads mid-sentence, in the board's own words: "Q1", "Half",
- * "Q3", "the Final", "Score 3". (Never "halftime": the board, its banner and
- * the push all say Half.)
- */
-export function periodPhrase(label: string, periodKey: string): string {
-  if (periodKey === "final" || /^final$/i.test(label)) return "the Final";
-  if (periodKey === "q2" || /^half(time)?$/i.test(label)) return "Half";
-  return label;
+/** A period mid-sentence with a leading space (" at halftime", " on score 3"), or "" when there's nothing to say. */
+export function atMoment(periodKey: string, label: string): string {
+  const { moment } = periodPhrase(periodKey, label);
+  return moment ? ` ${moment}` : "";
 }
 
-/** A period as a standalone label: "Q1", "Half", "Q3", "Final", "Score 3". */
-export function periodName(label: string, periodKey: string): string {
-  return periodPhrase(label, periodKey).replace(/^the /, "");
+/** "at halftime" -> "At halftime", for a moment that starts a line. */
+export function capitalize(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
 /** Stable pick between phrasings, so the same activity always reads the same. */
@@ -127,7 +124,7 @@ export function sibling(a: Activity, state: GameState, type: ActivityType, match
 export function scoreChipFor(state: GameState, periodKey: string, label: string): AlertChip | undefined {
   const s = state.scores.find((x) => x.periodKey === periodKey);
   if (!s) return undefined;
-  return { kind: "score", scoreX: s.scoreX, scoreY: s.scoreY, label: periodName(s.label ?? label, periodKey) };
+  return { kind: "score", scoreX: s.scoreX, scoreY: s.scoreY, label: periodPhrase(periodKey, s.label ?? label).short };
 }
 
 // ---- per type ----
@@ -246,16 +243,17 @@ function score(a: Activity, state: GameState): ActivityAnnouncement | null {
   const scoreY = int(d.scoreY, 0);
   const line = `${teamShort(teamX)} ${scoreX}–${scoreY} ${teamShort(teamY)}`;
   const label = str(d.label) ?? periodKey;
+  const phrase = periodPhrase(periodKey, label);
   let lead: string;
   if (/^s\d+$/.test(periodKey)) lead = "Score!";
   else if (periodKey === "final") lead = "Final:";
-  else lead = `End of ${periodName(label, periodKey)}:`;
+  else lead = phrase.moment ? `${capitalize(phrase.moment)}:` : "Score:";
   return {
     text: `${lead} ${line}`,
     tone: "live",
     haptic: "light",
     subject: { kind: "system", glyph: "score" },
-    chip: { kind: "score", scoreX, scoreY, label: periodName(label, periodKey) },
+    chip: { kind: "score", scoreX, scoreY, label: phrase.short },
   };
 }
 
@@ -263,7 +261,7 @@ function winner(a: Activity, state: GameState, me: string): ActivityAnnouncement
   const d = a.data as Data;
   const periodKey = str(d.periodKey) ?? "";
   const label = str(d.label) ?? periodKey;
-  const when = periodPhrase(label, periodKey);
+  const when = atMoment(periodKey, label);
   const winners = ids(d.playerIds);
   const cell = cellOf(d.cell);
   const chip = scoreChipFor(state, periodKey, label);
@@ -272,16 +270,16 @@ function winner(a: Activity, state: GameState, me: string): ActivityAnnouncement
     const others = winners.filter((id) => id !== me).map((id) => nameOf(state, id));
     const prize = str(d.prize);
     const text = others.length
-      ? `You and ${joinNames(others)} both hit at ${when}! 🎉`
-      : `Your square hit at ${when}! 🎉${prize ? ` ${prize}` : ""}`;
+      ? `You and ${joinNames(others)} both hit${when}! 🎉`
+      : `Your square hit${when}! 🎉${prize ? ` ${prize}` : ""}`;
     return { text, tone: "win", haptic: "success", celebrate: true, subject: { kind: "me" }, chip, cell };
   }
   if (winners.length === 0) {
-    return { text: `Nobody had the winning square at ${when}`, tone: "info", subject: { kind: "system", glyph: "winner" }, chip, cell };
+    return { text: `Nobody had the winning square${when}`, tone: "info", subject: { kind: "system", glyph: "winner" }, chip, cell };
   }
   const names = joinNames(winners.map((id) => nameOf(state, id)));
   return {
-    text: `${names} ${winners.length > 1 ? "win" : "wins"} ${when} 🎉`,
+    text: `${names} ${winners.length > 1 ? "win" : "wins"}${when} 🎉`,
     tone: "win",
     haptic: "light",
     subject: { kind: "player", id: winners[0] },
@@ -292,7 +290,7 @@ function winner(a: Activity, state: GameState, me: string): ActivityAnnouncement
 
 /** "Q1, Half & Q3" for the periods I won (or "4 times" when it's a lot). */
 export function myWinsPhrase(state: GameState, me: string): string | null {
-  const wins = [...new Set(myWins(resolveResults(state), me).map((w) => periodName(w.label, w.periodKey)))];
+  const wins = [...new Set(myWins(resolveResults(state), me).map((w) => periodPhrase(w.periodKey, w.label).short))];
   if (wins.length === 0) return null;
   return wins.length > 3 ? `${wins.length} times` : joinNames(wins);
 }

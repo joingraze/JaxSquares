@@ -10,8 +10,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from "react-dom";
 import type { Game, NumberDraw, Player, Square } from "../../../shared/types";
 import { cellKey, gridSize } from "../../../shared/squares";
-import { ShareIcon } from "../../components/icons";
-import { Button, LiveDot, TeamMark, celebrate, cx, prefersReducedMotion } from "../../components/ui";
+import { CheckIcon, ShareIcon } from "../../components/icons";
+import { Button, LiveDot, TeamMark, celebrate, cx, prefersReducedMotion, useBottomChrome } from "../../components/ui";
 import { lockBackground } from "../../components/ui/modalLock";
 import { readableTeamColor, teamVars } from "../../lib/format";
 import { haptic } from "../../lib/native";
@@ -54,9 +54,24 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
   const [done, setDone] = useState(false);
   const landing = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [footerH, setFooterH] = useState(0);
 
   // Background lock (the app root goes inert under the overlay).
   useLayoutEffect(() => lockBackground(), []);
+
+  // Toasts (e.g. "Copied") land above the buttons, not on them. Modal: the tab dock under the overlay doesn't count.
+  useLayoutEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    const update = () => setFooterH(el.offsetHeight);
+    update();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  useBottomChrome(footerH > 0 ? `${footerH}px` : null, true);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   // Spin every reel (out of phase with each other) until the draw lands.
@@ -230,14 +245,15 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
       aria-modal="true"
       aria-labelledby="hx-reveal-title"
       style={vars}
-      className="hx-reveal fixed inset-0 z-[70] flex flex-col overflow-y-auto overscroll-contain pt-safe"
+      // Above sheets (z-50), under toasts (z-70) so "Link copied" shows over it.
+      className="hx-reveal fixed inset-0 z-[60] flex flex-col overflow-y-auto overscroll-contain pt-safe"
       onKeyDown={(e) => {
         if (e.key === "Escape" && done) onClose();
       }}
     >
       <div className="flex h-12 shrink-0 items-center justify-between px-4">
         <span className="eyebrow flex items-center gap-2 text-ink-muted">
-          <LiveDot tone={done ? "brand" : "gold"} pulse={!done} />
+          {done ? <CheckIcon size={14} strokeWidth={3.2} className="text-brand-400" /> : <LiveDot tone="gold" />}
           {status}
         </span>
         {!done && draw && !reduced && (
@@ -330,7 +346,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
         )}
       </div>
 
-      <div className="shrink-0 px-4 pb-[max(var(--safe-bottom),1rem)] pt-2">
+      <div ref={footerRef} className="shrink-0 px-4 pb-[max(var(--safe-bottom),1rem)] pt-2">
         <div className={cx("flex flex-col gap-1 transition-opacity duration-300", done ? "opacity-100" : "pointer-events-none opacity-0")}>
           <Button ref={closeRef} size="lg" block haptic="medium" onClick={onClose} tabIndex={done ? 0 : -1}>
             See the board

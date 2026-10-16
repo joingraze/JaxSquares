@@ -25,8 +25,6 @@ import {
   nameProblem,
   peopleInOrder,
   previewStatus,
-  shortMatchup,
-  shortTeam,
   shuffleLook,
   spelledCode,
   squaresLeftLabel,
@@ -98,21 +96,6 @@ describe("codes and links", () => {
     const { game } = makeState();
     expect(matchupLabel(game)).toBe("Chiefs vs Bills");
     expect(matchupLabel({ ...game, teamY: { name: " " } })).toBe("Sunday Night Squares");
-  });
-
-  it("shortens the matchup to the names people text", () => {
-    const { game } = makeState();
-    const packers = { name: "Green Bay Packers", abbr: "GB" };
-    const bears = { name: "Chicago Bears", abbr: "CHI" };
-    // A typed NFL team is stored with its full name; a linked one too.
-    expect(shortMatchup({ ...game, teamX: packers, teamY: bears })).toBe("Packers vs Bears");
-    expect(shortMatchup({ ...game, league: "nfl", teamX: packers, teamY: bears })).toBe("Packers vs Bears");
-    expect(shortTeam({ name: "Penn State Nittany Lions", abbr: "PSU" }, "ncaaf")).toBe("Penn State");
-    expect(shortTeam({ name: "Ohio State Buckeyes", abbr: "OSU" }, "ncaaf")).toBe("Ohio State");
-    // Typed custom teams stay as typed.
-    expect(shortMatchup(game)).toBe("Chiefs vs Bills");
-    expect(shortMatchup({ ...game, teamX: { name: "The Smiths" }, teamY: { name: "The Joneses" } })).toBe("The Smiths vs The Joneses");
-    expect(shortMatchup({ ...game, teamY: { name: " " } })).toBe("Sunday Night Squares");
   });
 
   it("knows when the board's name already names both teams", () => {

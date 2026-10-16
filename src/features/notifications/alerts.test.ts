@@ -97,7 +97,7 @@ describe("boardAlert: the final whistle is one moment", () => {
     expect(boardAlert(whistle, s, ME)).toMatchObject({
       key: "moment:final",
       kind: "final",
-      title: "Maya wins the Final 🏁",
+      title: "Maya wins at the final whistle 🏁",
       detail: "You won Q1 & Q3",
       // About Maya, so it wears Maya's sticker (not the host's who typed it).
       subject: { kind: "player", id: MAYA },
@@ -112,7 +112,7 @@ describe("boardAlert: the final whistle is one moment", () => {
     const { win, whistle } = finalMoment(ME);
     const s = withActivity(finished({ "9,4": ME }), win, whistle);
     expect(boardAlert(whistle, s, ME)).toMatchObject({
-      title: "Your square hit the Final! 🏁",
+      title: "Your square hit at the final whistle! 🏁",
       detail: "You won Half & Final",
       subject: { kind: "me" },
       banner: true,
@@ -123,7 +123,7 @@ describe("boardAlert: the final whistle is one moment", () => {
     const { win, whistle } = finalMoment(MAYA, ME);
     const s = withActivity(finished({ "9,4": MAYA }), win, whistle);
     expect(boardAlert(whistle, s, ME)).toBeNull();
-    expect(boardAlert(win, s, ME)).toMatchObject({ title: "Maya wins the Final", subject: { kind: "player", id: MAYA } });
+    expect(boardAlert(win, s, ME)).toMatchObject({ title: "Maya wins at the final whistle", subject: { kind: "player", id: MAYA } });
   });
 });
 
@@ -137,7 +137,7 @@ describe("boardAlert: wins", () => {
     const a = act("winner", MAYA, { periodKey: "q2", label: "Half", playerIds: [ME], cell: { row: 9, col: 4 }, prize: "Loser buys wings" });
     expect(boardAlert(a, withActivity(locked, a), ME)).toMatchObject({
       kind: "my-win",
-      title: "Your square hit Half!",
+      title: "Your square hit at halftime!",
       detail: "Loser buys wings",
       banner: true,
       subject: { kind: "me" },
@@ -149,7 +149,7 @@ describe("boardAlert: wins", () => {
     const a = act("winner", MAYA, { periodKey: "q2", label: "Half", playerIds: [SAM], cell: { row: 9, col: 4 }, prize: null });
     expect(boardAlert(a, withActivity(locked, a), ME)).toMatchObject({
       kind: "win",
-      title: "Sam wins Half",
+      title: "Sam wins at halftime",
       subject: { kind: "player", id: SAM },
       chip: { kind: "score", scoreX: 14, scoreY: 10, label: "Half" },
       cell: { row: 9, col: 4 },

@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { TrophyIcon } from "../../components/icons";
-import { Avatar, Badge, cx } from "../../components/ui";
+import { Avatar, Badge, cx, LiveDot } from "../../components/ui";
 import type { PlayerRow } from "./boardModel";
 
 const COLLAPSED = 5;
@@ -71,7 +71,7 @@ export function PlayersList({ rows, total, hostId, stage, leading = null, select
                       <span className="tabular-nums">{squares === 1 ? "1 square" : `${squares} squares`}</span>
                       {leads && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-live-300">
-                          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-live-500" />
+                          <LiveDot />
                           Leading {leading?.label}
                         </span>
                       )}

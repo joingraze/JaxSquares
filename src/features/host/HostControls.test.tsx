@@ -183,13 +183,13 @@ describe("HostControls", () => {
     expect(save).toBeDisabled();
     fireEvent.change(screen.getByTestId("score-x"), { target: { value: "7" } });
     fireEvent.change(screen.getByTestId("score-y"), { target: { value: "3" } });
-    expect(screen.getByText(/would win Q1/)).toHaveTextContent("Maya would win Q1");
+    expect(screen.getByText(/would win at the end of Q1/)).toHaveTextContent("Maya would win at the end of Q1");
     expect(save).toHaveTextContent("Save Q1 score");
     fireEvent.click(save);
     await waitFor(() => expect(setScore).toHaveBeenCalledWith("hst123", { periodKey: "q1", scoreX: 7, scoreY: 3 }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(saved));
     // Confirmed in the sheet's footer, not by a toast over the sheet's header.
-    expect(await screen.findByTestId("score-saved")).toHaveTextContent("Saved · Maya wins Q1");
+    expect(await screen.findByTestId("score-saved")).toHaveTextContent("Saved · Maya wins at the end of Q1");
   });
 
   it("starts a new period blank and only saves once the host enters or confirms a score", async () => {
@@ -209,7 +209,7 @@ describe("HostControls", () => {
     expect(screen.getByTestId("score-x")).toHaveValue("7");
     expect(screen.getByTestId("score-y")).toHaveValue("3");
     expect(save).toBeEnabled();
-    expect(screen.getByText(/would win Half/)).toHaveTextContent("Maya would win Half");
+    expect(screen.getByText(/would win at halftime/)).toHaveTextContent("Maya would win at halftime");
   });
 
   it("enters digits with the keypad", async () => {
@@ -317,7 +317,7 @@ describe("HostControls", () => {
       expect(give).toHaveTextContent("Give it to a player");
       fireEvent.click(give);
       await vi.advanceTimersByTimeAsync(400);
-      expect(pickCell).toHaveBeenCalledWith("Tap the square that wins Q1");
+      expect(pickCell).toHaveBeenCalledWith("Tap the square that wins at the end of Q1");
       await waitFor(() => expect(setWinner).toHaveBeenCalledWith("hst123", { periodKey: "q1", row: 0, col: 0 }));
     } finally {
       vi.useRealTimers();

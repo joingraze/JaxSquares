@@ -74,14 +74,14 @@ export function MiniBoard({ className }: { className?: string }) {
           Live
         </span>
         <span className="rounded-md px-1 text-[0.625rem] font-black text-white" style={{ background: TEAM_X }}>
-          KC
+          HAW
         </span>
         <span className="font-display text-callout font-extrabold tabular-nums text-ink">
           2<span className="text-gold-400">4</span>
           <span className="mx-1 text-ink-subtle">–</span>2<span className="text-gold-400">7</span>
         </span>
         <span className="rounded-md px-1 text-[0.625rem] font-black text-white" style={{ background: TEAM_Y }}>
-          BUF
+          RID
         </span>
         <span className="text-[0.625rem] font-bold text-ink-muted">Q3</span>
       </div>

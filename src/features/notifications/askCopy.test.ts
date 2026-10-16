@@ -61,14 +61,14 @@ describe("askCopy", () => {
     ];
     const c = askCopy("claimed", board({ hostPlayerId: MAYA }, squares), ME);
     expect(c.lines[0]).toBe("🔢 Numbers are in. Find your 2 squares.");
-    expect(c.lines[1]).toMatch(/^🎉 KC 7 – BUF 3 at Q1/);
+    expect(c.lines[1]).toMatch(/^🎉 KC 7 – BUF 3 at the end of Q1/);
     expect(c.body).toMatch(/one of your 2 squares/);
   });
 
   it("uses my real numbers once they're drawn", () => {
     const squares = [{ row: 2, col: 7, playerId: ME, claimedAt: 1 }];
     const c = askCopy("joined", board({ hostPlayerId: MAYA, status: "locked", numbers: { "*": DRAW } }, squares), ME);
-    expect(c.lines).toEqual(["🔢 Numbers are in. You've got KC 7 · BUF 7", "🎉 KC 7 – BUF 7 at Q1. Your square hits! 🏆"]);
+    expect(c.lines).toEqual(["🔢 Numbers are in. You've got KC 7 · BUF 7", "🎉 KC 7 – BUF 7 at the end of Q1. Your square hits! 🏆"]);
   });
 
   it("talks results, not the draw, once the numbers are in", () => {

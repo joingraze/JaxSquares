@@ -20,7 +20,6 @@ import {
   nextChange,
   nowSentence,
   periodCards,
-  periodNoun,
   playerRows,
   pruneSelection,
   rightNow,
@@ -539,11 +538,5 @@ describe("right now", () => {
     expect(nowSentence({ ...base, ownerId: null })).toBe("Nobody wins if it's 17–13 at the end of Q3");
     expect(nowSentence({ ...base, live: false, periodKey: "q2", label: "Half", scoreX: 14, scoreY: 10 })).toBe("Wins at halftime if it stays 14–10");
     expect(nowSentence({ ...base, live: false, periodKey: "final", label: "Final" })).toBe("Wins at the final whistle if it stays 17–13");
-  });
-
-  it("speaks periods like a friend would", () => {
-    expect(periodNoun({ key: "q2", label: "Half" })).toBe("the half");
-    expect(periodNoun({ key: "q1", label: "Q1" })).toBe("Q1");
-    expect(periodNoun({ key: "final", label: "Final" })).toBe("the final");
   });
 });

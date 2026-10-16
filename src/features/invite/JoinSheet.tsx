@@ -7,11 +7,11 @@ import type { GameState } from "../../../shared/types";
 import { AlertIcon, CheckIcon, ShuffleIcon } from "../../components/icons";
 import { Avatar, BottomSheet, Button, cx, TextField } from "../../components/ui";
 import { api, errorMessage } from "../../lib/api";
-import { contrastText } from "../../lib/format";
+import { contrastText, shortMatchup } from "../../lib/format";
 import { getPlayerId, getProfile, hasProfileName, NAME_MAX_LENGTH, PLAYER_COLORS, PLAYER_EMOJIS, setProfile } from "../../lib/identity";
 import { haptic } from "../../lib/native";
 import "./invite.css";
-import { boardStats, defaultLook, hostOf, joinLabel, nameClash, nameProblem, shortMatchup, shuffleLook, type Look } from "./inviteModel";
+import { boardStats, defaultLook, hostOf, joinLabel, nameClash, nameProblem, shuffleLook, type Look } from "./inviteModel";
 
 export interface JoinSheetProps {
   state: GameState;

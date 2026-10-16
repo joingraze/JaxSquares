@@ -3,8 +3,9 @@
 // and the board filling up; a player who just claimed sees their own board and
 // (once drawn) their own numbers in the preview. Pure, tested in askCopy.test.ts.
 
+import { periodPhrase } from "../../../shared/formats";
 import type { GameState } from "../../../shared/types";
-import { myNumbers, periodName, teamShort } from "./activity";
+import { myNumbers, teamShort } from "./activity";
 import type { AskTrigger } from "./prefs";
 
 export interface AskCopy {
@@ -25,19 +26,19 @@ const scoreEnding = (digit: string): number => SCORE_FOR_DIGIT[Number(digit)] ??
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function playerLines(state: GameState | null, me: string): [string, string] {
-  if (!state) return ["🔢 Numbers are in. Find your squares.", "🎉 Your square hit at Q1! 🏆"];
+  if (!state) return ["🔢 Numbers are in. Find your squares.", `🎉 Your square hit ${periodPhrase("q1").moment}! 🏆`];
   const x = teamShort(state.game.teamX);
   const y = teamShort(state.game.teamY);
   const first = state.game.periods[0];
-  const when = first ? periodName(first.label, first.key) : "Q1";
+  const when = (first ? periodPhrase(first.key, first.label) : periodPhrase("q1")).moment;
   const mine = state.squares.filter((s) => s.playerId === me).length;
   const pairs = myNumbers(state, me);
   if (pairs && pairs.length > 0) {
     const p = pairs[0];
-    return [`🔢 Numbers are in. You've got ${x} ${p.x} · ${y} ${p.y}`, `🎉 ${x} ${scoreEnding(p.x)} – ${y} ${scoreEnding(p.y)} at ${when}. Your square hits! 🏆`];
+    return [`🔢 Numbers are in. You've got ${x} ${p.x} · ${y} ${p.y}`, `🎉 ${x} ${scoreEnding(p.x)} – ${y} ${scoreEnding(p.y)} ${when}. Your square hits! 🏆`];
   }
   const back = mine > 0 ? `🔢 Numbers are in. Find your ${mine === 1 ? "square" : plural(mine, "square")}.` : "🔢 Numbers are in. Find your squares.";
-  return [back, `🎉 ${x} 7 – ${y} 3 at ${when}. Your square hits! 🏆`];
+  return [back, `🎉 ${x} 7 – ${y} 3 ${when}. Your square hits! 🏆`];
 }
 
 function hostLines(state: GameState | null, me: string): [string, string] {
@@ -56,7 +57,7 @@ export function askCopy(trigger: AskTrigger, state: GameState | null, me: string
   const kickoff = !!state?.game.linkedEvent;
   // Numbers already drawn: the next pings are the results, not the draw.
   const drawn = !!state && state.game.status !== "open" && state.game.status !== "draft";
-  const results = state ? state.game.periods.map((p) => periodName(p.label, p.key)) : [];
+  const results = state ? state.game.periods.map((p) => periodPhrase(p.key, p.label).short) : [];
   const playerScope = [
     drawn
       ? results.length > 0 && results.length <= 4

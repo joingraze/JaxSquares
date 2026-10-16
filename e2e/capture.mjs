@@ -22,14 +22,25 @@ const iPhone = { ...devices["iPhone 13"], viewport: { width: 390, height: 844 },
 // ---- API seeding ----
 
 const uuid = () => crypto.randomUUID();
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Retries for a 5xx: dev servers running side by side share the local D1 file and can hit SQLITE_BUSY. */
+const RETRIES = 3;
+
 async function call(method, path, { client, admin, body } = {}) {
   const headers = { "content-type": "application/json" };
   if (client) headers["x-client-id"] = client;
   if (admin) headers["x-admin-token"] = admin;
-  const res = await fetch(BASE + "/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${JSON.stringify(data)}`);
-  return data;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(BASE + "/api" + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (res.status >= 500 && attempt < RETRIES) {
+      // A failed D1 batch commits nothing, so a retry can't double a claim or a score.
+      await sleep(200 * 2 ** attempt);
+      continue;
+    }
+    if (!res.ok) throw new Error(`${method} ${path} -> ${res.status} ${JSON.stringify(data)}`);
+    return data;
+  }
 }
 
 const FRIENDS = [
@@ -64,16 +75,24 @@ async function createBoard(host, { name, teamX, teamY, format, prizes = {} }) {
   return { id, admin };
 }
 
+/** Squares per claim request: a few requests per player instead of one per square. */
+const CLAIM_BATCH = 8;
+
 async function fill(id, players, count, size = 10) {
   const cells = [];
   for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) cells.push({ row: r, col: c });
   // Deterministic scatter so screenshots are stable.
   cells.sort((a, b) => ((a.row * 37 + a.col * 11) % 101) - ((b.row * 37 + b.col * 11) % 101));
-  let i = 0;
   for (const p of players) await call("POST", `/games/${id}/join`, { client: p.client, body: p.profile });
-  for (let n = 0; n < count; n++) {
-    const p = players[n % players.length];
-    await call("POST", `/games/${id}/claim`, { client: p.client, body: { cells: [cells[i++]] } }).catch(() => {});
+  // Same owners as dealing one square at a time (square n goes to player n % players)...
+  const dealt = players.map(() => []);
+  for (let n = 0; n < Math.min(count, cells.length); n++) dealt[n % players.length].push(cells[n]);
+  // ...claimed in batches, taking turns so the activity reads like people picking side by side.
+  for (let from = 0; dealt.some((mine) => mine.length > from); from += CLAIM_BATCH) {
+    for (const [k, p] of players.entries()) {
+      const batch = dealt[k].slice(from, from + CLAIM_BATCH);
+      if (batch.length) await call("POST", `/games/${id}/claim`, { client: p.client, body: { cells: batch } }).catch(() => {});
+    }
   }
 }
 

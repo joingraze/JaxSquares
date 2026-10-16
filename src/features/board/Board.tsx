@@ -8,7 +8,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties,
 import type { Game } from "../../../shared/types";
 import { CheckIcon, MinusIcon, TrophyIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
-import { contrastText } from "../../lib/format";
+import { contrastText, shortTeam } from "../../lib/format";
 import type { CellView } from "./boardModel";
 import "./board.css";
 
@@ -20,7 +20,7 @@ export interface BoardCallout {
 }
 
 export interface BoardProps {
-  game: Pick<Game, "teamX" | "teamY" | "format">;
+  game: Pick<Game, "teamX" | "teamY" | "format" | "league">;
   cells: CellView[][];
   axis: { x: string[]; y: string[]; drawn: boolean };
   /** Squares are being claimed: empty squares look tappable. */
@@ -236,11 +236,11 @@ export function Board({
       <div aria-hidden />
       <div className="relative flex min-w-0 items-center">
         <div className={cx("flex min-w-0 flex-1 items-center", !!accessory && "px-[5rem]")}>
-          <TeamBand axis="x" name={game.teamX.name} />
+          <TeamBand axis="x" name={shortTeam(game.teamX, game.league)} />
         </div>
         {accessory && <div className="absolute inset-y-0 right-0 flex items-center">{accessory}</div>}
       </div>
-      <TeamBand axis="y" name={game.teamY.name} />
+      <TeamBand axis="y" name={shortTeam(game.teamY, game.league)} />
       <div
         ref={scrollerRef}
         className={cx("jx-board-scroller", zoom ? "overflow-auto scrollbar-none" : "overflow-visible")}

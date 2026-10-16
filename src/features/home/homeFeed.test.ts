@@ -35,12 +35,14 @@ function state(id: string, version: number, status: GameState["game"]["status"] 
 class FakeFollow implements Follow {
   state: GameState | null;
   stopped = false;
+  gone = false;
   private subs = new Set<() => void>();
   private acts = new Set<(a: Activity, s: GameState) => void>();
   constructor(initial: GameState | null) {
     this.state = initial;
   }
   getState = () => this.state;
+  isGone = () => this.gone;
   subscribe = (cb: () => void) => {
     this.subs.add(cb);
     return () => this.subs.delete(cb);
@@ -59,6 +61,11 @@ class FakeFollow implements Follow {
   }
   event(a: Activity) {
     for (const cb of this.acts) cb(a, this.state!);
+  }
+  /** The board was deleted (socket `deleted`/4404, or a 404 from the polling fallback). */
+  delete() {
+    this.gone = true;
+    for (const cb of this.subs) cb();
   }
 }
 
@@ -129,6 +136,32 @@ describe("HomeFeed", () => {
     expect(feed.getSnapshot().fresh.has("done")).toBe(true);
     feed.sync([], ["old"]);
     expect(fetchOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps taking states while a followed board is on its polling fallback", () => {
+    const { feed, follows } = setup();
+    feed.sync(["a"]);
+    const a = follows.get("a")!;
+    a.receive(state("a", 2)); // socket
+    a.receive(state("a", 3)); // socket dropped: the next state comes from a poll through the same store
+    expect(feed.getSnapshot().states.a.version).toBe(3);
+    expect(feed.getSnapshot().fresh.has("a")).toBe(true);
+  });
+
+  it("drops a board deleted while followed and doesn't follow it again", () => {
+    const { feed, follows } = setup();
+    feed.sync(["a", "b"]);
+    follows.get("a")!.receive(state("a", 2));
+    follows.get("a")!.delete();
+    const snap = feed.getSnapshot();
+    expect(snap.gone.has("a")).toBe(true);
+    expect(snap.states.a).toBeUndefined();
+    expect(snap.fresh.has("a")).toBe(false);
+    expect(follows.get("a")!.stopped).toBe(true);
+    expect(feed.following).toEqual(["b"]);
+    // The summary list may still list it until its next refresh.
+    feed.sync(["a", "b"]);
+    expect(feed.following).toEqual(["b"]);
   });
 
   it("passes new activity on with the board it happened on", () => {

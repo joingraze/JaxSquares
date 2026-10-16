@@ -3,12 +3,12 @@
 
 import { useRef, useState } from "react";
 import type { ScheduleEvent } from "../../../shared/types";
-import { AlertIcon, CheckIcon, FootballIcon, PencilIcon, SearchIcon, StarIcon, XIcon } from "../../components/icons";
-import { cx, LiveDot, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
-import { kickoffLabel } from "../../lib/format";
+import { AlertIcon, CheckIcon, FootballIcon, LiveIcon, PencilIcon, SearchIcon, StarIcon, XIcon } from "../../components/icons";
+import { cx, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
+import { kickoffLabel, shortTeamName } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CustomMatchup } from "./CustomMatchup";
-import { kickoffParts, shortTeamName, startsIn, withSideColors, type TeamColors } from "./model";
+import { kickoffParts, startsIn, withSideColors, type TeamColors } from "./model";
 import type { Schedule, ScheduleLeague } from "./useSchedule";
 
 export type PickerTab = ScheduleLeague | "custom";
@@ -164,7 +164,7 @@ function GameList({
   return (
     <div className="flex flex-col gap-2">
       <p className="flex items-center gap-2 px-1 text-footnote text-ink-muted">
-        <LiveDot tone="brand" pulse={false} />
+        <LiveIcon size={16} className="shrink-0 text-ink-subtle" />
         <span>
           <span className="font-bold text-ink">Live scores built in.</span> Winners update on their own.
         </span>

@@ -70,8 +70,12 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   const details = snapshot.states;
 
   // Each summary with its board's live state on top (only states from the network: a cached one may be older).
+  // A board deleted while Home followed it disappears now, not at the next summary refresh.
   const boards = useMemo(
-    () => games.map((g) => (snapshot.fresh.has(g.id) && details[g.id] ? withState(g, details[g.id], me) : g)),
+    () =>
+      games
+        .filter((g) => !snapshot.gone.has(g.id))
+        .map((g) => (snapshot.fresh.has(g.id) && details[g.id] ? withState(g, details[g.id], me) : g)),
     [games, snapshot, details, me],
   );
   const grouped = useMemo(() => groupBoards(boards), [boards]);
@@ -151,7 +155,7 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
             <p className="min-w-0 flex-1 text-footnote text-ink-muted">
               <span className="font-bold text-ink">{error.isNetwork ? "You're offline." : "Couldn't refresh."}</span> Showing your last update.
             </p>
-            <Button variant="ghost" size="sm" className="!h-11" onClick={() => void refresh()}>
+            <Button variant="ghost" size="sm" onClick={() => void refresh()}>
               Retry
             </Button>
           </div>
@@ -215,9 +219,6 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           <ArrowRightIcon size={16} strokeWidth={2.6} className="text-brand-400" />
         </button>
       </div>
-
-      {/* Content fades out before it reaches the floating tab dock instead of showing through it. */}
-      <div aria-hidden className="home-dock-fade pointer-events-none fixed inset-x-0 bottom-0 z-30" />
 
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />
     </>

@@ -15,19 +15,20 @@
 //
 // Pure and unit-tested (alerts.test.ts). BoardAlert.tsx renders it.
 
+import { periodPhrase } from "../../../shared/formats";
 import { squaresLeft } from "../../../shared/squares";
 import type { Activity, GameState } from "../../../shared/types";
 import {
   BURST_WINDOW_MS,
   SCARCE_LEFT,
+  atMoment,
+  capitalize,
   describeActivity,
   ids,
   int,
   joinNames,
   myWinsPhrase,
   nameOf,
-  periodName,
-  periodPhrase,
   scoreChipFor,
   str,
   cellOf,
@@ -40,7 +41,7 @@ export interface BoardAlert extends ActivityAnnouncement {
   /** Same key = the same running story: a newer alert replaces the shown one in place. */
   key: string;
   kind: AlertKind;
-  /** Short headline ("Dre wins Q3"). `text` stays the full one-line sentence. */
+  /** Short headline ("Dre wins at the end of Q3"). `text` stays the full one-line sentence. */
   title: string;
   /** Second line under the headline (a prize note, "49 left", "You won Half"). */
   detail?: string;
@@ -146,24 +147,22 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
     }
 
     case "score": {
-      const chip = ann.chip?.kind === "score" ? ann.chip : undefined;
       const periodKey = str(d.periodKey) ?? "";
-      const label = chip?.label ?? periodName(str(d.label) ?? periodKey, periodKey);
+      const { moment } = periodPhrase(periodKey, str(d.label) ?? periodKey);
       // A typed-in Final score also blows the whistle: the summary card speaks for both.
       if (periodKey === "final" && finalWhistleNear(a, state, me)) return null;
       return {
         ...ann,
         key: `moment:${periodKey}`,
         kind: "score",
-        title: /^s\d+$/.test(periodKey) ? "Score!" : periodKey === "final" ? "Final" : `End of ${label}`,
+        title: /^s\d+$/.test(periodKey) ? "Score!" : periodKey === "final" ? "Final" : moment ? capitalize(moment) : "Score",
         duration: MOMENT_MS,
       };
     }
 
     case "winner": {
       const periodKey = str(d.periodKey) ?? "";
-      const label = str(d.label) ?? periodKey;
-      const name = periodPhrase(label, periodKey);
+      const when = atMoment(periodKey, str(d.label) ?? periodKey);
       // The final whistle's summary card covers the Final's winner.
       if (periodKey === "final" && finalWhistleNear(a, state, me)) return null;
       const winners = ids(d.playerIds);
@@ -174,20 +173,20 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
           ...ann,
           key: `moment:${periodKey}`,
           kind: "my-win",
-          title: others.length ? `You and ${joinNames(others.map((id) => nameOf(state, id)))} hit ${name}!` : `Your square hit ${name}!`,
+          title: others.length ? `You and ${joinNames(others.map((id) => nameOf(state, id)))} hit${when}!` : `Your square hit${when}!`,
           detail: prize,
           banner: true,
           duration: MOMENT_MS,
         };
       }
       if (winners.length === 0) {
-        return { ...ann, key: `moment:${periodKey}`, kind: "score", title: `Nobody had ${name}`, detail: "Empty square", duration: MOMENT_MS };
+        return { ...ann, key: `moment:${periodKey}`, kind: "score", title: `Nobody had the square${when}`, detail: "Empty square", duration: MOMENT_MS };
       }
       return {
         ...ann,
         key: `moment:${periodKey}`,
         kind: "win",
-        title: `${joinNames(winners.map((id) => nameOf(state, id)))} ${winners.length > 1 ? "win" : "wins"} ${name}`,
+        title: `${joinNames(winners.map((id) => nameOf(state, id)))} ${winners.length > 1 ? "win" : "wins"}${when}`,
         detail: prize,
         duration: MOMENT_MS,
       };
@@ -205,11 +204,11 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
       let detail: string | undefined;
       let subject = ann.subject;
       if (iWonFinal) {
-        title = "Your square hit the Final! 🏁";
+        title = `Your square hit${atMoment("final", "Final")}! 🏁`;
         detail = mine && mine !== "Final" ? `You won ${mine}` : (str((fin!.data as Data).prize) ?? "That's a wrap");
         subject = { kind: "me" };
       } else if (finWinners.length > 0) {
-        title = `${joinNames(finWinners.map((id) => nameOf(state, id)))} ${finWinners.length > 1 ? "win" : "wins"} the Final 🏁`;
+        title = `${joinNames(finWinners.map((id) => nameOf(state, id)))} ${finWinners.length > 1 ? "win" : "wins"}${atMoment("final", "Final")} 🏁`;
         detail = mine ? `You won ${mine}` : "That's a wrap. See who won each round";
         subject = { kind: "player", id: finWinners[0] };
       } else {

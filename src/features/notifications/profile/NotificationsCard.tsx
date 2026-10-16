@@ -152,7 +152,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
             onClick={turnOn}
             aria-label="Turn on notifications"
             data-testid="notify-enable"
-            className="!h-10 !px-4"
+            className="!px-4"
           >
             Turn on
           </Button>
@@ -170,7 +170,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
           title="Get pings on your iPhone"
           value="iPhone needs JaxSquares on your Home Screen first. Takes ten seconds."
           action={
-            <Button size="sm" onClick={() => setGuide(true)} aria-label="Show me how" className="!h-10 !px-4">
+            <Button size="sm" onClick={() => setGuide(true)} aria-label="Show me how" className="!px-4">
               Set up
             </Button>
           }
@@ -190,7 +190,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
           title={help.kind === "install" ? "Get pings on your iPhone" : help.short}
           value={miss ? `You'll miss: ${miss}` : help.kind === "install" ? "iPhone needs JaxSquares on your Home Screen first." : "One switch brings them back."}
           action={
-            <Button size="sm" onClick={() => setGuide(true)} className="!h-10 !px-4">
+            <Button size="sm" onClick={() => setGuide(true)} className="!px-4">
               {help.kind === "install" ? "Set up" : "Fix it"}
             </Button>
           }

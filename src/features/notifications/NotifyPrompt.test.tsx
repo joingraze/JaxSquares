@@ -94,11 +94,11 @@ describe("NotifyPrompt", () => {
       getPushState.mockResolvedValue("default");
       setup({ settleMs: undefined });
       await act(async () => {
-        vi.advanceTimersByTime(600);
+        vi.advanceTimersByTime(1800);
       });
       expect(screen.queryByText("Want a ping when your square hits?")).toBeNull();
       await act(async () => {
-        vi.advanceTimersByTime(1000);
+        vi.advanceTimersByTime(800);
       });
       expect(screen.getByText("Want a ping when your square hits?")).toBeInTheDocument();
     } finally {

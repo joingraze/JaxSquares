@@ -1,9 +1,6 @@
 // Home's header, shared by the dashboard, its loading skeleton and the error
 // state so the page never changes shape while content fills in: logo, the
 // bell, "Hey <name>", and the headline (a two-line placeholder while loading).
-//
-// The compact bar turns solid once it collapses (the shared glass lets cards
-// ghost through the title), with the bar's hairline underneath.
 
 import type { ReactNode } from "react";
 import { BellIcon } from "../../components/icons";
@@ -26,7 +23,6 @@ export function HomeHeader({ name, headline, trailing, pulse = 0 }: HomeHeaderPr
       title="Home"
       leading={<LogoMark size={30} className="ml-2.5" />}
       trailing={trailing ?? <IconButton label="Activity" icon={<BellIcon size={22} />} disabled />}
-      className="[&.glass]:bg-[rgb(10_17_13)]"
       largeTitle={
         <span className="block">
           <span className="mb-1.5 block font-sans text-subhead font-bold tracking-normal text-ink-muted">{name ? `Hey ${name}` : "Hey there"}</span>

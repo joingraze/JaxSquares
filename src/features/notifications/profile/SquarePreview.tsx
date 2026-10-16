@@ -2,7 +2,8 @@
 // updating live while I change my emoji and color.
 
 import type { CSSProperties } from "react";
-import { contrastText, initialsOf } from "../../../lib/format";
+import { avatarInitial } from "../../../components/ui";
+import { contrastText } from "../../../lib/format";
 import type { Profile } from "../../../lib/identity";
 import "../notifications.css";
 
@@ -26,7 +27,7 @@ function Sticker({ person }: { person: { name: string; color: string; emoji: str
   const style = { "--p": person.color, "--pi": contrastText(person.color) } as CSSProperties;
   return (
     <span className="jxn-sticker" data-initials={!person.emoji} style={style}>
-      <span>{person.emoji || initialsOf(person.name || "?")}</span>
+      <span>{person.emoji || avatarInitial(person.name)}</span>
     </span>
   );
 }
@@ -37,7 +38,7 @@ export function SquarePreview({ profile, size = 44, rows = 3 }: { profile: Profi
   return (
     <div
       role="img"
-      aria-label={`Your square: ${profile.emoji || initialsOf(me.name)} on ${profile.name ? `${profile.name}'s` : "your"} color`}
+      aria-label={`Your square: ${profile.emoji || avatarInitial(me.name)} on ${profile.name ? `${profile.name}'s` : "your"} color`}
       className="jxn-preview"
       style={{ "--cell": `${size}px` } as CSSProperties}
     >

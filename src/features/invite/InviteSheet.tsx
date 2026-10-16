@@ -8,7 +8,7 @@ import type { GameState, Player } from "../../../shared/types";
 import { ArrowRightIcon, CheckIcon, CopyIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
 import { inviteUrl } from "../../lib/api";
-import { readableTeamColor, teamVars } from "../../lib/format";
+import { readableTeamColor, shortMatchup, shortTeam, teamVars } from "../../lib/format";
 import { getPlayerId, getProfile, isHostOf } from "../../lib/identity";
 import { copyText, haptic, shareLink } from "../../lib/native";
 import "./invite.css";
@@ -24,8 +24,6 @@ import {
   nameMentionsTeams,
   peopleInOrder,
   previewStatus,
-  shortMatchup,
-  shortTeam,
   spelledCode,
 } from "./inviteModel";
 import { QrCode } from "./QrCode";

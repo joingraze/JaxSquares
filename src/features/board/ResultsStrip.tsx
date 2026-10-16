@@ -8,7 +8,7 @@
 import { periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
-import { Avatar, cx } from "../../components/ui";
+import { Avatar, cx, LiveDot } from "../../components/ui";
 import type { PeriodCard } from "./boardModel";
 
 export interface ResultsStripProps {
@@ -75,7 +75,7 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
               <span className={cx("eyebrow", card.status === "done" ? "text-gold-300" : "text-ink-muted")}>{periodPhrase(card.key, card.label).short}</span>
               {card.status === "live" && (
                 <span className="eyebrow flex items-center gap-1 text-live-400">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-live-500" />
+                  <LiveDot />
                   Live
                 </span>
               )}

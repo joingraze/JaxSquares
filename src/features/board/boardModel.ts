@@ -517,13 +517,6 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
   };
 }
 
-/** A period as a friend would say it after "takes": "Q1", "the half", "Q3", "the final". */
-export function periodNoun(period: { key: string | null; label: string }): string {
-  if (period.key === "q2") return "the half";
-  if (period.key === "final") return "the final";
-  return period.label;
-}
-
 /**
  * The "Right now" card's line under the name, in the app's period wording:
  * live "Wins if it's 17–13 at the end of Q3", otherwise (the last recorded

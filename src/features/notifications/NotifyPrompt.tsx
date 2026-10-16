@@ -49,8 +49,8 @@ type Phase = "checking" | "ask" | "working" | "done" | "blocked" | "install" | "
 
 /** Shown this long after turning on before the sheet closes itself. */
 const DONE_MS = 1700;
-/** The claim "pop" confetti lasts ~2.3 s and the board opens the ask 1.2 s in: wait out the rest. */
-export const CONFETTI_SETTLE_MS = 1300;
+/** The claim "pop" confetti lasts ~2.3 s and the board opens the ask right away: wait it out. */
+export const CONFETTI_SETTLE_MS = 2300;
 
 function phaseFor(state: PushState): Phase {
   switch (state) {

@@ -23,6 +23,35 @@ const KLM = { tap: 1.1, char: 0.35, think: 1.2 };
 
 const iPhone = { ...devices["iPhone 13"], viewport: { width: 390, height: 844 } };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Retries for a 5xx: dev servers running side by side share the local D1 file and can hit SQLITE_BUSY. */
+const RETRIES = 3;
+
+/**
+ * A phone whose API calls retry a 5xx up to RETRIES times with a short
+ * backoff, so a busy shared database doesn't fail a floor. (The app talks to
+ * the API from the page, so this is the floors' equivalent of capture.mjs's
+ * call().) Only the request/response API: the live socket isn't routed.
+ */
+async function phone(browser) {
+  const ctx = await browser.newContext(iPhone);
+  await ctx.route("**/api/**", async (route) => {
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        res = await route.fetch();
+      } catch {
+        return route.abort().catch(() => {});
+      }
+      // A failed D1 batch commits nothing, so a retried claim or create can't happen twice.
+      if (res.status() < 500 || attempt >= RETRIES) break;
+      await sleep(200 * 2 ** attempt);
+    }
+    await route.fulfill({ response: res }).catch(() => {});
+  });
+  return ctx;
+}
+
 function tracker(label) {
   const t = { label, taps: 0, chars: 0, screens: 0, systemMs: 0, steps: [] };
   return t;
@@ -60,7 +89,7 @@ function humanSeconds(t) {
 
 /** Floor 1: brand-new device, open the app, create a board, send the invite. */
 async function createToInvite(browser, { linked }) {
-  const ctx = await browser.newContext(iPhone);
+  const ctx = await phone(browser);
   // Record when the share sheet is opened.
   await ctx.addInitScript(() => {
     window.__shared = null;
@@ -158,7 +187,7 @@ async function createToInvite(browser, { linked }) {
 
 /** Floor 2: a friend taps the invite link and claims a square. */
 async function inviteToClaim(browser, url) {
-  const ctx = await browser.newContext(iPhone);
+  const ctx = await phone(browser);
   const page = await ctx.newPage();
   const t = tracker("invite → claimed square");
   // Tap 1 is the invite link itself (in Messages); the page then opens.
@@ -200,8 +229,8 @@ async function inviteToClaim(browser, url) {
  * the same for a host score reaching B's results.
  */
 async function realtime(browser, url, rounds = 20) {
-  const a = await browser.newContext(iPhone);
-  const b = await browser.newContext(iPhone);
+  const a = await phone(browser);
+  const b = await phone(browser);
   const pa = await a.newPage();
   const pb = await b.newPage();
   await Promise.all([pa.goto(url), pb.goto(url)]);
