@@ -18,6 +18,24 @@
     0 16px 32px -20px rgb(0 0 0 / 0.8);
 }
 
+/* Unpaid board: the bar is the call to action. */
+.hx-bar-draft {
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(198 249 31 / 0.12), transparent 55%),
+    radial-gradient(120% 140% at 100% 100%, rgb(255 194 51 / 0.1), transparent 60%),
+    var(--color-surface-2);
+  box-shadow:
+    inset 0 0 0 1px rgb(198 249 31 / 0.3),
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 16px 32px -20px rgb(0 0 0 / 0.8);
+}
+
+/* While the host sheet is up, confetti (canvas-confetti draws on a fixed canvas
+   on <body>) stays out of the way of the keypad and the save button. */
+html[data-hx-quiet] body > canvas {
+  visibility: hidden !important;
+}
+
 /* The next action pill breathes when it's the move to make. */
 .hx-nudge {
   animation: hx-nudge 2.6s ease-in-out 600ms infinite;
@@ -252,32 +270,83 @@
 }
 
 .hx-sq {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
   border-radius: calc(var(--s) * 0.22);
   background: rgb(255 255 255 / 0.04);
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
 }
 
-.hx-sq[data-owned="true"] {
-  background: color-mix(in srgb, var(--p) 55%, var(--color-canvas));
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+/* Whose square it is: the owner's emoji (or initial), so the draw shows who got what. */
+.hx-sq-face {
+  font-size: calc(var(--s) * 0.56);
+  line-height: 1;
+  font-weight: 800;
+  color: var(--color-ink);
+  user-select: none;
 }
 
+.hx-sq[data-owned="true"] {
+  background: color-mix(in srgb, var(--p) 32%, var(--color-surface-2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p) 50%, transparent);
+}
+
+.hx-sq[data-owned="true"]:not([data-mine="true"]) .hx-sq-face {
+  opacity: 0.88;
+}
+
+/* The host's own squares: the brightest tiles on screen. */
 .hx-sq[data-mine="true"] {
+  position: relative;
+  z-index: 1;
+  background: var(--color-brand-400);
   box-shadow:
-    inset 0 0 0 2px var(--color-brand-400),
-    0 0 10px -2px rgb(198 249 31 / 0.6);
+    inset 0 1px 0 rgb(255 255 255 / 0.45),
+    inset 0 -2px 0 rgb(0 0 0 / 0.18),
+    0 0 14px -1px rgb(198 249 31 / 0.75);
+  animation: hx-mine 1.6s ease-in-out infinite;
+}
+
+.hx-sq[data-mine="true"] .hx-sq-face {
+  color: var(--color-ink-inverse);
+}
+
+@keyframes hx-mine {
+  0%, 100% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 -2px 0 rgb(0 0 0 / 0.18), 0 0 10px -2px rgb(198 249 31 / 0.6); }
+  50% { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 -2px 0 rgb(0 0 0 / 0.18), 0 0 18px 0 rgb(198 249 31 / 0.9); }
+}
+
+.hx-legend-mine {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 0.25rem;
+  background: var(--color-brand-400);
+  box-shadow: 0 0 8px -1px rgb(198 249 31 / 0.8);
 }
 
 /* The board "wakes up" once the numbers land. */
-.hx-done .hx-sq[data-owned="true"] {
+.hx-done .hx-sq[data-owned="true"]:not([data-mine="true"]) {
   animation: hx-wake 520ms var(--ease-out-quint) both;
+  animation-delay: calc(var(--i) * 6ms);
+}
+
+.hx-done .hx-sq[data-mine="true"] {
+  animation: hx-mine-land 600ms var(--ease-spring) both;
   animation-delay: calc(var(--i) * 6ms);
 }
 
 @keyframes hx-wake {
   0% { filter: brightness(1); }
-  40% { filter: brightness(1.7); }
+  40% { filter: brightness(1.6); }
   100% { filter: brightness(1); }
+}
+
+@keyframes hx-mine-land {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.22); }
+  100% { transform: scale(1); }
 }
 
 .hx-rise {
@@ -313,7 +382,9 @@
   .hx-strip[data-spinning="true"] {
     filter: none;
   }
-  .hx-nudge {
+  .hx-nudge,
+  .hx-sq[data-mine="true"],
+  .hx-done .hx-sq[data-mine="true"] {
     animation: none;
   }
 }

@@ -1,11 +1,14 @@
-// The host sheet: leads with the one thing to do now (fill + lock, type the
-// score, or check the live feed), then winners, then board settings. Sub views
-// (lock confirm, edit, end, delete) slide in inside the same sheet.
+// The host sheet. Always titled "Host tools" with one line saying where the
+// board stands, and always in the same order: Now (open the board, fill + lock,
+// type the score, or watch the live feed), Winners, Board. Sub views (lock
+// confirm, edit, end, delete) slide in inside the same sheet. Saves are
+// confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { resolveResults } from "../../../shared/squares";
 import type { GameState } from "../../../shared/types";
 import {
+  CheckIcon,
   ChevronLeftIcon,
   ClockIcon,
   CrownIcon,
@@ -15,6 +18,7 @@ import {
   PencilIcon,
   ShareIcon,
   ShuffleIcon,
+  SparklesIcon,
   TrashIcon,
   TrophyIcon,
   UsersIcon,
@@ -29,9 +33,7 @@ import {
   ListRow,
   ProgressRing,
   SegmentedControl,
-  celebrate,
   cx,
-  useToast,
 } from "../../components/ui";
 import { PUBLIC_ORIGIN } from "../../lib/api";
 import { kickoffLabel, pluralize, teamVars } from "../../lib/format";
@@ -45,16 +47,22 @@ import {
   editDraftOf,
   editErrors,
   editPatch,
+  gameStarted,
+  hostStatusLine,
+  initialDraft,
+  invitedAnyone,
   isLinked,
   lockFacts,
+  lockReadiness,
   parseScore,
   resolvedKey,
   saveEndsGame,
   scoreTargets,
   winnerRows,
   type EditDraft,
+  type ScoreDraft,
 } from "./hostModel";
-import { Keypad, ScorePreview, ScoreTiles } from "./ScorePad";
+import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } from "./ScorePad";
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
@@ -71,6 +79,8 @@ export interface HostSheetProps {
   /** This device's public player id. */
   me: string;
   onInvite: () => void;
+  /** Draft boards: open the checkout sheet that opens the board. */
+  onOpenBoard: () => void;
   /** The host confirmed the lock: the parent closes the sheet and runs the reveal. */
   onLock: () => void;
   onPickWinner: (periodKey: string, label: string) => void;
@@ -79,12 +89,21 @@ export interface HostSheetProps {
   onDeleted: () => void;
 }
 
+/** How long a "saved" line stays in the footer if the host doesn't start the next score. */
+const NOTICE_MS = 7000;
+
+interface Notice extends SavedNotice {
+  /** Shown while the keypad still holds this period and this draft (the host hasn't moved on). */
+  key: string | null;
+  draft: ScoreDraft | null;
+}
+
 export function HostSheet(props: HostSheetProps) {
   const { state, open, view, onView, onClose, actions, me } = props;
   const { game } = state;
-  const toast = useToast();
   const linked = isLinked(game);
   const everyScore = game.format.periods === "every-score";
+  const started = gameStarted(state);
 
   // ---- score entry (kept here so the footer can preview + save) ----
   const entry = useScoreEntry(state, defaultTargetKey(state));
@@ -93,12 +112,26 @@ export function HostSheet(props: HostSheetProps) {
   const typedBoard = game.status === "locked" && !linked;
   const scoring = (game.status === "locked" || game.status === "final") && (typedBoard || fixing);
 
+  // ---- "saved" line in the footer (a toast would land on the sheet's header) ----
+  const [notice, setNotice] = useState<Notice | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [notice]);
+  const say = (n: SavedNotice, key: string | null = null, draft: ScoreDraft | null = null) => setNotice({ ...n, key, draft });
+  const noticeLive =
+    notice && (notice.key === null || (notice.key === entry.key && notice.draft?.x === entry.draft.x && notice.draft?.y === entry.draft.y))
+      ? notice
+      : null;
+
   // Fresh start every time the sheet opens.
   const wasOpen = useRef(false);
   useEffect(() => {
     if (open && !wasOpen.current) {
       entry.setKey(defaultTargetKey(state), state);
       setFixing(false);
+      setNotice(null);
     }
     wasOpen.current = open;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on open
@@ -123,26 +156,34 @@ export function HostSheet(props: HostSheetProps) {
     const ends = saveEndsGame(game, entry.key);
     const next = await actions.saveScore({ periodKey: entry.key, scoreX, scoreY });
     if (!next) return;
-    const result = resolveResults(next).find((r) => r.periodKey === realKey);
-    const winner = result?.winnerPlayerId ? next.players.find((p) => p.id === result.winnerPlayerId) : null;
     if (ends) {
       props.onEnded();
       return;
     }
-    if (winner) {
-      void celebrate("pop", { origin: { x: 0.5, y: 0.78 }, colors: ["#ffd56b", "#ffc233", "#ffab0f", "#ffffff"] });
-      // Same id as the board's live winner toast, so the two never stack.
-      toast.show({
-        id: "activity-winner",
-        tone: "win",
-        title: winner.id === me ? `You win ${label}!` : `${winner.name} wins ${label}!`,
-        description: result?.prize ?? `${scoreName(label)} saved for everyone.`,
-      });
-    } else {
-      toast.show({ id: "host-saved", tone: "success", title: `${scoreName(label)} saved`, description: "Nobody had that square. Pick a winner by hand if you like." });
-    }
-    entry.setKey(defaultTargetKey(next), next);
+    const result = resolveResults(next).find((r) => r.periodKey === realKey);
+    const winner = result?.winnerPlayerId ? next.players.find((p) => p.id === result.winnerPlayerId) ?? null : null;
+    const nextKey = defaultTargetKey(next);
+    entry.setKey(nextKey, next);
     if (!typedBoard) setFixing(false);
+    // No confetti or toast while the sheet is up: the footer says it, right where the host is looking.
+    void haptic(winner ? "success" : "light");
+    say(
+      winner
+        ? {
+            tone: "win",
+            title: winner.id === me ? `Saved · you win ${label}!` : `Saved · ${winner.name} wins ${label}`,
+            detail: result?.prize ?? "Everyone sees it now.",
+            player: winner,
+          }
+        : {
+            tone: "neutral",
+            title: `${scoreName(label)} saved`,
+            detail: "Nobody had that square. You can give it to a player under Winners.",
+            player: null,
+          },
+      typedBoard ? nextKey : null,
+      typedBoard ? initialDraft(next, nextKey) : null,
+    );
   };
 
   const removeScore = async () => {
@@ -150,15 +191,16 @@ export function HostSheet(props: HostSheetProps) {
     const next = await actions.removeScore(key);
     if (!next) return;
     void haptic("light");
-    toast.show({ id: "host-saved", tone: "neutral", title: `${scoreName(label)} removed` });
-    entry.setKey(defaultTargetKey(next), next);
+    const nextKey = defaultTargetKey(next);
+    entry.setKey(nextKey, next);
+    say({ tone: "neutral", title: `${scoreName(label)} removed`, detail: null, player: null }, nextKey, initialDraft(next, nextKey));
   };
 
   const undoPick = async (key: string, periodLabel: string) => {
     const next = await actions.clearWinner(key);
     if (!next) return;
     void haptic("light");
-    toast.show({ id: "host-saved", tone: "neutral", title: `${periodLabel} back to the score's square` });
+    say({ tone: "neutral", title: `${periodLabel} pick undone`, detail: "The score's square decides it again.", player: null });
   };
 
   const shareHostLink = async () => {
@@ -170,7 +212,7 @@ export function HostSheet(props: HostSheetProps) {
       url,
     });
     if (outcome === "copied") {
-      toast.show({ id: "host-link", tone: "success", title: "Host link copied", description: "Open it on your other phone. Keep it private." });
+      say({ tone: "neutral", title: "Host link copied", detail: "Open it on your other phone. Keep it private.", player: null });
     } else if (outcome === "shared") {
       void haptic("success");
     }
@@ -181,7 +223,7 @@ export function HostSheet(props: HostSheetProps) {
     if (!patch) return onView("home");
     const next = await actions.update(patch);
     if (!next) return;
-    toast.show({ id: "host-saved", tone: "success", title: "Board updated", description: "Everyone sees the changes now." });
+    say({ tone: "neutral", title: "Board updated", detail: "Everyone sees the changes now.", player: null });
     onView("home");
   };
 
@@ -217,7 +259,9 @@ export function HostSheet(props: HostSheetProps) {
   let footer: ReactNode = null;
 
   if (view === "lock") {
-    title = <>{back()}Lock & draw numbers?</>;
+    const f = lockFacts(state);
+    const low = lockReadiness(f) === "low";
+    title = <>{back()}{low ? `Lock with only ${f.claimed} in?` : "Lock & draw numbers?"}</>;
     body = <LockConfirm state={state} />;
     footer = (
       <div className="flex flex-col gap-1">
@@ -230,10 +274,10 @@ export function HostSheet(props: HostSheetProps) {
           onClick={props.onLock}
           loading={actions.busy === "lock"}
         >
-          Draw the numbers
+          {low ? "Lock & draw anyway" : "Draw the numbers"}
         </Button>
-        <Button variant="ghost" block onClick={() => onView("home")}>
-          Not yet
+        <Button variant="ghost" block onClick={low ? props.onInvite : () => onView("home")}>
+          {low ? "Keep inviting" : "Not yet"}
         </Button>
       </div>
     );
@@ -282,80 +326,88 @@ export function HostSheet(props: HostSheetProps) {
       </div>
     );
   } else {
-    const head = homeHeading(state, linked, everyScore);
-    title = head.title;
-    description = head.description;
-    const rows = game.status === "locked" || game.status === "final" ? winnerRows(state) : [];
+    // One identity for the sheet the "Host tools" bar opens, whatever the state.
+    title = "Host tools";
+    description = hostStatusLine(state);
+    const showWinners = game.status === "locked" || game.status === "final";
+    const rows = showWinners ? winnerRows(state) : [];
     body = (
-      <div className="flex flex-col gap-5 pb-2">
-        {game.status === "draft" && <DraftHero />}
-        {game.status === "open" && <OpenHero state={state} onInvite={props.onInvite} onLock={() => onView("lock")} />}
-        {game.status === "locked" && linked && !fixing && <AutoHero state={state} onFix={() => setFixing(true)} />}
-        {game.status === "final" && !fixing && <FinalHero state={state} onFix={() => setFixing(true)} />}
+      <div className="flex flex-col gap-6 pb-2">
+        <Section title="Now">
+          {game.status === "draft" && <DraftHero onOpenBoard={props.onOpenBoard} />}
+          {game.status === "open" && <OpenHero state={state} onInvite={props.onInvite} onLock={() => onView("lock")} />}
+          {game.status === "locked" && linked && !fixing && <AutoHero state={state} started={started} onFix={() => setFixing(true)} />}
+          {game.status === "final" && !fixing && <FinalHero state={state} onFix={() => setFixing(true)} />}
 
-        {scoring && (
-          <section ref={scoreRef} aria-label="Score entry" className="flex scroll-mt-2 flex-col gap-3">
-            {!everyScore ? (
-              <SegmentedControl
-                aria-label="Period"
-                size="sm"
-                value={entry.key}
-                onChange={(k) => entry.setKey(k)}
-                options={targets.map((t) => ({
-                  value: t.key,
-                  label: t.existing ? `${t.label} ✓` : t.label,
-                }))}
-              />
-            ) : (
-              <div className="flex items-center justify-between gap-2 px-1">
-                <p className="font-display text-headline font-extrabold text-ink">
-                  {entry.key === NEXT_ENTRY ? label : `Fixing ${label}`}
-                </p>
-                {entry.key !== NEXT_ENTRY && (
-                  <button type="button" onClick={() => entry.setKey(NEXT_ENTRY)} className="pressable rounded-full bg-surface-4 px-3 py-1.5 text-footnote font-extrabold text-ink">
-                    New score
-                  </button>
-                )}
-              </div>
-            )}
-            <ScoreTiles teamX={game.teamX} teamY={game.teamY} entry={entry} />
-            <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={everyScore} />
-            {(!typedBoard || target?.existing) && (
-              <div className="flex min-h-9 items-center justify-between gap-2 px-1">
-                {!typedBoard ? (
-                  <button
-                    type="button"
-                    onClick={() => setFixing(false)}
-                    className="pressable rounded-full px-1 py-1.5 text-footnote font-bold text-ink-muted"
-                  >
-                    Cancel
-                  </button>
-                ) : (
-                  <span />
-                )}
-                {target?.existing && (
-                  <button
-                    type="button"
-                    disabled={actions.busy !== null}
-                    onClick={() => void removeScore()}
-                    className="pressable rounded-full px-1 py-1.5 text-footnote font-bold text-danger-400 disabled:opacity-40"
-                  >
-                    Remove {scoreName(label)}
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
-        )}
+          {scoring && (
+            <section ref={scoreRef} aria-label="Score entry" className="flex scroll-mt-2 flex-col gap-3">
+              {!everyScore ? (
+                <SegmentedControl
+                  aria-label="Period"
+                  size="sm"
+                  value={entry.key}
+                  onChange={(k) => entry.setKey(k)}
+                  options={targets.map((t) => ({
+                    value: t.key,
+                    label: t.existing ? `${t.label} ✓` : t.label,
+                  }))}
+                />
+              ) : (
+                <div className="flex min-h-11 items-center justify-between gap-2 px-1">
+                  <p className="font-display text-headline font-extrabold text-ink">
+                    {entry.key === NEXT_ENTRY ? "What's the score now?" : `Editing ${label}`}
+                  </p>
+                  {entry.key !== NEXT_ENTRY && (
+                    <button
+                      type="button"
+                      onClick={() => entry.setKey(NEXT_ENTRY)}
+                      className="pressable tap-target h-9 rounded-full bg-surface-4 px-3.5 text-footnote font-extrabold text-ink"
+                    >
+                      New score
+                    </button>
+                  )}
+                </div>
+              )}
+              <SuggestionChip entry={entry} teamX={game.teamX} teamY={game.teamY} />
+              <ScoreTiles teamX={game.teamX} teamY={game.teamY} entry={entry} />
+              <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={everyScore} />
+              {(!typedBoard || target?.existing) && (
+                <div className="flex min-h-11 items-center justify-between gap-2 px-1">
+                  {!typedBoard ? (
+                    <button
+                      type="button"
+                      onClick={() => setFixing(false)}
+                      className="pressable tap-target rounded-full px-1 py-1.5 text-footnote font-bold text-ink-muted"
+                    >
+                      Cancel
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  {target?.existing && (
+                    <button
+                      type="button"
+                      disabled={actions.busy !== null}
+                      onClick={() => void removeScore()}
+                      className="pressable tap-target rounded-full px-1 py-1.5 text-footnote font-bold text-danger-400 disabled:opacity-40"
+                    >
+                      Remove {scoreName(label)}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+        </Section>
 
-        {rows.length > 0 || game.status === "locked" ? (
-          <section aria-label="Winners" className="flex flex-col gap-2">
-            <h3 className="eyebrow px-1 text-ink-subtle">Winners</h3>
+        {showWinners && (
+          <Section title="Winners">
             <WinnersList
               state={state}
               rows={rows}
               me={me}
               busy={actions.busy !== null}
+              canPickOpen={linked && started}
               onPick={props.onPickWinner}
               onUndoPick={(k, l) => void undoPick(k, l)}
               onEdit={
@@ -368,8 +420,8 @@ export function HostSheet(props: HostSheetProps) {
                   : undefined
               }
             />
-          </section>
-        ) : null}
+          </Section>
+        )}
 
         <ListGroup title="Board">
           <ListRow
@@ -386,7 +438,7 @@ export function HostSheet(props: HostSheetProps) {
             trailing={<ShareIcon size={18} className="text-ink-subtle" />}
             onClick={() => void shareHostLink()}
           />
-          {game.status === "locked" && (
+          {game.status === "locked" && started && (
             <ListRow
               leading={<RowIcon><FlagIcon size={18} /></RowIcon>}
               title="End game"
@@ -408,7 +460,7 @@ export function HostSheet(props: HostSheetProps) {
     if (scoring) {
       footer = (
         <div style={teamVars(game.teamX, game.teamY)}>
-          <ScorePreview state={state} entry={entry} label={label} me={me} />
+          <ScorePreview state={state} entry={entry} label={label} me={me} notice={noticeLive} />
           <Button
             data-testid="score-save"
             size="lg"
@@ -423,6 +475,8 @@ export function HostSheet(props: HostSheetProps) {
           </Button>
         </div>
       );
+    } else if (noticeLive) {
+      footer = <NoticeLine notice={noticeLive} />;
     }
   }
 
@@ -446,19 +500,27 @@ function saveLabel(key: string, label: string, existing: boolean, ends: boolean)
   return existing ? `Update ${scoreName(label)}` : `Save ${scoreName(label)}`;
 }
 
-function homeHeading(state: GameState, linked: boolean, everyScore: boolean): { title: string; description: string } {
-  switch (state.game.status) {
-    case "draft":
-      return { title: "Host tools", description: "Finish checkout to open the board." };
-    case "open":
-      return { title: "Your board", description: "Fill it up, then lock it to draw numbers." };
-    case "final":
-      return { title: "That's the game", description: "Fix a score or crown a winner by hand." };
-    default:
-      if (linked) return { title: "Live scores", description: "Scores come in on their own." };
-      if (everyScore) return { title: "Add a score", description: "Each time the score changes. That square wins." };
-      return { title: "Enter scores", description: "Everyone sees the winner the moment you save." };
-  }
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section aria-label={title} className="flex flex-col gap-2">
+      <h3 className="eyebrow px-1 text-ink-subtle">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function NoticeLine({ notice }: { notice: SavedNotice }) {
+  return (
+    <div className="flex min-h-12 items-center gap-3 pb-1 animate-pop" aria-live="polite">
+      <span className={cx("grid h-9 w-9 shrink-0 place-items-center rounded-full", notice.tone === "win" ? "bg-gold-400 text-ink-inverse" : "bg-brand-400 text-ink-inverse")}>
+        {notice.tone === "win" ? <TrophyIcon size={16} filled /> : <CheckIcon size={16} strokeWidth={3} />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-subhead font-extrabold text-ink">{notice.title}</p>
+        {notice.detail && <p className="truncate text-footnote text-ink-muted">{notice.detail}</p>}
+      </div>
+    </div>
+  );
 }
 
 function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "danger" }) {
@@ -476,10 +538,21 @@ function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "
 
 // ---- Heroes ----
 
-function DraftHero() {
+function DraftHero({ onOpenBoard }: { onOpenBoard: () => void }) {
   return (
-    <div className="rounded-card bg-surface-3 px-4 py-3.5 text-subhead text-ink-muted ring-1 ring-inset ring-line">
-      This board isn't open yet. Once checkout's done, friends can start picking squares.
+    <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-brand-400/35">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-30"
+        style={{ background: "radial-gradient(80% 120% at 0% 0%, var(--team-x), transparent 60%), radial-gradient(80% 120% at 100% 100%, var(--team-y), transparent 60%)" }}
+      />
+      <div className="relative">
+        <p className="font-display text-title-3 font-extrabold text-ink">Open your board</p>
+        <p className="mt-1 text-subhead text-ink-muted">Open it so friends can pick squares. Then send the invite.</p>
+        <Button size="lg" block className="mt-4" haptic="medium" leading={<SparklesIcon size={20} />} onClick={onOpenBoard}>
+          Open board
+        </Button>
+      </div>
     </div>
   );
 }
@@ -489,6 +562,7 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
   const f = lockFacts(state);
   const full = f.empty === 0;
   const ready = full || f.claimed / f.total >= 0.5;
+  const nobody = lockReadiness(f) === "empty";
   const kickoff = game.linkedEvent?.startsAt ?? null;
   return (
     <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
@@ -503,7 +577,7 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
         </ProgressRing>
         <div className="min-w-0 flex-1">
           <p className="font-display text-title-3 font-extrabold text-ink">
-            {full ? "Board's full!" : `${f.empty} ${f.empty === 1 ? "square" : "squares"} left`}
+            {full ? "Board's full!" : nobody ? "No squares taken yet" : `${f.empty} ${f.empty === 1 ? "square" : "squares"} left`}
           </p>
           <p className="mt-0.5 text-footnote text-ink-muted">
             {f.claimed} of {f.total} taken · {pluralize(f.players, "player")}
@@ -515,16 +589,25 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
       </div>
       <div className="relative mt-4 grid grid-cols-2 gap-2.5">
         <Button variant={ready ? "secondary" : "primary"} leading={<UsersIcon size={18} />} onClick={onInvite}>
-          Invite more
+          {invitedAnyone(state) ? "Invite more" : "Invite friends"}
         </Button>
-        <Button data-testid="host-lock" variant={ready ? "primary" : "secondary"} leading={<LockIcon size={18} />} onClick={onLock} haptic="medium">
+        <Button
+          data-testid="host-lock"
+          variant={ready ? "primary" : "secondary"}
+          leading={<LockIcon size={18} />}
+          onClick={onLock}
+          disabled={nobody}
+          haptic="medium"
+        >
           Lock & draw
         </Button>
       </div>
       <p className="relative mt-3 text-footnote text-ink-subtle">
-        {kickoff
-          ? `Locks itself at kickoff (${kickoffLabel(kickoff)}) if you don't.`
-          : "Lock when everyone's in. The numbers get drawn live."}
+        {nobody
+          ? "Lock & draw turns on once someone picks a square."
+          : kickoff
+            ? `Locks itself at kickoff (${kickoffLabel(kickoff)}) if you don't.`
+            : "Lock when everyone's in. The numbers get drawn live."}
       </p>
     </div>
   );
@@ -555,7 +638,7 @@ function BigScore({ state, score }: { state: GameState; score: { x: number; y: n
   );
 }
 
-function AutoHero({ state, onFix }: { state: GameState; onFix: () => void }) {
+function AutoHero({ state, started, onFix }: { state: GameState; started: boolean; onFix: () => void }) {
   const { live, game } = state;
   const kickoff = game.linkedEvent?.startsAt ?? null;
   const pre = !live || live.state === "pre";
@@ -570,7 +653,7 @@ function AutoHero({ state, onFix }: { state: GameState; onFix: () => void }) {
             <p className="font-display text-headline font-extrabold text-ink">
               {kickoff ? `Kickoff ${kickoffLabel(kickoff)}` : "Waiting for kickoff"}
             </p>
-            <p className="mt-0.5 text-footnote text-ink-muted">Scores and winners update by themselves once it starts.</p>
+            <p className="mt-0.5 text-footnote text-ink-muted">Nothing to do until then. Scores and winners update by themselves.</p>
           </div>
         </div>
       ) : (
@@ -589,9 +672,11 @@ function AutoHero({ state, onFix }: { state: GameState; onFix: () => void }) {
           <p className="mt-3 text-center text-footnote text-ink-muted">Straight from the real game. Winners follow automatically.</p>
         </>
       )}
-      <Button variant="secondary" size="sm" block className="mt-3.5" leading={<PencilIcon size={15} />} onClick={onFix}>
-        Fix a score
-      </Button>
+      {started && (
+        <Button variant="secondary" size="md" block className="mt-3.5" leading={<PencilIcon size={16} />} onClick={onFix}>
+          Fix a score
+        </Button>
+      )}
     </div>
   );
 }
@@ -599,6 +684,8 @@ function AutoHero({ state, onFix }: { state: GameState; onFix: () => void }) {
 function FinalHero({ state, onFix }: { state: GameState; onFix: () => void }) {
   const results = resolveResults(state);
   const winners = new Set(results.flatMap((r) => [r.winnerPlayerId, r.reverseWinnerPlayerId]).filter(Boolean)).size;
+  const manual = new Set(state.manualWinners.map((m) => m.periodKey));
+  const empties = results.filter((r) => !r.winnerPlayerId && !manual.has(r.periodKey)).length;
   return (
     <div className="relative overflow-hidden rounded-card bg-[linear-gradient(160deg,rgb(255_194_51/0.2),rgb(255_171_15/0.05)_60%)] bg-surface-2 p-4 shadow-glow-gold ring-1 ring-inset ring-gold-400/40">
       <div className="mb-3 flex items-center justify-center gap-2">
@@ -607,9 +694,11 @@ function FinalHero({ state, onFix }: { state: GameState; onFix: () => void }) {
       </div>
       <BigScore state={state} score={scoreLine(state)} />
       <p className="mt-3 text-center text-footnote text-ink-muted">
-        {results.length} {results.length === 1 ? "prize" : "prizes"} decided · {pluralize(winners, "winner")}
+        {empties === 0
+          ? `${pluralize(results.length, "prize")} decided · ${pluralize(winners, "winner")}`
+          : `${empties === results.length ? (results.length === 1 ? "The prize" : results.length === 2 ? "Both prizes" : `All ${results.length} prizes`) : pluralize(empties, "prize")} landed on ${empties === 1 ? "an empty square" : "empty squares"}. You can give ${empties === 1 ? "it" : "them"} to a player below.`}
       </p>
-      <Button variant="ghost" size="sm" block className="mt-2" leading={<PencilIcon size={15} />} onClick={onFix}>
+      <Button variant="ghost" size="md" block className="mt-2" leading={<PencilIcon size={16} />} onClick={onFix}>
         Fix a score
       </Button>
     </div>
@@ -636,9 +725,15 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
 
 function LockConfirm({ state }: { state: GameState }) {
   const f = lockFacts(state);
+  const low = lockReadiness(f) === "low";
   const fresh = state.game.format.freshNumbers && state.game.format.periods === "quarters";
   return (
     <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      {low && (
+        <Fact icon={<UsersIcon size={16} />} tone="warn">
+          <b className="font-bold text-ink">Only {f.claimed} of {f.total} squares are taken.</b> Most scores will land on an empty square. Inviting a few more friends first makes it more fun.
+        </Fact>
+      )}
       <Fact icon={<LockIcon size={16} />}>
         <b className="font-bold text-ink">Squares freeze.</b> No more picking or dropping.
       </Fact>
@@ -646,9 +741,11 @@ function LockConfirm({ state }: { state: GameState }) {
         <b className="font-bold text-ink">0–9 drawn at random</b> for each team{fresh ? ", fresh every quarter" : ""}, live for everyone.
       </Fact>
       {f.empty > 0 ? (
-        <Fact icon={<CrownIcon size={16} />} tone="warn">
-          <b className="font-bold text-ink">{pluralize(f.empty, "square")} stay empty.</b> If one hits, you can crown a winner by hand.
-        </Fact>
+        !low && (
+          <Fact icon={<CrownIcon size={16} />} tone="warn">
+            <b className="font-bold text-ink">{pluralize(f.empty, "square")} stay empty.</b> If one hits, you can give the prize to a player.
+          </Fact>
+        )
       ) : (
         <Fact icon={<UsersIcon size={16} />}>
           <b className="font-bold text-ink">All {f.total} squares taken</b> by {pluralize(f.players, "player")}. Nice.

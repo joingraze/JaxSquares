@@ -5,7 +5,7 @@
 
 import type { ReactNode } from "react";
 import type { GameState, Player, Team } from "../../../shared/types";
-import { ChevronLeftIcon, ChevronRightIcon, TrophyIcon } from "../../components/icons";
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { QUICK_ADDS, isUnchangedEntry, type PadKey } from "./hostModel";
@@ -35,15 +35,17 @@ function Tile({ side, team, entry }: { side: Side; team: Team; entry: ScoreEntry
         if (!active) void haptic("selection");
       }}
     >
-      <span className="relative flex items-center gap-2 px-3 pt-3">
+      <span className="relative flex items-center gap-2 px-3 pt-2.5">
         <span
           aria-hidden
-          className={cx("h-2.5 w-2.5 shrink-0 rounded-full", side === "x" ? "bg-team-x" : "bg-team-y")}
+          className={cx("h-3 w-3 shrink-0 rounded-full ring-2 ring-white/15", side === "x" ? "bg-team-x" : "bg-team-y")}
         />
-        <span className="min-w-0 flex-1 truncate text-footnote font-extrabold uppercase tracking-[0.06em] text-ink-muted">
+        <span className="min-w-0 flex-1 truncate font-display text-headline font-extrabold uppercase leading-tight tracking-[0.02em] text-ink">
           {team.abbr || team.name}
         </span>
-        <span className="truncate text-caption font-semibold text-ink-subtle">{team.abbr ? team.name : ""}</span>
+        {active && (
+          <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-caption font-bold text-ink">Typing</span>
+        )}
       </span>
       <input
         ref={entry.inputRefs[side]}
@@ -59,7 +61,7 @@ function Tile({ side, team, entry }: { side: Side; team: Team; entry: ScoreEntry
           e.currentTarget.select();
         }}
         onChange={(e) => entry.type(side, e.target.value)}
-        className="hx-score-input relative h-[4.25rem]"
+        className="hx-score-input relative h-[3.75rem]"
       />
     </label>
   );
@@ -85,6 +87,11 @@ export function Keypad({
   const activeTeam = entry.active === "x" ? teamX : teamY;
   return (
     <div className="flex flex-col gap-2">
+      {quickAdds && (
+        <p className="-mb-0.5 px-1 text-footnote font-bold text-ink-muted">
+          Points for <span className="font-extrabold text-ink">{activeTeam.abbr || activeTeam.name}</span>
+        </p>
+      )}
       {quickAdds && (
         <div className="grid grid-cols-4 gap-2" role="group" aria-label={`Add points for ${activeTeam.name}`}>
           {QUICK_ADDS.map((q) => (
@@ -164,42 +171,111 @@ function BackspaceGlyph() {
   );
 }
 
+// ---- Suggestion ----
+
+/** "Same as Q1? KC 7 – 3 BUF  [Use]": the host confirms a carried-over score with one tap. */
+export function SuggestionChip({ entry, teamX, teamY }: { entry: ScoreEntry; teamX: Team; teamY: Team }) {
+  const s = entry.suggestion;
+  if (!s) return null;
+  const used = entry.usingSuggestion;
+  const abbr = (t: Team) => t.abbr || t.name;
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => entry.fill(s.draft)}
+      aria-pressed={used}
+      className={cx(
+        "pressable flex min-h-11 w-full items-center gap-3 rounded-2xl px-3.5 py-2 text-left ring-1 ring-inset transition-colors",
+        used ? "bg-brand-400/10 ring-brand-400/45" : "bg-surface-3/70 ring-line-strong [border-style:dashed]",
+      )}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-subhead font-bold text-ink">{used ? `${s.label}` : `${s.label}?`}</span>
+        <span className="block truncate text-footnote tabular-nums text-ink-muted">
+          {abbr(teamX)} {s.draft.x} – {s.draft.y} {abbr(teamY)}
+        </span>
+      </span>
+      <span
+        className={cx(
+          "flex h-8 shrink-0 items-center gap-1 rounded-full px-3 text-footnote font-extrabold",
+          used ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink ring-1 ring-inset ring-line",
+        )}
+      >
+        {used ? (
+          <>
+            <CheckIcon size={14} strokeWidth={3} /> Filled in
+          </>
+        ) : (
+          "Use it"
+        )}
+      </span>
+    </button>
+  );
+}
+
 // ---- Who wins ----
+
+/** What the footer says right after a save, until the host starts on the next score. */
+export interface SavedNotice {
+  tone: "win" | "neutral";
+  title: string;
+  detail: string | null;
+  player: Player | null;
+}
 
 export function ScorePreview({
   state,
   entry,
   label,
   me,
+  notice,
 }: {
   state: GameState;
   entry: ScoreEntry;
   label: string;
   me: string;
+  notice?: SavedNotice | null;
 }) {
   const { game } = state;
   const p = entry.preview;
   const playerBy = (id: string | null): Player | null => (id ? (state.players.find((x) => x.id === id) ?? null) : null);
 
-  if (isUnchangedEntry(state, entry.key, entry.draft)) {
+  if (notice) {
     return (
-      <div className="flex min-h-12 items-center gap-3 pb-3" aria-live="polite">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface-4 text-ink-subtle">
-          <TrophyIcon size={18} />
-        </span>
-        <p className="text-subhead font-semibold text-ink-muted">Pick the team that scored, then tap their points.</p>
+      <div className="flex min-h-12 items-center gap-3 pb-3 animate-pop" aria-live="polite" data-testid="score-saved">
+        {notice.player ? (
+          <Avatar name={notice.player.name} color={notice.player.color} emoji={notice.player.emoji} size="md" ring="gold" decorative />
+        ) : (
+          <span className={cx("grid h-10 w-10 shrink-0 place-items-center rounded-full", notice.tone === "win" ? "bg-gold-400 text-ink-inverse" : "bg-brand-400 text-ink-inverse")}>
+            {notice.tone === "win" ? <TrophyIcon size={18} filled /> : <CheckIcon size={18} strokeWidth={3} />}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className={cx("truncate text-callout font-extrabold", notice.tone === "win" ? "text-gold-200" : "text-ink")}>{notice.title}</p>
+          {notice.detail && <p className="truncate text-footnote text-ink-muted">{notice.detail}</p>}
+        </div>
       </div>
     );
   }
 
-  if (!p) {
+  if (isUnchangedEntry(state, entry.key, entry.draft)) {
     return (
-      <div className="flex min-h-12 items-center gap-3 pb-3" aria-live="polite">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface-4 text-ink-subtle">
-          <TrophyIcon size={18} />
-        </span>
-        <p className="text-subhead font-semibold text-ink-muted">Enter both scores to see who wins {label}.</p>
-      </div>
+      <Hint>Pick the team that scored, then tap their points.</Hint>
+    );
+  }
+
+  if (!p) {
+    const blank = entry.draft.x === "" && entry.draft.y === "";
+    return (
+      <Hint>
+        {blank && entry.suggestion
+          ? `Type the ${label} score, or tap "${entry.suggestion.label}".`
+          : blank
+            ? `Type the ${label} score to see who wins.`
+            : `Enter both scores to see who wins ${label}.`}
+      </Hint>
     );
   }
 
@@ -207,6 +283,10 @@ export function ScorePreview({
   const owner = playerBy(p.ownerId);
   const reverseOwner = p.reverse ? playerBy(p.reverse.ownerId) : null;
   const mine = p.ownerId === me;
+  // Editing a recorded score without changing it: that's who has it now, not who would.
+  const recorded = state.scores.find((x) => x.periodKey === entry.key);
+  const unchanged = !!recorded && String(recorded.scoreX) === entry.draft.x && String(recorded.scoreY) === entry.draft.y;
+  const verb = unchanged ? (mine ? "win" : "wins") : "would win";
   let title: ReactNode;
   let sub: string | null = p.prize;
   if (p.manual) {
@@ -219,17 +299,19 @@ export function ScorePreview({
   } else if (owner) {
     title = mine ? (
       <>
-        <b className="font-extrabold text-brand-300">You</b> win {label}
+        <b className="font-extrabold text-brand-300">You</b> {verb} {label}
       </>
     ) : (
       <>
-        <b className="font-extrabold text-ink">{owner.name}</b> wins {label}
+        <b className="font-extrabold text-ink">{owner.name}</b> {verb} {label}
       </>
     );
   } else {
     title = <>Nobody has that square</>;
-    sub = "Crown one by hand after saving.";
+    sub = "You can give the prize to a player after saving.";
   }
+  const abbrX = game.teamX.abbr || game.teamX.name.slice(0, 3);
+  const abbrY = game.teamY.abbr || game.teamY.name.slice(0, 3);
 
   return (
     <div className="flex min-h-12 items-center gap-3 pb-3" aria-live="polite">
@@ -249,10 +331,36 @@ export function ScorePreview({
           </p>
         )}
       </div>
-      <span className="flex shrink-0 items-center gap-1" aria-label={`${game.teamX.abbr || game.teamX.name} ${p.digitX}, ${game.teamY.abbr || game.teamY.name} ${p.digitY}`}>
-        <span className="grid h-8 min-w-8 place-items-center rounded-lg bg-team-x px-1 font-display text-callout font-extrabold text-team-x-ink">{p.digitX}</span>
-        <span className="grid h-8 min-w-8 place-items-center rounded-lg bg-team-y px-1 font-display text-callout font-extrabold text-team-y-ink">{p.digitY}</span>
+      <span className="flex shrink-0 items-center gap-1" aria-label={`${abbrX} ${p.digitX}, ${abbrY} ${p.digitY}`}>
+        <DigitChip side="x" abbr={abbrX} digit={p.digitX} />
+        <DigitChip side="y" abbr={abbrY} digit={p.digitY} />
       </span>
+    </div>
+  );
+}
+
+/** A deciding digit, labelled with its team so color is never the only cue. */
+function DigitChip({ side, abbr, digit }: { side: Side; abbr: string; digit: number }) {
+  return (
+    <span
+      className={cx(
+        "flex h-9 min-w-9 flex-col items-center justify-center rounded-lg px-1.5 leading-none",
+        side === "x" ? "bg-team-x text-team-x-ink" : "bg-team-y text-team-y-ink",
+      )}
+    >
+      <span className="text-[0.5625rem] font-extrabold uppercase tracking-[0.04em] opacity-85">{abbr}</span>
+      <span className="mt-0.5 font-display text-callout font-extrabold">{digit}</span>
+    </span>
+  );
+}
+
+function Hint({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex min-h-12 items-center gap-3 pb-3" aria-live="polite">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-surface-4 text-ink-subtle">
+        <TrophyIcon size={18} />
+      </span>
+      <p className="text-subhead font-semibold text-ink-muted">{children}</p>
     </div>
   );
 }

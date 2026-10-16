@@ -1,16 +1,38 @@
 // Compact live feed of what's happening on the board.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Activity, GameState } from "../../../shared/types";
-import { FootballIcon, LockIcon, SparklesIcon, TrophyIcon } from "../../components/icons";
+import { FlagIcon, FootballIcon, LockIcon, SparklesIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
 import { relativeTime } from "../../lib/format";
 import { describeActivity } from "../notifications/activity";
-import { fallbackActivityText } from "./boardModel";
+import { fallbackActivityText, isSystemActivity } from "./boardModel";
 
 const COLLAPSED = 5;
 
-export function activityText(a: Activity, state: GameState, me: string): string {
+const GLYPH: Record<string, { chip: string; icon: (px: number) => ReactNode }> = {
+  locked: { chip: "bg-brand-400 text-ink-inverse", icon: (px) => <LockIcon size={px - 1} /> },
+  score: { chip: "bg-live-500 text-white", icon: (px) => <FootballIcon size={px} /> },
+  winner: { chip: "bg-gold-400 text-ink-inverse", icon: (px) => <TrophyIcon size={px} filled /> },
+  final: { chip: "bg-ink text-ink-inverse", icon: (px) => <FlagIcon size={px} /> },
+  created: { chip: "bg-surface-4 text-ink-muted", icon: (px) => <SparklesIcon size={px} /> },
+};
+
+/** The one look for a system event, in the feed and in board notices alike. */
+export function ActivityGlyph({ type, size = 22, className }: { type: Activity["type"]; size?: number; className?: string }) {
+  const g = GLYPH[type] ?? GLYPH.created;
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size }}
+      className={cx("grid shrink-0 place-items-center rounded-full", g.chip, className)}
+    >
+      {g.icon(Math.round(size * 0.55))}
+    </span>
+  );
+}
+
+function activityText(a: Activity, state: GameState, me: string): string {
   let text: string | null = null;
   try {
     text = describeActivity(a, state, me)?.text ?? null;
@@ -33,18 +55,10 @@ export function ActivityFeed({ state, me, now }: { state: GameState; me: string;
           const win = a.type === "winner";
           return (
             <li key={a.id} className={cx("flex items-center gap-3 px-4 py-2", i === 0 && "animate-fade-in")}>
-              {actor && a.type !== "winner" && a.type !== "score" ? (
+              {actor && !isSystemActivity(a.type) ? (
                 <Avatar name={actor.name} color={actor.color} emoji={actor.emoji} size="xs" decorative />
               ) : (
-                <span
-                  aria-hidden
-                  className={cx(
-                    "grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full",
-                    win ? "bg-gold-400 text-ink-inverse" : a.type === "score" ? "bg-live-500 text-white" : "bg-surface-4 text-ink-muted",
-                  )}
-                >
-                  {win ? <TrophyIcon size={12} filled /> : a.type === "score" ? <FootballIcon size={12} /> : a.type === "locked" ? <LockIcon size={11} /> : <SparklesIcon size={12} />}
-                </span>
+                <ActivityGlyph type={a.type} />
               )}
               <span className={cx("min-w-0 flex-1 text-subhead leading-snug", win ? "font-bold text-gold-200" : "text-ink")}>
                 {activityText(a, state, me)}

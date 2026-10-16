@@ -1,7 +1,9 @@
 // The number draw, shown to the host who pulled the lever: a mini board whose
 // axis headers spin like slot reels while the draw happens, then land one by
 // one (team X left to right, then team Y top to bottom), each with a tick of
-// haptics, and finish with confetti in the team colors. Everyone else simply
+// haptics, and finish with confetti in the team colors. Every square keeps its
+// owner's emoji so the group can see whose square got which numbers, and the
+// host's own squares are the brightest thing on screen. Everyone else simply
 // sees their board update live. Reduced motion: the digits just appear.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
@@ -32,6 +34,8 @@ export interface NumberRevealProps {
 /** Spin at least this long so the draw feels like a draw, even on a fast network. */
 const MIN_SPIN_MS = 1100;
 const STAGGER_MS = 95;
+/** "Your numbers" chips before the rest fold into "and N more". */
+const MAX_CHIPS = 10;
 const LAND_MS = 720;
 const CYCLE = 10;
 
@@ -167,11 +171,23 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
   };
 
   const owners = useMemo(() => new Map(squares.map((q) => [cellKey(q.row, q.col), q.playerId])), [squares]);
-  const colors = useMemo(() => new Map(players.map((p) => [p.id, p.color])), [players]);
+  const people = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   // My squares' numbers: "?" chips while drawing, filled in once everything lands (same size, so nothing jumps).
   const mineCount = squares.filter((q) => q.playerId === me).length;
   const mine = draw && done ? numbersFor({ squares }, draw, me) : Array.from({ length: mineCount }, (_, i) => ({ key: `p${i}`, x: "?", y: "?" }));
+  // Two tidy rows of chips; past that, the second row ends with "and N more".
+  const shown = mine.length > MAX_CHIPS ? mine.slice(0, MAX_CHIPS - 2) : mine;
+  const more = mine.length - shown.length;
   const taken = squares.length;
+  const abbr = (t: { abbr?: string; name: string }) => t.abbr || t.name;
+  const xLanded = Array.from({ length: n }, (_, i) => landed.has(`x${i}`)).every(Boolean);
+  const status = done
+    ? "Numbers locked in"
+    : !draw
+      ? "Shuffling…"
+      : xLanded
+        ? `Drawing ${abbr(game.teamY)} numbers…`
+        : `Drawing ${abbr(game.teamX)} numbers…`;
 
   const reel = (axis: "x" | "y", index: number) => {
     const id = `${axis}${index}`;
@@ -222,7 +238,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
       <div className="flex h-12 shrink-0 items-center justify-between px-4">
         <span className="eyebrow flex items-center gap-2 text-ink-muted">
           <LiveDot tone={done ? "brand" : "gold"} pulse={!done} />
-          {done ? "Numbers locked in" : draw ? "Landing…" : "Drawing numbers"}
+          {status}
         </span>
         {!done && draw && !reduced && (
           <button type="button" onClick={skip} className="pressable rounded-full px-3 py-1.5 text-footnote font-bold text-ink-muted hover:text-ink">
@@ -242,7 +258,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
         </div>
 
         <div className="flex w-full flex-col items-center gap-2.5">
-          <div className="flex items-center gap-3 text-footnote font-bold text-ink-muted">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-footnote font-bold text-ink-muted">
             <span className="flex items-center gap-1.5">
               <TeamMark team={game.teamX} size="sm" />
               across
@@ -252,6 +268,15 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
               <TeamMark team={game.teamY} size="sm" />
               down
             </span>
+            {mineCount > 0 && (
+              <>
+                <span aria-hidden className="text-ink-subtle">·</span>
+                <span className="flex items-center gap-1.5">
+                  <span aria-hidden className="hx-legend-mine" />
+                  yours
+                </span>
+              </>
+            )}
           </div>
 
           <div className={cx("hx-grid", done && "hx-done")} aria-hidden>
@@ -261,14 +286,17 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
               reel("y", row),
               ...Array.from({ length: n }, (_, col) => {
                 const owner = owners.get(cellKey(row, col)) ?? null;
+                const person = owner ? people.get(owner) : undefined;
                 return (
                   <span
                     key={`${row}-${col}`}
                     className="hx-sq"
                     data-owned={owner !== null}
                     data-mine={owner === me}
-                    style={{ "--p": colors.get(owner ?? "") ?? "#45594c", "--i": row * n + col } as CSSProperties}
-                  />
+                    style={{ "--p": person?.color ?? "#45594c", "--i": row * n + col } as CSSProperties}
+                  >
+                    {person ? <span className="hx-sq-face">{person.emoji || person.name.slice(0, 1).toUpperCase()}</span> : null}
+                  </span>
                 );
               }),
             ])}
@@ -286,13 +314,17 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
           <div className="flex w-full max-w-sm flex-col items-center gap-2">
             <p className="eyebrow text-ink-subtle">Your numbers</p>
             <div className="flex flex-wrap justify-center gap-1.5">
-              {mine.slice(0, 10).map((nb) => (
+              {shown.map((nb) => (
                 <span key={nb.key} className={cx("flex h-8 items-center gap-1 rounded-full bg-surface-2 p-0.5 pr-1 ring-1 ring-inset ring-line-strong", done && "animate-pop")}>
                   <span className="grid h-7 min-w-7 place-items-center rounded-full bg-team-x px-1.5 font-display text-subhead font-extrabold text-team-x-ink">{nb.x}</span>
                   <span className="grid h-7 min-w-7 place-items-center rounded-full bg-team-y px-1.5 font-display text-subhead font-extrabold text-team-y-ink">{nb.y}</span>
                 </span>
               ))}
-              {mine.length > 10 && <span className="self-center text-footnote font-bold text-ink-muted">+{mine.length - 10}</span>}
+              {more > 0 && (
+                <span className="flex h-8 items-center rounded-full bg-surface-2 px-3 text-footnote font-bold text-ink-muted ring-1 ring-inset ring-line-strong">
+                  and {more} more
+                </span>
+              )}
             </div>
           </div>
         )}

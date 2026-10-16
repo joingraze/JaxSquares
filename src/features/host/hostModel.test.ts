@@ -11,10 +11,14 @@ import {
   editErrors,
   editPatch,
   hostSummary,
+  gameStarted,
+  hostStatusLine,
   initialDraft,
+  invitedAnyone,
   isUnchangedEntry,
   landingOrder,
   lockFacts,
+  lockReadiness,
   numbersFor,
   parseScore,
   pressKey,
@@ -23,6 +27,7 @@ import {
   resolvedKey,
   revealDraw,
   saveEndsGame,
+  scoreSuggestion,
   scoreTargets,
   winnerRows,
 } from "./hostModel";
@@ -128,12 +133,74 @@ describe("hostSummary", () => {
 
   it("offers Add score on every-score boards and handles draft/final", () => {
     expect(hostSummary(everyScore([score("s1", 7, 0)])).action).toEqual({ kind: "score", label: "Add score" });
-    expect(hostSummary(makeState({ game: { status: "draft" } })).action.kind).toBe("setup");
     expect(hostSummary(locked({ game: { status: "final" } })).action.kind).toBe("final");
+  });
+
+  it("gives an unpaid board a way to open, in plain words", () => {
+    const s = hostSummary(makeState({ game: { status: "draft" } }));
+    expect(s.action).toEqual({ kind: "checkout", label: "Open board" });
+    expect(s.slim).toBe(false);
+    expect(s.status).not.toMatch(/checkout/i);
+  });
+
+  it("folds to a slim bar only when there's nothing to do", () => {
+    const linked = locked({ game: { linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: 2, xIsHome: true } } });
+    expect(hostSummary(linked).slim).toBe(true);
+    expect(hostSummary(locked({ game: { status: "final" } })).slim).toBe(true);
+    expect(hostSummary(locked()).slim).toBe(false);
+    expect(hostSummary(makeState()).slim).toBe(false);
+  });
+
+  it("says Invite friends until someone besides the host joins", () => {
+    const alone = makeState({ players: [player(ME, "Jordan")] });
+    expect(hostSummary(alone).action).toEqual({ kind: "invite", label: "Invite friends" });
+    expect(invitedAnyone(alone)).toBe(false);
+    expect(invitedAnyone(makeState())).toBe(true);
+    expect(hostSummary(makeState()).action).toEqual({ kind: "invite", label: "Invite" });
+  });
+});
+
+describe("gameStarted", () => {
+  const linkedAt = (startsAt: number) => ({ provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt, xIsHome: true });
+
+  it("is false before kickoff with nothing recorded", () => {
+    expect(gameStarted(locked({ game: { linkedEvent: linkedAt(5_000) } }), 1_000)).toBe(false);
+    expect(gameStarted(locked(), 1_000)).toBe(false);
+  });
+
+  it("is true after kickoff, once live, or once a score or pick is in", () => {
+    expect(gameStarted(locked({ game: { linkedEvent: linkedAt(5_000) } }), 6_000)).toBe(true);
+    expect(gameStarted(locked({ live: { state: "in", period: 1, clock: "9:00", detail: "Q1 9:00", scoreX: 0, scoreY: 0, updatedAt: 1 } }), 0)).toBe(true);
+    expect(gameStarted(locked({ scores: [score("q1", 7, 3)] }), 0)).toBe(true);
+    expect(gameStarted(locked({ manualWinners: [{ periodKey: "q1", row: 0, col: 0, updatedAt: 1 }] }), 0)).toBe(true);
+  });
+});
+
+describe("hostStatusLine", () => {
+  it("names the state the same way the sheet's title never changes", () => {
+    expect(hostStatusLine(makeState({ game: { status: "draft" } }))).toMatch(/Not open yet/);
+    expect(hostStatusLine(makeState({ squares: [sq(0, 0, ME)] }))).toBe("Filling up · 1 of 100 squares taken");
+    expect(hostStatusLine(locked({ scores: [score("q1", 7, 3)] }))).toBe("Numbers drawn · Half is up next");
+    expect(hostStatusLine(locked({ game: { linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: Date.now() + 60_000, xIsHome: true } } }))).toBe(
+      "Numbers drawn · waiting for kickoff",
+    );
+  });
+
+  it("says when a final board still has prizes with no winner", () => {
+    const s = locked({ game: { status: "final" }, scores: [score("final", 7, 3)] });
+    expect(hostStatusLine(s)).toBe("Final · 1 prize has no winner yet");
+    expect(hostStatusLine(locked({ game: { status: "final" }, squares: [sq(6, 7, MAYA)], scores: [score("final", 7, 3)] }))).toBe("Final · the winners are in");
   });
 });
 
 describe("lockFacts", () => {
+  it("blocks locking an empty board and double-checks a thin one", () => {
+    expect(lockReadiness({ claimed: 0, total: 100 })).toBe("empty");
+    expect(lockReadiness({ claimed: 14, total: 100 })).toBe("low");
+    expect(lockReadiness({ claimed: 25, total: 100 })).toBe("ok");
+    expect(lockReadiness({ claimed: 25, total: 25 })).toBe("ok");
+  });
+
   it("counts empty squares and players without a square", () => {
     const s = makeState({ squares: [sq(0, 0, ME)] });
     expect(lockFacts(s)).toEqual({ claimed: 1, total: 100, empty: 99, players: 2, idle: 1 });
@@ -176,22 +243,37 @@ describe("initialDraft", () => {
     expect(initialDraft(locked({ scores: [score("q1", 7, 3)] }), "q1")).toEqual({ x: "7", y: "3" });
   });
 
-  it("starts a later period from the previous score (scores only climb)", () => {
-    expect(initialDraft(locked({ scores: [score("q1", 7, 3)] }), "q3")).toEqual({ x: "7", y: "3" });
+  it("starts a new period blank, so nothing saves until the host enters it", () => {
+    expect(initialDraft(locked({ scores: [score("q1", 7, 3)] }), "q2")).toEqual({ x: "", y: "" });
+    const live = locked({ live: { state: "in", period: 2, clock: "4:00", detail: "Q2 4:00", scoreX: 14, scoreY: 3, updatedAt: 1 } });
+    expect(initialDraft(live, "q2")).toEqual({ x: "", y: "" });
   });
 
-  it("prefers the live score on linked boards", () => {
+  it("is blank for a first fixed period, the latest score for a new every-score entry", () => {
+    expect(initialDraft(locked(), "q1")).toEqual({ x: "", y: "" });
+    expect(initialDraft(everyScore(), NEXT_ENTRY)).toEqual({ x: "0", y: "0" });
+    expect(initialDraft(everyScore([score("s1", 7, 0), score("s2", 7, 3)]), NEXT_ENTRY)).toEqual({ x: "7", y: "3" });
+  });
+});
+
+describe("scoreSuggestion", () => {
+  it("offers the previous period's score for a new period", () => {
+    expect(scoreSuggestion(locked({ scores: [score("q1", 7, 3)] }), "q2")).toEqual({ label: "Same as Q1", draft: { x: "7", y: "3" } });
+    expect(scoreSuggestion(locked({ scores: [score("q1", 7, 3), score("q2", 14, 10)] }), "q3")?.label).toBe("Same as Half");
+  });
+
+  it("offers the live score on linked boards", () => {
     const s = locked({
       scores: [score("q1", 7, 3)],
       live: { state: "in", period: 2, clock: "4:00", detail: "Q2 4:00", scoreX: 14, scoreY: 3, updatedAt: 1 },
     });
-    expect(initialDraft(s, "q2")).toEqual({ x: "14", y: "3" });
+    expect(scoreSuggestion(s, "q2")).toEqual({ label: "Live score", draft: { x: "14", y: "3" } });
   });
 
-  it("is blank for a first fixed period, 0-0 for a first every-score entry", () => {
-    expect(initialDraft(locked(), "q1")).toEqual({ x: "", y: "" });
-    expect(initialDraft(everyScore(), NEXT_ENTRY)).toEqual({ x: "0", y: "0" });
-    expect(initialDraft(everyScore([score("s1", 7, 0)]), NEXT_ENTRY)).toEqual({ x: "7", y: "0" });
+  it("has nothing to offer for the first period, a recorded one, or every-score entries", () => {
+    expect(scoreSuggestion(locked(), "q1")).toBeNull();
+    expect(scoreSuggestion(locked({ scores: [score("q1", 7, 3)] }), "q1")).toBeNull();
+    expect(scoreSuggestion(everyScore([score("s1", 7, 0)]), NEXT_ENTRY)).toBeNull();
   });
 });
 

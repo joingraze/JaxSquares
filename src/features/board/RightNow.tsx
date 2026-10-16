@@ -1,0 +1,259 @@
+// "Right now": pinned above the grid while numbers are drawn and the game
+// isn't over. Answers the two questions a fan has mid-game: who has the
+// period if it ended now, and how close am I (in plain football terms).
+// Every-score boards ask a different question, "where does the next score
+// land?", so they get the four likeliest scores and whose square each hits.
+
+import type { ReactNode } from "react";
+import type { Player, Team } from "../../../shared/types";
+import { FootballIcon, TrophyIcon } from "../../components/icons";
+import { Avatar, cx } from "../../components/ui";
+import { periodNoun, playName, type NowView, type ScoringPlay } from "./boardModel";
+
+export interface RightNowProps {
+  now: NowView;
+  players: Player[];
+  me: string;
+  teamX: Team;
+  teamY: Team;
+  /** Tap: spotlight the square on the board. */
+  onShow: () => void;
+}
+
+type TeamOf = (side: ScoringPlay["team"]) => Team;
+
+const abbrOf = (t: Team) => t.abbr || t.name.slice(0, 3).toUpperCase();
+
+export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowProps) {
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const owner = now.ownerId ? (byId.get(now.ownerId) ?? null) : null;
+  const teamOf: TeamOf = (side) => (side === "x" ? teamX : teamY);
+  const score = `${now.scoreX}–${now.scoreY}`;
+
+  return (
+    <section
+      aria-label="Right now"
+      data-live={now.live}
+      className={cx(
+        "jx-now-card relative overflow-hidden rounded-card ring-1 ring-inset",
+        now.mine && !now.everyScore
+          ? "bg-[linear-gradient(135deg,rgb(198_249_31/0.2),rgb(198_249_31/0.04)_60%)] bg-surface-2 ring-brand-400/60"
+          : now.live
+            ? "bg-[linear-gradient(135deg,rgb(255_64_64/0.2),rgb(255_64_64/0.03)_60%)] bg-surface-2 ring-live-500/50"
+            : "bg-surface-2 ring-line-strong",
+      )}
+    >
+      {now.everyScore ? (
+        <NextScore now={now} byId={byId} me={me} teamOf={teamOf} score={score} onShow={onShow} />
+      ) : (
+        <button type="button" onClick={onShow} className="pressable flex w-full items-center gap-3 px-3.5 pb-3 pt-2.5 text-left">
+          <div className="min-w-0 flex-1">
+            <Header now={now} text={now.live ? `Right now · ${now.detail ?? now.label}` : `${now.label} · if nobody scores`} />
+            <div className="mt-2 flex min-w-0 items-center gap-3">
+              {owner || now.mine ? (
+                <Avatar
+                  name={owner?.name ?? "You"}
+                  color={owner?.color ?? "#c6f91f"}
+                  emoji={owner?.emoji}
+                  size="lg"
+                  ring={now.mine ? "brand" : "none"}
+                  decorative
+                  className={now.live && !now.mine ? "ring-2 ring-live-500 ring-offset-2 ring-offset-surface-2" : undefined}
+                />
+              ) : (
+                <span aria-hidden className="grid h-12 w-12 shrink-0 place-items-center rounded-full border-2 border-dashed border-line-strong text-title-3 text-ink-subtle">
+                  ?
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className={cx("truncate font-display text-title-2 font-extrabold leading-none", now.mine ? "text-brand-300" : "text-ink")}>
+                  {now.mine ? "You!" : owner ? owner.name : "Empty square"}
+                </p>
+                <p className="mt-1 line-clamp-2 text-footnote font-semibold leading-snug text-ink-muted">{leaderLine(now, !!owner, score)}</p>
+              </div>
+            </div>
+          </div>
+          {/* The square's numbers, labeled by team (never by color alone). */}
+          <div aria-label={`${teamX.name} ${now.digits.x}, ${teamY.name} ${now.digits.y}`} className="flex shrink-0 flex-col gap-1.5">
+            <DigitTag abbr={abbrOf(teamX)} digit={now.digits.x} side="x" hot={now.live} />
+            <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
+          </div>
+        </button>
+      )}
+      <PathLine now={now} byId={byId} me={me} teamOf={teamOf} />
+    </section>
+  );
+}
+
+function leaderLine(now: NowView, owned: boolean, score: string): string {
+  const when = now.live ? "if it ended now" : `if it stays ${score}`;
+  const noun = periodNoun({ key: now.periodKey, label: now.label });
+  if (now.mine) return `take ${noun} ${when}`;
+  return owned ? `takes ${noun} ${when}` : `Nobody takes ${noun} ${when}`;
+}
+
+function Header({ now, text }: { now: NowView; text: string }) {
+  return (
+    <p className="flex min-w-0 items-center gap-2">
+      {now.live && (
+        <span className="eyebrow inline-flex h-5 shrink-0 items-center gap-1.5 rounded-md bg-live-500 px-1.5 text-white">
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+          Live
+        </span>
+      )}
+      <span className={cx("eyebrow truncate", now.live ? "text-live-300" : "text-ink-muted")}>{text}</span>
+    </p>
+  );
+}
+
+function DigitTag({ abbr, digit, side, hot }: { abbr: string; digit: string; side: "x" | "y"; hot: boolean }) {
+  return (
+    <span className="flex h-8 min-w-[5.25rem] items-center justify-between gap-2 rounded-xl bg-black/30 py-1 pl-2 pr-1 ring-1 ring-inset ring-line-strong">
+      <span className="flex items-center gap-1.5 text-caption font-extrabold tracking-wide text-ink-muted">
+        <span aria-hidden className={cx("h-2 w-2 rounded-full", side === "x" ? "bg-team-x" : "bg-team-y")} />
+        {abbr}
+      </span>
+      <span
+        className={cx(
+          "grid h-6 min-w-6 place-items-center rounded-lg px-1 font-display text-callout font-extrabold tabular-nums",
+          hot ? "bg-live-500 text-white" : "bg-ink text-ink-inverse",
+        )}
+      >
+        {digit}
+      </span>
+    </span>
+  );
+}
+
+function TeamChip({ side, team, points }: { side: ScoringPlay["team"]; team: Team; points: number[] }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex h-6 shrink-0 items-center rounded-md px-1.5 text-caption font-extrabold tabular-nums",
+        side === "x" ? "bg-team-x text-team-x-ink" : "bg-team-y text-team-y-ink",
+      )}
+    >
+      {abbrOf(team)} {points.map((p) => `+${p}`).join(" ")}
+    </span>
+  );
+}
+
+/** Every-score boards: the next TD or field goal by either team, and whose square it lands on. */
+function NextScore({
+  now,
+  byId,
+  me,
+  teamOf,
+  score,
+  onShow,
+}: {
+  now: NowView;
+  byId: Map<string, Player>;
+  me: string;
+  teamOf: TeamOf;
+  score: string;
+  onShow: () => void;
+}) {
+  return (
+    <div className="px-3.5 pb-3 pt-2.5">
+      <button type="button" onClick={onShow} className="flex w-full items-center justify-between gap-2 text-left">
+        <Header now={now} text={now.live && now.detail ? `Next score wins · ${now.detail}` : "Next score wins"} />
+        <span className="shrink-0 text-caption font-bold tabular-nums text-ink-muted">Now {score}</span>
+      </button>
+      <ul className="mt-2.5 grid grid-cols-2 gap-1.5">
+        {now.outcomes.map((o) => {
+          const p = o.ownerId ? byId.get(o.ownerId) : undefined;
+          const mine = o.ownerId !== null && o.ownerId === me;
+          return (
+            <li
+              key={`${o.play.team}${o.play.points}`}
+              className={cx(
+                "flex min-w-0 items-center gap-1.5 rounded-xl py-1.5 pl-1.5 pr-2 ring-1 ring-inset",
+                mine ? "bg-brand-400/15 ring-brand-400/70" : "bg-black/20 ring-line",
+              )}
+            >
+              <TeamChip side={o.play.team} team={teamOf(o.play.team)} points={[o.play.points]} />
+              {p ? (
+                <Avatar name={p.name} color={p.color} emoji={p.emoji} size="xs" decorative />
+              ) : (
+                <span aria-hidden className="h-[22px] w-[22px] shrink-0 rounded-full border border-dashed border-line-strong" />
+              )}
+              <span className={cx("min-w-0 truncate text-footnote font-bold", mine ? "text-brand-300" : p ? "text-ink" : "text-ink-subtle")}>
+                {mine ? "You!" : p ? p.name : "Empty"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/** "a Cowboys touchdown and a Giants field goal", "two Cowboys touchdowns", "a Cowboys touchdown and field goal". */
+function playsPhrase(plays: ScoringPlay[], teamOf: TeamOf): string {
+  const [a, b] = plays;
+  const name = (p: ScoringPlay) => teamOf(p.team).name;
+  if (!b) return `a ${name(a)} ${playName(a.points)}`;
+  if (a.team === b.team && a.points === b.points) return `two ${name(a)} ${playName(a.points)}s`;
+  if (a.team === b.team) return `a ${name(a)} ${playName(a.points)} and ${playName(b.points)}`;
+  return `a ${name(a)} ${playName(a.points)} and a ${name(b)} ${playName(b.points)}`;
+}
+
+function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, Player>; me: string; teamOf: TeamOf }) {
+  const nameOf = (id: string | null) => (id === me ? "you" : (byId.get(id ?? "")?.name ?? (id ? "someone" : "an empty square")));
+  const leading = now.mine && !now.everyScore;
+
+  let icon = <FootballIcon size={15} />;
+  let text: ReactNode;
+  let chips: ScoringPlay[] = [];
+  if (leading) {
+    icon = <TrophyIcon size={15} filled />;
+    text = now.threat ? (
+      <>
+        <b className="font-extrabold text-brand-300">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf))} would hand it to {nameOf(now.threat.ownerId)}.
+      </>
+    ) : (
+      <b className="font-extrabold text-brand-300">Hold on! It's yours if nobody scores.</b>
+    );
+  } else if (now.path && now.path.plays.length > 0) {
+    chips = now.path.plays;
+    text = (
+      <>
+        <b className="font-extrabold text-ink">{now.path.plays.length === 1 ? "1 score away:" : "2 scores away:"}</b> {playsPhrase(now.path.plays, teamOf)}{" "}
+        {now.path.plays.length === 1 ? (now.everyScore ? "lands on your square" : "puts you in front") : now.everyScore ? "get you there" : "put you in front"}
+      </>
+    );
+  } else if (now.mineCount > 0) {
+    text = now.everyScore ? <>None of the likely next scores hit your squares. Hang in there.</> : <>Your squares need a few more scores. Plenty of game left.</>;
+  } else {
+    return null;
+  }
+
+  // One chip per team: "DAL +7 +3".
+  const perTeam = (["x", "y"] as const)
+    .map((side) => ({ side, points: chips.filter((c) => c.team === side).map((c) => c.points) }))
+    .filter((t) => t.points.length > 0);
+
+  return (
+    <div className="flex items-center gap-2.5 border-t border-line bg-black/20 px-3.5 py-2.5">
+      <span
+        aria-hidden
+        className={cx("grid h-7 w-7 shrink-0 place-items-center rounded-full", leading ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink")}
+      >
+        {icon}
+      </span>
+      <p className="min-w-0 flex-1 text-footnote leading-snug text-ink-muted">{text}</p>
+      {perTeam.length > 0 && (
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          {perTeam.map((t) => (
+            <TeamChip key={t.side} side={t.side} team={teamOf(t.side)} points={t.points} />
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function cap(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

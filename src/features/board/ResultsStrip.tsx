@@ -1,7 +1,8 @@
 // Period-by-period results: score, who won (and reverse), the host's prize
 // note. Tapping a decided period spotlights its square on the board.
+// Fixed periods lay out two by two; every-score boards get a swipeable strip,
+// newest first, so it always opens on whole cards with the score in play.
 
-import { useEffect, useRef } from "react";
 import type { Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
@@ -26,34 +27,19 @@ export interface ResultsStripProps {
 
 export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predraw, liveNow, selectedKey, onSelect, grid = false }: ResultsStripProps) {
   const byId = new Map(players.map((p) => [p.id, p]));
-  const scroller = useRef<HTMLDivElement>(null);
-  const focusIndex = Math.max(
-    0,
-    cards.findIndex((c) => c.status === "live" || c.status === "next"),
-  );
-  const lastDone = cards.reduce((i, c, idx) => (c.status === "done" ? idx : i), -1);
-
-  // Keep the newest result / the period in play in view.
-  useEffect(() => {
-    const el = scroller.current;
-    if (!el || grid) return;
-    const target = el.children[Math.max(0, Math.max(lastDone, focusIndex) - 1)] as HTMLElement | undefined;
-    if (target) el.scrollTo({ left: target.offsetLeft - 16, behavior: "smooth" });
-  }, [lastDone, focusIndex, cards.length, grid]);
-
   if (cards.length === 0) return null;
+  const ordered = grid ? cards : [...cards].reverse();
   const abbr = (t: Team) => t.abbr || t.name.slice(0, 3).toUpperCase();
 
   return (
     <div
-      ref={scroller}
       className={cx(
         grid
           ? "grid grid-cols-2 gap-2.5"
           : "jx-strip scrollbar-none relative -mx-4 flex gap-2.5 overflow-x-auto px-4 pb-1 pt-0.5",
       )}
     >
-      {cards.map((card) => {
+      {ordered.map((card) => {
         const r = card.result;
         const winner = r?.winnerPlayerId ? byId.get(r.winnerPlayerId) : null;
         const revWinner = r?.reverseWinnerPlayerId ? byId.get(r.reverseWinnerPlayerId) : null;

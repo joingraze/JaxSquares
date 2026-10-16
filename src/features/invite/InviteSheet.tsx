@@ -1,38 +1,51 @@
-// The fastest way to get friends onto a board: one big "Send invite" (the
-// native share sheet with a ready-made message), the link to copy, a QR code
-// and a big board code for people in the same room, and, for the host, their
-// private host link so they can run the board from another device.
+// Text-first invite: most invites go out as a text, so the sheet is a preview
+// of exactly that (the message bubble and the link card your friends get) and
+// one big "Text your crew" button. People in the same room get the QR code and
+// board code behind a single "Same room? Show code" toggle. The host's private
+// link lives in Host tools ("Host from another phone"), never next to Send.
 import { useEffect, useRef, useState } from "react";
-import { BOARD_SIZE_INFO, PRESET_INFO } from "../../../shared/formats";
-import type { GameState } from "../../../shared/types";
-import { CheckIcon, CopyIcon, LinkIcon, LockIcon, ShareIcon } from "../../components/icons";
-import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, LiveDot, Meter, TeamMark } from "../../components/ui";
-import { inviteUrl, PUBLIC_ORIGIN } from "../../lib/api";
+import type { GameState, Player } from "../../../shared/types";
+import { ArrowRightIcon, CheckIcon, CopyIcon } from "../../components/icons";
+import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
+import { inviteUrl } from "../../lib/api";
 import { readableTeamColor, teamVars } from "../../lib/format";
-import { getPlayerId, hostLinkUrl } from "../../lib/identity";
+import { getPlayerId, getProfile, isHostOf } from "../../lib/identity";
 import { copyText, haptic, shareLink } from "../../lib/native";
 import "./invite.css";
 import {
-  boardStats,
-  codeGroups,
-  displayLink,
+  boardCode,
+  crewLine,
+  hostOf,
+  invitePitch,
   inviteMessage,
-  isUrgent,
+  inviteStage,
+  linkCardTitle,
+  linkDomain,
   matchupLabel,
-  nameIsMatchup,
   peopleInOrder,
-  playersInLabel,
+  previewStatus,
   spelledCode,
-  squaresLeftLabel,
 } from "./inviteModel";
 import { QrCode } from "./QrCode";
 import { useNewArrival } from "./useNewArrival";
 
-/** Four corner arrows: "tap to make bigger". */
-function ExpandGlyph() {
+/** A speech bubble: "send it as a text". */
+function ChatGlyph({ size = 22 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3.5c-5 0-9 3.3-9 7.5 0 2.3 1.2 4.3 3.1 5.7L5.5 20.5l4.2-2.1c.7.1 1.5.2 2.3.2 5 0 9-3.4 9-7.6S17 3.5 12 3.5Z" />
+    </svg>
+  );
+}
+
+/** A tiny QR mark for the "Show code" toggle. */
+function QrGlyph({ size = 20 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5" />
+      <path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 20.5h1M20.5 14v1" />
     </svg>
   );
 }
@@ -41,27 +54,37 @@ export interface InviteSheetProps {
   state: GameState;
   open: boolean;
   onClose: () => void;
-  /** Devices on the board right now (useGame's `watching`), shown as live presence. */
+  /**
+   * Devices on the board right now. Accepted for callers, not shown: the sheet
+   * keeps one social signal (who's in), and live presence lives on the board.
+   */
   watching?: number;
-  /** The board was just created: lead with "it's open" and a small celebration. */
+  /** The board was just created: lead with "it's live" and a small celebration. */
   justCreated?: boolean;
 }
 
-type Flash = "copied-link" | "copied-host" | "shared" | "share-copied" | null;
+type Flash = "copied-link" | "shared" | "share-copied" | null;
+/** Matchup size on the preview card: it shares the row with the mini board, so long names step down sooner. */
+function cardMatchupText(game: GameState["game"]): string {
+  const len = [...game.teamX.name.trim()].length + [...game.teamY.name.trim()].length;
+  return len <= 11 ? "text-title-2" : len <= 18 ? "text-title-3" : "text-headline";
+}
 const FLASH_MS = 2000;
 
-export function InviteSheet({ state, open, onClose, watching = 0, justCreated = false }: InviteSheetProps) {
+export function InviteSheet({ state, open, onClose, justCreated = false }: InviteSheetProps) {
   const { game } = state;
   const url = inviteUrl(game.id);
-  const hostUrl = hostLinkUrl(game.id, PUBLIC_ORIGIN);
-  const stats = boardStats(state);
+  const myId = getPlayerId();
+  const viewerIsHost = game.hostPlayerId === myId || isHostOf(game.id);
+  const stage = inviteStage(state);
+  const pitch = invitePitch(state, viewerIsHost);
+  const message = inviteMessage(state, myId);
   const people = peopleInOrder(state);
-  const isOpen = game.status === "open" || game.status === "draft";
-  const urgent = isOpen && isUrgent(stats.left, stats.total);
+  const myCount = state.squares.filter((s) => s.playerId === myId).length;
   const arrival = useNewArrival(state.players, open);
 
   const [flash, setFlash] = useState<Flash>(null);
-  const [bigQr, setBigQr] = useState(false);
+  const [showCode, setShowCode] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showFlash = (f: Flash) => {
@@ -75,7 +98,7 @@ export function InviteSheet({ state, open, onClose, watching = 0, justCreated = 
   const celebrated = useRef(false);
   useEffect(() => {
     if (!open) {
-      setBigQr(false);
+      setShowCode(false);
       return;
     }
     if (!justCreated || celebrated.current) return;
@@ -93,7 +116,7 @@ export function InviteSheet({ state, open, onClose, watching = 0, justCreated = 
 
   const send = async () => {
     // shareLink must start inside the tap (Web Share needs the user gesture), so nothing is awaited first.
-    const outcome = await shareLink({ title: game.name, text: inviteMessage(state, getPlayerId()), url });
+    const outcome = await shareLink({ title: game.name, text: message, url });
     if (outcome === "shared") {
       void haptic("success");
       showFlash("shared");
@@ -103,36 +126,36 @@ export function InviteSheet({ state, open, onClose, watching = 0, justCreated = 
     }
   };
 
-  const copy = async (what: "link" | "host") => {
-    const text = what === "link" ? url : hostUrl;
-    if (!text) return;
-    const outcome = await copyText(text);
+  const copyLink = async () => {
+    const outcome = await copyText(url);
     if (outcome === "copied") {
       void haptic("success");
-      showFlash(what === "link" ? "copied-link" : "copied-host");
+      showFlash("copied-link");
     } else {
       void haptic("error");
     }
   };
 
-  const sendLabel =
-    flash === "shared" ? "Sent! Invite more friends" : flash === "share-copied" ? "Link copied. Paste it anywhere" : "Send invite";
+  const sendDone = flash === "shared" || flash === "share-copied";
+  const sendLabel = flash === "shared" ? "Sent! Text more friends" : flash === "share-copied" ? "Link copied. Paste it in a text" : pitch.cta;
+  const me = state.players.find((p) => p.id === myId);
+  const profile = getProfile();
+  const sender = me ?? { name: profile.name || "You", color: profile.color, emoji: profile.emoji };
 
   return (
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={justCreated ? "Your board is open! 🎉" : "Invite your crew"}
-      description={
-        isOpen ? "They just tap the link. No app or sign-up." : "Friends tap the link to follow every score live."
-      }
+      title={pitch.title}
+      description={pitch.subtitle}
       footer={
         <Button
           data-testid="invite-share"
           size="lg"
           block
+          variant={pitch.tone === "gold" ? "gold" : "primary"}
           haptic="medium"
-          leading={flash === "shared" || flash === "share-copied" ? <CheckIcon size={22} strokeWidth={3} /> : <ShareIcon size={22} strokeWidth={2.4} />}
+          leading={sendDone ? <CheckIcon size={22} strokeWidth={3} /> : <ChatGlyph />}
           onClick={() => void send()}
         >
           <span key={sendLabel} className="animate-fade-in">
@@ -141,171 +164,211 @@ export function InviteSheet({ state, open, onClose, watching = 0, justCreated = 
         </Button>
       }
     >
-      <div style={teamVars(game.teamX, game.teamY)} className="flex flex-col gap-3">
-        {/* ---- The ticket ---- */}
-        <div className="overflow-hidden rounded-card bg-surface-3 ring-1 ring-inset ring-line-strong shadow-card">
-          {/* Matchup band */}
-          <div className="relative flex items-center gap-2.5 px-4 pb-3 pt-3.5">
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 opacity-30"
-              style={{
-                background:
-                  "radial-gradient(90% 140% at 0% 0%, var(--team-x), transparent 60%), radial-gradient(90% 140% at 100% 0%, var(--team-y), transparent 60%)",
-              }}
-            />
-            <TeamMark team={game.teamX} size="sm" className="relative" />
-            <div className="relative min-w-0 flex-1 text-center">
-              <p className="truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel(game)}</p>
-              <p className="truncate text-caption font-semibold text-ink-muted">
-                {nameIsMatchup(game)
-                  ? `${PRESET_INFO[game.format.periods].label} · ${BOARD_SIZE_INFO[game.format.boardSize].short}`
-                  : game.name}
-              </p>
-            </div>
-            <TeamMark team={game.teamY} size="sm" className="relative" />
-          </div>
-
-          {/* QR + code */}
-          <div className={cx("flex gap-4 px-4 pb-4 pt-1", bigQr ? "flex-col items-center" : "items-center")}>
+      <div style={teamVars(game.teamX, game.teamY)} className="flex flex-col gap-3.5">
+        {/* ---- Who's in: the one social signal ---- */}
+        <div className="flex min-h-11 items-center gap-2.5">
+          {arrival ? (
+            // Spotlight: the newcomer takes the stack's place for a few seconds.
+            <p key={arrival.id} role="status" className="flex min-w-0 flex-1 animate-pop items-center gap-2.5 text-subhead font-extrabold text-ink">
+              <Avatar name={arrival.name} color={arrival.color} emoji={arrival.emoji} size="md" decorative />
+              <span className="truncate">{arrival.name} just joined! 🙌</span>
+            </p>
+          ) : (
+            <>
+              {people.length > 0 && <AvatarGroup people={people} max={4} size="md" className="invite-stagger" />}
+              <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{crewLine(state, myId)}</p>
+            </>
+          )}
+          {stage === "fresh" && viewerIsHost && myCount === 0 && !arrival && (
             <button
               type="button"
               onClick={() => {
-                void haptic("selection");
-                setBigQr((b) => !b);
+                void haptic("light");
+                onClose();
               }}
-              aria-label={bigQr ? "Make QR code smaller" : "Make QR code bigger for scanning"}
-              aria-pressed={bigQr}
-              className={cx(
-                "invite-qr pressable relative grid shrink-0 place-items-center bg-white shadow-[0_8px_24px_-10px_rgb(0_0_0/0.8)]",
-                bigQr ? "h-[17.5rem] w-[17.5rem] rounded-[1.25rem] p-2" : "h-[8.25rem] w-[8.25rem] rounded-2xl p-1",
-              )}
+              className="pressable -mr-2 inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-3 text-subhead font-extrabold text-brand-300 hover:bg-white/6"
             >
-              <QrCode value={url} size={bigQr ? 264 : 124} quiet={2} label={`QR code for ${displayLink(url)}`} />
-              {!bigQr && (
-                <span
-                  aria-hidden
-                  className="absolute -bottom-1.5 -right-1.5 grid h-6.5 w-6.5 place-items-center rounded-full bg-surface-4 text-ink ring-2 ring-surface-3"
-                >
-                  <ExpandGlyph />
-                </span>
-              )}
+              Claim yours first
+              <ArrowRightIcon size={16} strokeWidth={2.6} />
             </button>
-            <div className={cx("flex min-w-0 flex-col", bigQr ? "items-center text-center" : "flex-1")}>
-              <p className="eyebrow text-ink-subtle">Board code</p>
-              <div
-                role="img"
-                aria-label={`Board code ${spelledCode(game.id)}`}
-                className={cx("mt-1.5 flex flex-col gap-1.5 [perspective:400px]", bigQr && "flex-row")}
-              >
-                {codeGroups(game.id).map((group, g) => (
-                  <div key={g} aria-hidden className="flex gap-1">
-                    {[...group].map((ch, i) => (
-                      <span
-                        key={`${ch}-${i}`}
-                        style={{ animationDelay: `${120 + (g * 3 + i) * 55}ms` }}
-                        className="invite-tile grid h-11 w-9 place-items-center rounded-lg bg-canvas font-display text-title-2 font-extrabold text-ink shadow-[inset_0_-2px_0_rgb(255_255_255/0.06),inset_0_1px_0_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line"
-                      >
-                        {ch}
-                      </span>
-                    ))}
-                  </div>
-                ))}
-              </div>
-              <p className="mt-2 text-caption leading-snug text-ink-muted">
-                {bigQr ? "Point a phone camera here. Tap to shrink." : "Same room? Scan it, or read the code out loud."}
-              </p>
-            </div>
-          </div>
-
-          <div aria-hidden className="invite-perf" />
-
-          {/* Social proof stub */}
-          <div className="flex flex-col gap-2.5 px-4 pb-4 pt-3.5">
-            <div className="flex items-center gap-2.5">
-              {arrival ? (
-                // Spotlight: the newcomer takes the stack's place for a few seconds.
-                <p key={arrival.id} role="status" className="flex min-w-0 flex-1 animate-pop items-center gap-2.5 text-footnote font-extrabold text-brand-300">
-                  <Avatar name={arrival.name} color={arrival.color} emoji={arrival.emoji} size="sm" ring="brand" decorative />
-                  <span className="truncate">{arrival.name} just joined!</span>
-                </p>
-              ) : (
-                <>
-                  {people.length > 0 && <AvatarGroup people={people} max={4} size="sm" className="invite-stagger" />}
-                  <p className="min-w-0 flex-1 truncate text-footnote font-semibold text-ink">{playersInLabel(people.length)}</p>
-                </>
-              )}
-              {watching >= 2 && (
-                <span className="flex shrink-0 items-center gap-1.5 text-caption font-bold text-brand-300">
-                  <LiveDot tone="brand" />
-                  {watching} here now
-                </span>
-              )}
-            </div>
-            {isOpen ? (
-              <Meter
-                value={stats.claimed}
-                max={stats.total}
-                size="sm"
-                tone={urgent ? "gold" : "brand"}
-                label={
-                  <span className={urgent ? "font-extrabold text-gold-300" : "text-ink"}>
-                    {urgent ? `Only ${squaresLeftLabel(stats.left)}!` : squaresLeftLabel(stats.left)}
-                  </span>
-                }
-              />
-            ) : (
-              <p className="text-footnote text-ink-muted">
-                {game.status === "final" ? "Game over. Friends can still see who won." : "Numbers are drawn. Friends can follow along live."}
-              </p>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* ---- Link ---- */}
-        <div className="flex h-14 items-center gap-2 rounded-btn bg-surface-3 pl-3.5 pr-1.5 ring-1 ring-inset ring-line">
-          <LinkIcon size={18} className="shrink-0 text-ink-subtle" />
-          <span className="min-w-0 flex-1 truncate text-callout font-semibold text-ink" title={url}>
-            {displayLink(url)}
-          </span>
-          <Button
-            data-testid="invite-copy"
-            size="sm"
-            variant={flash === "copied-link" ? "primary" : "secondary"}
-            haptic={false}
-            leading={flash === "copied-link" ? <CheckIcon size={16} strokeWidth={3} /> : <CopyIcon size={16} />}
-            onClick={() => void copy("link")}
-            aria-live="polite"
-            className="min-w-[6.25rem]"
-          >
-            {flash === "copied-link" ? "Copied" : "Copy link"}
-          </Button>
-        </div>
-
-        {/* ---- Host link (host only) ---- */}
-        {hostUrl && (
-          <div className="flex items-center gap-3 rounded-btn px-1 py-1">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gold-400/12 text-gold-300 ring-1 ring-inset ring-gold-400/25">
-              <LockIcon size={18} />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-subhead font-bold text-ink">Save your host link</p>
-              <p className="text-caption leading-snug text-ink-muted">Opens your host controls on another phone. Keep it to yourself.</p>
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              haptic={false}
-              onClick={() => void copy("host")}
-              className={cx("shrink-0", flash === "copied-host" ? "text-brand-400" : "text-gold-300")}
-              leading={flash === "copied-host" ? <CheckIcon size={16} strokeWidth={3} /> : undefined}
-              aria-live="polite"
-            >
-              {flash === "copied-host" ? "Copied" : "Copy"}
-            </Button>
-          </div>
+        {/* ---- What they'll get, or the code for the room ---- */}
+        {showCode ? (
+          <CodePanel key="code" gameId={game.id} url={url} matchup={matchupLabel(game)} />
+        ) : (
+          <TextPreview
+            key="text"
+            state={state}
+            sender={sender}
+            message={message}
+            url={url}
+            copied={flash === "copied-link"}
+            onCopy={() => void copyLink()}
+          />
         )}
+
+        <Button
+          data-testid="invite-code-toggle"
+          variant="secondary"
+          size="md"
+          block
+          aria-expanded={showCode}
+          haptic="selection"
+          leading={<QrGlyph />}
+          onClick={() => setShowCode((v) => !v)}
+        >
+          {showCode ? "Hide code" : "Same room? Show code"}
+        </Button>
       </div>
     </BottomSheet>
+  );
+}
+
+// ---- The text preview ----
+
+interface TextPreviewProps {
+  state: GameState;
+  sender: Pick<Player, "name" | "color" | "emoji">;
+  message: string;
+  url: string;
+  copied: boolean;
+  onCopy: () => void;
+}
+
+/** The message as it lands in a friend's thread: your bubble, then the link card. */
+function TextPreview({ state, sender, message, url, copied, onCopy }: TextPreviewProps) {
+  const { game } = state;
+  const host = hostOf(state);
+  const status = previewStatus(state);
+  return (
+    <figure className="m-0 flex animate-fade-in flex-col gap-2">
+      <figcaption className="eyebrow px-0.5 text-ink-subtle">What your crew gets</figcaption>
+      <div className="flex items-end gap-2">
+        <Avatar name={sender.name} color={sender.color} emoji={sender.emoji} size="sm" decorative className="mb-0.5" />
+        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <p className="max-w-[88%] rounded-[1.25rem] rounded-bl-md bg-surface-4 px-3.5 py-2 text-callout leading-snug text-ink">{message}</p>
+
+          {/* The link card. Tapping it copies the link (like long-pressing a link card), so there's no separate copy row. */}
+          <button
+            type="button"
+            data-testid="invite-copy"
+            onClick={onCopy}
+            aria-label={copied ? "Link copied" : "Copy invite link"}
+            className="pressable w-full overflow-hidden rounded-[1.25rem] rounded-bl-md bg-surface-3 text-left ring-1 ring-inset ring-line-strong"
+          >
+            <div className="relative aspect-[2/1] overflow-hidden bg-pitch-900">
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 opacity-60"
+                style={{
+                  background:
+                    "radial-gradient(85% 120% at 0% 0%, var(--team-x), transparent 62%), radial-gradient(85% 120% at 100% 100%, var(--team-y), transparent 62%)",
+                }}
+              />
+              <div className="relative flex h-full items-center gap-3 p-3.5">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  {host && (
+                    <p className="flex min-w-0 items-center gap-1.5 text-caption font-bold text-ink">
+                      <Avatar name={host.name} color={host.color} emoji={host.emoji} size="xs" decorative />
+                      <span className="truncate">{host.name} invited you</span>
+                    </p>
+                  )}
+                  <div className="mt-2.5 flex items-center gap-1.5">
+                    <TeamMark team={game.teamX} size="sm" />
+                    <span aria-hidden className="text-micro font-extrabold text-ink-muted">
+                      VS
+                    </span>
+                    <TeamMark team={game.teamY} size="sm" />
+                  </div>
+                  <p className={cx("mt-1 line-clamp-2 font-display font-extrabold leading-tight text-ink", cardMatchupText(game))}>
+                    {matchupLabel(game)}
+                  </p>
+                  <span
+                    className={cx(
+                      "mt-2 self-start truncate rounded-full px-2 py-0.5 text-caption font-extrabold",
+                      status.tone === "brand" && "bg-brand-400/15 text-brand-200",
+                      status.tone === "gold" && "bg-gold-400/20 text-gold-200",
+                      status.tone === "muted" && "bg-white/10 text-ink",
+                    )}
+                  >
+                    {status.text}
+                  </span>
+                </div>
+                <MiniBoard state={state} />
+              </div>
+              {copied && (
+                <span
+                  aria-hidden
+                  className="absolute right-2.5 top-2.5 flex animate-pop items-center gap-1 rounded-full bg-brand-400 px-2.5 py-1 text-caption font-extrabold text-ink-inverse shadow-card"
+                >
+                  <CheckIcon size={14} strokeWidth={3.2} />
+                  Link copied
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 px-3.5 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 text-subhead font-bold leading-snug text-ink">{linkCardTitle(game)}</p>
+                <p className="truncate text-caption text-ink-muted">{linkDomain(url)}</p>
+              </div>
+              <span aria-hidden className={cx("shrink-0", copied ? "text-brand-300" : "text-ink-subtle")}>
+                {copied ? <CheckIcon size={18} strokeWidth={3} /> : <CopyIcon size={18} />}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <p aria-live="polite" className={cx("-mt-1 pl-10 text-caption", copied ? "font-bold text-brand-300" : "text-ink-subtle")}>
+        {copied ? "Copied. Paste it anywhere." : "Tap the card to copy the link."}
+      </p>
+    </figure>
+  );
+}
+
+/** The board at thumbnail size: claimed squares in each player's color, so the fill level is real. */
+function MiniBoard({ state }: { state: GameState }) {
+  const n = state.game.format.boardSize === 25 ? 5 : 10;
+  const colorOf = new Map(state.players.map((p) => [p.id, p.color]));
+  const taken = new Map(state.squares.map((s) => [s.row * n + s.col, colorOf.get(s.playerId) ?? "#66806f"]));
+  return (
+    <div
+      aria-hidden
+      className="grid h-[4.5rem] w-[4.5rem] shrink-0 gap-px rounded-md bg-black/40 p-1 ring-1 ring-inset ring-white/10"
+      style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+    >
+      {Array.from({ length: n * n }, (_, i) => {
+        const color = taken.get(i);
+        return <span key={i} className={cx("rounded-[1px]", !color && "bg-white/8")} style={color ? { backgroundColor: color } : undefined} />;
+      })}
+    </div>
+  );
+}
+
+// ---- Same room: QR + code ----
+
+function CodePanel({ gameId, url, matchup }: { gameId: string; url: string; matchup: string }) {
+  return (
+    <div className="flex animate-fade-in flex-col items-center gap-3.5 rounded-card bg-surface-3 px-4 pb-4 pt-5 ring-1 ring-inset ring-line">
+      <div className="rounded-[1.25rem] bg-white p-2 shadow-[0_8px_24px_-10px_rgb(0_0_0/0.8)]">
+        <QrCode value={url} size={200} quiet={2} label={`QR code for the ${matchup} board`} />
+      </div>
+      <div role="img" aria-label={`Board code ${spelledCode(gameId)}`} className="flex gap-1.5 [perspective:400px]">
+        {[...boardCode(gameId)].map((ch, i) => (
+          <span
+            key={`${ch}-${i}`}
+            aria-hidden
+            style={{ animationDelay: `${80 + i * 50}ms` }}
+            className="invite-tile grid h-12 w-10 place-items-center rounded-lg bg-canvas font-display text-title-2 font-extrabold text-ink shadow-[inset_0_-2px_0_rgb(255_255_255/0.06),inset_0_1px_0_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line"
+          >
+            {ch}
+          </span>
+        ))}
+      </div>
+      <p className="max-w-[17rem] text-center text-footnote leading-snug text-ink-muted">
+        Point a phone camera at the code. Or in JaxSquares, tap <span className="font-bold text-ink">Join with a code</span>.
+      </p>
+    </div>
   );
 }

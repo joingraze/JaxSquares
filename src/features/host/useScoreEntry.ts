@@ -13,8 +13,10 @@ import {
   initialDraft,
   pressKey,
   previewWinner,
+  scoreSuggestion,
   type PadKey,
   type ScoreDraft,
+  type ScoreSuggestion,
   type WinnerPreview,
 } from "./hostModel";
 
@@ -32,6 +34,12 @@ export interface ScoreEntry {
   type: (side: Side, raw: string) => void;
   /** Reload the starting values for the current period (after a save, or to discard edits). */
   reset: () => void;
+  /** One-tap fill for a new period ("Same as Q1", "Live score"); null when there's nothing to suggest. */
+  suggestion: ScoreSuggestion | null;
+  /** Take the suggestion (or any whole score) as typed. */
+  fill: (draft: ScoreDraft) => void;
+  /** True while both fields still hold exactly the suggestion's score. */
+  usingSuggestion: boolean;
   focusSide: (side: Side) => void;
   preview: WinnerPreview | null;
   canSave: boolean;
@@ -115,8 +123,21 @@ export function useScoreEntry(state: GameState, initialKey: string): ScoreEntry 
     fresh.current = false;
   }, []);
 
+  const fill = useCallback((next: ScoreDraft) => {
+    void haptic("selection");
+    setDraft(next);
+    setActiveState("x");
+    fresh.current = true;
+    bump(tileX.current);
+    bump(tileY.current);
+  }, []);
+
   const preview = useMemo(() => previewWinner(state, key, draft), [state, key, draft]);
+  // One rule for both modes: save turns on once a new score is entered (blank
+  // periods need both numbers; every-score entries need a change from the last one).
   const canSave = canSaveScore(state, key, draft);
+  const suggestion = useMemo(() => scoreSuggestion(state, key), [state, key]);
+  const usingSuggestion = !!suggestion && suggestion.draft.x === draft.x && suggestion.draft.y === draft.y;
 
   return {
     key,
@@ -128,6 +149,9 @@ export function useScoreEntry(state: GameState, initialKey: string): ScoreEntry 
     add,
     type,
     reset,
+    suggestion,
+    fill,
+    usingSuggestion,
     focusSide,
     preview,
     canSave,

@@ -1,6 +1,7 @@
-// Joining a board: one field (your name, prefilled when we know it), an
-// optional emoji + color with sensible defaults already picked, and one button
-// that says exactly what happens next ("Join & claim 2 squares").
+// Joining a board: one field (your name), an optional emoji + color with
+// sensible defaults already picked, and one button that says exactly what
+// happens next ("Join & claim 2 squares"). Someone this phone already knows
+// skips the name step: "Welcome back, Sam" and the same one button.
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type { GameState } from "../../../shared/types";
 import { AlertIcon, CheckIcon, ShuffleIcon } from "../../components/icons";
@@ -10,7 +11,7 @@ import { contrastText } from "../../lib/format";
 import { getPlayerId, getProfile, hasProfileName, NAME_MAX_LENGTH, PLAYER_COLORS, PLAYER_EMOJIS, setProfile } from "../../lib/identity";
 import { haptic } from "../../lib/native";
 import "./invite.css";
-import { defaultLook, hostOf, joinLabel, matchupLabel, nameClash, nameProblem, shuffleLook, type Look } from "./inviteModel";
+import { boardStats, defaultLook, hostOf, joinLabel, matchupLabel, nameClash, nameProblem, shuffleLook, type Look } from "./inviteModel";
 
 export interface JoinSheetProps {
   state: GameState;
@@ -40,6 +41,9 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
   const [nameError, setNameError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A returning player (name saved on this phone) sees "Welcome back" and skips the name step unless they choose to edit.
+  const [returningName, setReturningName] = useState<string | null>(null);
+  const [editing, setEditing] = useState(true);
 
   // Fresh defaults every time the sheet opens: the saved profile, or a look nobody on this board has yet.
   const players = state.players;
@@ -48,6 +52,9 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
     const profile = getProfile();
     const returning = hasProfileName();
     setName(profile.name);
+    setReturningName(returning ? profile.name.trim() : null);
+    // A name someone else here already uses opens the editor so they can add an initial.
+    setEditing(!returning || !!nameClash(profile.name, players, getPlayerId()));
     setLook(
       defaultLook(profile, players, {
         returning,
@@ -74,9 +81,18 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
     return () => clearTimeout(t);
   }, [open, look.emoji]);
 
+  // "Change": open the editor and put the cursor in the name.
+  const startEditing = () => {
+    void haptic("selection");
+    setEditing(true);
+    setTimeout(() => nameRef.current?.focus(), 30);
+  };
+
   const host = hostOf(state);
   const clash = useMemo(() => nameClash(name, players, getPlayerId()), [name, players]);
-  const label = joinLabel(game.status, selectedCount);
+  const full = boardStats(state).left === 0;
+  const label = joinLabel(game.status, selectedCount, full);
+  const welcome = returningName !== null;
 
   const pick = (patch: Partial<Look>) => {
     void haptic("selection");
@@ -88,9 +104,10 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
     if (busy) return;
     const problem = nameProblem(name);
     if (problem) {
+      setEditing(true);
       setNameError(problem);
       void haptic("error");
-      nameRef.current?.focus();
+      setTimeout(() => nameRef.current?.focus(), 30);
       return;
     }
     const profile = { name: name.trim().slice(0, NAME_MAX_LENGTH), ...look };
@@ -115,7 +132,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
       onClose={onClose}
       dismissible={!busy}
       initialFocusRef={nameRef}
-      title="What should we call you?"
+      title={welcome ? `Welcome back, ${returningName}!` : "What should we call you?"}
       description={`${matchupLabel(game)}${host ? ` · ${host.name}'s board` : ""}`}
       footer={
         <div className="flex flex-col gap-2">
@@ -141,113 +158,136 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
       }
     >
       <form id={formId} onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-5">
-        <TextField
-          ref={nameRef}
-          data-testid="join-name"
-          label="Your name"
-          hideLabel
-          placeholder="Your name"
-          value={name}
-          maxLength={NAME_MAX_LENGTH}
-          autoComplete="nickname"
-          autoCapitalize="words"
-          autoCorrect="off"
-          spellCheck={false}
-          enterKeyHint="go"
-          disabled={busy}
-          onChange={(e) => {
-            setName(e.target.value);
-            if (nameError) setNameError(null);
-          }}
-          error={nameError}
-          hint={clash ?? "No sign-up. We'll remember you on this phone."}
-          leading={
-            <span key={`${look.emoji}${look.color}`} className="animate-pop -ml-1">
-              <Avatar name={name || "You"} color={look.color} emoji={look.emoji} size="md" decorative />
+        {!editing && (
+          <div className="flex animate-fade-in items-center gap-3 rounded-card bg-surface-3 py-3 pl-3 pr-1.5 ring-1 ring-inset ring-line">
+            <span key={`${look.emoji}${look.color}`} className="animate-pop">
+              <Avatar name={name || "You"} color={look.color} emoji={look.emoji} size="lg" decorative />
             </span>
-          }
-          inputClassName="text-headline font-bold"
-        />
-
-        <fieldset className="flex min-w-0 flex-col gap-3" disabled={busy}>
-          <legend className="sr-only">Your look</legend>
-          <div className="flex items-center justify-between px-1">
-            <span aria-hidden className="text-subhead font-bold text-ink-muted">
-              Your look
-            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-headline font-extrabold text-ink">{name}</p>
+              <p className="text-footnote text-ink-muted">How friends see you</p>
+            </div>
             <button
               type="button"
-              onClick={() => pick(shuffleLook(look, COLOR_VALUES, PLAYER_EMOJIS))}
-              className="pressable tap-target -mr-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-footnote font-bold text-brand-400 hover:bg-white/6"
+              onClick={startEditing}
+              disabled={busy}
+              className="pressable inline-flex h-11 shrink-0 items-center rounded-full px-3.5 text-subhead font-bold text-brand-300 hover:bg-white/6"
             >
-              <ShuffleIcon size={15} strokeWidth={2.4} />
-              Shuffle
+              Change
             </button>
           </div>
+        )}
+        {editing && (
+          <>
+            <TextField
+              ref={nameRef}
+              data-testid="join-name"
+              label="Your name"
+              hideLabel
+              placeholder="Your name"
+              value={name}
+              maxLength={NAME_MAX_LENGTH}
+              autoComplete="nickname"
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="go"
+              disabled={busy}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (nameError) setNameError(null);
+              }}
+              error={nameError}
+              hint={clash ?? "No sign-up. We'll remember you on this phone."}
+              leading={
+                <span key={`${look.emoji}${look.color}`} className="animate-pop -ml-1">
+                  <Avatar name={name || "You"} color={look.color} emoji={look.emoji} size="md" decorative />
+                </span>
+              }
+              inputClassName="text-headline font-bold"
+            />
 
-          <div
-            ref={emojiRow}
-            role="radiogroup"
-            aria-label="Emoji"
-            className="join-scroller scrollbar-none -mx-5 flex gap-1.5 overflow-x-auto px-5 py-1"
-          >
-            {PLAYER_EMOJIS.map((emoji) => {
-              const selected = emoji === look.emoji;
-              return (
+            <fieldset className="flex min-w-0 flex-col gap-3" disabled={busy}>
+              <legend className="sr-only">Your look</legend>
+              <div className="flex items-center justify-between px-1">
+                <span aria-hidden className="text-subhead font-bold text-ink-muted">
+                  Your look
+                </span>
                 <button
-                  key={emoji}
                   type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  aria-label={emoji}
-                  onClick={() => pick({ emoji })}
-                  style={selected ? { backgroundColor: look.color } : undefined}
-                  className={cx(
-                    "pressable grid h-11 w-11 shrink-0 place-items-center rounded-full text-[1.4rem] leading-none",
-                    selected
-                      ? "ring-2 ring-white ring-offset-2 ring-offset-surface-2 shadow-[inset_0_-3px_0_rgb(0_0_0/0.18)]"
-                      : "bg-surface-3 ring-1 ring-inset ring-line",
-                  )}
+                  onClick={() => pick(shuffleLook(look, COLOR_VALUES, PLAYER_EMOJIS))}
+                  className="pressable tap-target -mr-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-footnote font-bold text-brand-400 hover:bg-white/6"
                 >
-                  <span aria-hidden className="translate-y-[0.04em]">
-                    {emoji}
-                  </span>
+                  <ShuffleIcon size={15} strokeWidth={2.4} />
+                  Shuffle
                 </button>
-              );
-            })}
-          </div>
+              </div>
 
-          {/* Each swatch owns an equal, full-height slice of the row, so hit areas never overlap. */}
-          <div role="radiogroup" aria-label="Color" className="-my-2 flex">
-            {PLAYER_COLORS.map((c) => {
-              const selected = c.value === look.color;
-              return (
-                <button
-                  key={c.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  aria-label={c.name}
-                  title={c.name}
-                  onClick={() => pick({ color: c.value })}
-                  className="pressable grid h-11 min-w-0 flex-1 place-items-center"
-                >
-                  <span
-                    aria-hidden
-                    style={{ backgroundColor: c.value, color: contrastText(c.value) }}
-                    className={cx(
-                      "grid h-6 w-6 place-items-center rounded-full transition-transform duration-200 ease-spring",
-                      "shadow-[inset_0_-2px_0_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)]",
-                      selected && "scale-110 ring-2 ring-white ring-offset-2 ring-offset-surface-2",
-                    )}
-                  >
-                    {selected && <CheckIcon size={13} strokeWidth={3.4} />}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
+              <div
+                ref={emojiRow}
+                role="radiogroup"
+                aria-label="Emoji"
+                className="join-scroller scrollbar-none -mx-5 flex gap-1.5 overflow-x-auto px-5 py-1"
+              >
+                {PLAYER_EMOJIS.map((emoji) => {
+                  const selected = emoji === look.emoji;
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={emoji}
+                      onClick={() => pick({ emoji })}
+                      style={selected ? { backgroundColor: look.color } : undefined}
+                      className={cx(
+                        "pressable grid h-11 w-11 shrink-0 place-items-center rounded-full text-[1.4rem] leading-none",
+                        selected
+                          ? "ring-2 ring-white ring-offset-2 ring-offset-surface-2 shadow-[inset_0_-3px_0_rgb(0_0_0/0.18)]"
+                          : "bg-surface-3 ring-1 ring-inset ring-line",
+                      )}
+                    >
+                      <span aria-hidden className="translate-y-[0.04em]">
+                        {emoji}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Each swatch owns an equal, full-height slice of the row, so hit areas never overlap. */}
+              <div role="radiogroup" aria-label="Color" className="-my-2 flex">
+                {PLAYER_COLORS.map((c) => {
+                  const selected = c.value === look.color;
+                  return (
+                    <button
+                      key={c.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      aria-label={c.name}
+                      title={c.name}
+                      onClick={() => pick({ color: c.value })}
+                      className="pressable grid h-11 min-w-0 flex-1 place-items-center"
+                    >
+                      <span
+                        aria-hidden
+                        style={{ backgroundColor: c.value, color: contrastText(c.value) }}
+                        className={cx(
+                          "grid h-6 w-6 place-items-center rounded-full transition-transform duration-200 ease-spring",
+                          "shadow-[inset_0_-2px_0_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)]",
+                          selected && "scale-110 ring-2 ring-white ring-offset-2 ring-offset-surface-2",
+                        )}
+                      >
+                        {selected && <CheckIcon size={13} strokeWidth={3.4} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          </>
+        )}
       </form>
     </BottomSheet>
   );

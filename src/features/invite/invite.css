@@ -1,36 +1,7 @@
 /* Invite + join pieces. Plain CSS on the theme's variables (the theme is
    emitted statically, so every --color-* token exists at runtime). */
 
-/* ---- Invite ticket ---- */
-
-/* Torn-ticket perforation: a dashed rule with a half-circle bite at each end,
-   cut in the sheet's own color so it reads as a notch. */
-.invite-perf {
-  position: relative;
-  height: 1px;
-  margin: 0 18px;
-  background-image: linear-gradient(90deg, var(--color-line-strong) 55%, transparent 0);
-  background-size: 10px 1px;
-}
-.invite-perf::before,
-.invite-perf::after {
-  content: "";
-  position: absolute;
-  top: -11px;
-  width: 22px;
-  height: 22px;
-  border-radius: 9999px;
-  background: var(--color-surface-2);
-  box-shadow: inset 0 0 0 1px var(--color-line-strong);
-}
-.invite-perf::before {
-  left: -30px;
-  clip-path: inset(0 0 0 50%);
-}
-.invite-perf::after {
-  right: -30px;
-  clip-path: inset(0 50% 0 0);
-}
+/* ---- Invite sheet ---- */
 
 /* Code tiles land one after another like a departures board. */
 .invite-tile {
@@ -45,15 +16,6 @@
     opacity: 1;
     transform: none;
   }
-}
-
-/* The QR grows in place when tapped. */
-.invite-qr {
-  transition:
-    width 360ms var(--ease-spring),
-    height 360ms var(--ease-spring),
-    padding 360ms var(--ease-spring),
-    border-radius 360ms var(--ease-spring);
 }
 
 /* ---- Invite hero ---- */
@@ -109,6 +71,25 @@
   }
 }
 
+/* "Pick your squares": the open squares pulse so the eye lands on them. An
+   outline (not box-shadow, which the cells use for their own rings) glows volt. */
+.invite-nudge {
+  outline: 2px solid transparent;
+  outline-offset: -1px;
+  animation: invite-nudge 700ms var(--ease-out-quint) 2;
+}
+@keyframes invite-nudge {
+  0%,
+  100% {
+    transform: none;
+    outline-color: transparent;
+  }
+  40% {
+    transform: scale(1.06);
+    outline-color: var(--color-brand-400);
+  }
+}
+
 /* ---- Join sheet ---- */
 
 .join-scroller {
@@ -125,7 +106,8 @@
   .invite-point,
   .invite-tile,
   .invite-stagger > *,
-  .invite-rise {
+  .invite-rise,
+  .invite-nudge {
     animation: none;
   }
 }

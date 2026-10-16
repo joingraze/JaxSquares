@@ -1,12 +1,12 @@
-// Pure helpers behind the invite + join screens: share copy, board codes,
-// social proof lines, join button labels and default looks. No React, no IO.
+// Pure helpers behind the invite + join screens: share copy and the per-state
+// pitch, the link-card preview, board codes, the one social line, join button
+// labels and default looks. No React, no IO.
 //
 // Copy rule: never mention money (prices, pots, payouts, odds, bets). The tests
 // run every message through validatePrizeNote to keep it that way.
 
-import { prizeFor } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
-import type { Game, GameState, GameStatus, PeriodsPreset, Player } from "../../../shared/types";
+import type { Game, GameState, GameStatus, Player } from "../../../shared/types";
 
 // ---- Matchup + board code ----
 
@@ -21,14 +21,6 @@ export function matchupLabel(game: Pick<Game, "teamX" | "teamY" | "name">): stri
 /** The board id as a code to read aloud: uppercase (ids avoid look-alike characters). */
 export function boardCode(gameId: string): string {
   return gameId.toUpperCase();
-}
-
-/** "K7MQ2X" -> ["K7M", "Q2X"]: two groups of three are easier to say and remember. */
-export function codeGroups(gameId: string): string[] {
-  const code = boardCode(gameId);
-  if (code.length < 6) return [code];
-  const mid = Math.ceil(code.length / 2);
-  return [code.slice(0, mid), code.slice(mid)];
 }
 
 /** "k 7 m q 2 x" style label so screen readers spell the code. */
@@ -70,28 +62,6 @@ export function peopleInOrder(state: Pick<GameState, "game" | "players">): Playe
   });
 }
 
-/** "1 player in", "6 players in". */
-export function playersInLabel(count: number): string {
-  return `${count} ${count === 1 ? "player" : "players"} in`;
-}
-
-/** True when the board's name just repeats the matchup ("Packers vs Bears"), so it needn't be shown twice. */
-export function nameIsMatchup(game: Pick<Game, "teamX" | "teamY" | "name">): boolean {
-  const norm = (v: string) => v.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-  const name = norm(game.name);
-  const x = norm(game.teamX.name);
-  const y = norm(game.teamY.name);
-  return name === `${x} vs ${y}` || name === `${y} vs ${x}` || name === `${x} at ${y}` || name === `${y} at ${x}`;
-}
-
-/** Display size for the matchup headline: long team names step down instead of truncating. */
-export function matchupSize(game: Pick<Game, "teamX" | "teamY">): "lg" | "md" | "sm" {
-  const len = [...game.teamX.name.trim()].length + [...game.teamY.name.trim()].length;
-  if (len <= 15) return "lg";
-  if (len <= 24) return "md";
-  return "sm";
-}
-
 /** Few enough squares left to say "hurry": 10% of the board, at least 3. */
 export function isUrgent(left: number, total: number): boolean {
   return left > 0 && left <= Math.max(3, Math.ceil(total * 0.1));
@@ -102,36 +72,10 @@ export function newArrivals<P extends Pick<Player, "id" | "joinedAt">>(known: Re
   return players.filter((p) => !known.has(p.id)).sort((a, b) => b.joinedAt - a.joinedAt);
 }
 
-/** How a board's squares win, in a casual fan's words. */
-export function winnersLine(periods: PeriodsPreset): string {
-  switch (periods) {
-    case "quarters":
-      return "A winner every quarter";
-    case "halves":
-      return "Winners at halftime and the final";
-    case "final":
-      return "One winner, at the final score";
-    case "every-score":
-      return "A winner every time the score changes";
-  }
-}
-
 /** "42 squares left", "1 square left", "Board's full". */
 export function squaresLeftLabel(left: number): string {
   if (left <= 0) return "Board's full";
   return `${left} ${left === 1 ? "square" : "squares"} left`;
-}
-
-/** The first prize note in period order ("*" applies to all), with the period it belongs to. */
-export function headlinePrize(game: Pick<Game, "prizes" | "periods">): { label: string | null; note: string } | null {
-  for (const p of game.periods) {
-    const own = game.prizes[p.key];
-    if (own) return { label: p.label, note: own };
-  }
-  const shared = prizeFor(game.prizes, "*");
-  if (shared) return { label: null, note: shared };
-  const any = Object.values(game.prizes).find(Boolean);
-  return any ? { label: null, note: any } : null;
 }
 
 // ---- Share copy ----
@@ -144,7 +88,7 @@ export function inviteMessage(state: Pick<GameState, "game" | "squares" | "playe
   const { game } = state;
   const matchup = matchupLabel(game);
   const whose = viewerId && viewerId === game.hostPlayerId ? "my" : "our";
-  const { left } = boardStats(state);
+  const { left, total } = boardStats(state);
   switch (game.status) {
     case "locked":
       return `Numbers are drawn on ${whose} ${matchup} board. Follow along live 🏈`;
@@ -152,9 +96,174 @@ export function inviteMessage(state: Pick<GameState, "game" | "squares" | "playe
       return `See who won ${whose} ${matchup} board 🏆`;
     default:
       if (left === 0) return `Follow ${whose} ${matchup} board live with us 🏈`;
-      if (left <= 10) return `Grab a square on ${whose} ${matchup} board 🏈 Only ${left} left!`;
+      if (isUrgent(left, total)) return `Last call 🏈 Only ${left} ${left === 1 ? "square" : "squares"} left on ${whose} ${matchup} board`;
       return `Grab a square on ${whose} ${matchup} board 🏈`;
   }
+}
+
+// ---- Invite sheet: one pitch per board state ----
+
+/**
+ * Where the board is, from the inviter's side:
+ * fresh (nobody but the host yet), filling, last-call (a few squares left),
+ * full (open but every square taken), locked (numbers drawn), final.
+ */
+export type InviteStage = "fresh" | "filling" | "last-call" | "full" | "locked" | "final";
+
+export function inviteStage(state: Pick<GameState, "game" | "squares" | "players">): InviteStage {
+  const { game } = state;
+  if (game.status === "locked") return "locked";
+  if (game.status === "final") return "final";
+  const { left, total } = boardStats(state);
+  if (left === 0) return "full";
+  if (isUrgent(left, total)) return "last-call";
+  return friendsIn(state) === 0 ? "fresh" : "filling";
+}
+
+/** Players other than the host. */
+export function friendsIn(state: Pick<GameState, "game" | "players">): number {
+  return state.players.filter((p) => p.id !== state.game.hostPlayerId).length;
+}
+
+export interface InvitePitch {
+  /** Sheet title. */
+  title: string;
+  /** One line under the title. */
+  subtitle: string;
+  /** The one big button. */
+  cta: string;
+  /** "gold" for last call: the button turns amber so the moment feels different. */
+  tone: "brand" | "gold";
+}
+
+/** Header, helper line and button copy for the invite sheet, per board state. */
+export function invitePitch(state: Pick<GameState, "game" | "squares" | "players">, viewerIsHost: boolean): InvitePitch {
+  const { left } = boardStats(state);
+  switch (inviteStage(state)) {
+    case "fresh":
+      return {
+        title: viewerIsHost ? "Your board's live. Who's first?" : "Who's first?",
+        subtitle: "Friends tap the link and pick. No app needed.",
+        cta: "Text your crew",
+        tone: "brand",
+      };
+    case "filling":
+      return {
+        title: squaresLeftLabel(left),
+        subtitle: "They tap the link and pick. No app needed.",
+        cta: "Text your crew",
+        tone: "brand",
+      };
+    case "last-call":
+      return {
+        title: left === 1 ? "Last square. Last call!" : `Last ${left} squares. Last call!`,
+        subtitle: "One more nudge before the board fills.",
+        cta: "Send last call",
+        tone: "gold",
+      };
+    case "full":
+      return {
+        title: "Board's full! 🎉",
+        subtitle: "Numbers drop soon. Friends can watch live.",
+        cta: "Invite friends to watch",
+        tone: "brand",
+      };
+    case "locked":
+      return {
+        title: "Invite friends to watch live",
+        subtitle: "Numbers are drawn. Friends can follow live.",
+        cta: "Invite friends to watch",
+        tone: "brand",
+      };
+    case "final":
+      return {
+        title: "Share the results",
+        subtitle: "Friends can see who won every square.",
+        cta: "Share results",
+        tone: "brand",
+      };
+  }
+}
+
+/**
+ * The one social signal, in friend terms: "You + 5 friends in",
+ * "Jordan + 7 friends in", "Just you so far".
+ */
+export function crewLine(state: Pick<GameState, "game" | "players">, viewerId: string | null): string {
+  const host = hostOf(state);
+  const others = friendsIn(state);
+  const viewerIsHost = !!viewerId && viewerId === state.game.hostPlayerId;
+  const hostName = host?.name.trim();
+  if (others === 0) {
+    if (viewerIsHost) return "Just you so far";
+    return hostName ? `Just ${hostName} so far` : "Nobody's in yet";
+  }
+  const friends = `${others} ${others === 1 ? "friend" : "friends"}`;
+  if (viewerIsHost) return `You + ${friends} in`;
+  if (hostName) return `${hostName} + ${friends} in`;
+  return `${state.players.length} friends in`;
+}
+
+/**
+ * Title of the link card a friend's phone shows for the invite. Mirrors
+ * og:title in worker/og.ts (inviteMeta) so the preview matches what they get.
+ */
+export function linkCardTitle(game: Pick<Game, "name" | "teamX" | "teamY">): string {
+  return `Join ${game.name.trim() || matchupLabel(game)} on JaxSquares`;
+}
+
+/** "https://jaxsquares.com/g/k7mq2x" -> "jaxsquares.com": what a link card shows under the title. */
+export function linkDomain(url: string): string {
+  return displayLink(url).split("/")[0] || displayLink(url);
+}
+
+/** The status chip on the preview card: how full the board is, or what's left to see. */
+export function previewStatus(state: Pick<GameState, "game" | "squares" | "players">): { text: string; tone: "brand" | "gold" | "muted" } {
+  const { left } = boardStats(state);
+  switch (inviteStage(state)) {
+    case "fresh":
+    case "filling":
+      return { text: squaresLeftLabel(left), tone: "brand" };
+    case "last-call":
+      return { text: `Only ${left} left!`, tone: "gold" };
+    case "full":
+      return { text: "Board's full · watch live", tone: "muted" };
+    case "locked":
+      return { text: "Numbers drawn · follow live", tone: "muted" };
+    case "final":
+      return { text: "Final · see who won", tone: "muted" };
+  }
+}
+
+// ---- Invite hero (the friend's landing) ----
+
+/**
+ * The hero's one button. "pick" sends them to the board (tapping a square is
+ * the fastest way in); "join" opens the join sheet when there's nothing to pick.
+ */
+export function heroAction(state: Pick<GameState, "game" | "squares" | "players">): { label: string; kind: "pick" | "join" } | null {
+  const { game } = state;
+  if (game.status === "final") return null;
+  if (game.status === "locked") return { label: "Join to follow along", kind: "join" };
+  return boardStats(state).left > 0 ? { label: "Pick your squares", kind: "pick" } : { label: "Join to follow along", kind: "join" };
+}
+
+/** Copy for the "You're in!" card a newcomer sees right after claiming. */
+export function joinedLine(
+  state: Pick<GameState, "game" | "squares" | "players">,
+  viewerId: string | null,
+): { title: string; detail: string; share: string } {
+  const me = viewerId ? state.players.find((p) => p.id === viewerId) : undefined;
+  const name = me?.name.trim();
+  const mine = viewerId ? state.squares.filter((s) => s.playerId === viewerId).length : 0;
+  const host = hostOf(state);
+  const whose = host && host.id !== viewerId ? ` on ${host.name.trim()}'s board` : "";
+  const when = state.game.status === "open" ? "Numbers get drawn before the game starts." : "Numbers are drawn. Follow along live.";
+  return {
+    title: name ? `You're in, ${name}! 🎉` : "You're in! 🎉",
+    detail: `You've got ${mine} ${mine === 1 ? "square" : "squares"}${whose}. ${when}`,
+    share: inviteMessage(state, viewerId),
+  };
 }
 
 // ---- Join ----
@@ -163,8 +272,8 @@ export function inviteMessage(state: Pick<GameState, "game" | "squares" | "playe
  * Join button copy. The board claims the selected squares right after joining,
  * so say so; `undefined` means the board didn't tell us (assume a claim).
  */
-export function joinLabel(status: GameStatus, selectedCount?: number): string {
-  if (status === "locked" || status === "final") return "Join to follow along";
+export function joinLabel(status: GameStatus, selectedCount?: number, full = false): string {
+  if (status === "locked" || status === "final" || full) return "Join to follow along";
   if (selectedCount === undefined) return "Join & claim";
   if (selectedCount <= 0) return "Join the board";
   if (selectedCount === 1) return "Join & claim my square";

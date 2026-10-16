@@ -1,14 +1,23 @@
 // The squares grid: team bands along the axes, drawn digits (sticky when
 // zoomed), and one button per square. Fit mode shows the whole board at phone
-// width; zoom mode magnifies it inside the same square frame and pans.
+// width; zoom mode magnifies it inside the same square frame and pans on whole
+// squares. A two-finger pinch zooms in and out. The square the score points at
+// right now leads the board; earlier winners shrink to trophy pips.
 
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Game } from "../../../shared/types";
 import { CheckIcon, MinusIcon, TrophyIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
-import { contrastText, initialsOf } from "../../lib/format";
+import { contrastText } from "../../lib/format";
 import type { CellView } from "./boardModel";
 import "./board.css";
+
+/** A short note pinned to one square: whose it is, or why a tap didn't take. */
+export interface BoardCallout {
+  key: string;
+  tone?: "neutral" | "win" | "brand" | "warn";
+  children: ReactNode;
+}
 
 export interface BoardProps {
   game: Pick<Game, "teamX" | "teamY" | "format">;
@@ -17,27 +26,53 @@ export interface BoardProps {
   /** Squares are being claimed: empty squares look tappable. */
   open: boolean;
   zoom: boolean;
-  /** Keys to spotlight (a tapped result); everything else dims. */
+  /** Keys to spotlight (a tapped result, a player's squares); everything else dims. */
   spotlight: ReadonlySet<string> | null;
   picking: boolean;
-  /** Board is over: non-winning squares step back. */
+  /** Board is over: winners take the gold, everything else steps back. */
   final: boolean;
   /** Square to center when zooming in. */
   focusKey: string | null;
+  /** How the "now" square reads: red and pulsing during a live game, white when it's the last recorded score. */
+  nowKind?: "live" | "projected" | null;
+  callout?: BoardCallout | null;
   /** Small control at the right end of the top band (the zoom toggle). */
   accessory?: ReactNode;
+  /** Two-finger pinch: spreading zooms in (on the square under the fingers), pinching fits the board. */
+  onPinch?: (zoomIn: boolean) => void;
   onTap: (row: number, col: number, el: HTMLButtonElement) => void;
 }
 
-const ZOOM_CELL = 52;
-const ZOOM_GAP = 4;
-const ZOOM_AXIS = 28;
+/** Whole columns visible when zoomed (cell size follows from the board width). */
+const ZOOM_COLUMNS = 6;
 
-export function Board({ game, cells, axis, open, zoom, spotlight, picking, final, focusKey, onTap, accessory }: BoardProps) {
+export function Board({
+  game,
+  cells,
+  axis,
+  open,
+  zoom,
+  spotlight,
+  picking,
+  final,
+  focusKey,
+  nowKind = null,
+  callout = null,
+  onTap,
+  onPinch,
+  accessory,
+}: BoardProps) {
   const n = cells.length;
+  const wrapRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
   const [fitHeight, setFitHeight] = useState<number | null>(null);
   const [intro, setIntro] = useState(true);
+  const pinchFocus = useRef<string | null>(null);
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const onPinchRef = useRef(onPinch);
+  onPinchRef.current = onPinch;
 
   useEffect(() => {
     const t = setTimeout(() => setIntro(false), 1100);
@@ -55,18 +90,72 @@ export function Board({ game, cells, axis, open, zoom, spotlight, picking, final
     return () => ro.disconnect();
   }, [zoom, n]);
 
-  // Zooming in: center the square that matters (selection, mine, live).
+  // Zooming in: frame the square that matters (pinch point, selection, now, mine) on whole squares.
   useLayoutEffect(() => {
     const el = scrollerRef.current;
-    if (!el || !zoom) return;
-    const [row, col] = (focusKey ?? `${Math.floor(n / 2)},${Math.floor(n / 2)}`).split(",").map(Number);
-    const step = ZOOM_CELL + ZOOM_GAP;
-    const x = ZOOM_AXIS + ZOOM_GAP + col * step + ZOOM_CELL / 2 - el.clientWidth / 2;
-    const y = ZOOM_AXIS + ZOOM_GAP + row * step + ZOOM_CELL / 2 - el.clientHeight / 2;
-    el.scrollTo({ left: Math.max(0, x), top: Math.max(0, y) });
+    const board = boardRef.current;
+    if (!el || !board || !zoom) return;
+    const key = pinchFocus.current ?? focusKey ?? `${Math.floor(n / 2)},${Math.floor(n / 2)}`;
+    pinchFocus.current = null;
+    const [row, col] = key.split(",").map(Number);
+    const first = board.querySelector<HTMLElement>('[data-row="0"][data-col="0"]');
+    const right = board.querySelector<HTMLElement>('[data-row="0"][data-col="1"]');
+    const below = board.querySelector<HTMLElement>('[data-row="1"][data-col="0"]');
+    if (!first || !right || !below) return;
+    const stepX = right.offsetLeft - first.offsetLeft;
+    const stepY = below.offsetTop - first.offsetTop;
+    const visCols = Math.max(1, Math.floor((el.clientWidth - first.offsetLeft + 1) / stepX));
+    const visRows = Math.max(1, Math.floor((el.clientHeight - first.offsetTop + 1) / stepY));
+    const firstCol = Math.min(Math.max(0, col - Math.floor((visCols - 1) / 2)), Math.max(0, n - visCols));
+    const firstRow = Math.min(Math.max(0, row - Math.floor((visRows - 1) / 2)), Math.max(0, n - visRows));
+    el.scrollTo({ left: firstCol * stepX, top: firstRow * stepY });
     // Only when entering zoom; later focus changes shouldn't yank the view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
+
+  // Pinch to zoom (the page itself doesn't pinch here: touch-action on the wrapper).
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    let start: { d: number; x: number; y: number } | null = null;
+    let fired = false;
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      start = {
+        d: Math.max(1, dist(e.touches)),
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+      fired = false;
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!start || fired || e.touches.length !== 2 || !onPinchRef.current) return;
+      const ratio = dist(e.touches) / start.d;
+      if (ratio > 1.2 && !zoomRef.current) {
+        fired = true;
+        const hit = document.elementFromPoint(start.x, start.y)?.closest<HTMLElement>('[data-testid="cell"]');
+        pinchFocus.current = hit ? `${hit.dataset.row},${hit.dataset.col}` : null;
+        onPinchRef.current(true);
+      } else if (ratio < 0.83 && zoomRef.current) {
+        fired = true;
+        onPinchRef.current(false);
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) start = null;
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: true });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
 
   const pair = game.format.boardSize === 25;
   const roomy = zoom || n <= 5;
@@ -76,9 +165,30 @@ export function Board({ game, cells, axis, open, zoom, spotlight, picking, final
     hotX.add(c.col);
     hotY.add(c.row);
   }
+  const calloutCell = callout ? cells.flat().find((c) => c.key === callout.key) : undefined;
+  const calloutRef = useRef<HTMLDivElement>(null);
+
+  // Keep the callout on screen: slide it sideways (the pointer stays on the square).
+  useLayoutEffect(() => {
+    const el = calloutRef.current;
+    if (!el) return;
+    el.style.setProperty("--dx", "0px");
+    // Measure unscaled (it pops in from 90%): the center is the same either way.
+    const r = el.getBoundingClientRect();
+    const center = r.left + r.width / 2;
+    const left = center - el.offsetWidth / 2;
+    const right = center + el.offsetWidth / 2;
+    const edge = 10;
+    const vw = document.documentElement.clientWidth;
+    const dx = left < edge ? edge - left : right > vw - edge ? vw - edge - right : 0;
+    el.style.setProperty("--dx", `${Math.round(dx)}px`);
+  }, [callout, zoom]);
 
   return (
-    <div className={cx("grid grid-cols-[14px_minmax(0,1fr)] gap-0.5", accessory ? "grid-rows-[32px_auto]" : "grid-rows-[18px_auto]")}>
+    <div
+      ref={wrapRef}
+      className={cx("jx-board-wrap grid grid-cols-[14px_minmax(0,1fr)] gap-0.5", accessory ? "grid-rows-[32px_auto]" : "grid-rows-[18px_auto]")}
+    >
       <div aria-hidden />
       <div className="relative flex min-w-0 items-center">
         <div className={cx("flex min-w-0 flex-1 items-center", !!accessory && "px-[4.5rem]")}>
@@ -90,9 +200,11 @@ export function Board({ game, cells, axis, open, zoom, spotlight, picking, final
       <div
         ref={scrollerRef}
         className={cx("jx-board-scroller", zoom ? "overflow-auto scrollbar-none" : "overflow-visible")}
+        data-zoom={zoom}
         style={zoom && fitHeight ? { height: fitHeight } : undefined}
       >
         <div
+          ref={boardRef}
           role="group"
           aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}
           className={cx("jx-board", intro && "jx-board-intro")}
@@ -102,24 +214,32 @@ export function Board({ game, cells, axis, open, zoom, spotlight, picking, final
           data-spot={spotlight ? "true" : "false"}
           data-picking={picking}
           data-final={final}
-          style={{ "--n": n } as CSSProperties}
+          data-now={nowKind ?? "none"}
+          data-drawn={axis.drawn}
+          style={{ "--n": n, "--zoom-cols": ZOOM_COLUMNS } as CSSProperties}
         >
           <div className="jx-corner" aria-hidden />
-          {axis.x.map((label, i) => (
-            <div
-              key={`x${i}`}
-              aria-hidden
-              className="jx-axis jx-axis-x"
-              data-blank={!axis.drawn}
-              data-pair={pair}
-              data-hot={hotX.has(i)}
-              style={{ "--i": i } as CSSProperties}
-            >
-              {label}
+          {axis.drawn ? (
+            axis.x.map((label, i) => (
+              <div
+                key={`x${i}`}
+                aria-hidden
+                className="jx-axis jx-axis-x"
+                data-pair={pair}
+                data-hot={hotX.has(i)}
+                style={{ "--i": i } as CSSProperties}
+              >
+                {label}
+              </div>
+            ))
+          ) : (
+            // Before the draw: one quiet line instead of a row of question marks.
+            <div className="jx-axis-strip" style={{ gridColumn: `2 / span ${n}` }}>
+              <span>Numbers get drawn when the host locks the board</span>
             </div>
-          ))}
+          )}
           {cells.map((line, row) => (
-            <Row key={row} index={row} label={axis.y[row]} drawn={axis.drawn} pair={pair} hot={hotY.has(row)}>
+            <Row key={row} index={row} label={axis.drawn ? axis.y[row] : ""} drawn={axis.drawn} pair={pair} hot={hotY.has(row)}>
               {line.map((cell) => (
                 <Square
                   key={cell.key}
@@ -133,6 +253,19 @@ export function Board({ game, cells, axis, open, zoom, spotlight, picking, final
               ))}
             </Row>
           ))}
+          {callout && calloutCell && (
+            <div
+              key={callout.key}
+              ref={calloutRef}
+              role="status"
+              className="jx-callout"
+              data-tone={callout.tone ?? "neutral"}
+              data-side={calloutCell.row < 2 ? "below" : "above"}
+              style={{ "--r": calloutCell.row, "--c": calloutCell.col } as CSSProperties}
+            >
+              {callout.children}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -208,13 +341,24 @@ function cellLabel(c: CellView, game: BoardProps["game"], axis: BoardProps["axis
     : `row ${c.row + 1}, column ${c.col + 1}`;
   let who: string;
   if (c.selected === "claim") who = "Selected";
-  else if (c.selected === "release") who = "Your square, selected to release";
+  else if (c.selected === "release") who = "Your square, selected to give back";
   else if (c.mine) who = "Your square";
   else if (c.ownerId) who = `${c.owner?.name ?? "Someone"}'s square`;
   else who = "Open square";
   const wins = c.wins.length ? `. Won ${c.wins.map((w) => (w.reverse ? `${w.label} reverse` : w.label)).join(", ")}` : "";
-  const live = c.live ? ". Winning right now" : "";
+  const live = c.live ? ". The score points here right now" : "";
   return `${who}, ${where}${wins}${live}`;
+}
+
+/** First name, as short as a square can hold. */
+function shortName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
+/** "Q1", "Half", or "#3" for an every-score entry ("Score 3"). */
+function shortWin(label: string): string {
+  const m = /^score\s+(\d+)$/i.exec(label);
+  return m ? `#${m[1]}` : label;
 }
 
 interface SquareProps {
@@ -238,7 +382,8 @@ const Square = memo(
       "--c": cell.col,
     } as CSSProperties;
     const showSticker = cell.ownerId !== null && cell.selected !== "claim";
-    const winLabel = cell.wins.length ? cell.wins[cell.wins.length - 1].label : null;
+    const name = cell.mine ? "You" : shortName(owner?.name ?? "");
+    const lastWin = cell.wins.length ? cell.wins[cell.wins.length - 1] : null;
     return (
       <button
         type="button"
@@ -247,6 +392,7 @@ const Square = memo(
         data-col={cell.col}
         data-state={cell.state}
         data-mine={cell.mine}
+        data-named={showSticker || undefined}
         data-release={cell.selected === "release" || undefined}
         data-live={cell.live || undefined}
         data-live-reverse={cell.liveReverse || undefined}
@@ -260,7 +406,7 @@ const Square = memo(
         {cell.selected === "claim" && <CheckIcon className="jx-check" strokeWidth={3.2} />}
         {showSticker && (
           <span className="jx-sticker" data-initials={!owner?.emoji} aria-hidden>
-            <span>{owner?.emoji || initialsOf(owner?.name ?? "?")}</span>
+            <span>{owner?.emoji || [...(owner?.name.trim() || "?")][0].toUpperCase()}</span>
           </span>
         )}
         {cell.selected === "release" && (
@@ -270,29 +416,16 @@ const Square = memo(
             </span>
           </span>
         )}
-        {roomy && showSticker && (
+        {showSticker && name && (
           <span aria-hidden className="jx-cell-name">
-            {cell.mine ? "You" : (owner?.name ?? "")}
+            {name}
           </span>
         )}
-        {roomy && winLabel && (
-          <span aria-hidden className="jx-wintag">
-            {winLabel}
-          </span>
-        )}
-        {cell.wins.length > 0 && !roomy && (
-          <span aria-hidden className="jx-wincount">
-            {cell.wins.length > 1 ? `×${cell.wins.length}` : <TrophyIcon size={9} filled />}
-          </span>
-        )}
-        {cell.wins.length > 1 && roomy && (
-          <span aria-hidden className="jx-wincount">
-            ×{cell.wins.length}
-          </span>
-        )}
-        {cell.live && roomy && (
-          <span aria-hidden className="jx-livetag">
-            NOW
+        {lastWin && (
+          <span aria-hidden className="jx-pip">
+            <TrophyIcon size={roomy ? 10 : 8} filled />
+            {roomy && <span>{cell.wins.length > 1 ? `×${cell.wins.length}` : shortWin(lastWin.label)}</span>}
+            {!roomy && cell.wins.length > 1 && <span>{cell.wins.length}</span>}
           </span>
         )}
       </button>

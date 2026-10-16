@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GameState, NumberDraw, Player, Square } from "../../../shared/types";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AppConfig, GameState, NumberDraw, Player, Square } from "../../../shared/types";
 
 const setScore = vi.fn();
 const lock = vi.fn();
@@ -82,15 +82,27 @@ function makeState(over: Partial<GameState["game"]> = {}, rest: Partial<GameStat
   };
 }
 
-function renderHost(state: GameState, props: Partial<Parameters<typeof HostControls>[0]> = {}) {
+function Search() {
+  return <output data-testid="search">{useLocation().search}</output>;
+}
+
+function renderHost(state: GameState, props: Partial<Parameters<typeof HostControls>[0]> = {}, url = "/g/hst123") {
   const apply = vi.fn();
   const pickCell = vi.fn(async () => null);
   const onInvite = vi.fn();
   const utils = render(
-    <MemoryRouter initialEntries={["/g/hst123"]}>
+    <MemoryRouter initialEntries={[url]}>
       <ToastProvider>
         <Routes>
-          <Route path="/g/:id" element={<HostControls state={state} apply={apply} pickCell={pickCell} onInvite={onInvite} {...props} />} />
+          <Route
+            path="/g/:id"
+            element={
+              <>
+                <HostControls state={state} apply={apply} pickCell={pickCell} onInvite={onInvite} {...props} />
+                <Search />
+              </>
+            }
+          />
           <Route path="/" element={<p>Home screen</p>} />
         </Routes>
       </ToastProvider>
@@ -99,9 +111,20 @@ function renderHost(state: GameState, props: Partial<Parameters<typeof HostContr
   return { ...utils, apply, pickCell, onInvite };
 }
 
+const fillSquares = (n: number, owner = "maya") => Array.from({ length: n }, (_, i) => sq(Math.floor(i / 10), i % 10, owner));
+
+const CONFIG: AppConfig = {
+  payments: { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.board" },
+  vapidPublicKey: null,
+};
+
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("HostControls", () => {
@@ -130,7 +153,7 @@ describe("HostControls", () => {
     identity.saveAdminToken("hst123", "tok");
     const lockedState = makeState({ status: "locked", numbers: { "*": DRAW } });
     lock.mockResolvedValue({ state: lockedState });
-    const { apply } = renderHost(makeState());
+    const { apply } = renderHost(makeState({}, { squares: fillSquares(60) }));
     fireEvent.click(screen.getByTestId("host-open"));
     fireEvent.click(await screen.findByTestId("host-lock"));
     expect(lock).not.toHaveBeenCalled();
@@ -153,11 +176,33 @@ describe("HostControls", () => {
     expect(save).toBeDisabled();
     fireEvent.change(screen.getByTestId("score-x"), { target: { value: "7" } });
     fireEvent.change(screen.getByTestId("score-y"), { target: { value: "3" } });
-    expect(screen.getByText(/wins Q1/)).toHaveTextContent("Maya wins Q1");
+    expect(screen.getByText(/would win Q1/)).toHaveTextContent("Maya would win Q1");
     expect(save).toHaveTextContent("Save Q1 score");
     fireEvent.click(save);
     await waitFor(() => expect(setScore).toHaveBeenCalledWith("hst123", { periodKey: "q1", scoreX: 7, scoreY: 3 }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(saved));
+    // Confirmed in the sheet's footer, not by a toast over the sheet's header.
+    expect(await screen.findByTestId("score-saved")).toHaveTextContent("Saved · Maya wins Q1");
+  });
+
+  it("starts a new period blank and only saves once the host enters or confirms a score", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const state = makeState(
+      { status: "locked", numbers: { "*": DRAW } },
+      { squares: [sq(6, 7, "maya")], scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1 }] },
+    );
+    renderHost(state);
+    fireEvent.click(screen.getByTestId("host-open"));
+    const save = await screen.findByTestId("score-save");
+    expect(save).toHaveTextContent("Save Half score");
+    expect(save).toBeDisabled();
+    expect(screen.getByTestId("score-x")).toHaveValue("");
+    expect(screen.queryByText(/win Half/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Same as Q1\?/ }));
+    expect(screen.getByTestId("score-x")).toHaveValue("7");
+    expect(screen.getByTestId("score-y")).toHaveValue("3");
+    expect(save).toBeEnabled();
+    expect(screen.getByText(/would win Half/)).toHaveTextContent("Maya would win Half");
   });
 
   it("enters digits with the keypad", async () => {
@@ -222,7 +267,7 @@ describe("HostControls", () => {
 
   it("ends the game after a confirm", async () => {
     identity.saveAdminToken("hst123", "tok");
-    const state = makeState({ status: "locked", numbers: { "*": DRAW } });
+    const state = makeState({ status: "locked", numbers: { "*": DRAW } }, { scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1 }] });
     const ended = makeState({ status: "final", numbers: { "*": DRAW } });
     finish.mockResolvedValue({ state: ended });
     const { apply } = renderHost(state);
@@ -251,17 +296,103 @@ describe("HostControls", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       identity.saveAdminToken("hst123", "tok");
-      const state = makeState({ status: "locked", numbers: { "*": DRAW } }, { squares: [sq(0, 0, "maya")] });
+      // 7-3 lands on (6, 7), which nobody owns: the row says so and offers the fix.
+      const state = makeState(
+        { status: "locked", numbers: { "*": DRAW } },
+        { squares: [sq(0, 0, "maya")], scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1 }] },
+      );
       setWinner.mockResolvedValue({ state: { ...state, manualWinners: [{ periodKey: "q1", row: 0, col: 0, updatedAt: 1 }] } });
       const pickCell = vi.fn(async () => ({ row: 0, col: 0 }));
       renderHost(state, { pickCell });
       fireEvent.click(screen.getByTestId("host-open"));
-      fireEvent.click(await screen.findByRole("button", { name: "Pick the Q1 winner by hand" }));
+      expect(await screen.findByText("Nobody had 7–3")).toBeInTheDocument();
+      const give = screen.getByRole("button", { name: "Pick the Q1 winner by hand" });
+      expect(give).toHaveTextContent("Give it to a player");
+      fireEvent.click(give);
       await vi.advanceTimersByTimeAsync(400);
       expect(pickCell).toHaveBeenCalledWith("Tap the square that wins Q1");
       await waitFor(() => expect(setWinner).toHaveBeenCalledWith("hst123", { periodKey: "q1", row: 0, col: 0 }));
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("keeps the sheet titled Host tools in every state", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    for (const status of ["draft", "open", "locked"] as const) {
+      const { unmount } = renderHost(makeState({ status, numbers: status === "locked" ? { "*": DRAW } : null }));
+      fireEvent.click(screen.getByTestId("host-open"));
+      expect(await screen.findByRole("heading", { name: "Host tools" })).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("won't lock an empty board and says Invite friends until someone joins", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    renderHost(makeState({}, { players: [player("host", "Jordan")] }));
+    expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Invite friends");
+    fireEvent.click(screen.getByTestId("host-open"));
+    expect(await screen.findByTestId("host-lock")).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: /Invite friends/ })).toHaveLength(2);
+    expect(screen.getByText(/turns on once someone picks a square/)).toBeInTheDocument();
+  });
+
+  it("asks before locking a thin board", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    renderHost(makeState({}, { squares: fillSquares(12) }));
+    fireEvent.click(screen.getByTestId("host-open"));
+    fireEvent.click(await screen.findByTestId("host-lock"));
+    expect(await screen.findByRole("heading", { name: /Lock with only 12 in\?/ })).toBeInTheDocument();
+    expect(screen.getByTestId("host-lock-confirm")).toHaveTextContent("Lock & draw anyway");
+  });
+
+  it("offers no pick, fix or end game before a linked game kicks off", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const state = makeState({
+      status: "locked",
+      numbers: { "*": DRAW },
+      linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: Date.now() + 3_600_000, xIsHome: true },
+    });
+    renderHost(state);
+    fireEvent.click(screen.getByTestId("host-open"));
+    expect(await screen.findByText("Up next")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /winner by hand/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Fix a score/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /End game/ })).not.toBeInTheDocument();
+  });
+
+  it("opens an unpaid board from the bar, then goes straight to the invite", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const opened = makeState({ status: "open" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url.endsWith("/api/config")) return new Response(JSON.stringify(CONFIG), { status: 200 });
+        if (url.endsWith("/api/games/hst123/pay/test")) return new Response(JSON.stringify({ state: opened }), { status: 200 });
+        return new Response("{}", { status: 404 });
+      }),
+    );
+    const { apply, onInvite } = renderHost(makeState({ status: "draft" }));
+    const action = screen.getByTestId("host-bar-action");
+    expect(action).toHaveTextContent("Open board");
+    fireEvent.click(action);
+    fireEvent.click(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(opened), { timeout: 3000 });
+    await waitFor(() => expect(onInvite).toHaveBeenCalled(), { timeout: 3000 });
+  });
+
+  it("opens checkout from ?checkout=1 and clears the link", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(CONFIG), { status: 200 })));
+    renderHost(makeState({ status: "draft" }), {}, "/g/hst123?checkout=1");
+    expect(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+  });
+
+  it("opens the lock & draw confirm from ?draw=1 and clears the link", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    renderHost(makeState({}, { squares: fillSquares(100) }), {}, "/g/hst123?draw=1");
+    expect(await screen.findByTestId("host-lock-confirm")).toHaveTextContent("Draw the numbers");
+    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
   });
 });

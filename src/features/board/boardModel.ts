@@ -10,9 +10,11 @@ import {
   gridSize,
   liveCell,
   periodKeyForLive,
+  squareAt,
   totalSquares,
   upcomingPeriod,
   winCounts,
+  winningCell,
   type Cell,
   type PeriodResult,
 } from "../../../shared/squares";
@@ -86,10 +88,26 @@ export interface CellInputs {
   me: string;
   selection: Selection;
   results: PeriodResult[];
+  /**
+   * The square the score points at right now (see rightNow). Omitted: the live
+   * score's square, if there is a game on. null: no square is "now".
+   */
+  now?: { cell: Cell; reverseCell: Cell | null } | null;
+  /**
+   * The draw the axes show. On fresh-numbers boards a period's winner only
+   * shows under its own digits, so a trophy never sits where the visible
+   * numbers say it can't be.
+   */
+  drawKey?: string;
+}
+
+/** Which draw decided a period (fresh numbers: its own; otherwise the shared one). */
+export function drawKeyOf(game: Pick<Game, "numbers">, periodKey: string | null): string {
+  return periodKey && game.numbers?.[periodKey] ? periodKey : SHARED_DRAW_KEY;
 }
 
 /** Every square of the board, row-major, with what the grid needs to draw it. */
-export function buildCells({ state, me, selection, results }: CellInputs): CellView[][] {
+export function buildCells({ state, me, selection, results, now: nowCell, drawKey }: CellInputs): CellView[][] {
   const n = gridSize(state.game.format.boardSize);
   const players = new Map(state.players.map((p) => [p.id, p]));
   const owners = new Map<string, Square>(state.squares.map((s) => [cellKey(s.row, s.col), s]));
@@ -101,11 +119,13 @@ export function buildCells({ state, me, selection, results }: CellInputs): CellV
     if (!list.some((w) => w.periodKey === win.periodKey)) list.push(win);
     wins.set(k, list);
   };
+  const fresh = state.game.format.freshNumbers && drawKey !== undefined;
   for (const r of results) {
+    if (fresh && drawKeyOf(state.game, r.periodKey) !== drawKey) continue;
     addWin(r.cell, { periodKey: r.periodKey, label: r.label, reverse: false });
     addWin(r.reverseCell, { periodKey: r.periodKey, label: r.label, reverse: true });
   }
-  const now = state.game.status === "final" ? null : liveCell(state);
+  const now = state.game.status === "final" ? null : nowCell !== undefined ? nowCell : liveCell(state);
   const liveKey = now ? cellKey(now.cell.row, now.cell.col) : null;
   const liveRevKey = now?.reverseCell ? cellKey(now.reverseCell.row, now.reverseCell.col) : null;
 
@@ -279,6 +299,231 @@ function clockLine(period: number, clock: string): string {
   return clock ? `${p} ${clock}` : p;
 }
 
+// ---- Right now: who the score points at, and how close I am ----
+
+export type Side = "x" | "y";
+
+export interface ScoringPlay {
+  team: Side;
+  points: number;
+}
+
+/** Common football scoring plays, likeliest first: TD + kick, field goal, TD without the kick, TD + 2, safety. */
+export const SCORING_PLAYS: readonly number[] = [7, 3, 6, 8, 2];
+
+/**
+ * Rough chance of each play by one team over the rest of a period. Only the
+ * order of magnitude matters: two common scores beat one rare one (a TD then
+ * a field goal is likelier than a safety).
+ */
+const PLAY_WEIGHT: Record<number, number> = { 7: 0.34, 3: 0.3, 6: 0.03, 8: 0.03, 2: 0.01 };
+/** Two scores in what's left of a period are less likely than either alone. */
+const SECOND_SCORE = 0.5;
+
+/** "field goal", "touchdown"... for a play's points. */
+export function playName(points: number): string {
+  switch (points) {
+    case 7:
+      return "touchdown";
+    case 3:
+      return "field goal";
+    case 6:
+      return "touchdown (no kick)";
+    case 8:
+      return "touchdown + 2";
+    case 2:
+      return "safety";
+    default:
+      return `${points}-point score`;
+  }
+}
+
+export interface ScorePath {
+  /** Plays to get there, likeliest first; empty when the score is already on one of mine. */
+  plays: ScoringPlay[];
+  cell: Cell;
+}
+
+type ScorePair = { scoreX: number; scoreY: number };
+
+function addPlays(score: ScorePair, plays: ScoringPlay[]): ScorePair {
+  let { scoreX, scoreY } = score;
+  for (const p of plays) {
+    if (p.team === "x") scoreX += p.points;
+    else scoreY += p.points;
+  }
+  return { scoreX, scoreY };
+}
+
+const SINGLE_PLAYS: ScoringPlay[] = SCORING_PLAYS.flatMap((points) => [
+  { team: "x" as const, points },
+  { team: "y" as const, points },
+]);
+
+const weightOf = (plays: ScoringPlay[]) =>
+  plays.reduce((w, p, i) => w * (PLAY_WEIGHT[p.points] ?? 0.01) * (i > 0 ? SECOND_SCORE : 1), 1);
+
+/**
+ * The likeliest way, in at most `maxPlays` (2) common scoring plays, for the
+ * score to land on one of `mine` (cell keys). null when none of my squares is
+ * that close. `minPlays` 1 skips "already there" (every-score boards, where
+ * the current square has already been decided).
+ */
+export function nearestPath(score: ScorePair, draw: NumberDraw, mine: ReadonlySet<string>, maxPlays = 2, minPlays = 0): ScorePath | null {
+  if (mine.size === 0) return null;
+  const hit = (plays: ScoringPlay[]): ScorePath | null => {
+    const cell = winningCell(addPlays(score, plays), draw);
+    return cell && mine.has(cellKey(cell.row, cell.col)) ? { plays, cell } : null;
+  };
+  const here = minPlays > 0 ? null : hit([]);
+  if (here) return here;
+  const options: ScoringPlay[][] = [];
+  if (maxPlays >= 1) for (const p of SINGLE_PLAYS) options.push([p]);
+  if (maxPlays >= 2) {
+    for (let i = 0; i < SINGLE_PLAYS.length; i++) for (let j = i; j < SINGLE_PLAYS.length; j++) options.push([SINGLE_PLAYS[i], SINGLE_PLAYS[j]]);
+  }
+  let best: ScorePath | null = null;
+  let bestWeight = 0;
+  for (const plays of options) {
+    const w = weightOf(plays);
+    if (w <= bestWeight) continue;
+    const found = hit(plays);
+    if (found) {
+      best = found;
+      bestWeight = w;
+    }
+  }
+  return best;
+}
+
+/** The likeliest single score that moves the square off `fromKey` to someone else, and who'd have it then. */
+export function nextChange(
+  score: ScorePair,
+  draw: NumberDraw,
+  fromKey: string,
+  squares: Square[],
+  me?: string,
+): { play: ScoringPlay; cell: Cell; ownerId: string | null } | null {
+  for (const play of SINGLE_PLAYS) {
+    const cell = winningCell(addPlays(score, [play]), draw);
+    if (!cell || cellKey(cell.row, cell.col) === fromKey) continue;
+    const ownerId = squareAt(squares, cell.row, cell.col)?.playerId ?? null;
+    if (me !== undefined && ownerId === me) continue;
+    return { play, cell, ownerId };
+  }
+  return null;
+}
+
+export interface NowView {
+  /** Real live game data; false = the last recorded score ("if nobody scores"). */
+  live: boolean;
+  periodKey: string | null;
+  /** Period label ("Q3", "Half"), or "Next score" on every-score boards. */
+  label: string;
+  everyScore: boolean;
+  scoreX: number;
+  scoreY: number;
+  /** Game clock when live ("Q3 8:41"). */
+  detail: string | null;
+  /** The draw that decides this period (fresh numbers: the period's own). */
+  drawKey: string;
+  cell: Cell;
+  /** The cell's digits, e.g. { x: "7", y: "3" } ("1·6" on 5x5). */
+  digits: { x: string; y: string };
+  ownerId: string | null;
+  mine: boolean;
+  reverse: { cell: Cell; ownerId: string | null } | null;
+  /** My closest way onto this period's square (null: no squares, or none within two scores). */
+  path: ScorePath | null;
+  /** When it's mine: the likeliest single score that would take it, and to whom. */
+  threat: { play: ScoringPlay; ownerId: string | null } | null;
+  /** Where the next common score lands (TD or field goal, either team), and whose square it is. */
+  outcomes: { play: ScoringPlay; cell: Cell; ownerId: string | null }[];
+  mineCount: number;
+}
+
+/** The four plays worth showing as "what if": a touchdown or a field goal by either team. */
+const OUTCOME_PLAYS: ScoringPlay[] = [
+  { team: "x", points: 7 },
+  { team: "x", points: 3 },
+  { team: "y", points: 7 },
+  { team: "y", points: 3 },
+];
+
+/**
+ * What a fan wants mid-game: which square the score points at for the period
+ * in play, whose it is, and how close my squares are. Uses live data when the
+ * game is on, else the last recorded score for the next undecided period
+ * (0-0 before any score). null until numbers are drawn, and once it's over.
+ */
+export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners" | "live">, me: string): NowView | null {
+  const { game, live, squares } = state;
+  if (game.status !== "locked" || !game.numbers || live?.state === "post") return null;
+  const everyScore = game.format.periods === "every-score";
+  let periodKey: string | null = null;
+  let score: ScorePair;
+  let detail: string | null = null;
+  const isLive = live?.state === "in";
+  if (live && isLive) {
+    periodKey = everyScore ? null : periodKeyForLive(game.format, live.period);
+    score = { scoreX: live.scoreX, scoreY: live.scoreY };
+    detail = live.detail || clockLine(live.period, live.clock);
+  } else {
+    if (!everyScore) {
+      const next = upcomingPeriod(state);
+      if (!next) return null;
+      periodKey = next.key;
+    }
+    const head = headlineScore(state);
+    score = { scoreX: head?.scoreX ?? 0, scoreY: head?.scoreY ?? 0 };
+  }
+  const drawKey = drawKeyOf(game, periodKey);
+  const draw = drawFor(game, drawKey);
+  if (!draw) return null;
+  const cell = winningCell(score, draw);
+  if (!cell) return null;
+  const n = gridSize(game.format.boardSize);
+  const labels = axisLabels(draw, n);
+  const owner = (c: Cell) => squareAt(squares, c.row, c.col)?.playerId ?? null;
+  const ownerId = owner(cell);
+  const mineKeys = new Set(squares.filter((s) => s.playerId === me).map((s) => cellKey(s.row, s.col)));
+  const mine = ownerId !== null && ownerId === me;
+  const rev = game.format.reverse ? winningCell({ scoreX: score.scoreY, scoreY: score.scoreX }, draw) : null;
+  const label = everyScore ? "Next score" : (boardPeriods(game, state.scores).find((p) => p.key === periodKey)?.label ?? "This period");
+  // Every-score boards: the current square is already decided, so it's all about the next score.
+  const change = mine && !everyScore ? nextChange(score, draw, cellKey(cell.row, cell.col), squares, me) : null;
+  const outcomes = OUTCOME_PLAYS.flatMap((play) => {
+    const c = winningCell(addPlays(score, [play]), draw);
+    return c ? [{ play, cell: c, ownerId: owner(c) }] : [];
+  });
+  return {
+    live: isLive,
+    periodKey,
+    label,
+    everyScore,
+    scoreX: score.scoreX,
+    scoreY: score.scoreY,
+    detail,
+    drawKey,
+    cell,
+    digits: { x: labels.x[cell.col], y: labels.y[cell.row] },
+    ownerId,
+    mine,
+    reverse: rev ? { cell: rev, ownerId: owner(rev) } : null,
+    path: everyScore ? nearestPath(score, draw, mineKeys, 2, 1) : mine ? null : nearestPath(score, draw, mineKeys),
+    threat: change ? { play: change.play, ownerId: change.ownerId } : null,
+    outcomes,
+    mineCount: mineKeys.size,
+  };
+}
+
+/** A period as a friend would say it after "takes": "Q1", "the half", "Q3", "the final". */
+export function periodNoun(period: { key: string | null; label: string }): string {
+  if (period.key === "q2") return "the half";
+  if (period.key === "final") return "the final";
+  return period.label;
+}
+
 // ---- Period cards (results strip) ----
 
 export type PeriodCardStatus = "done" | "live" | "next" | "later";
@@ -332,6 +577,8 @@ export interface PlayerRow {
   player: Player;
   squares: number;
   wins: number;
+  /** Periods won, in board order ("Q1", "Half"); a reverse-only win reads "Q1 rev". */
+  winLabels: string[];
   isMe: boolean;
 }
 
@@ -340,8 +587,26 @@ export function playerRows(state: Pick<GameState, "players" | "squares">, result
   const counts = new Map<string, number>();
   for (const s of state.squares) counts.set(s.playerId, (counts.get(s.playerId) ?? 0) + 1);
   const wins = winCounts(results);
+  const labels = new Map<string, string[]>();
+  const addLabel = (id: string | null, label: string) => {
+    if (!id) return;
+    const list = labels.get(id) ?? [];
+    list.push(label);
+    labels.set(id, list);
+  };
+  for (const r of results) {
+    addLabel(r.winnerPlayerId, r.label);
+    // Both squares of a period (regular and reverse) read once.
+    if (r.reverseWinnerPlayerId && r.reverseWinnerPlayerId !== r.winnerPlayerId) addLabel(r.reverseWinnerPlayerId, `${r.label} rev`);
+  }
   return state.players
-    .map((player) => ({ player, squares: counts.get(player.id) ?? 0, wins: wins[player.id] ?? 0, isMe: player.id === me }))
+    .map((player) => ({
+      player,
+      squares: counts.get(player.id) ?? 0,
+      wins: wins[player.id] ?? 0,
+      winLabels: labels.get(player.id) ?? [],
+      isMe: player.id === me,
+    }))
     .sort((a, b) => b.wins - a.wins || b.squares - a.squares || a.player.joinedAt - b.player.joinedAt);
 }
 
@@ -374,6 +639,11 @@ export function myNumbers(
 
 // ---- Activity wording (fallback until describeActivity covers a type) ----
 
+/** Events the game itself makes (not a player's own move): shown with a fixed glyph, never an avatar. */
+export function isSystemActivity(type: Activity["type"]): boolean {
+  return type === "locked" || type === "score" || type === "winner" || type === "final" || type === "created";
+}
+
 function nameOf(state: Pick<GameState, "players">, id: string | null, me: string): string {
   if (!id) return "Someone";
   if (id === me) return "You";
@@ -398,7 +668,7 @@ export function fallbackActivityText(a: Activity, state: Pick<GameState, "game" 
     case "claimed":
       return `${who} grabbed ${squaresWord(count)}`;
     case "released":
-      return `${who} let go of ${squaresWord(count)}`;
+      return `${who} gave back ${squaresWord(count)}`;
     case "locked":
       return d.auto ? "Kickoff! Numbers are locked in" : "Numbers drawn. Good luck!";
     case "score": {

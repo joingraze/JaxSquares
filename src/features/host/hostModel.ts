@@ -33,7 +33,7 @@ export const NEXT_ENTRY = "next";
 
 // ---- What the host should do next ----
 
-export type HostActionKind = "setup" | "invite" | "lock" | "score" | "auto" | "final";
+export type HostActionKind = "checkout" | "invite" | "lock" | "score" | "auto" | "final";
 
 export interface HostAction {
   kind: HostActionKind;
@@ -47,6 +47,8 @@ export interface HostSummary {
   /** 0..1 fill for the bar's meter (squares taken while open, periods decided after). */
   progress: number;
   action: HostAction;
+  /** Nothing for the host to do right now: the bar folds to one slim row. */
+  slim: boolean;
 }
 
 export function claimedOf(state: Pick<GameState, "game" | "squares">): { claimed: number; total: number } {
@@ -65,24 +67,36 @@ export function hostSummary(state: GameState): HostSummary {
   const playersText = `${players} ${players === 1 ? "player" : "players"}`;
 
   if (game.status === "draft") {
-    return { status: "Edit details while it opens", progress: 0, action: { kind: "setup", label: "Manage" } };
+    return { status: "Not open yet · friends can't pick squares", progress: 0, action: { kind: "checkout", label: "Open board" }, slim: false };
   }
   if (game.status === "open") {
     const full = claimed >= total;
     // Half full or more: locking is the move. Before that, getting people in is.
     const ready = full || claimed / total >= 0.5;
     return {
-      status: full ? "Board's full. Draw time!" : ready ? `Ready to lock · ${playersText}` : `${playersText} · keep inviting`,
+      status: full ? "Board's full. Draw time!" : ready ? `Ready to lock · ${playersText}` : claimed === 0 ? "Nobody's picked a square yet" : `${claimed} of ${total} squares taken`,
       progress: claimed / total,
-      action: ready ? { kind: "lock", label: "Lock & draw" } : { kind: "invite", label: "Invite" },
+      action: ready ? { kind: "lock", label: "Lock & draw" } : { kind: "invite", label: invitedAnyone(state) ? "Invite" : "Invite friends" },
+      slim: false,
     };
   }
   if (game.status === "final") {
     const results = resolveResults(state);
+    const empty = emptyPrizes(state);
+    // A prize that landed on an empty square is still the host's to hand out.
+    if (empty > 0) {
+      return {
+        status: `${empty} ${empty === 1 ? "prize needs" : "prizes need"} a winner`,
+        progress: 1,
+        action: { kind: "final", label: empty === 1 ? "Pick a winner" : "Pick winners" },
+        slim: false,
+      };
+    }
     return {
       status: `Final · ${results.length} ${results.length === 1 ? "prize" : "prizes"} decided`,
       progress: 1,
       action: { kind: "final", label: "Results" },
+      slim: true,
     };
   }
 
@@ -96,14 +110,59 @@ export function hostSummary(state: GameState): HostSummary {
   const progress = everyScore ? 0 : periods ? recorded / periods : 0;
   if (isLinked(game)) {
     return {
-      status: recorded === 0 ? "Scores update automatically" : `${status} · auto-scored`,
+      status: recorded === 0 ? "Scores come in on their own" : `${status} · auto-scored`,
       progress,
       action: { kind: "auto", label: "Scores" },
+      slim: true,
     };
   }
-  if (everyScore) return { status, progress, action: { kind: "score", label: "Add score" } };
+  if (everyScore) return { status, progress, action: { kind: "score", label: "Add score" }, slim: false };
   const next = upcomingPeriod(state);
-  return { status, progress, action: { kind: "score", label: next ? `${next.label} score` : "Scores" } };
+  return { status, progress, action: { kind: "score", label: next ? `${next.label} score` : "Scores" }, slim: false };
+}
+
+/** Decided prizes whose square nobody owns (and the host hasn't handed out). */
+export function emptyPrizes(state: GameState): number {
+  const manual = new Set(state.manualWinners.map((m) => m.periodKey));
+  return resolveResults(state).filter((r) => !r.winnerPlayerId && !manual.has(r.periodKey)).length;
+}
+
+/** True once someone besides the host has joined (the invite button stops saying "Invite friends"). */
+export function invitedAnyone(state: Pick<GameState, "game" | "players">): boolean {
+  return state.players.some((p) => p.id !== state.game.hostPlayerId);
+}
+
+/**
+ * The game is under way: a score or pick is in, the live feed says it started,
+ * or a linked game's kickoff time has passed. Before that there's nothing to
+ * crown and nothing to end.
+ */
+export function gameStarted(state: Pick<GameState, "game" | "scores" | "manualWinners" | "live">, now = Date.now()): boolean {
+  if (state.scores.length > 0 || state.manualWinners.length > 0) return true;
+  if (state.live && state.live.state !== "pre") return true;
+  const kickoff = state.game.linkedEvent?.startsAt ?? null;
+  return kickoff !== null && kickoff <= now;
+}
+
+/** One line under the host sheet's title saying where the board stands. */
+export function hostStatusLine(state: GameState, now = Date.now()): string {
+  const { game } = state;
+  if (game.status === "draft") return "Not open yet. Friends can't pick squares.";
+  if (game.status === "open") {
+    const { claimed, total } = claimedOf(state);
+    return claimed >= total ? "Board's full. Time to draw the numbers." : `Filling up · ${claimed} of ${total} squares taken`;
+  }
+  if (game.status === "final") {
+    const empty = emptyPrizes(state);
+    return empty === 0 ? "Final · the winners are in" : `Final · ${empty} ${empty === 1 ? "prize has" : "prizes have"} no winner yet`;
+  }
+  if (isLinked(game)) {
+    if (state.live?.state === "in") return "Live · scores come in on their own";
+    return gameStarted(state, now) ? "Scores come in on their own" : "Numbers drawn · waiting for kickoff";
+  }
+  if (game.format.periods === "every-score") return "Numbers drawn · add each score as it happens";
+  const next = upcomingPeriod(state);
+  return next ? `Numbers drawn · ${next.label} is up next` : "All prizes decided";
 }
 
 function decidedCount(state: Pick<GameState, "game" | "scores" | "manualWinners">): number {
@@ -132,6 +191,17 @@ export function lockFacts(state: GameState): LockFacts {
     players: state.players.length,
     idle: state.players.filter((p) => !owners.has(p.id)).length,
   };
+}
+
+export type LockReadiness = "empty" | "low" | "ok";
+
+/** Below this share of squares taken, locking asks "with only N in?". */
+export const LOW_FILL = 0.25;
+
+/** Nobody in: nothing to draw for. A thin board: the host confirms on purpose. */
+export function lockReadiness(f: Pick<LockFacts, "claimed" | "total">): LockReadiness {
+  if (f.claimed === 0) return "empty";
+  return f.claimed / f.total < LOW_FILL ? "low" : "ok";
 }
 
 // ---- Score entry ----
@@ -172,35 +242,51 @@ export function resolvedKey(state: Pick<GameState, "game" | "scores">, key: stri
   return everyScorePeriod(n + 1).key;
 }
 
-/** Latest score recorded before `key` (scores only go up, so it's a good starting point). */
-function previousScore(state: Pick<GameState, "game" | "scores">, key: string): Score | null {
-  const targets = scoreTargets(state);
-  const idx = targets.findIndex((t) => t.key === key);
-  for (let i = (idx === -1 ? targets.length : idx) - 1; i >= 0; i--) {
-    const s = targets[i].existing;
-    if (s) return s;
-  }
-  return null;
-}
-
 export interface ScoreDraft {
   x: string;
   y: string;
 }
 
 /**
- * What the keypad starts with: the recorded score when editing; otherwise the
- * live score (linked boards) or the last recorded one, since the game total
- * only climbs. Blank when there's nothing to go on.
+ * What the keypad starts with: the recorded score when editing. A new period
+ * starts blank, so nothing is saved (and no winner announced) until the host
+ * types it or confirms a suggestion. A new every-score entry starts from the
+ * latest score, since it's always "that plus the points just scored".
  */
 export function initialDraft(state: GameState, key: string): ScoreDraft {
   const existing = state.scores.find((s) => s.periodKey === key);
   if (existing) return { x: String(existing.scoreX), y: String(existing.scoreY) };
-  if (state.live && state.live.state !== "pre") return { x: String(state.live.scoreX), y: String(state.live.scoreY) };
-  const prev = previousScore(state, key);
-  if (prev) return { x: String(prev.scoreX), y: String(prev.scoreY) };
-  if (state.game.format.periods === "every-score") return { x: "0", y: "0" };
+  if (state.game.format.periods === "every-score") {
+    const last = latestEntry(state.scores);
+    return { x: String(last?.scoreX ?? 0), y: String(last?.scoreY ?? 0) };
+  }
   return { x: "", y: "" };
+}
+
+export interface ScoreSuggestion {
+  /** Chip text, e.g. "Same as Q1" or "Live score". */
+  label: string;
+  draft: ScoreDraft;
+}
+
+/**
+ * A one-tap fill for a new period: the live score on linked boards, otherwise
+ * the score recorded before it (nobody scored since). Null when editing a
+ * recorded score or on every-score boards.
+ */
+export function scoreSuggestion(state: GameState, key: string): ScoreSuggestion | null {
+  if (state.game.format.periods === "every-score" || key === NEXT_ENTRY) return null;
+  if (state.scores.some((s) => s.periodKey === key)) return null;
+  if (state.live && state.live.state !== "pre") {
+    return { label: "Live score", draft: { x: String(state.live.scoreX), y: String(state.live.scoreY) } };
+  }
+  const targets = scoreTargets(state);
+  const idx = targets.findIndex((t) => t.key === key);
+  for (let i = idx - 1; i >= 0; i--) {
+    const prev = targets[i].existing;
+    if (prev) return { label: `Same as ${targets[i].label}`, draft: { x: String(prev.scoreX), y: String(prev.scoreY) } };
+  }
+  return null;
 }
 
 export function parseScore(value: string): number | null {

@@ -26,6 +26,8 @@ const { ApiError, inviteUrl } = await import("../../lib/api");
 const identity = await import("../../lib/identity");
 const { JoinSheet } = await import("./JoinSheet");
 const { InviteSheet } = await import("./InviteSheet");
+const { InviteHero } = await import("./InviteHero");
+const { JoinedCard } = await import("./JoinedCard");
 
 const player = (id: string, name: string, extra: Partial<Player> = {}): Player => ({
   id,
@@ -132,11 +134,33 @@ describe("JoinSheet", () => {
     expect(screen.getByTestId("join-submit")).not.toBeDisabled();
   });
 
-  it("prefills a returning player's name", async () => {
+  it("welcomes a returning player back without asking their name again", async () => {
+    identity.setProfile({ name: "Sam", color: "#38b6ff", emoji: "🦈" });
+    const next = { ...makeState(), version: 4 };
+    join.mockResolvedValue({ state: next });
+    render(<JoinSheet state={makeState()} open onJoined={() => {}} onClose={() => {}} selectedCount={1} />);
+    expect(await screen.findByRole("heading", { name: "Welcome back, Sam!" })).toBeInTheDocument();
+    expect(screen.queryByTestId("join-name")).toBeNull();
+    expect(screen.getByTestId("join-submit")).toHaveTextContent("Join & claim my square");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("join-submit"));
+    });
+    expect(join).toHaveBeenCalledWith("k7mq2x", expect.objectContaining({ name: "Sam", emoji: "🦈" }));
+  });
+
+  it("lets a returning player change their name and look", async () => {
     identity.setProfile({ name: "Sam", color: "#38b6ff", emoji: "🦈" });
     render(<JoinSheet state={makeState()} open onJoined={() => {}} onClose={() => {}} />);
-    expect(await screen.findByTestId("join-name")).toHaveValue("Sam");
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    expect(screen.getByTestId("join-name")).toHaveValue("Sam");
     expect(screen.getByRole("radio", { name: "🦈" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("opens the editor when a returning player's name is taken here", async () => {
+    identity.setProfile({ name: "Jordan", color: "#38b6ff", emoji: "🦈" });
+    render(<JoinSheet state={makeState()} open onJoined={() => {}} onClose={() => {}} />);
+    expect(await screen.findByTestId("join-name")).toHaveValue("Jordan");
+    expect(screen.getByText(/already a Jordan here/)).toBeInTheDocument();
   });
 });
 
@@ -156,7 +180,7 @@ describe("InviteSheet", () => {
     expect(send).toHaveTextContent("Sent!");
   });
 
-  it("copies the link with feedback", async () => {
+  it("copies the link from the preview card with feedback", async () => {
     copyText.mockResolvedValue("copied");
     render(<InviteSheet state={makeState()} open onClose={() => {}} />);
     const copy = await screen.findByTestId("invite-copy");
@@ -164,17 +188,70 @@ describe("InviteSheet", () => {
       fireEvent.click(copy);
     });
     expect(copyText).toHaveBeenCalledWith(inviteUrl("k7mq2x"));
-    expect(copy).toHaveTextContent("Copied");
+    expect(copy).toHaveAccessibleName("Link copied");
+    expect(screen.getByText("Copied. Paste it anywhere.")).toBeInTheDocument();
   });
 
-  it("shows the code and only offers the host link to the host", async () => {
-    const { unmount } = render(<InviteSheet state={makeState()} open onClose={() => {}} />);
-    expect(await screen.findByRole("img", { name: "Board code K 7 M Q 2 X" })).toBeInTheDocument();
-    expect(screen.queryByText("Save your host link")).toBeNull();
-    unmount();
+  it("previews the exact message and pitches by board state", async () => {
+    const state = makeState("host");
+    vi.spyOn(identity, "getPlayerId").mockReturnValue("host");
+    render(<InviteSheet state={state} open onClose={() => {}} />);
+    expect(await screen.findByRole("heading", { name: "Your board's live. Who's first?" })).toBeInTheDocument();
+    expect(screen.getByText("Grab a square on my Chiefs vs Bills board 🏈")).toBeInTheDocument();
+    expect(screen.getByText("Join Sunday Night Squares on JaxSquares")).toBeInTheDocument();
+    expect(screen.getByTestId("invite-share")).toHaveTextContent("Text your crew");
+  });
 
+  it("keeps the code behind one toggle and never shows the host link", async () => {
     identity.saveAdminToken("k7mq2x", "secret-token");
     render(<InviteSheet state={makeState()} open onClose={() => {}} />);
-    expect(await screen.findByText("Save your host link")).toBeInTheDocument();
+    const toggle = await screen.findByTestId("invite-code-toggle");
+    expect(screen.queryByRole("img", { name: /Board code/ })).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("img", { name: "Board code K 7 M Q 2 X" })).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.queryByText(/host link/i)).toBeNull();
+    expect(document.body.textContent).not.toContain("secret-token");
+  });
+});
+
+describe("InviteHero", () => {
+  it("says who invited you and offers one button", () => {
+    const onJoin = vi.fn();
+    const onPick = vi.fn();
+    render(<InviteHero state={makeState()} onJoin={onJoin} onPick={onPick} />);
+    expect(screen.getByRole("heading", { name: "Chiefs vs Bills" })).toBeInTheDocument();
+    expect(screen.getByText("invited you", { exact: false })).toHaveTextContent("Jordan invited you");
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(onPick).toHaveBeenCalled();
+    expect(onJoin).not.toHaveBeenCalled();
+  });
+
+  it("joins to follow along when there's nothing left to pick", () => {
+    const onJoin = vi.fn();
+    const state = makeState();
+    state.game.status = "locked";
+    render(<InviteHero state={state} onJoin={onJoin} />);
+    fireEvent.click(screen.getByRole("button", { name: "Join to follow along" }));
+    expect(onJoin).toHaveBeenCalled();
+  });
+});
+
+describe("JoinedCard", () => {
+  it("celebrates and shares the board", async () => {
+    shareLink.mockResolvedValue("shared");
+    vi.spyOn(identity, "getPlayerId").mockReturnValue("p2");
+    const state = makeState();
+    state.players.push(player("p2", "Sam"));
+    state.squares.push({ row: 0, col: 0, playerId: "p2", claimedAt: 0 });
+    render(<JoinedCard state={state} onDismiss={() => {}} />);
+    expect(screen.getByText("You're in, Sam! 🎉")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Bring a friend/ }));
+    });
+    expect(shareLink).toHaveBeenCalledWith(expect.objectContaining({ text: "Grab a square on our Chiefs vs Bills board 🏈", url: inviteUrl("k7mq2x") }));
+    expect(screen.getByRole("button", { name: /Sent!/ })).toBeInTheDocument();
   });
 });
