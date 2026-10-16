@@ -185,16 +185,19 @@ async function inviteToClaim(browser, url) {
   return { t };
 }
 
-/** Floor 3: two people on the same board; one claims, the other sees it. */
-async function realtime(browser, url, rounds = 10) {
+/**
+ * Floor 3: two people on the same board; one claims, the other sees it.
+ * Measured from the moment the claim request leaves phone A to the moment the
+ * square changes on phone B (both clocks are this machine's wall clock), plus
+ * the same for a host score reaching B's results.
+ */
+async function realtime(browser, url, rounds = 20) {
   const a = await browser.newContext(iPhone);
   const b = await browser.newContext(iPhone);
   const pa = await a.newPage();
   const pb = await b.newPage();
   await Promise.all([pa.goto(url), pb.goto(url)]);
-  for (const p of [pa, pb]) {
-    await p.locator('[data-testid="cell"]').first().waitFor();
-  }
+  for (const p of [pa, pb]) await p.locator('[data-testid="cell"]').first().waitFor();
   // Join A once so it can claim.
   await pa.locator('[data-testid="cell"][data-state="empty"]').first().tap();
   const name = pa.getByTestId("join-name");
@@ -205,6 +208,12 @@ async function realtime(browser, url, rounds = 10) {
   const claim = pa.getByTestId("claim-submit");
   if (await claim.isVisible().catch(() => false)) await claim.tap();
   await pa.locator('[data-testid="cell"][data-state="mine"]').first().waitFor();
+  await pa.waitForTimeout(1500);
+
+  let sentAt = 0;
+  pa.on("request", (req) => {
+    if (req.method() === "POST" && req.url().includes("/claim")) sentAt = Date.now();
+  });
 
   const samples = [];
   for (let i = 0; i < rounds; i++) {
@@ -212,23 +221,23 @@ async function realtime(browser, url, rounds = 10) {
     const row = await target.getAttribute("data-row");
     const col = await target.getAttribute("data-col");
     const sel = `[data-testid="cell"][data-row="${row}"][data-col="${col}"]`;
-    // Arm the observer on B before A acts, using B's own clock.
     const seen = pb.evaluate(
       (s) =>
         new Promise((resolve) => {
-          const el = document.querySelector(s);
-          const done = () => resolve(performance.now());
-          const check = () => el && el.getAttribute("data-state") !== "empty" && done();
+          const check = () => {
+            const el = document.querySelector(s);
+            if (el && el.getAttribute("data-state") !== "empty") resolve(Date.now());
+          };
           new MutationObserver(check).observe(document.body, { subtree: true, attributes: true, childList: true });
         }),
       sel,
     );
-    const tapAt = await pa.evaluate(() => performance.timeOrigin + performance.now());
+    sentAt = 0;
     await target.tap();
     if (await claim.isVisible().catch(() => false)) await claim.tap();
     const seenAt = await seen;
-    const bOrigin = await pb.evaluate(() => performance.timeOrigin);
-    samples.push(bOrigin + seenAt - tapAt);
+    if (sentAt) samples.push(seenAt - sentAt);
+    await pa.waitForTimeout(250);
   }
   await a.close();
   await b.close();

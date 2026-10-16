@@ -126,7 +126,7 @@ export function Stepper({
         aria-valuetext={valueText?.(value) ?? (typeof shown === "string" ? shown : undefined)}
         aria-disabled={disabled || undefined}
         onKeyDown={onKeyDown}
-        className="relative flex h-11 min-w-16 items-center justify-center overflow-hidden rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="relative flex h-11 min-w-20 items-center justify-center overflow-hidden rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
       >
         <span key={value} className="animate-tick font-display text-title-3 font-extrabold tabular-nums">
           {shown}

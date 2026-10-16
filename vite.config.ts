@@ -9,6 +9,9 @@ import { cloudflare } from "@cloudflare/vite-plugin";
 const isTest = process.env.VITEST === "true";
 
 export default defineConfig({
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(process.env.npm_package_version ?? "0.1.0"),
+  },
   plugins: [react(), tailwindcss(), ...(isTest ? [] : [cloudflare()])],
   test: {
     globals: true,

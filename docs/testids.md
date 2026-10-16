@@ -23,3 +23,5 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `host-open` | the host bar button that opens the host sheet |
 | `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step |
 | `host-bar-action` | the host bar's next-action pill |
+| `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
+| `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
