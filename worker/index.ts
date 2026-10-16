@@ -1,230 +1,653 @@
-// JaxSquares API — a Cloudflare Worker (Hono) that serves the JSON API under
-// /api/*. Static SPA assets are served by the Workers Assets binding for every
-// other route (configured in wrangler.jsonc).
+// JaxSquares Worker: JSON API under /api/* (Hono), universal-link files, per-game
+// invite previews, the cron that wakes live-score polling, and the SPA fallback.
 
-import { Hono } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { cors } from "hono/cors";
+import { HTTPException } from "hono/http-exception";
+import { everyScoreIndex, everyScorePeriod, formatError, periodsFor, sanitizeFormat, sanitizePrizes } from "../shared/formats";
+import { drawNumbers, isValidCell, resolveResults, totalSquares } from "../shared/squares";
 import type {
-  ClaimInput,
-  CreateGameInput,
+  Activity,
+  CreateGameResponse,
   Game,
-  Period,
-  ReleaseInput,
-  ScoreInput,
+  GameState,
+  League,
+  LinkedEvent,
   Sport,
+  Team,
 } from "../shared/types";
-import { GRID_SIZE, shuffledDigits } from "../shared/squares";
 import * as db from "./db";
+import type { Env } from "./env";
+import { inviteMeta, withInviteMeta } from "./og";
+import { getPaymentConfig, paymentsRoutes } from "./payments";
+import { pushRoutes, type NotifyEvent } from "./push";
+import { POLL_LEAD_MS } from "./room";
+import { scheduleRoutes } from "./scores";
+import { loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
 
-type Bindings = { DB: D1Database; ASSETS: Fetcher };
+export { GameRoom } from "./room";
 
-const app = new Hono<{ Bindings: Bindings }>();
+/** Optional vars read here that aren't (yet) declared on Env. */
+type CoreEnv = Env & { ANDROID_PACKAGE?: string; ANDROID_SHA256_CERT_FINGERPRINTS?: string };
+type AppEnv = { Bindings: Env; Variables: { clientId: string } };
+type Ctx = Context<AppEnv>;
 
-const api = new Hono<{ Bindings: Bindings }>();
-api.use("*", cors());
+const SPORTS: readonly Sport[] = ["football", "basketball", "baseball", "hockey", "soccer", "other"];
+const LEAGUES: readonly League[] = ["nfl", "ncaaf", "custom"];
+const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused characters
+const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
+const CLIENT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const MAX_BODY_BYTES = 32 * 1024;
+const MAX_SCORE = 999;
+const DEFAULT_COLOR = "#38bdf8";
+const DEFAULT_BUNDLE_ID = "com.jaxsquares.app";
 
-const SPORTS: Sport[] = ["football", "basketball", "baseball", "hockey", "soccer", "other"];
-const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused chars
+// ---- small validation helpers ----
 
 function makeId(len = 6): string {
   let s = "";
-  const bytes = crypto.getRandomValues(new Uint8Array(len));
-  for (const b of bytes) s += ID_ALPHABET[b % ID_ALPHABET.length];
+  for (const b of crypto.getRandomValues(new Uint8Array(len))) s += ID_ALPHABET[b % ID_ALPHABET.length];
   return s;
 }
 
 function makeToken(): string {
-  return crypto.randomUUID().replace(/-/g, "");
+  return crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 }
 
-function clampStr(v: unknown, max: number): string {
-  return String(v ?? "").slice(0, max).trim();
+/** Single-line text: control chars stripped, whitespace collapsed, capped by code points. */
+function cleanText(v: unknown, max: number): string {
+  if (typeof v !== "string") return "";
+  // Control and bidi-override characters; ZWJ is kept so emoji sequences survive.
+  const s = v.replace(/[\p{Cc}‪-‮⁦-⁩]/gu, "").replace(/\s+/g, " ").trim();
+  return Array.from(s).slice(0, max).join("").trim();
 }
 
-function adminTokenFrom(c: { req: { header: (k: string) => string | undefined } }): string {
-  return c.req.header("x-admin-token") ?? "";
+function cleanColor(v: unknown): string | null {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : null;
 }
 
-function validateCells(cells: unknown): { row: number; col: number }[] | null {
-  if (!Array.isArray(cells) || cells.length === 0 || cells.length > GRID_SIZE * GRID_SIZE) return null;
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** One emoji (a single grapheme that is pictographic or a flag), else "". */
+function cleanEmoji(v: unknown): string {
+  if (typeof v !== "string") return "";
+  const first = segmenter.segment(v.trim())[Symbol.iterator]().next().value?.segment ?? "";
+  return first.length <= 16 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(first) ? first : "";
+}
+
+function cleanTeam(v: unknown): Team | null {
+  if (!v || typeof v !== "object") return null;
+  const t = v as Record<string, unknown>;
+  const name = cleanText(t.name, 40);
+  if (!name) return null;
+  const team: Team = { name };
+  const abbr = cleanText(t.abbr, 6).toUpperCase();
+  if (/^[A-Z0-9&.]{1,6}$/.test(abbr)) team.abbr = abbr;
+  const color = cleanColor(t.color);
+  if (color) team.color = color;
+  return team;
+}
+
+function cleanLinkedEvent(v: unknown, now: number): LinkedEvent | null {
+  if (!v || typeof v !== "object") return null;
+  const e = v as Record<string, unknown>;
+  if (e.provider !== "espn" || (e.league !== "nfl" && e.league !== "ncaaf")) return null;
+  if (typeof e.eventId !== "string" || !/^[A-Za-z0-9_-]{1,32}$/.test(e.eventId)) return null;
+  const startsAt = Number(e.startsAt);
+  const day = 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(startsAt) || startsAt < now - day || startsAt > now + 400 * day) return null;
+  if (typeof e.xIsHome !== "boolean") return null;
+  return { provider: "espn", league: e.league, eventId: e.eventId, startsAt: Math.trunc(startsAt), xIsHome: e.xIsHome };
+}
+
+function cleanProfile(v: unknown): { name: string; color: string; emoji: string } {
+  const p = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return { name: cleanText(p.name, 24), color: cleanColor(p.color) ?? DEFAULT_COLOR, emoji: cleanEmoji(p.emoji) };
+}
+
+function intIn(v: unknown, min: number, max: number): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+}
+
+/** Valid, de-duplicated cells for this board; null if any cell is malformed. */
+function parseCells(v: unknown, game: Game): { row: number; col: number }[] | null {
+  const total = totalSquares(game.format.boardSize);
+  if (!Array.isArray(v) || v.length === 0 || v.length > total) return null;
+  const seen = new Set<string>();
   const out: { row: number; col: number }[] = [];
-  for (const cell of cells) {
-    const row = Number((cell as { row: unknown }).row);
-    const col = Number((cell as { col: unknown }).col);
-    if (!Number.isInteger(row) || !Number.isInteger(col)) return null;
-    if (row < 0 || row >= GRID_SIZE || col < 0 || col >= GRID_SIZE) return null;
+  for (const cell of v) {
+    if (!cell || typeof cell !== "object") return null;
+    const { row, col } = cell as { row: unknown; col: unknown };
+    if (typeof row !== "number" || typeof col !== "number" || !isValidCell(game.format.boardSize, row, col)) return null;
+    const key = `${row},${col}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     out.push({ row, col });
   }
   return out;
 }
 
-// ---- Create a game ----
-api.post("/games", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as Partial<CreateGameInput> | null;
-  if (!body) return c.json({ error: "Invalid JSON" }, 400);
-
-  const name = clampStr(body.name, 80) || "Squares Pool";
-  const teamX = clampStr(body.teamX, 40) || "Team X";
-  const teamY = clampStr(body.teamY, 40) || "Team Y";
-  const sport: Sport = SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
-
-  const pricePerSquare = Math.max(0, Number(body.pricePerSquare) || 0);
-  const maxPerPlayer = Math.max(0, Math.trunc(Number(body.maxPerPlayer) || 0));
-
-  const periods = sanitizePeriods(body.periods);
-  if (periods.length === 0) return c.json({ error: "At least one period is required" }, 400);
-
-  const payouts: Record<string, number> = {};
-  for (const p of periods) {
-    payouts[p.key] = Math.max(0, Number(body.payouts?.[p.key]) || 0);
-  }
-
-  const game: Game = {
-    id: makeId(),
-    name,
-    sport,
-    teamX,
-    teamY,
-    pricePerSquare,
-    maxPerPlayer,
-    periods,
-    payouts,
-    xNumbers: null,
-    yNumbers: null,
-    status: "open",
-    createdAt: Date.now(),
-  };
-  const adminToken = makeToken();
-  await db.insertGame(c.env.DB, game, adminToken);
-
-  return c.json({ game, adminToken }, 201);
-});
-
-function sanitizePeriods(input: unknown): Period[] {
-  if (!Array.isArray(input)) return [];
-  const seen = new Set<string>();
-  const out: Period[] = [];
-  for (const p of input.slice(0, 12)) {
-    const key = clampStr((p as Period)?.key, 20).toLowerCase().replace(/[^a-z0-9_]/g, "");
-    const label = clampStr((p as Period)?.label, 20);
-    if (!key || !label || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, label });
-  }
-  return out;
+async function readJson(c: Ctx): Promise<Record<string, unknown>> {
+  const length = Number(c.req.header("content-length") ?? 0);
+  if (length > MAX_BODY_BYTES) throw new HTTPException(413, { message: "Request too large" });
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new HTTPException(400, { message: "Invalid JSON body" });
+  return body as Record<string, unknown>;
 }
 
-// ---- Read full game state ----
-api.get("/games/:id", async (c) => {
-  const state = await db.getGameState(c.env.DB, c.req.param("id"));
-  if (!state) return c.json({ error: "Game not found" }, 404);
-  return c.json(state);
-});
+function fail(status: 400 | 403 | 404 | 409, message: string): never {
+  throw new HTTPException(status, { message });
+}
 
-// ---- Claim squares ----
-api.post("/games/:id/claim", async (c) => {
-  const id = c.req.param("id");
-  const game = await db.getGame(c.env.DB, id);
-  if (!game) return c.json({ error: "Game not found" }, 404);
-  if (game.status !== "open") return c.json({ error: "Squares are locked for this game" }, 409);
+function gameIdParam(c: Ctx): string {
+  const id = c.req.param("id") ?? "";
+  if (!GAME_ID_RE.test(id)) fail(404, "Game not found");
+  return id;
+}
 
-  const body = (await c.req.json().catch(() => null)) as Partial<ClaimInput> | null;
-  const cells = validateCells(body?.cells);
-  const clientId = clampStr(body?.clientId, 64);
-  const playerName = clampStr(body?.playerName, 40);
-  const playerColor = clampStr(body?.playerColor, 16) || "#38bdf8";
-  if (!cells || !clientId || !playerName) return c.json({ error: "Missing name or squares" }, 400);
-
-  // Enforce per-player cap when one is set.
-  if (game.maxPerPlayer > 0) {
-    const owned = (await db.getSquares(c.env.DB, id)).filter((s) => s.clientId === clientId).length;
-    if (owned + cells.length > game.maxPerPlayer) {
-      return c.json({ error: `Limit is ${game.maxPerPlayer} squares per player` }, 409);
-    }
+/** Run work after the response (falls back to fire-and-forget outside a Worker). */
+function defer(c: Ctx, p: Promise<unknown>): void {
+  const guarded = p.catch((err) => console.error("background task failed", err));
+  try {
+    c.executionCtx.waitUntil(guarded);
+  } catch {
+    // no execution context (tests)
   }
+}
 
-  const claimed = await db.claimSquares(
-    c.env.DB,
-    id,
-    cells,
-    { name: playerName, color: playerColor, clientId },
-    Date.now(),
-  );
+/** Push the committed state, plus the activities it recorded, to the room. */
+function publish(c: Ctx, state: GameState, activityIds: string[] = [], notifications: NotifyEvent[] = []): void {
+  const activities = activityIds
+    .map((id) => state.activity.find((a) => a.id === id))
+    .filter((a): a is Activity => !!a);
+  defer(c, pushToRoom(c.env, state.game.id, state, activities));
+  if (notifications.length > 0) defer(c, notifyAll(c.env, state.game.id, notifications));
+}
 
-  const state = await db.getGameState(c.env.DB, id);
-  return c.json({ claimed, skipped: cells.length - claimed, state });
-});
+async function stateOr404(c: Ctx, id: string): Promise<GameState> {
+  const state = await loadState(c.env, id);
+  if (!state) fail(404, "Game not found");
+  return state;
+}
 
-// ---- Release own squares (only while open) ----
-api.post("/games/:id/release", async (c) => {
-  const id = c.req.param("id");
-  const game = await db.getGame(c.env.DB, id);
-  if (!game) return c.json({ error: "Game not found" }, 404);
-  if (game.status !== "open") return c.json({ error: "Squares are locked for this game" }, 409);
+/** Loads state and checks x-admin-token in the same round trip. */
+async function hostState(c: Ctx, id: string): Promise<GameState> {
+  const found = await db.getGameStateWithToken(c.env.DB, id);
+  if (!found) fail(404, "Game not found");
+  const { state, adminToken } = found;
+  if (!tokenMatches(adminToken, c.req.header("x-admin-token") ?? "")) fail(403, "Only the host can do that");
+  return state;
+}
 
-  const body = (await c.req.json().catch(() => null)) as Partial<ReleaseInput> | null;
-  const cells = validateCells(body?.cells);
-  const clientId = clampStr(body?.clientId, 64);
-  if (!cells || !clientId) return c.json({ error: "Invalid request" }, 400);
+async function commitOr404(c: Ctx, id: string, writes: D1PreparedStatement[], now?: number) {
+  const out = await db.commit(c.env.DB, id, writes, now);
+  const { results, state } = out;
+  if (!state) fail(404, "Game not found");
+  return { results, state };
+}
 
-  await db.releaseSquares(c.env.DB, id, cells, clientId);
-  const state = await db.getGameState(c.env.DB, id);
-  return c.json({ state });
-});
+const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const id = c.req.header("x-client-id") ?? "";
+  if (!CLIENT_ID_RE.test(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
+  c.set("clientId", id);
+  await next();
+};
 
-// ---- Lock the game and assign numbers (admin only) ----
-api.post("/games/:id/lock", async (c) => {
-  const id = c.req.param("id");
-  if (!(await db.isAdmin(c.env.DB, id, adminTokenFrom(c)))) return c.json({ error: "Not authorized" }, 403);
+/** Period key a host may score / pick a winner for; resolves "next" on every-score boards. */
+function resolvePeriodKey(state: GameState, raw: unknown, allowNext: boolean): { key: string; label: string } {
+  const { game } = state;
+  const key = typeof raw === "string" ? raw.trim() : "";
+  if (game.format.periods !== "every-score") {
+    const p = game.periods.find((x) => x.key === key);
+    if (!p) fail(400, "Unknown period for this board");
+    return p;
+  }
+  const max = state.scores.reduce((m, s) => Math.max(m, everyScoreIndex(s.periodKey) ?? 0), 0);
+  const n = allowNext && (key === "" || key === "next") ? max + 1 : everyScoreIndex(key);
+  if (n === null || n > max + 1) fail(400, "Unknown score entry");
+  const existing = state.scores.find((s) => s.periodKey === `s${n}`);
+  return { key: `s${n}`, label: existing?.label || everyScorePeriod(n).label };
+}
 
-  const game = await db.getGame(c.env.DB, id);
-  if (!game) return c.json({ error: "Game not found" }, 404);
-  if (game.status === "locked") return c.json({ error: "Game already locked" }, 409);
+// ---- API ----
 
-  await db.lockGame(c.env.DB, id, shuffledDigits(), shuffledDigits());
-  const state = await db.getGameState(c.env.DB, id);
-  return c.json({ state });
-});
-
-// ---- Upsert a period score (admin only) ----
-api.post("/games/:id/scores", async (c) => {
-  const id = c.req.param("id");
-  if (!(await db.isAdmin(c.env.DB, id, adminTokenFrom(c)))) return c.json({ error: "Not authorized" }, 403);
-
-  const game = await db.getGame(c.env.DB, id);
-  if (!game) return c.json({ error: "Game not found" }, 404);
-
-  const body = (await c.req.json().catch(() => null)) as Partial<ScoreInput> | null;
-  const periodKey = clampStr(body?.periodKey, 20);
-  if (!game.periods.some((p) => p.key === periodKey)) return c.json({ error: "Unknown period" }, 400);
-  const scoreX = Math.max(0, Math.trunc(Number(body?.scoreX)));
-  const scoreY = Math.max(0, Math.trunc(Number(body?.scoreY)));
-  if (!Number.isFinite(scoreX) || !Number.isFinite(scoreY)) return c.json({ error: "Invalid score" }, 400);
-
-  await db.upsertScore(c.env.DB, id, { periodKey, scoreX, scoreY }, Date.now());
-  const state = await db.getGameState(c.env.DB, id);
-  return c.json({ state });
-});
-
-// ---- Delete a period score (admin only) ----
-api.delete("/games/:id/scores/:period", async (c) => {
-  const id = c.req.param("id");
-  if (!(await db.isAdmin(c.env.DB, id, adminTokenFrom(c)))) return c.json({ error: "Not authorized" }, 403);
-  await db.deleteScore(c.env.DB, id, c.req.param("period"));
-  const state = await db.getGameState(c.env.DB, id);
-  return c.json({ state });
-});
+const api = new Hono<AppEnv>();
+api.use("*", cors({ origin: "*", maxAge: 86400 }));
 
 api.get("/health", (c) => c.json({ ok: true }));
 
-// Unknown API routes should 404 as JSON rather than fall through to the SPA.
+api.get("/config", (c) =>
+  c.json({ payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null }, 200, {
+    "cache-control": "public, max-age=300",
+  }),
+);
+
+// Routers owned by the scores, payments and push modules.
+api.route("/", scheduleRoutes);
+api.route("/", paymentsRoutes);
+api.route("/", pushRoutes);
+
+api.post("/games", requireClient, async (c) => {
+  const clientId = c.get("clientId");
+  const body = await readJson(c);
+  const now = Date.now();
+
+  const name = cleanText(body.name, 60);
+  if (!name) fail(400, "Give your board a name");
+  const formatProblem = formatError(body.format);
+  if (formatProblem) fail(400, formatProblem);
+  const format = sanitizeFormat(body.format);
+  const teamX = cleanTeam(body.teamX);
+  const teamY = cleanTeam(body.teamY);
+  if (!teamX || !teamY) fail(400, "Pick both teams");
+  const linkedEvent = body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
+  if (body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
+  let league: League = LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
+  if (linkedEvent) league = linkedEvent.league;
+  const sport: Sport = SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
+  const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(format.boardSize));
+  if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
+  const host = cleanProfile(body.host);
+  if (!host.name) fail(400, "Add your name so friends know it's your board");
+
+  const adminToken = makeToken();
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const game: Game = {
+      id: makeId(),
+      name,
+      sport,
+      league,
+      teamX,
+      teamY,
+      format,
+      periods: periodsFor(format.periods),
+      prizes: sanitizePrizes(format, body.prizes),
+      maxPerPlayer,
+      numbers: null,
+      status: "draft",
+      linkedEvent,
+      hostClientId: clientId,
+      createdAt: now,
+      lockedAt: null,
+    };
+    try {
+      const created = newActivity("created", clientId, {}, now);
+      await c.env.DB.batch(db.insertGame(c.env.DB, game, adminToken, { ...host, joinedAt: now }, created));
+    } catch (err) {
+      if (String(err).includes("UNIQUE") && attempt < 3) continue; // id collision: roll again
+      throw err;
+    }
+    const res: CreateGameResponse = { game, adminToken, paymentRequired: true };
+    return c.json(res, 201);
+  }
+  throw new Error("unreachable");
+});
+
+api.get("/games/:id", async (c) => {
+  const state = await stateOr404(c, gameIdParam(c));
+  return c.json(state, 200, { "cache-control": "no-store" });
+});
+
+api.patch("/games/:id", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  const body = await readJson(c);
+  const fields: { name?: string; prizes?: Record<string, string>; maxPerPlayer?: number } = {};
+  if (body.name !== undefined) {
+    fields.name = cleanText(body.name, 60);
+    if (!fields.name) fail(400, "Board name can't be empty");
+  }
+  if (body.prizes !== undefined) fields.prizes = sanitizePrizes(state.game.format, body.prizes);
+  if (body.maxPerPlayer !== undefined) {
+    if (state.game.status !== "draft" && state.game.status !== "open") fail(409, "Squares are already locked");
+    const max = intIn(body.maxPerPlayer, 0, totalSquares(state.game.format.boardSize));
+    if (max === null) fail(400, "Squares per player must be a whole number");
+    fields.maxPerPlayer = max;
+  }
+  const stmt = db.updateGameFields(c.env.DB, id, fields);
+  if (!stmt) fail(400, "Nothing to update");
+  const { state: next } = await commitOr404(c, id, [stmt]);
+  publish(c, next);
+  return c.json({ state: next });
+});
+
+api.delete("/games/:id", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  await hostState(c, id);
+  await db.deleteGame(c.env.DB, id);
+  defer(c, roomStub(c.env, id).fetch("https://room/close", { method: "POST", headers: { "x-game-id": id } }));
+  return c.json({ ok: true });
+});
+
+api.post("/games/:id/join", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const clientId = c.get("clientId");
+  const state = await stateOr404(c, id);
+  if (state.game.status === "draft" && clientId !== state.game.hostClientId) fail(409, "This board isn't open yet");
+  const profile = cleanProfile(await readJson(c));
+  if (!profile.name) fail(400, "Pick a name");
+  const isNew = !state.players.some((p) => p.clientId === clientId);
+  const now = Date.now();
+  const writes = [db.upsertPlayer(c.env.DB, id, { clientId, ...profile, joinedAt: now })];
+  const joined = isNew ? newActivity("joined", clientId, { name: profile.name }, now) : null;
+  if (joined) writes.push(db.insertActivity(c.env.DB, id, joined));
+  const { state: next } = await commitOr404(c, id, writes, now);
+  const notify: NotifyEvent[] = isNew && clientId !== state.game.hostClientId ? [{ kind: "player-joined", name: profile.name }] : [];
+  publish(c, next, joined ? [joined.id] : [], notify);
+  return c.json({ state: next });
+});
+
+function requireOpen(state: GameState): void {
+  if (state.game.status === "draft") fail(409, "This board isn't open yet");
+  if (state.game.status !== "open") fail(409, "Squares are locked");
+}
+
+api.post("/games/:id/claim", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const clientId = c.get("clientId");
+  const state = await stateOr404(c, id);
+  const { game } = state;
+  requireOpen(state);
+  if (!state.players.some((p) => p.clientId === clientId)) fail(403, "Join the board first");
+  const cells = parseCells((await readJson(c)).cells, game);
+  if (!cells) fail(400, "Pick squares on this board");
+
+  const taken = new Set(state.squares.map((s) => `${s.row},${s.col}`));
+  let wanted = cells.filter((x) => !taken.has(`${x.row},${x.col}`));
+  if (game.maxPerPlayer > 0) {
+    const mine = state.squares.filter((s) => s.clientId === clientId).length;
+    const room = game.maxPerPlayer - mine;
+    if (room <= 0) fail(409, `You can have up to ${game.maxPerPlayer} squares on this board`);
+    wanted = wanted.slice(0, room);
+  }
+  const requested = cells.length;
+  if (wanted.length === 0) return c.json({ claimed: 0, skipped: requested, state });
+
+  const now = Date.now();
+  const activityId = db.newActivityId();
+  const { results, state: next } = await commitOr404(
+    c,
+    id,
+    [...db.claimSquares(c.env.DB, id, clientId, wanted, now), db.claimActivity(c.env.DB, id, activityId, clientId, now)],
+    now,
+  );
+  const claimed = results.slice(0, wanted.length).reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+  if (claimed > 0) {
+    const full = next.squares.length >= totalSquares(game.format.boardSize);
+    publish(c, next, [activityId], full ? [{ kind: "board-full" }] : []);
+  }
+  return c.json({ claimed, skipped: requested - claimed, state: next });
+});
+
+api.post("/games/:id/release", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const clientId = c.get("clientId");
+  const state = await stateOr404(c, id);
+  requireOpen(state);
+  const cells = parseCells((await readJson(c)).cells, state.game);
+  if (!cells) fail(400, "Pick squares on this board");
+  const mine = new Set(state.squares.filter((s) => s.clientId === clientId).map((s) => `${s.row},${s.col}`));
+  const own = cells.filter((x) => mine.has(`${x.row},${x.col}`));
+  if (own.length === 0) return c.json({ state });
+  const now = Date.now();
+  const released = newActivity("released", clientId, { count: own.length, cells: own }, now);
+  const { state: next } = await commitOr404(
+    c,
+    id,
+    [...db.releaseSquares(c.env.DB, id, clientId, own), db.insertActivity(c.env.DB, id, released)],
+    now,
+  );
+  publish(c, next, [released.id]);
+  return c.json({ state: next });
+});
+
+api.post("/games/:id/lock", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  if (state.game.status === "draft") fail(409, "This board isn't open yet");
+  if (state.game.status !== "open") fail(409, "Numbers are already drawn");
+  const now = Date.now();
+  const locked = newActivity("locked", c.get("clientId"), {}, now);
+  const { state: next } = await commitOr404(
+    c,
+    id,
+    [db.lockGame(c.env.DB, id, drawNumbers(state.game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked)],
+    now,
+  );
+  const recorded = next.activity.some((a) => a.id === locked.id);
+  publish(c, next, [locked.id], recorded ? [{ kind: "numbers-drawn" }] : []);
+  return c.json({ state: next });
+});
+
+function requireLocked(state: GameState): void {
+  if (state.game.status !== "locked" && state.game.status !== "final") fail(409, "Lock the board to draw numbers first");
+}
+
+api.post("/games/:id/scores", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  const { game } = state;
+  requireLocked(state);
+  const body = await readJson(c);
+  const scoreX = intIn(body.scoreX, 0, MAX_SCORE);
+  const scoreY = intIn(body.scoreY, 0, MAX_SCORE);
+  if (scoreX === null || scoreY === null) fail(400, `Scores are whole numbers from 0 to ${MAX_SCORE}`);
+  const period = resolvePeriodKey(state, body.periodKey, true);
+  const everyScore = game.format.periods === "every-score";
+  const label = everyScore ? cleanText(body.label, 24) || period.label : period.label;
+  const now = Date.now();
+  const actor = c.get("clientId");
+  const changed = { periodKey: period.key, label, scoreX, scoreY };
+
+  const projectedScores = [
+    ...state.scores.filter((s) => s.periodKey !== period.key),
+    { ...changed, source: "host" as const, updatedAt: now, ...(everyScore ? { label } : {}) },
+  ];
+  const { activities, notifications } = scoreEvents({ ...state, scores: projectedScores }, [changed], "host", actor, now);
+  const writes = [
+    db.upsertHostScore(c.env.DB, id, { ...changed, label: everyScore ? label : null }, now),
+    ...activities.map((a) => db.insertActivity(c.env.DB, id, a)),
+  ];
+  // Typed-in boards end when the host records the Final score.
+  const final = period.key === "final" && game.status === "locked" && !game.linkedEvent ? newActivity("final", actor, {}, now) : null;
+  if (final) writes.push(db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final));
+
+  const { state: next } = await commitOr404(c, id, writes, now);
+  const ids = activities.map((a) => a.id);
+  if (final && next.activity.some((a) => a.id === final.id)) {
+    ids.push(final.id);
+    notifications.push({ kind: "final" });
+  }
+  publish(c, next, ids, notifications);
+  return c.json({ state: next });
+});
+
+api.delete("/games/:id/scores/:periodKey", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  const periodKey = c.req.param("periodKey");
+  if (!state.scores.some((s) => s.periodKey === periodKey)) fail(404, "No score for that period");
+  const writes = [db.deleteScore(c.env.DB, id, periodKey)];
+  // Removing the Final score of a typed-in board reopens scoring.
+  if (periodKey === "final" && state.game.status === "final" && !state.game.linkedEvent) {
+    writes.push(db.reopenFinal(c.env.DB, id));
+  }
+  const { state: next } = await commitOr404(c, id, writes);
+  publish(c, next);
+  return c.json({ state: next });
+});
+
+api.post("/games/:id/winners", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  requireLocked(state);
+  const body = await readJson(c);
+  const period = resolvePeriodKey(state, body.periodKey, false);
+  const row = typeof body.row === "number" ? body.row : NaN;
+  const col = typeof body.col === "number" ? body.col : NaN;
+  if (!isValidCell(state.game.format.boardSize, row, col)) fail(400, "Pick a square on this board");
+  const now = Date.now();
+  const manualWinners = [
+    ...state.manualWinners.filter((m) => m.periodKey !== period.key),
+    { periodKey: period.key, row, col, updatedAt: now },
+  ];
+  const result = resolveResults({ ...state, manualWinners }).find((r) => r.periodKey === period.key);
+  const clientIds = result?.winnerClientId ? [result.winnerClientId] : [];
+  const winner = newActivity(
+    "winner",
+    c.get("clientId"),
+    { periodKey: period.key, label: period.label, clientIds, cell: { row, col }, manual: true, prize: result?.prize ?? null },
+    now,
+  );
+  const { state: next } = await commitOr404(
+    c,
+    id,
+    [db.upsertManualWinner(c.env.DB, id, { periodKey: period.key, row, col }, now), db.insertActivity(c.env.DB, id, winner)],
+    now,
+  );
+  publish(
+    c,
+    next,
+    [winner.id],
+    clientIds.length > 0 ? [{ kind: "winner", periodKey: period.key, label: period.label, clientIds }] : [],
+  );
+  return c.json({ state: next });
+});
+
+api.delete("/games/:id/winners/:periodKey", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  const periodKey = c.req.param("periodKey");
+  if (!state.manualWinners.some((m) => m.periodKey === periodKey)) fail(404, "No host pick for that period");
+  const { state: next } = await commitOr404(c, id, [db.deleteManualWinner(c.env.DB, id, periodKey)]);
+  publish(c, next);
+  return c.json({ state: next });
+});
+
+api.post("/games/:id/final", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  if (state.game.status === "final") return c.json({ state });
+  requireLocked(state);
+  const now = Date.now();
+  const final = newActivity("final", c.get("clientId"), {}, now);
+  const { state: next } = await commitOr404(
+    c,
+    id,
+    [db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final)],
+    now,
+  );
+  const recorded = next.activity.some((a) => a.id === final.id);
+  publish(c, next, [final.id], recorded ? [{ kind: "final" }] : []);
+  return c.json({ state: next });
+});
+
+api.get("/games/:id/live", async (c) => {
+  const id = gameIdParam(c);
+  if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
+    return c.json({ error: "Expected a WebSocket upgrade" }, 426);
+  }
+  const url = new URL(c.req.url);
+  const clientId = url.searchParams.get("clientId") ?? "";
+  const target = new URL("https://room/live");
+  if (CLIENT_ID_RE.test(clientId)) target.searchParams.set("clientId", clientId);
+  const headers = new Headers(c.req.raw.headers);
+  headers.set("x-game-id", id);
+  return roomStub(c.env, id).fetch(target.toString(), { headers });
+});
+
+api.get("/me/games", requireClient, async (c) => {
+  const games = await db.listGamesForClient(c.env.DB, c.get("clientId"));
+  return c.json({ games }, 200, { "cache-control": "no-store" });
+});
+
+// Unknown API routes 404 as JSON rather than falling through to the SPA.
 api.all("*", (c) => c.json({ error: "Not found" }, 404));
+
+// ---- App ----
+
+const app = new Hono<AppEnv>();
+
+app.onError((err, c) => {
+  if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);
+  console.error(err);
+  return c.json({ error: "Something went wrong" }, 500);
+});
 
 app.route("/api", api);
 
-// Everything else is the React SPA. Delegating to the assets binding lets
-// `not_found_handling: single-page-application` serve index.html for deep
-// links (e.g. /g/abc123) so client-side routing works on refresh.
+app.get("/.well-known/apple-app-site-association", (c) => {
+  const env = c.env as CoreEnv;
+  const appId = `${env.APPLE_TEAM_ID ?? "TEAMID"}.${env.APPLE_BUNDLE_ID ?? DEFAULT_BUNDLE_ID}`;
+  return c.json(
+    {
+      applinks: {
+        apps: [],
+        details: [
+          {
+            // `appIDs` + `components` for iOS 13+; `appID` + `paths` for older devices.
+            appIDs: [appId],
+            components: [{ "/": "/g/*", comment: "Board invite links" }],
+            appID: appId,
+            paths: ["/g/*"],
+          },
+        ],
+      },
+    },
+    200,
+    { "cache-control": "public, max-age=3600" },
+  );
+});
+
+app.get("/.well-known/assetlinks.json", (c) => {
+  const env = c.env as CoreEnv;
+  const fingerprints = (env.ANDROID_SHA256_CERT_FINGERPRINTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return c.json(
+    [
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: env.ANDROID_PACKAGE ?? DEFAULT_BUNDLE_ID,
+          sha256_cert_fingerprints: fingerprints,
+        },
+      },
+    ],
+    200,
+    { "cache-control": "public, max-age=3600" },
+  );
+});
+
+async function invitePage(c: Ctx): Promise<Response> {
+  const id = c.req.param("id") ?? "";
+  const indexReq = new Request(new URL("/", c.req.url), { headers: { accept: "text/html" } });
+  const [html, state] = await Promise.all([
+    c.env.ASSETS.fetch(indexReq),
+    GAME_ID_RE.test(id) ? loadState(c.env, id).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (!state || !html.ok) return html;
+  return withInviteMeta(html, inviteMeta(state, new URL(c.req.url).origin));
+}
+
+app.get("/g/:id", invitePage);
+app.get("/g/:id/*", invitePage);
+
+// Everything else is the React SPA; `not_found_handling: single-page-application`
+// serves index.html for deep links so client-side routing works on refresh.
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-export default app;
+// ---- Cron: start live polling for linked games about to kick off or in progress ----
+
+async function scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+  const ids = await db.gamesToWake(env.DB, Date.now(), POLL_LEAD_MS);
+  const results = await Promise.allSettled(
+    ids.map((id) => roomStub(env, id).fetch("https://room/wake", { method: "POST", headers: { "x-game-id": id } })),
+  );
+  for (const r of results) if (r.status === "rejected") console.error("wake failed", r.reason);
+}
+
+export default { fetch: app.fetch, scheduled } satisfies ExportedHandler<Env>;

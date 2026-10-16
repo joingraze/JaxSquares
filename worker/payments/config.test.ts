@@ -1,0 +1,66 @@
+// @vitest-environment node
+import { describe, expect, it, vi } from "vitest";
+import type { Env } from "../env";
+import { DEFAULT_IAP_PRODUCT_ID, boardPriceCents, getPaymentConfig, missingLiveKeys } from "./config";
+
+const LIVE_KEYS: Partial<Env> = {
+  STRIPE_SECRET_KEY: "sk_live_x",
+  STRIPE_PUBLISHABLE_KEY: "pk_live_x",
+  STRIPE_WEBHOOK_SECRET: "whsec_x",
+  APPLE_IAP_KEY_ID: "KEY123",
+  APPLE_IAP_ISSUER_ID: "issuer-uuid",
+  APPLE_IAP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
+  APPLE_BUNDLE_ID: "com.jaxsquares.app",
+};
+
+const env = (vars: Partial<Env>) => vars as Env;
+
+describe("getPaymentConfig", () => {
+  it("runs the test checkout when PAYMENTS_MODE is unset, even with every key present", () => {
+    const cfg = getPaymentConfig(env({ ...LIVE_KEYS }));
+    expect(cfg.mode).toBe("test");
+    expect(cfg.stripePublishableKey).toBeNull();
+  });
+
+  it("goes live only with PAYMENTS_MODE=live and every key for both rails", () => {
+    const cfg = getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: "live", BOARD_PRICE_CENTS: "499" }));
+    expect(cfg).toEqual({
+      mode: "live",
+      priceCents: 499,
+      currency: "usd",
+      stripePublishableKey: "pk_live_x",
+      iapProductId: DEFAULT_IAP_PRODUCT_ID,
+    });
+    expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: " LIVE " })).mode).toBe("live");
+  });
+
+  it("stays in test mode (and says which keys are missing) when live is asked for but a key is absent", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const key of Object.keys(LIVE_KEYS) as (keyof Env)[]) {
+      const partial = env({ ...LIVE_KEYS, [key]: "  ", PAYMENTS_MODE: "live" });
+      expect(getPaymentConfig(partial).mode).toBe("test");
+      expect(missingLiveKeys(partial)).toEqual([key]);
+    }
+    expect(error).toHaveBeenCalledTimes(1); // once per isolate, not per request
+    error.mockRestore();
+  });
+
+  it("only treats the exact word live as live", () => {
+    expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: "production" })).mode).toBe("test");
+    expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: "test" })).mode).toBe("test");
+  });
+
+  it("uses the configured IAP product id", () => {
+    expect(getPaymentConfig(env({ IAP_PRODUCT_ID: "com.example.board" })).iapProductId).toBe("com.example.board");
+  });
+});
+
+describe("boardPriceCents", () => {
+  it("reads BOARD_PRICE_CENTS and falls back to $4.99 for missing, fractional or sub-minimum values", () => {
+    expect(boardPriceCents(env({ BOARD_PRICE_CENTS: "999" }))).toBe(999);
+    expect(boardPriceCents(env({}))).toBe(499);
+    expect(boardPriceCents(env({ BOARD_PRICE_CENTS: "4.99" }))).toBe(499);
+    expect(boardPriceCents(env({ BOARD_PRICE_CENTS: "25" }))).toBe(499);
+    expect(boardPriceCents(env({ BOARD_PRICE_CENTS: "abc" }))).toBe(499);
+  });
+});

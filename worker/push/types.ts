@@ -1,0 +1,60 @@
+// Types shared inside the push module. `NotifyEvent` is part of the cross-module
+// contract (docs/ARCHITECTURE.md) and is re-exported from ./index.
+
+export type NotifyEvent = (
+  | { kind: "numbers-drawn" }
+  | { kind: "winner"; periodKey: string; label: string; clientIds: string[] }
+  | { kind: "game-starting" }
+  | { kind: "board-full" }
+  | { kind: "player-joined"; name: string }
+  | { kind: "final" }
+) & {
+  /** clientId of whoever caused the event (e.g. the host who drew numbers); they aren't notified about their own action. */
+  actor?: string;
+};
+
+export type NotifyKind = NotifyEvent["kind"];
+
+/** One notification, platform-neutral. Each transport maps it to its own payload. */
+export interface PushContent {
+  title: string;
+  body: string;
+  /** In-app path to open on tap, e.g. "/g/abc123". */
+  url: string;
+  /** Empty for the setup test push. */
+  gameId: string;
+  kind: NotifyKind | "test";
+  /** Collapse key: a newer notification with the same tag replaces the older one. */
+  tag: string;
+  /** Alert again when replacing a notification with the same tag. */
+  renotify: boolean;
+  /** Board chatter rather than a game moment: no sound, no buzz, own Android channel. */
+  quiet: boolean;
+  urgency: "high" | "normal";
+  /** How long the push service should keep trying to deliver it. */
+  ttlSeconds: number;
+}
+
+/** Who gets what for one event. */
+export interface Delivery {
+  clientId: string;
+  content: PushContent;
+}
+
+export type Platform = "web" | "ios" | "android";
+
+export interface SubscriptionRow {
+  endpoint_or_token: string;
+  client_id: string;
+  platform: Platform;
+  p256dh: string | null;
+  auth: string | null;
+  unread: number;
+}
+
+/**
+ * What to do with a subscription after a send:
+ * ok – delivered; gone – the device unsubscribed, delete it; retry-auth – our
+ * access token was rejected; error – transient or our fault, keep it.
+ */
+export type SendOutcome = "ok" | "gone" | "retry-auth" | "error";

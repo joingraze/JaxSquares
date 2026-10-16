@@ -6,13 +6,53 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
     />
-    <meta name="theme-color" content="#0b1120" />
+    <title>JaxSquares</title>
     <meta
       name="description"
-      content="JaxSquares — play Super Bowl Squares and more sports games with your friends."
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
     />
+    <meta name="theme-color" content="#060a16" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Scores like 21-14 must not turn into phone links. -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Installed web app (Add to Home Screen) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="JaxSquares" />
+    <meta name="application-name" content="JaxSquares" />
+
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>JaxSquares</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Default link preview. The worker replaces og:* / twitter:* per board on /g/:id. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="JaxSquares" />
+    <meta property="og:title" content="You're invited to play squares" />
+    <meta
+      property="og:description"
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
+    />
+    <meta property="og:url" content="https://jaxsquares.com/" />
+    <meta property="og:image" content="https://jaxsquares.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="JaxSquares football squares board" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="You're invited to play squares" />
+    <meta
+      name="twitter:description"
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
+    />
+    <meta name="twitter:image" content="https://jaxsquares.com/og-image.png" />
+
+    <!-- Paint the app background before the CSS bundle arrives: no white flash on launch. -->
+    <style>
+      html { background: #060a16; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

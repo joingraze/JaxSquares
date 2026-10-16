@@ -292,6 +292,12 @@ export interface ScheduleEvent {
   state: "pre" | "in" | "post";
 }
 
+/** GET /api/schedule. `unavailable` is true when the provider couldn't be reached (still 200). */
+export interface ScheduleResponse {
+  events: ScheduleEvent[];
+  unavailable?: boolean;
+}
+
 export interface PaymentConfig {
   /** "test" simulates checkout with no charge; "live" uses Stripe / Apple IAP. */
   mode: "test" | "live";
