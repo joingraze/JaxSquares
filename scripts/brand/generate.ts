@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // Renders every brand asset from the SVG/HTML sources in this folder with
 // headless Chromium, so the icon, favicon, PWA icons, iOS app icon + launch
 // image and the link-preview card always come from one design.
