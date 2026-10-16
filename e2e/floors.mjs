@@ -130,11 +130,19 @@ async function createToInvite(browser, { linked }) {
   await shot(page, `${linked ? "l" : "c"}-03-details`);
   await tap(page, t, page.getByTestId("create-submit"), "create board");
 
-  await waitFor(page, t, page.getByTestId("pay-confirm"), "checkout");
-  t.screens += 1;
-  await shot(page, `${linked ? "l" : "c"}-04-checkout`);
-  await tap(page, t, page.getByTestId("pay-confirm"), "pay");
-
+  // Live web checkout shows a confirm sheet; test mode and the App Store
+  // create and open the board in one tap.
+  const pay = page.getByTestId("pay-confirm");
+  const invite = page.getByTestId("invite-share");
+  const first = await Promise.race([
+    pay.first().waitFor({ state: "visible", timeout: 20000 }).then(() => "pay"),
+    invite.first().waitFor({ state: "visible", timeout: 20000 }).then(() => "invite"),
+  ]);
+  if (first === "pay") {
+    t.screens += 1;
+    await shot(page, `${linked ? "l" : "c"}-04-checkout`);
+    await tap(page, t, pay, "pay");
+  }
   await waitFor(page, t, page.getByTestId("invite-share"), "invite sheet", 20000);
   t.screens += 1;
   await shot(page, `${linked ? "l" : "c"}-05-invite`);

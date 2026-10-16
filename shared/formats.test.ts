@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  periodPhrase,
   PERIOD_PRESETS,
   PRESET_INFO,
   PRIZE_MONEY_ERROR,
@@ -228,5 +229,15 @@ describe("validatePrizeNote", () => {
     expect(validatePrizeNote("ｂｅｔ")).toBe(PRIZE_MONEY_ERROR);
     expect(validatePrizeNote("＄20")).toBe(PRIZE_MONEY_ERROR);
     expect(validatePrizeNote("ven\u200bmo")).toBe(PRIZE_MONEY_ERROR);
+  });
+});
+
+describe("periodPhrase", () => {
+  it("gives a chip label and an in-sentence moment for fixed periods", () => {
+    expect(periodPhrase("q2")).toEqual({ short: "Half", moment: "at halftime" });
+    expect(periodPhrase("final").moment).toBe("at the final whistle");
+  });
+  it("handles every-score entries", () => {
+    expect(periodPhrase("s3")).toEqual({ short: "Score 3", moment: "on score 3" });
   });
 });

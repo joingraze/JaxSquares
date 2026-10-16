@@ -178,8 +178,13 @@ try {
     }
     await snap(page, "create-format");
     if (want("checkout")) {
+      // Test mode creates the board in one tap (no checkout sheet); capture
+      // whichever comes first: the checkout sheet or the new board's invite sheet.
       await page.getByTestId("create-submit").first().tap();
-      await page.getByTestId("pay-confirm").first().waitFor();
+      await Promise.race([
+        page.getByTestId("pay-confirm").first().waitFor({ timeout: 20000 }),
+        page.getByTestId("invite-share").first().waitFor({ timeout: 20000 }),
+      ]).catch(() => {});
       await snap(page, "checkout");
     }
   }

@@ -213,3 +213,25 @@ export function formatSummary(format: GameFormat): string {
   if (format.freshNumbers && format.periods === "quarters") parts.push("New numbers each quarter");
   return parts.join(" · ");
 }
+
+/**
+ * How to talk about a period. `short` is the chip/card label ("Q1", "Half",
+ * "Final", "Score 3"); `moment` reads naturally inside a sentence
+ * ("Your square hit at halftime", "Maya wins at the end of Q1").
+ * Every screen uses this so the app speaks one vocabulary.
+ */
+export function periodPhrase(periodKey: string, label?: string): { short: string; moment: string } {
+  switch (periodKey) {
+    case "q1":
+      return { short: "Q1", moment: "at the end of Q1" };
+    case "q2":
+      return { short: "Half", moment: "at halftime" };
+    case "q3":
+      return { short: "Q3", moment: "at the end of Q3" };
+    case "final":
+      return { short: "Final", moment: "at the final whistle" };
+  }
+  const n = everyScoreIndex(periodKey);
+  if (n !== null) return { short: label || `Score ${n}`, moment: `on score ${n}` };
+  return { short: label || periodKey, moment: label ? `at ${label}` : "" };
+}
