@@ -3,6 +3,7 @@
   "name": "jaxsquares",
   "main": "worker/index.ts",
   "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
   },
@@ -11,7 +12,10 @@
     // back to index.html so client-side routing works on deep links. The
     // binding lets the Worker delegate non-API routes to the asset server.
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Let the Worker see /g/* first so it can add per-game link previews, and
+    // /.well-known/* so it can serve universal-link files.
+    "run_worker_first": ["/api/*", "/g/*", "/.well-known/*"]
   },
   "d1_databases": [
     {
@@ -20,5 +24,19 @@
       "database_id": "74a1e4ae-532c-4145-9cbf-ec3acdb3cfdb",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // One GameRoom per game: live sockets, presence, and live-score polling.
+  "durable_objects": {
+    "bindings": [{ "name": "GAME_ROOM", "class_name": "GameRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  // Wake rooms of linked games that are about to start or in progress.
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "APP_ORIGIN": "https://jaxsquares.com",
+    // Leave PAYMENTS_MODE unset (test checkout, no charge) until Stripe and
+    // App Store keys are added as secrets; then set it to "live".
+    "BOARD_PRICE_CENTS": "499",
+    "IAP_PRODUCT_ID": "com.jaxsquares.app.board"
+  }
 }
