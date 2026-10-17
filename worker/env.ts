@@ -1,5 +1,15 @@
 // Bindings, vars and secrets available to the Worker. Optional entries are
 // unset in local dev; every integration must degrade gracefully without them.
+//
+// This file only declares names. Never put values here (it is committed):
+// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE)
+//   go in wrangler.jsonc "vars".
+// - Secrets (Stripe, Apple IAP key, VAPID private key, FCM service account)
+//   go in Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
+//   Workers -> jaxsquares -> Settings -> Variables and Secrets).
+// - Local dev values go in .dev.vars (gitignored; see .dev.vars.example).
+// - CLOUDFLARE_API_TOKEN is a deploy credential for wrangler, not a Worker
+//   setting: it lives in the GitHub repo secret / the Claude cloud environment.
 
 export interface Env {
   DB: D1Database;

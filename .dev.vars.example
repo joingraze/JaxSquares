@@ -1,0 +1,25 @@
+# Local dev secrets for `npm run dev`. Copy to .dev.vars (gitignored) and fill in
+# only what you want to test locally; everything is optional and the app falls
+# back gracefully (test checkout, no push) when a value is missing.
+# Production values are set with `npx wrangler secret put NAME`, never here.
+
+# Payments (docs/payments.md). Leave PAYMENTS_MODE unset for the no-charge test checkout.
+# PAYMENTS_MODE=live
+# STRIPE_SECRET_KEY=
+# STRIPE_PUBLISHABLE_KEY=
+# STRIPE_WEBHOOK_SECRET=
+# APPLE_IAP_KEY_ID=
+# APPLE_IAP_ISSUER_ID=
+# APPLE_IAP_PRIVATE_KEY=
+# APPLE_BUNDLE_ID=com.jaxsquares.app
+# APPLE_TEAM_ID=
+
+# Push (docs/push.md)
+# VAPID_PUBLIC_KEY=
+# VAPID_PRIVATE_KEY=
+# VAPID_SUBJECT=mailto:support@jaxsquares.com
+# FCM_SERVICE_ACCOUNT=
+
+# Android app links
+# ANDROID_PACKAGE=com.jaxsquares.app
+# ANDROID_SHA256_CERT_FINGERPRINTS=
