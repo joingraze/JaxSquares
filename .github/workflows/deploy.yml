@@ -30,6 +30,31 @@ jobs:
       - name: Verify
         run: npm run typecheck && npm run test
 
+      # Use the "jaxsquares" D1 database in the token's account, creating it on
+      # first deploy, and point wrangler.jsonc at it for this run.
+      - name: Ensure the D1 database exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          find_id() {
+            npx wrangler d1 list --json | node -e "
+              const list = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+              const db = list.find((d) => d.name === 'jaxsquares');
+              process.stdout.write(db ? db.uuid : '');"
+          }
+          id=$(find_id)
+          if [ -z "$id" ]; then
+            npx wrangler d1 create jaxsquares
+            id=$(find_id)
+          fi
+          [ -n "$id" ] || { echo "Could not find or create the jaxsquares D1 database"; exit 1; }
+          echo "D1 jaxsquares database_id: $id"
+          node -e "
+            const fs = require('fs');
+            const p = 'wrangler.jsonc';
+            fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/\"database_id\": \"[^\"]+\"/, '\"database_id\": \"' + process.argv[1] + '\"'));" "$id"
+          grep -n database_id wrangler.jsonc
+
       - name: Apply D1 migrations
         uses: cloudflare/wrangler-action@v3
         with:
