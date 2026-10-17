@@ -9,8 +9,6 @@ on:
     branches:
       - main
       - claude/relaxed-meitner-0wwvuy
-      # Temporary: deploy the v1 build from its working branch.
-      - claude/determined-fermat-b0si26
   workflow_dispatch:
 
 jobs:
