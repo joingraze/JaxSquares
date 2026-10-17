@@ -62,8 +62,25 @@ jobs:
           command: d1 migrations apply jaxsquares --remote
 
       - name: Build and deploy
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy
           preCommands: npm run build
+
+      # Read-only checks against the live Worker (no data is written).
+      - name: Smoke test the live site
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            curl -fsS "$URL/api/health" && break
+            sleep 5
+          done
+          echo
+          curl -fsS "$URL/api/health" | grep -q '"ok":true'
+          curl -fsS "$URL/api/config" | head -c 300; echo
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/")" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/g/abc234")" = 200
+          echo "Live: $URL"
