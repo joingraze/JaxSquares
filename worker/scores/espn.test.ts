@@ -41,17 +41,22 @@ describe("URLs", () => {
     expect(espnDate(Date.parse("2026-10-19T00:20:00Z"))).toBe("20261019");
   });
 
-  it("builds the NFL scoreboard URL for a date range", () => {
-    const url = new URL(scoreboardUrl("nfl", Date.parse("2026-10-17T12:00Z"), Date.parse("2026-10-27T12:00Z")));
+  it("builds the current-slate scoreboard URL with no dates", () => {
+    expect(scoreboardUrl("nfl")).toBe("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
+  });
+
+  it("builds a single-day scoreboard URL (ESPN rejects date ranges)", () => {
+    const url = new URL(scoreboardUrl("nfl", Date.parse("2026-10-17T00:00Z")));
     expect(url.origin + url.pathname).toBe("https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard");
-    expect(url.searchParams.get("dates")).toBe("20261017-20261027");
+    expect(url.searchParams.get("dates")).toBe("20261017");
     expect(url.searchParams.has("groups")).toBe(false);
   });
 
   it("limits college to FBS", () => {
-    const url = new URL(scoreboardUrl("ncaaf", NOW, NOW));
+    const url = new URL(scoreboardUrl("ncaaf", NOW));
     expect(url.pathname).toBe("/apis/site/v2/sports/football/college-football/scoreboard");
     expect(url.searchParams.get("groups")).toBe("80");
+    expect(url.searchParams.get("limit")).toBe("300");
   });
 
   it("builds the summary URL", () => {

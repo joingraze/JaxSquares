@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LinkedEvent, ScheduleResponse } from "../../shared/types";
 import { scoreboard, status, summary, TEAMS, type EventFixture } from "./espn.fixtures";
+import { clearMemoryCache } from "./cache";
 import { fetchLiveForEvent, getSchedule, scheduleRoutes } from "./index";
 import { MemoryCache } from "./testCache";
 
@@ -38,6 +39,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("caches", { default: cache });
   vi.spyOn(console, "warn").mockImplementation(() => {});
+  clearMemoryCache();
 });
 
 afterEach(() => {
@@ -47,7 +49,7 @@ afterEach(() => {
 });
 
 describe("GET /schedule", () => {
-  it("lists upcoming and live games for the next ~10 days, soonest first", async () => {
+  it("lists upcoming and live games for the next ~week, soonest first", async () => {
     respondWith(() =>
       scoreboard([
         ev("later", NOW + 3 * DAY, status.scheduled()),
@@ -65,10 +67,29 @@ describe("GET /schedule", () => {
     expect(body.events.map((e) => e.eventId)).toEqual(["live", "soon", "later"]);
     expect(body.events[0]).toMatchObject({ league: "nfl", state: "in", home: { abbr: "KC" }, away: { abbr: "BUF" } });
 
-    const url = new URL(String(fetchMock.mock.calls[0][0]));
-    expect(url.pathname).toBe("/apis/site/v2/sports/football/nfl/scoreboard");
-    expect(url.searchParams.get("dates")).toBe("20261015-20261026");
+    // The current slate plus one request per day ahead (ESPN rejects date ranges).
+    const urls = fetchMock.mock.calls.map((c) => new URL(String(c[0])));
+    expect(urls[0].pathname).toBe("/apis/site/v2/sports/football/nfl/scoreboard");
+    expect(urls[0].searchParams.has("dates")).toBe(false);
+    expect(urls.slice(1).map((u) => u.searchParams.get("dates"))).toEqual([
+      "20261016", "20261017", "20261018", "20261019", "20261020", "20261021", "20261022", "20261023",
+    ]);
     expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(new Headers(fetchMock.mock.calls[0][1].headers).has("user-agent")).toBe(false);
+  });
+
+  it("still lists games when some days fail", async () => {
+    respondWith((url) =>
+      url.searchParams.get("dates") === "20261018"
+        ? new Response("busy", { status: 503 })
+        : url.searchParams.has("dates")
+          ? scoreboard([ev(`day-${url.searchParams.get("dates")}`, NOW + 3 * HOUR, status.scheduled())])
+          : scoreboard([ev("slate", NOW + 2 * HOUR, status.scheduled())]),
+    );
+    const events = await getSchedule("nfl");
+    expect(events?.map((e) => e.eventId)).toContain("slate");
+    expect(events?.map((e) => e.eventId)).toContain("day-20261017");
+    expect(events?.map((e) => e.eventId)).not.toContain("day-20261018");
   });
 
   it("queries FBS college games for league=ncaaf", async () => {
@@ -101,14 +122,15 @@ describe("GET /schedule", () => {
   it("shares one upstream fetch through the cache, and falls back to it if ESPN goes down", async () => {
     respondWith(() => scoreboard([ev("soon", NOW + 2 * HOUR, status.scheduled())]));
     await getSchedule("nfl");
+    const perRefresh = fetchMock.mock.calls.length;
     vi.setSystemTime(NOW + 5 * 60 * 1000);
     expect((await getSchedule("nfl", Date.now()))?.map((e) => e.eventId)).toEqual(["soon"]);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(perRefresh);
 
     fetchMock.mockRejectedValue(new TypeError("fetch failed"));
     vi.setSystemTime(NOW + 30 * 60 * 1000);
     expect((await getSchedule("nfl", Date.now()))?.map((e) => e.eventId)).toEqual(["soon"]);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(perRefresh * 2);
   });
 });
 
@@ -117,7 +139,7 @@ describe("fetchLiveForEvent", () => {
   const kickoff = Date.parse("2026-10-19T00:20:00Z");
   const linked: LinkedEvent = { provider: "espn", league: "nfl", eventId: "401773100", startsAt: kickoff, xIsHome: false };
 
-  it("reads the game from the scoreboard window around kickoff, oriented to the board", async () => {
+  it("reads the game from its slate day's scoreboard, oriented to the board", async () => {
     respondWith(() =>
       scoreboard([
         ev("401773099", kickoff - 7 * HOUR, status.final(), [[3, 3, 3, 3], [0, 0, 0, 0]]),
@@ -132,9 +154,9 @@ describe("fetchLiveForEvent", () => {
       completedPeriods: 2,
       isFinal: false,
     });
-    // Padded around Sunday the 18th, which holds this game whatever day boundary ESPN uses.
+    // A Sunday night game is filed under Sunday the 18th (US date), not its UTC date.
     const url = new URL(String(fetchMock.mock.calls[0][0]));
-    expect(url.searchParams.get("dates")).toBe("20261017-20261019");
+    expect(url.searchParams.get("dates")).toBe("20261018");
   });
 
   it("every board on the same slate shares one cached fetch", async () => {
@@ -156,7 +178,7 @@ describe("fetchLiveForEvent", () => {
     expect((await fetchLiveForEvent({ ...linked, eventId: "401760200", startsAt: hawaii }))?.isFinal).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const url = new URL(String(fetchMock.mock.calls[1][0]));
-    expect(url.searchParams.get("dates")).toBe("20261016-20261018");
+    expect(url.searchParams.get("dates")).toBe("20261017");
 
     vi.setSystemTime(NOW + 10_000);
     const before = fetchMock.mock.calls.length;
@@ -164,7 +186,7 @@ describe("fetchLiveForEvent", () => {
     expect(fetchMock).toHaveBeenCalledTimes(before + 1);
   });
 
-  it("falls back to the summary endpoint when the game moved out of the window", async () => {
+  it("falls back to the summary endpoint when the game moved to another day", async () => {
     respondWith((url) =>
       url.pathname.endsWith("/summary")
         ? summary(ev("401773100", kickoff + 7 * DAY, status.inProgress(1, "9:12"), [[7], [0]]))

@@ -1,13 +1,15 @@
 name: Probe schedule
 
-# One-off diagnostic: which ESPN scoreboard queries work, and the repo's parser
-# on real responses. Runs only when this file changes on the v1 branch.
+# Diagnostic: runs the app's real schedule + live-score code against ESPN from a
+# GitHub runner (the build sandbox can't reach ESPN). Runs when this file or the
+# scores module changes on the v1 branch.
 on:
   push:
     branches:
       - claude/determined-fermat-b0si26
     paths:
       - .github/workflows/probe-schedule.yml
+      - worker/scores/**
 
 jobs:
   probe:
@@ -20,52 +22,24 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Query variants
-        run: |
-          mkdir -p probe
-          d0=$(date -u -d '-1 day' +%Y%m%d); d1=$(date -u +%Y%m%d); d7=$(date -u -d '+7 day' +%Y%m%d); d10=$(date -u -d '+10 day' +%Y%m%d)
-          B=https://site.api.espn.com/apis/site/v2/sports/football
-          try() {
-            name="$1"; url="$2"
-            code=$(curl -s -o "probe/$name.json" -w '%{http_code}' -m 25 "$url")
-            n=$(jq '.events | length' "probe/$name.json" 2>/dev/null || echo "-")
-            echo "== $code events=$n [$name] $url"
-            [ "$code" = 200 ] || { head -c 200 "probe/$name.json"; echo; }
-          }
-          try nfl_range_limit   "$B/nfl/scoreboard?dates=$d0-$d10&limit=1000"
-          try nfl_range         "$B/nfl/scoreboard?dates=$d0-$d10"
-          try nfl_range_l100    "$B/nfl/scoreboard?dates=$d0-$d10&limit=100"
-          try nfl_range7        "$B/nfl/scoreboard?dates=$d1-$d7"
-          try nfl_day           "$B/nfl/scoreboard?dates=$d1"
-          try nfl_plain         "$B/nfl/scoreboard"
-          try ncaaf_range_limit "$B/college-football/scoreboard?dates=$d0-$d10&limit=1000&groups=80"
-          try ncaaf_range       "$B/college-football/scoreboard?dates=$d0-$d10&groups=80"
-          try ncaaf_range_l300  "$B/college-football/scoreboard?dates=$d0-$d10&groups=80&limit=300"
-          try ncaaf_range7      "$B/college-football/scoreboard?dates=$d1-$d7&groups=80&limit=300"
-          try ncaaf_plain       "$B/college-football/scoreboard?groups=80&limit=300"
-          echo "--- NFL plain: season/week/calendar"
-          jq -c '{season: .season, week: .week, leagues: [.leagues[0] | {calendarType, calendarStartDate, calendarEndDate}]}' probe/nfl_plain.json | head -c 800; echo
-
-      - name: Run the repo's parser on the 200 responses
+      - name: App code against real ESPN
         run: |
           cat > worker/scores/probe.live.test.ts <<'EOF'
-          import { readdirSync, readFileSync } from "node:fs";
+          // @vitest-environment node
           import { it } from "vitest";
-          import { parseSchedule, parseScoreboardSnapshots, toLiveUpdate } from "./espn";
-          it("parses real ESPN data", () => {
-            for (const f of readdirSync("probe").filter((f) => f.endsWith(".json")).sort()) {
-              let raw: any;
-              try { raw = JSON.parse(readFileSync(`probe/${f}`, "utf8")); } catch { continue; }
-              if (!Array.isArray(raw?.events)) continue;
-              const league = f.startsWith("nfl") ? "nfl" : "ncaaf";
-              const all = parseSchedule(raw, league);
-              const upcoming = all.filter((e) => e.state !== "post");
-              console.log(`${f}: raw ${raw.events.length}, parsed ${all.length}, not finished ${upcoming.length}, first ${upcoming[0] ? new Date(upcoming[0].startsAt).toISOString() + " " + upcoming[0].away.abbr + "@" + upcoming[0].home.abbr + " " + upcoming[0].home.color : "-"}`);
+          import { fetchLiveForEvent, getSchedule } from "./index";
+          it("real ESPN through the app code", async () => {
+            for (const league of ["nfl", "ncaaf"] as const) {
+              const events = await getSchedule(league);
+              if (!events) { console.log(`${league}: UNAVAILABLE`); throw new Error(`${league} schedule unavailable`); }
+              console.log(`${league}: ${events.length} games; first: ${events.slice(0, 4).map((e) => `${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state}`).join(" | ")}`);
+              if (events.length === 0) throw new Error(`${league} schedule empty`);
+              const pick = events.find((e) => e.state === "in") ?? events[0];
+              const update = await fetchLiveForEvent({ provider: "espn", league, eventId: pick.eventId, startsAt: pick.startsAt, xIsHome: true });
+              console.log(`  live ${pick.shortName}: ${JSON.stringify(update)?.slice(0, 300)}`);
+              if (!update) throw new Error(`${league} live lookup returned null for ${pick.eventId}`);
             }
-            const snaps = parseScoreboardSnapshots(JSON.parse(readFileSync("probe/ncaaf_plain.json", "utf8")));
-            const live: any = snaps.find((s: any) => JSON.stringify(s).includes('"in"')) ?? snaps[0];
-            console.log("snapshot:", JSON.stringify(live).slice(0, 500));
-            if (live) console.log("live update:", JSON.stringify(toLiveUpdate(live, true, Date.now())).slice(0, 500));
-          });
+          }, 60_000);
           EOF
-          npx vitest run worker/scores/probe.live.test.ts 2>&1 | grep -E "json:|snapshot|live update|✓|×|Error|FAIL" | head -60
+          npx vitest run worker/scores/probe.live.test.ts 2>&1 | grep -E "nfl:|ncaaf:|live |✓|×|Error|FAIL" | head -40
+          npx vitest run worker/scores/probe.live.test.ts > /dev/null 2>&1

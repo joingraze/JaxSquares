@@ -73,11 +73,21 @@ export function espnDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");
 }
 
-export function scoreboardUrl(league: LinkedLeague, fromMs: number, toMs: number): string {
-  const params = new URLSearchParams({ dates: `${espnDate(fromMs)}-${espnDate(toMs)}`, limit: "1000" });
-  // groups=80 is FBS; without it the college scoreboard returns only a featured subset.
-  if (league === "ncaaf") params.set("groups", "80");
-  return `${SITE_API}/${LEAGUE_PATH[league]}/scoreboard?${params}`;
+/**
+ * The scoreboard for the current slate (the current week for the NFL), or for one
+ * US day when `day` is given. ESPN answers 400 to date ranges, so callers that
+ * need several days fetch them one at a time.
+ */
+export function scoreboardUrl(league: LinkedLeague, day?: number): string {
+  const params = new URLSearchParams();
+  if (day !== undefined) params.set("dates", espnDate(day));
+  if (league === "ncaaf") {
+    // groups=80 is FBS; without it the college scoreboard returns only a featured subset.
+    params.set("groups", "80");
+    params.set("limit", "300");
+  }
+  const query = params.toString();
+  return `${SITE_API}/${LEAGUE_PATH[league]}/scoreboard${query ? `?${query}` : ""}`;
 }
 
 export function summaryUrl(league: LinkedLeague, eventId: string): string {
@@ -86,7 +96,8 @@ export function summaryUrl(league: LinkedLeague, eventId: string): string {
 
 export async function fetchEspnJson(url: string, timeoutMs: number): Promise<unknown> {
   const res = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "JaxSquares/1.0 (+https://jaxsquares.com)" },
+    // No custom user-agent: ESPN's CDN answers 403 Access Denied to unknown agents.
+    headers: { accept: "application/json" },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`ESPN responded ${res.status} for ${url}`);

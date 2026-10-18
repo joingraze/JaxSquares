@@ -1,7 +1,9 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cached } from "./cache";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cached, clearMemoryCache } from "./cache";
 import { MemoryCache } from "./testCache";
+
+beforeEach(() => clearMemoryCache());
 
 const KEY = "https://site.api.espn.com/test?jx=1";
 
@@ -73,6 +75,15 @@ describe("cached", () => {
     const { cache, clock } = setup();
     cache.failReads = true;
     expect((await cached({ key: KEY, ttlSeconds: 10, cache: cache.asCache(), now: clock.now, load: async () => 1 }))?.value).toBe(1);
+    clearMemoryCache();
     expect((await cached({ key: KEY, ttlSeconds: 10, cache: null, now: clock.now, load: async () => 2 }))?.value).toBe(2);
+  });
+
+  it("serves warm values from memory when there is no Cache API (*.workers.dev)", async () => {
+    const { clock } = setup();
+    const load = vi.fn(async () => "fresh");
+    expect((await cached({ key: KEY, ttlSeconds: 10, cache: null, now: clock.now, load }))?.value).toBe("fresh");
+    expect((await cached({ key: KEY, ttlSeconds: 10, cache: null, now: clock.now, load }))?.value).toBe("fresh");
+    expect(load).toHaveBeenCalledTimes(1);
   });
 });

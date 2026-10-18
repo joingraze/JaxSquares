@@ -12,6 +12,25 @@
 
 const FETCHED_AT = "x-jax-fetched-at";
 
+/**
+ * Per-isolate copies of recent values. The Cache API does nothing on *.workers.dev
+ * and costs a read elsewhere, so warm isolates answer from here first. Only settled
+ * values are shared, never in-flight promises (see above).
+ */
+const memory = new Map<string, CachedValue<unknown>>();
+const MEMORY_MAX = 200;
+
+function remember(key: string, value: CachedValue<unknown>): void {
+  memory.delete(key);
+  memory.set(key, value);
+  if (memory.size > MEMORY_MAX) memory.delete(memory.keys().next().value as string);
+}
+
+/** Tests: forget every in-memory value. */
+export function clearMemoryCache(): void {
+  memory.clear();
+}
+
 export interface CachedValue<T> {
   value: T;
   /** When the value was fetched from upstream, epoch ms. */
@@ -47,6 +66,13 @@ export async function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> 
   const keepSeconds = opts.ttlSeconds + (opts.staleSeconds ?? 0);
   let stale: CachedValue<T> | null = null;
 
+  const mem = memory.get(opts.key) as CachedValue<T> | undefined;
+  if (mem) {
+    const age = now() - mem.fetchedAt;
+    if (age < ttlMs) return mem;
+    if (age < keepSeconds * 1000) stale = mem;
+  }
+
   if (cache) {
     try {
       const hit = await cache.match(opts.key);
@@ -54,8 +80,13 @@ export async function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> 
         const fetchedAt = Number(hit.headers.get(FETCHED_AT));
         const value = (await hit.json()) as T;
         const age = now() - fetchedAt;
-        if (Number.isFinite(fetchedAt) && age < ttlMs) return { value, fetchedAt };
-        if (Number.isFinite(fetchedAt) && age < keepSeconds * 1000) stale = { value, fetchedAt };
+        if (Number.isFinite(fetchedAt) && age < ttlMs) {
+          remember(opts.key, { value, fetchedAt });
+          return { value, fetchedAt };
+        }
+        if (Number.isFinite(fetchedAt) && age < keepSeconds * 1000 && (!stale || fetchedAt > stale.fetchedAt)) {
+          stale = { value, fetchedAt };
+        }
       }
     } catch (err) {
       console.warn("scores cache read failed", err);
@@ -69,6 +100,7 @@ export async function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> 
     console.warn(`scores upstream failed for ${opts.key}`, err);
     return stale;
   }
+  remember(opts.key, fresh);
 
   if (cache) {
     try {

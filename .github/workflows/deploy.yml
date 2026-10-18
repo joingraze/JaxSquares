@@ -9,6 +9,8 @@ on:
     branches:
       - main
       - claude/relaxed-meitner-0wwvuy
+      # The v1 line of work deploys until it is merged into the default branch.
+      - claude/determined-fermat-b0si26
   workflow_dispatch:
 
 jobs:
