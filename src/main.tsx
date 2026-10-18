@@ -18,7 +18,7 @@ const HYDRATE_TIMEOUT_MS = 1500;
  * Background work waits this long after the page has loaded (and then for an idle moment), so it
  * doesn't compete with the first screen's data, fonts and sheets on a slow connection.
  */
-const SETTLE_MS = { push: 1500, prefetch: 3000 };
+const SETTLE_MS = { push: 1500, me: 1000, prefetch: 3000 };
 
 /** Run once the page has loaded, the delay has passed and the main thread is idle. */
 function afterSettle(fn: () => void, delay: number): void {
@@ -76,6 +76,10 @@ async function start(): Promise<void> {
   // service worker and VAPID key wait until the first screen is up: nothing on it needs them.
   if (isNative()) startPush();
   else afterSettle(startPush, SETTLE_MS.push);
+
+  // Who the server says this device is (GET /api/me): the account's player id and host tokens when
+  // signed in, its own boards' host tokens otherwise. The stored id already covers "mine" until then.
+  afterSettle(() => void import("./lib/auth").then((m) => m.refreshMe()).catch(() => undefined), SETTLE_MS.me);
 
   // Then the other screens (and host tools), so moving between them never waits on the network.
   afterSettle(prefetchScreens, SETTLE_MS.prefetch);

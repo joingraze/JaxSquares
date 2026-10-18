@@ -15,13 +15,22 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   there when changing game logic.
 - D1 access lives only in `worker/db.ts`, except module-owned tables, which only
   their module's store file touches (`worker/payments/store.ts`,
-  `worker/push/store.ts`). Routes validate input and orchestrate.
+  `worker/push/store.ts`, `worker/auth/store.ts`). Routes validate input and orchestrate.
 
 ## Identity (security-critical)
 
-- No accounts. A device's `clientId` (localStorage + Capacitor Preferences) is
+- No account needed. A device's `clientId` (localStorage + Capacitor Preferences) is
   its only credential: it is sent **only** as the `x-client-id` header and must
   never appear in a response, URL, socket message, push payload or the UI.
+- Optional Sign in with Apple / Google (`worker/auth/`, docs/auth.md) maps
+  devices to an account's **canonical clientId** (the first signed-in device's)
+  via `client_links`. `requireClient` and the push routes resolve
+  `x-client-id` to it (`canonicalClientId`, cached; `x-signed-in: 1` from a
+  signed-in app forces a fresh read), so `c.get("clientId")` is the canonical
+  one and an account's devices are one player. Signing in on another device
+  merges its rows into the canonical clientId in one batch: a new table keyed
+  by a clientId must join that merge (docs/auth.md). Account tables are touched
+  only by `worker/auth/store.ts`; email/name never go in a public object.
 - Everything public uses the **public player id** =
   base64url(SHA-256("jaxsquares:player:" + clientId)) first 22 chars
   (`shared/playerId.ts`): `Player.id`, `Square.playerId`, `Game.hostPlayerId`,
@@ -32,9 +41,13 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   Routes get both via `c.get("clientId")` (D1 lookups) and `c.get("playerId")`
   (everything else).
 - Client: compare with `getPlayerId()` from `src/lib/identity.ts` to find
-  "mine"; use `getClientId()` only for the request header (never read
-  localStorage for it directly).
+  "mine" (when signed in it's the server-confirmed account id from
+  `GET /api/me`, stored next to the clientId); use `getClientId()` only for the
+  request header (never read localStorage for it directly). Sign-out
+  (`src/lib/auth.ts`) wipes the device: a new clientId.
 - The host also holds a per-game `adminToken` (`x-admin-token`) for host routes.
+  `GET /api/me` returns the tokens of the boards the caller's (canonical)
+  identity hosts, never anyone else's.
 - Grep check before shipping: `clientId` may only appear in request headers,
   server internals and identity storage.
 

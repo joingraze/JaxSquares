@@ -89,6 +89,34 @@ export async function setMuted(db: D1Database, gameId: string, clientId: string,
   await stmt.run();
 }
 
+// ---- Accounts (optional sign-in: worker/auth, docs/auth.md) ----
+
+/**
+ * A device signing in to an account: its registrations and mutes move to the
+ * account's canonical clientId, so the account's pushes reach every device
+ * signed in to it (and a mute set on one is a mute on all). For the same batch
+ * as the core rows and the link (worker/auth/store.ts linkDevice).
+ */
+export function mergeClientStatements(db: D1Database, from: string, to: string): D1PreparedStatement[] {
+  return [
+    db.prepare(`UPDATE push_subscriptions SET client_id = ?2 WHERE client_id = ?1`).bind(from, to),
+    db
+      .prepare(`INSERT OR IGNORE INTO game_mutes (game_id, client_id, created_at) SELECT game_id, ?2, created_at FROM game_mutes WHERE client_id = ?1`)
+      .bind(from, to),
+    db.prepare(`DELETE FROM game_mutes WHERE client_id = ?`).bind(from),
+  ];
+}
+
+/** Signing out: this device's registration stops getting the account's pushes. */
+export function deleteSubscriptionStatement(db: D1Database, clientId: string, key: string): D1PreparedStatement {
+  return db.prepare(`DELETE FROM push_subscriptions WHERE client_id = ? AND endpoint_or_token = ?`).bind(clientId, key);
+}
+
+/** Deleting the account: no device gets its pushes any more (each re-registers as itself on its next open). */
+export function deleteClientSubscriptionsStatement(db: D1Database, clientId: string): D1PreparedStatement {
+  return db.prepare(`DELETE FROM push_subscriptions WHERE client_id = ?`).bind(clientId);
+}
+
 export async function isMuted(db: D1Database, gameId: string, clientId: string): Promise<boolean> {
   const row = await db.prepare(`SELECT 1 AS muted FROM game_mutes WHERE game_id = ? AND client_id = ?`).bind(gameId, clientId).first();
   return row !== null;

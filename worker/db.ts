@@ -3,9 +3,11 @@
 // worker/payments/store.ts and worker/push/store.ts.)
 //
 // Identity: rows store the device's secret clientId (players.client_id,
-// squares.client_id, games.host_client_id). Every domain object built here for
-// clients carries the public player id instead (worker/playerIds.ts); the
-// clientId never leaves this file except as `Member.clientId` for push.
+// squares.client_id, games.host_client_id); for a signed-in device that is its
+// account's canonical clientId (worker/auth/canonical.ts resolves it before
+// any route reads it). Every domain object built here for clients carries the
+// public player id instead (worker/playerIds.ts); the clientId never leaves
+// this file except as `Member.clientId` for push.
 //
 // Writes are built as prepared statements and run through `commit`, which
 // appends a version bump and the full state read to the same batch: one round
@@ -860,6 +862,80 @@ export function leaderOf(
   if (now) return now.playerId;
   const last = results.at(-1);
   return last ? primaryAward(last).playerId : null;
+}
+
+// ---- Accounts (optional sign-in: worker/auth, docs/auth.md) ----
+
+/** A clientId with its public id. */
+export interface ClientIds {
+  clientId: string;
+  playerId: string;
+}
+
+/**
+ * Statements that move every core row of `from` (a device signing in to an
+ * account) to `to` (the account's canonical clientId), run in one batch with
+ * the device's link (worker/auth/store.ts linkDevice). In order:
+ * 0. reads the ids of the boards it touches (so their rooms can be sent the
+ *    new state): hosted, joined or holding squares;
+ * 1. bumps those boards' versions, so every client takes the new state;
+ * 2. renames the device's public id in their feed (`actor`, or a legacy row's
+ *    clientId) and in winner rows' `playerIds`;
+ * 3. moves its players rows (where both are on a board, the canonical row
+ *    stays and the device's goes), squares and hosted boards.
+ * A board can end up with more of the account's squares than its
+ * squares-per-player cap: they were each picked within it.
+ */
+export function mergeClientStatements(db: D1Database, from: ClientIds, to: ClientIds, now: number): D1PreparedStatement[] {
+  const touched = `SELECT id FROM games WHERE host_client_id = ?1
+    UNION SELECT game_id FROM players WHERE client_id = ?1
+    UNION SELECT game_id FROM squares WHERE client_id = ?1`;
+  return [
+    db.prepare(touched).bind(from.clientId),
+    db.prepare(`UPDATE games SET version = version + 1, updated_at = ?2 WHERE id IN (${touched})`).bind(from.clientId, now),
+    db
+      .prepare(`UPDATE activity SET actor = ?3 WHERE game_id IN (${touched}) AND actor IN (?1, ?2)`)
+      .bind(from.clientId, from.playerId, to.playerId),
+    db
+      .prepare(
+        `UPDATE activity SET data = replace(data, '"' || ?2 || '"', '"' || ?3 || '"')
+         WHERE game_id IN (${touched}) AND type = 'winner' AND instr(data, ?2) > 0`,
+      )
+      .bind(from.clientId, from.playerId, to.playerId),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO players (game_id, client_id, name, color, emoji, joined_at)
+         SELECT game_id, ?2, name, color, emoji, joined_at FROM players WHERE client_id = ?1`,
+      )
+      .bind(from.clientId, to.clientId),
+    db.prepare(`DELETE FROM players WHERE client_id = ?`).bind(from.clientId),
+    db.prepare(`UPDATE squares SET client_id = ?2 WHERE client_id = ?1`).bind(from.clientId, to.clientId),
+    db.prepare(`UPDATE games SET host_client_id = ?2 WHERE host_client_id = ?1`).bind(from.clientId, to.clientId),
+  ];
+}
+
+/** Most boards whose admin tokens GET /api/me hands back. */
+const HOST_TOKENS_MAX = 200;
+
+/**
+ * Game id -> admin token for the boards `clientId` hosts (the caller's own,
+ * resolved identity: never anyone else's), newest first.
+ */
+export async function hostTokensFor(db: D1Database, clientId: string): Promise<Record<string, string>> {
+  const { results } = await db
+    .prepare(`SELECT id, admin_token FROM games WHERE host_client_id = ? ORDER BY created_at DESC LIMIT ?`)
+    .bind(clientId, HOST_TOKENS_MAX)
+    .all<{ id: string; admin_token: string }>();
+  return Object.fromEntries(results.map((r) => [r.id, r.admin_token]));
+}
+
+/** The name, color and emoji `clientId` last joined a board with (public on that board), or null. */
+export async function latestProfileOf(db: D1Database, clientId: string): Promise<{ name: string; color: string; emoji: string } | null> {
+  const row = await db
+    .prepare(`SELECT name, color, emoji FROM players WHERE client_id = ? AND name <> '' ORDER BY joined_at DESC LIMIT 1`)
+    .bind(clientId)
+    .first<{ name: string; color: string; emoji: string }>();
+  return row ? { name: row.name, color: row.color, emoji: row.emoji } : null;
 }
 
 // ---- Rate limits (table from migrations/0005_housekeeping.sql) ----

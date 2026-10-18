@@ -36,6 +36,7 @@ import type {
   Sport,
   Team,
 } from "../shared/types";
+import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
 import * as db from "./db";
 import type { Env } from "./env";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
@@ -52,7 +53,9 @@ export { GameRoom } from "./room";
 export { ScoreHub } from "./scores/hub";
 
 /**
- * `clientId`: the device's secret (x-client-id), used only for D1 lookups.
+ * `clientId`: the device's secret (x-client-id), used only for D1 lookups; for
+ * a device signed in to an account, the account's canonical clientId
+ * (worker/auth/canonical.ts), so every route works on the account.
  * `playerId`: its public id, used for everything a client can see (activity
  * actors, ownership checks against GameState, notify actors, rate-limit keys).
  */
@@ -305,8 +308,10 @@ async function commitOr404(c: Ctx, id: string, writes: D1PreparedStatement[], no
 const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
   const id = c.req.header("x-client-id") ?? "";
   if (!isClientId(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
-  c.set("clientId", id);
-  c.set("playerId", await playerIdOf(id));
+  // A signed-in device acts as its account's canonical clientId (one cached D1 read; docs/auth.md).
+  const clientId = await canonicalClientId(c.env.DB, id, { signedIn: signedInHint(c.req.header(SIGNED_IN_HEADER)) });
+  c.set("clientId", clientId);
+  c.set("playerId", await playerIdOf(clientId));
   await next();
 };
 
@@ -337,15 +342,16 @@ api.get("/health", (c) => c.json({ ok: true }));
 // Not cached: a switch to live checkout (or a new price) has to reach every
 // client at once, or old pages would keep using test checkout or the old price.
 api.get("/config", (c) =>
-  c.json({ payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null }, 200, {
+  c.json({ payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null, auth: authConfig(c.env) }, 200, {
     "cache-control": "no-store",
   }),
 );
 
-// Routers owned by the scores, payments and push modules.
+// Routers owned by the scores, payments, push and auth modules.
 api.route("/", scheduleRoutes);
 api.route("/", paymentsRoutes);
 api.route("/", pushRoutes);
+api.route("/", authRoutes);
 
 api.post("/games", requireClient, async (c) => {
   const clientId = c.get("clientId");

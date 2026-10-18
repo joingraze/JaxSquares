@@ -1,5 +1,5 @@
 // Light rate limits on the endpoints worth abusing: creating boards, joining
-// them and claiming/releasing squares. Fixed windows counted in D1
+// them, claiming/releasing squares and signing in. Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -21,6 +21,7 @@ const TOO_MANY = {
   create: "That's a lot of new boards for one hour. Take a breather and try again a little later.",
   taps: "Whoa, that's a lot of taps. Give it a few seconds and try again.",
   changes: "Whoa, that's a lot of changes. Give it a few seconds and try again.",
+  signIn: "That's a lot of sign-in attempts. Take a breather and try again a little later.",
 };
 
 export interface RateRule {
@@ -73,6 +74,20 @@ export const RATE_LIMITS = {
     limit: 120,
     windowMs: MINUTE,
     message: TOO_MANY.changes,
+  },
+  /** Optional sign-in (worker/auth): signing in, signing out and deleting the account, per device. */
+  auth: {
+    name: "auth",
+    limit: 20,
+    windowMs: HOUR,
+    message: TOO_MANY.signIn,
+  },
+  /** Per network address: `auth` for everyone behind one address. */
+  authIp: {
+    name: "auth-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: TOO_MANY.signIn,
   },
   /**
    * New players joining one board, keyed by game id: clientIds are free to

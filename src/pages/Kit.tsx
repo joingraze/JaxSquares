@@ -33,6 +33,7 @@ import {
   useToast,
   Wordmark,
 } from "../components/ui";
+import { AppleButton, GoogleButton } from "../features/account/ProviderButtons";
 import { teamVars } from "../lib/format";
 import { PLAYER_COLORS, PLAYER_EMOJIS } from "../lib/identity";
 import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from "../lib/theme";
@@ -189,6 +190,14 @@ export default function Kit() {
             <IconButton label="Share" icon={<Icons.ShareIcon size={20} />} variant="solid" />
             <IconButton label="Notifications" icon={<Icons.BellIcon size={20} />} variant="solid" badge={3} />
             <IconButton label="Add" icon={<Icons.PlusIcon size={22} strokeWidth={2.6} />} variant="brand" />
+          </div>
+        </Section>
+
+        <Section title="Sign-in buttons">
+          {/* Drawn to Apple's and Google's brand rules (src/features/account/ProviderButtons.tsx); the web uses Google's own button. */}
+          <div className="flex flex-col gap-2.5">
+            <AppleButton onClick={() => undefined} />
+            <GoogleButton onClick={() => undefined} />
           </div>
         </Section>
 

@@ -3,6 +3,7 @@
 
 import { Hono, type Context } from "hono";
 import { isClientId } from "../../shared/playerId";
+import { canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
 import { getGame } from "../db";
 import type { Env } from "../env";
 import { channelsFrom, deliver, jobsFor } from "./notify";
@@ -19,9 +20,15 @@ export const pushRoutes = new Hono<{ Bindings: Env }>();
 
 const error = (c: Ctx, status: 400 | 401 | 404 | 413, message: string) => c.json({ error: message }, status);
 
-function clientIdOf(c: Ctx): string | null {
+/**
+ * The clientId this device registers and mutes as: its account's canonical one
+ * when it's signed in (worker/auth/canonical.ts), so the account's pushes reach
+ * every device signed in to it.
+ */
+async function clientIdOf(c: Ctx): Promise<string | null> {
   const id = c.req.header("x-client-id") ?? "";
-  return isClientId(id) ? id : null;
+  if (!isClientId(id)) return null;
+  return canonicalClientId(c.env.DB, id, { signedIn: signedInHint(c.req.header(SIGNED_IN_HEADER)) });
 }
 
 /** The JSON object body, or an error response. */
@@ -38,7 +45,7 @@ async function readBody(c: Ctx): Promise<Record<string, unknown> | Response> {
 }
 
 pushRoutes.post("/push/register", async (c) => {
-  const clientId = clientIdOf(c);
+  const clientId = await clientIdOf(c);
   if (!clientId) return error(c, 401, "Missing or invalid x-client-id");
   const body = await readBody(c);
   if (body instanceof Response) return body;
@@ -49,7 +56,7 @@ pushRoutes.post("/push/register", async (c) => {
 });
 
 pushRoutes.post("/push/unregister", async (c) => {
-  const clientId = clientIdOf(c);
+  const clientId = await clientIdOf(c);
   if (!clientId) return error(c, 401, "Missing or invalid x-client-id");
   const body = await readBody(c);
   if (body instanceof Response) return body;
@@ -66,7 +73,7 @@ pushRoutes.post("/push/unregister", async (c) => {
 
 /** Sends "you're all set" to this device's registrations, so a host can check setup end to end. */
 pushRoutes.post("/push/test", async (c) => {
-  const clientId = clientIdOf(c);
+  const clientId = await clientIdOf(c);
   if (!clientId) return error(c, 401, "Missing or invalid x-client-id");
   const channels = channelsFrom(c.env);
   const subs = await subscriptionsForClient(c.env.DB, clientId);
@@ -88,7 +95,7 @@ pushRoutes.post("/push/test", async (c) => {
 });
 
 async function gameFor(c: Ctx): Promise<{ id: string; clientId: string } | Response> {
-  const clientId = clientIdOf(c);
+  const clientId = await clientIdOf(c);
   if (!clientId) return error(c, 401, "Missing or invalid x-client-id");
   const id = c.req.param("id") ?? "";
   if (!GAME_ID_RE.test(id) || !(await getGame(c.env.DB, id))) return error(c, 404, "Game not found");

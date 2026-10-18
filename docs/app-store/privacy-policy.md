@@ -10,8 +10,8 @@
 Last updated: <date>
 
 JaxSquares lets friends play football squares together. We built it to need as
-little of your information as possible. There are no accounts, no ads and no
-tracking.
+little of your information as possible. You don't need an account, and there
+are no ads and no tracking.
 
 ## What we collect
 
@@ -19,6 +19,10 @@ tracking.
   you open it and stores it on your device. We use it to recognize your squares
   and the boards you host or join. It isn't your Apple or advertising
   identifier.
+- **If you sign in (optional).** Signing in with Apple or Google gives us the
+  account ID they assign you and, if you share it, your email. We use them only
+  to keep your boards on every device you sign in on, and we show your email
+  only to you. Sign in with Apple lets you hide your email.
 - **The name you choose.** The display name, color and emoji you pick for a
   board. Everyone in that board can see them. A nickname is fine.
 - **Board content.** Board names, team names, the optional per-quarter notes a
@@ -35,8 +39,8 @@ tracking.
   them to keep the service running and secure. We don't use them to work out
   where you are.
 
-We don't collect your email, phone number, contacts, photos, location or
-health data. We don't use analytics or advertising SDKs.
+We don't collect your phone number, contacts, photos, location or health
+data, or your email unless you sign in and share it. We don't use analytics or advertising SDKs.
 
 ## How we use it
 
@@ -47,6 +51,7 @@ We use it only to run JaxSquares:
 - recording scores and winners
 - sending the notifications you asked for
 - letting hosts draw the numbers once a board is paid for
+- keeping your boards on every device you sign in on
 - preventing abuse
 
 We don't sell your information, share it for advertising, or track you across
@@ -57,7 +62,8 @@ other apps or websites.
 | Provider | What it does |
 |---|---|
 | Cloudflare | Hosting and database |
-| Apple | In-App Purchase and push notification delivery |
+| Apple | In-App Purchase, push notification delivery and Sign in with Apple |
+| Google | Sign in with Google (optional) |
 | Google Firebase Cloud Messaging | Delivering push notifications to the app |
 | Stripe | Web payments for the host fee |
 
@@ -78,6 +84,8 @@ Only share links with people you want to play with.
 ## How long we keep it
 
 - **Boards and their data.** We keep these until the host deletes the board.
+- **Your account.** We keep it until you delete it. Your boards and squares
+  stay on their boards afterwards, no longer tied to you.
 - **Purchase records.** We keep these as long as tax and accounting law
   requires.
 - **Push tokens.** We delete a token when you turn notifications off, or when
@@ -88,6 +96,10 @@ Only share links with people you want to play with.
 - **Leave a board.** Release your squares before the numbers are drawn.
 - **Delete a board.** The host can delete a board at any time.
 - **Notifications.** Turn them off in the app, or in iOS Settings → JaxSquares.
+- **Sign out or delete your account.** In Profile → Account. Signing out takes
+  your boards off that device. Deleting your account removes your sign-in,
+  email and device links, and revokes JaxSquares' access to your Apple ID.
+  Your boards and squares stay on their boards for the other players.
 - **Start fresh.** Delete the app, or clear the site's data in your browser,
   and the device ID is removed from your device.
 - **Ask us.** To ask what we hold or to have it deleted, email

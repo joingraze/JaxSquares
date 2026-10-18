@@ -7,13 +7,18 @@ import { Link } from "react-router-dom";
 import { PlusIcon } from "../../components/icons";
 import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
 import { useHideTabBar } from "../../components/shell";
+import { useAuthSetup } from "../../lib/auth";
 import { haptic } from "../../lib/native";
+import { SignInSheet } from "../account";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { MiniBoard } from "./MiniBoard";
 
 export function Welcome() {
   useHideTabBar();
   const [joining, setJoining] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  // A new phone for someone who plays elsewhere: one tap brings their boards over.
+  const canSignIn = useAuthSetup().providers.length > 0;
 
   return (
     <div className="flex min-h-[calc(100dvh-var(--shell-bottom)-1.5rem)] flex-col overflow-x-clip px-safe">
@@ -58,10 +63,26 @@ export function Welcome() {
         <Button variant="secondary" size="lg" block onClick={() => setJoining(true)}>
           Join with a code
         </Button>
-        <p className="text-center text-footnote text-ink-subtle">No accounts. Friends join from a link.</p>
+        <p className="text-center text-footnote text-ink-subtle">No account needed. Friends join from a link.</p>
+        {canSignIn && (
+          <button
+            type="button"
+            data-testid="welcome-signin"
+            onClick={() => setSigningIn(true)}
+            className="pressable mx-auto -mt-1 min-h-11 rounded-full px-4 text-subhead font-bold text-ink-muted hover:text-ink"
+          >
+            Playing on another device? <span className="text-ink-brand">Sign in</span>
+          </button>
+        )}
       </div>
 
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />
+      <SignInSheet
+        open={signingIn}
+        onClose={() => setSigningIn(false)}
+        title="Get your boards on this device"
+        description="Sign in with the account you use on your other phone or computer."
+      />
     </div>
   );
 }

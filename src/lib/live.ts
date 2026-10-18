@@ -811,6 +811,21 @@ export function useGame(id: string | undefined, options: UseGameOptions = {}): U
 // ---- Dashboard ----
 
 let myGamesCache: GameSummary[] | null = null;
+/** Bumped by resetMyGames: a list asked for before it is dropped. */
+let myGamesGen = 0;
+/** Mounted useMyGames hooks: `clear` drops what they show before refetching. */
+const myGamesListeners = new Set<(clear: boolean) => void>();
+
+/**
+ * Who this device is changed (signed in, signed out, host tokens arrived):
+ * every mounted dashboard refetches its list now. `clear` (signing out) drops
+ * the list on screen first, so the old identity's boards never linger.
+ */
+export function resetMyGames(clear = false): void {
+  myGamesGen++;
+  if (clear) myGamesCache = null;
+  for (const l of myGamesListeners) l(clear);
+}
 
 /** A board this device hosts or has joined (not one it only opened from an invite). */
 export function isMyBoard(g: Pick<GameSummary, "isHost" | "joined">): boolean {
@@ -847,9 +862,12 @@ export function useMyGames(): UseMyGamesResult {
   const refresh = useCallback((): Promise<void> => {
     if (inflight.current) return inflight.current;
     const seen = getSeenGames();
+    const gen = myGamesGen;
     const p = api
       .myGames(undefined, seen)
       .then(({ games: next }) => {
+        // Asked as an identity this device no longer is (signed in or out meanwhile).
+        if (gen !== myGamesGen) return;
         const stale = staleSeen(seen, next);
         if (stale.length > 0) forgetSeen(stale);
         myGamesCache = next;
@@ -858,15 +876,30 @@ export function useMyGames(): UseMyGamesResult {
         setError(null);
       })
       .catch((err: unknown) => {
-        if (!mounted.current) return;
+        if (!mounted.current || gen !== myGamesGen) return;
         setError(err instanceof ApiError ? err : new ApiError("Couldn't load your boards.", 0));
       })
       .finally(() => {
-        inflight.current = null;
+        if (inflight.current === p) inflight.current = null;
       });
     inflight.current = p;
     return p;
   }, []);
+
+  useEffect(() => {
+    const onReset = (clear: boolean) => {
+      inflight.current = null;
+      if (clear) {
+        setGames(null);
+        setError(null);
+      }
+      void refresh();
+    };
+    myGamesListeners.add(onReset);
+    return () => {
+      myGamesListeners.delete(onReset);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     mounted.current = true;

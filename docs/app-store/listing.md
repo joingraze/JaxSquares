@@ -89,8 +89,9 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 > bragging rights.
 >
 > PRIVATE BY DEFAULT
-> A board is only for the people you share it with. There are no accounts, no
-> ads and no tracking.
+> A board is only for the people you share it with. You don't need an account
+> (sign in with Apple or Google only if you want your boards on every device),
+> and there are no ads and no tracking.
 >
 > Made for watch parties, office game days, family get-togethers, tailgates and
 > the big game.
@@ -175,7 +176,10 @@ accept whatever Apple computes; don't change the answers.
 > wings"); the server rejects notes that mention money, and the app takes no
 > part in them.
 >
-> No account or login is needed.
+> No account or login is needed to play. Signing in is optional (Profile →
+> Account → Sign in with Apple, or Google); it keeps a person's boards on every
+> device they sign in on. Profile → Account → Delete account deletes the
+> account and revokes the Sign in with Apple token.
 >
 > QUICK LOOK (no purchase): open https://jaxsquares.com/g/<DEMO_ID>, or tap
 > "Join with a code" on Home and enter <DEMO_CODE>. It's a board with ten
@@ -225,19 +229,22 @@ data brokers, so the app needs no App Tracking Transparency prompt.
 
 **Data collected.** Every type below is used only for App Functionality.
 Linked-to-you is answered **Yes** for all of them, and that is the cautious
-answer. There are no accounts, but the random device id ties a person's display
-name, boards and purchases together on the server.
+answer. An account is optional, but the random device id ties a person's
+display name, boards and purchases together on the server, and signing in ties
+devices to an Apple or Google account.
 
 | Apple category → type | What it is | Why |
 |---|---|---|
 | Identifiers → **Device ID** | A random id the app generates on first launch (not IDFA or IDFV), and the push token (FCM/APNs) if notifications are on. | Recognizes your squares and boards and sends your notifications. |
 | Contact Info → **Name** | The display name you type. It can be a nickname. | Shows on your squares to the others in the board. |
+| Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works). | Shown only to you ("Signed in with Apple · email"). |
+| Identifiers → **User ID** | Only if you sign in: the account id Apple or Google assigns you. | Keeps your boards on every device you sign in on. |
 | User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color. | The game itself. |
 | Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock. | Opens the board you paid for and stops one purchase from being used twice. |
 
 **Not collected:**
 
-- Email, phone, physical address
+- Phone, physical address (email only if you choose to sign in, above)
 - Precise or coarse location
 - Contacts, photos, health, financial info
 - Payment card data: Apple handles IAP, and the iOS app never shows Stripe
@@ -251,7 +258,7 @@ The Worker's request logs (Cloudflare) are operational and short-lived, and
 they're never used to work out location, so they aren't a declared data type.
 **Check this answer with whoever owns legal before submitting.**
 
-`ios/App/App/PrivacyInfo.xcprivacy` declares the same four types. Keep the two
+`ios/App/App/PrivacyInfo.xcprivacy` declares the same six types. Keep the two
 in sync.
 
 ## Build facts behind these answers

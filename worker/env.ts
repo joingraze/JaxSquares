@@ -2,10 +2,10 @@
 // unset in local dev; every integration must degrade gracefully without them.
 //
 // This file only declares names. Never put values here (it is committed):
-// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE)
-//   go in wrangler.jsonc "vars".
-// - Secrets (Stripe, Apple IAP key, VAPID private key, FCM service account)
-//   go in Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
+// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE,
+//   the sign-in client ids) go in wrangler.jsonc "vars".
+// - Secrets (Stripe, Apple IAP key, Sign in with Apple key, VAPID private key,
+//   FCM service account) go in Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
 //   Workers -> jaxsquares -> Settings -> Variables and Secrets).
 // - Local dev values go in .dev.vars (gitignored; see .dev.vars.example).
 // - CLOUDFLARE_API_TOKEN is a deploy credential for wrangler, not a Worker
@@ -45,6 +45,25 @@ export interface Env {
   ANDROID_PACKAGE?: string;
   /** Comma-separated SHA-256 signing-cert fingerprints ("AA:BB:..."), e.g. upload key + Play app signing key. */
   ANDROID_SHA256_CERT_FINGERPRINTS?: string;
+
+  // ---- Optional sign-in (docs/auth.md) ----
+  // Public OAuth client ids go in wrangler.jsonc "vars" (they aren't secrets);
+  // a provider whose id is empty is hidden in the app and its route answers 503.
+  // Native Sign in with Apple uses APPLE_BUNDLE_ID (above, default
+  // "com.jaxsquares.app") as its audience.
+  /** Google OAuth "Web application" client id: Sign in with Google on the web. */
+  GOOGLE_WEB_CLIENT_ID?: string;
+  /** Google OAuth "iOS" client id: Sign in with Google in the iOS app. */
+  GOOGLE_IOS_CLIENT_ID?: string;
+  /** Apple Services ID: Sign in with Apple JS on the web. */
+  APPLE_SERVICES_ID?: string;
+  /**
+   * Sign in with Apple key (secrets), with APPLE_TEAM_ID: exchanges a sign-in's
+   * authorization code for a refresh token and revokes it when the account is
+   * deleted. Without them sign-in still works; revocation is skipped (logged).
+   */
+  APPLE_KEY_ID?: string;
+  APPLE_SIGNIN_PRIVATE_KEY?: string;
 
   // ---- Push ----
   VAPID_PUBLIC_KEY?: string;

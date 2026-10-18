@@ -28,9 +28,12 @@ exception so far: the public-id rename below, which closed an impersonation hole
   picking squares are free; JaxSquares never sells squares. With `PAYMENTS_MODE`
   unset the app runs a clearly labeled no-charge test checkout. See
   docs/payments.md and "The host fee" below.
-- No accounts. A device is identified by a random `clientId` (localStorage, plus
+- No account needed. A device is identified by a random `clientId` (localStorage, plus
   Capacitor Preferences in the native app) sent as `x-client-id` on every request.
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
+  Signing in with Apple or Google is optional: it maps every signed-in device to
+  its account's canonical clientId, so boards follow a person (see "Optional
+  sign-in" below and docs/auth.md).
 - Real time: every mutation is pushed to every open board within one second.
 - Prize notes never mention money: `validatePrizeNote` (`shared/formats.ts`)
   rejects cash, payment-app and betting talk with `PRIZE_MONEY_ERROR` ("Notes
@@ -77,8 +80,42 @@ the same value synchronously.) It is stable per device and one-way.
   `getMembers()` (server-only `Member = Player & { clientId }`) is the one place
   clientIds leave `db.ts`, so push can find a player's devices.
 - Client: `getPlayerId()` in `src/lib/identity.ts` (computed with WebCrypto in
-  `hydrateIdentity()`, sync afterwards). "Mine" is always
+  `hydrateIdentity()`, sync afterwards; the server-confirmed account id when
+  signed in, see below). "Mine" is always
   `square.playerId === getPlayerId()`; `claimPatch`/`releasePatch` take it too.
+
+### Optional sign-in: canonical clientId
+
+Model, merge rules and setup: docs/auth.md. In short:
+
+- Tables (auth module, `worker/auth/store.ts`, migration 0010): `accounts`
+  (random id, UNIQUE `canonical_client_id`, email/name shown only to the
+  owner), `account_identities` (UNIQUE `(provider, subject)`, Apple refresh
+  token), `client_links` (`client_id` PK → account).
+- The canonical clientId is the first signed-in device's, so its rows never
+  move. `requireClient` (and the push routes) resolve `x-client-id` to it
+  (`canonicalClientId` in `worker/auth/canonical.ts`: one indexed read, cached
+  per isolate for 30 s; `x-signed-in: 1` from a signed-in app skips a cached
+  "not linked"; missing tables fail open). So `c.get("clientId")` /
+  `c.get("playerId")`, rate limits, push, squares, members and host checks all
+  work on the account, and every device of one account is one player with one
+  public id.
+- Signing in on another device moves that device's rows (hosted boards,
+  players, squares, its public id in the feed, push registrations, mutes) to
+  the canonical clientId in one batch with its link, bumps the touched boards'
+  versions and broadcasts them. Its own clientId then works only through
+  `client_links`.
+- `GET /api/me` and every sign-in return `MeResponse`: the (account's) public
+  id, the account, and the admin tokens of the boards the identity hosts (never
+  anyone else's). The app stores the id next to the clientId
+  (`jaxsquares.playerId`, tied to the clientId it was given for) so "mine"
+  works offline at startup, and the tokens like the creator's device does.
+- Sign-out wipes the device (new clientId; player id, account, profile, boards,
+  admin tokens and seen list cleared). Deleting the account revokes the Apple
+  token and deletes the account rows; the boards and squares stay as anonymous
+  data under the canonical clientId.
+- Email and name never appear in a public object (Player, activity, push, OG);
+  no response carries a clientId.
 
 ## Runtime
 
@@ -87,7 +124,9 @@ the same value synchronously.) It is stable per device and one-way.
 - D1 (`DB`) is the source of truth. Core SQL lives in `worker/db.ts`; tables a
   module owns are queried only by that module's store file
   (`worker/payments/store.ts`: `purchases`; `worker/push/store.ts`:
-  `push_subscriptions`, `game_mutes`).
+  `push_subscriptions`, `game_mutes`; `worker/auth/store.ts`: `accounts`,
+  `account_identities`, `client_links`). The sign-in merge runs statements
+  built by each owner in one batch.
 - Durable Object `GameRoom` (`GAME_ROOM`, one per game id via `idFromName(gameId)`)
   holds the hibernatable WebSockets for that game, broadcasts state, tracks presence,
   and, for boards linked to a real game, polls live scores with an alarm while the
@@ -121,7 +160,11 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
-| GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute) |
+| GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden |
+| POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
+| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile? }` (`no-store`; reads the link fresh; 503 when it can't) |
+| POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
+| DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
 | GET | `/api/games/:id` | – | – | `GameState` |
@@ -146,7 +189,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused` |
 | POST | `/api/push/register` | C | `PushRegistration` | `{ ok: true }` |
 | POST | `/api/push/unregister` | C | `{ endpoint? , token? }` | `{ ok: true }` |
-| POST | `/api/push/test` | C | – | `{ ok: true, devices, sent, failed }` (sends "you're all set" to this device's registrations) |
+| POST | `/api/push/test` | C | – | `{ ok: true, devices, sent, failed }` (sends "you're all set" to this device's registrations; a signed-in device's are its account's) |
 | GET | `/api/games/:id/mute` | C | – | `{ muted: boolean }` |
 | POST | `/api/games/:id/mute` | C | `{ muted: boolean }` | `{ ok: true }` |
 | GET | `/api/health` | – | – | `{ ok: true }` |
@@ -168,9 +211,13 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `create-ip` | 20 per address per hour | what `create` counts, for every device behind one address |
 | `squares-ip` | 300 per address per minute | what `squares` counts, for every device behind one address |
 | `join-ip` | 120 per address per minute | what `join` counts, for every device behind one address |
+| `auth` | 20 per device per hour | sign-in attempts, sign-outs and account deletions (keyed by the device's own public id) |
+| `auth-ip` | 60 per address per hour | what `auth` counts, for every device behind one address |
 
-`maxPerPlayer` (the board's squares-per-player cap) counts per device, not per
-person: with no accounts, someone can mint more devices. The host can remove a
+Per-device rules count per account for a signed-in device (they're keyed by
+the resolved public id). `maxPerPlayer` (the board's squares-per-player cap)
+counts per device (per account when signed in), not per person: an account is
+optional, and someone can mint more devices. The host can remove a
 player and free their squares while squares are being picked
 (`DELETE /api/games/:id/players/:playerId`; see "Removing a player (client)").
 
@@ -221,8 +268,9 @@ WebSocket held by the game's `GameRoom` (hibernatable). The Worker forwards only
 the query is ignored.
 
 - `player` only de-duplicates the watcher count across tabs and devices. The
-  app always sends it; a socket without one gets every message but isn't
-  counted.
+  app always sends it (`getPlayerId()`: a signed-in device sends its account's
+  id, so an account's devices count once); a socket without one gets every
+  message but isn't counted. Nothing trusts it beyond that count.
 - `watch=0` makes the socket **passive**: it receives every message (state,
   events, presence, deleted) but is not counted in `presence.watching`, and
   opening or closing it doesn't send presence to anyone else (it hears the
@@ -571,10 +619,18 @@ score, q1, q2, q3, final.
   (Hono) and `getPaymentConfig(env)`. Owns `worker/payments/store.ts` (its D1 tables).
 - `worker/push/*` – web push (VAPID) + FCM. Exports `pushRoutes` (Hono) and
   `notify(env, gameId, event)`. Owns `worker/push/store.ts` (its D1 tables).
+- `worker/auth/*` – optional sign-in (docs/auth.md): ID token verification
+  (`jwt.ts`), Apple token exchange/revocation (`apple.ts`), the canonical
+  clientId resolver (`canonical.ts`). Exports `authRoutes` (Hono),
+  `authConfig(env)` and `canonicalClientId(db, clientId, { signedIn })`. Owns
+  `worker/auth/store.ts` (its D1 tables).
 - `public/sw.js`, `public/manifest.webmanifest`, icons, `capacitor.config.ts`,
   `ios/`, `android/` – native/PWA shell.
 - `src/*` – client. `src/lib/api.ts` (typed client, `API_BASE` aware),
   `src/lib/live.ts` (socket + fallback polling), `src/lib/identity.ts`,
+  `src/lib/auth.ts` + `src/lib/authSdk.ts` (sign-in flows; Apple/Google SDKs and
+  the native plugin, loaded on demand), `src/features/account` (sign-in UI,
+  `SignInSheet`),
   `src/lib/native.ts` (Capacitor bridges: share, haptics, push, IAP),
   `src/lib/theme.ts` (appearance: dark / light / system).
 
@@ -797,11 +853,23 @@ same transaction (`markBoardFull`, migration 0007), and only that claim pushes;
 giving a square back and taking one again doesn't announce it again. `winner` never has an actor (you hear about your own square even
 when you typed the score); live-score events have none either. Push resolves
 public ids to devices through `getMembers()`.
-`worker/index.ts` mounts the three routers under `/api` and calls `notify` from the
+`worker/index.ts` mounts the routers under `/api` and calls `notify` from the
 core routes. Each module owns its own migration file: core `0002_*`,
 `0005_housekeeping.sql` (rate limits, the status/created index),
 `0007_board_full_announced.sql`, `0008_custom_kickoff.sql` (custom boards'
 kickoff in `starts_at`; the cron's index covers linked boards only) and
 `0009_pay_at_draw.sql` (`games.paid_at`, grandfathering every board past
 `draft` as paid and opening drafts; `games.draw_reminder_at`), payments
-`0003_*` and `0006_*`, push `0004_*`.
+`0003_*` and `0006_*`, push `0004_*`, auth `0010_accounts.sql`.
+
+`worker/auth/index.ts` (auth):
+```ts
+authRoutes: Hono<{ Bindings: Env }>              // /auth/apple, /auth/google, /auth/sign-out, /me, /account
+authConfig(env: Env): AuthConfig                 // for GET /api/config
+/** x-client-id -> the clientId the request acts as (the account's canonical one when signed in). */
+canonicalClientId(db: D1Database, clientId: string, opts?: { signedIn?: boolean }): Promise<string>
+```
+Core helpers it uses: `db.mergeClientStatements(db, from, to, now)`,
+`db.hostTokensFor(db, clientId)`, `db.latestProfileOf(db, clientId)`; push:
+`mergeClientStatements`, `deleteSubscriptionStatement`,
+`deleteClientSubscriptionsStatement` (`worker/push/store.ts`).

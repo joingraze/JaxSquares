@@ -213,7 +213,8 @@ export interface Game {
  * public (GameState, live messages, results, activity) names people by their
  * public player id = base64url(SHA-256("jaxsquares:player:" + clientId)), first
  * 22 chars (shared/playerId.ts). The id is stable per device and can't be turned
- * back into the clientId.
+ * back into the clientId. Devices signed in to one account share the account's
+ * canonical clientId on the server, so they share one public id (MeResponse).
  */
 export interface Player {
   /** Public player id (not the clientId). */
@@ -430,7 +431,9 @@ export type LiveMessage =
 
 // ---- Request payloads ----
 // Every request identifies the device with the `x-client-id` header (secret,
-// never echoed back). Host-only endpoints also require `x-admin-token`.
+// never echoed back). Host-only endpoints also require `x-admin-token`. A
+// signed-in device's clientId acts as its account's canonical one on the
+// server (docs/auth.md); it still sends only its own.
 
 export interface CreateGameInput {
   name: string;
@@ -586,6 +589,72 @@ export interface AppConfig {
   payments: PaymentConfig;
   /** Web push VAPID public key (base64url), null when push isn't configured. */
   vapidPublicKey: string | null;
+  /** Which sign-in providers are set up. Always sent; optional so older fixtures type-check. */
+  auth?: AuthConfig;
+}
+
+// ---- Optional sign-in (docs/auth.md) ----
+// Playing never needs an account. Signing in with Apple or Google links this
+// device to an account, and every device signed in to it acts as one player
+// (the account's canonical clientId, resolved on the server). Nothing here is
+// public: email and name are only ever shown to the account's owner.
+
+export type AuthProvider = "apple" | "google";
+
+/** Public OAuth client ids the server is set up with; a provider without one is hidden. */
+export interface AuthConfig {
+  /** Google "Web application" client id (Sign in with Google on the web); null = off there. */
+  googleWebClientId: string | null;
+  /** Google iOS client id (Sign in with Google in the iOS app); null = off there. */
+  googleIosClientId: string | null;
+  /** Apple Services ID (Sign in with Apple JS on the web); null = off there. */
+  appleServicesId: string | null;
+  /** Native Sign in with Apple in the iOS app (needs only the app's bundle id). */
+  appleNative: boolean;
+}
+
+/** POST /api/auth/apple | /api/auth/google. */
+export interface SignInInput {
+  /** The provider's ID token (JWT). */
+  idToken: string;
+  /** The raw nonce; the token carries its SHA-256 (lowercase hex). */
+  nonce?: string;
+  /** Apple only: the authorization code, exchanged for a refresh token so deleting the account can revoke it. */
+  authorizationCode?: string;
+  /** Apple only: the name Apple returns once, on the first authorization (it isn't in the token). */
+  name?: string;
+  /** Sign in with Apple JS only: the redirect URI the authorization code was issued for. */
+  redirectUri?: string;
+}
+
+/** POST /api/auth/sign-out: this device's push registration, so the account's pushes stop reaching it. */
+export interface SignOutInput {
+  endpoint?: string;
+  token?: string;
+}
+
+/** Shown only to the account's owner ("Signed in with Apple · maya@example.com"). */
+export interface AccountInfo {
+  provider: AuthProvider;
+  email: string | null;
+  name: string | null;
+  /** When the account was created, epoch ms. */
+  since: number;
+}
+
+/**
+ * GET /api/me and the sign-in response: who this device is. An object so
+ * later fields (the Host Pass) can be added.
+ */
+export interface MeResponse {
+  /** This device's public player id: the account's (canonical) one when signed in. "Mine" compares against it. */
+  playerId: string;
+  /** null when this device isn't signed in. */
+  account: AccountInfo | null;
+  /** Game id -> admin token for every board this identity hosts (never anyone else's). */
+  hostTokens: Record<string, string>;
+  /** The name, color and emoji this identity last joined a board with, if any (public on that board already). */
+  profile?: { name: string; color: string; emoji: string } | null;
 }
 
 export type PushRegistration =

@@ -62,6 +62,13 @@ const config: CapacitorConfig = {
       // purchase interrupted mid-way is recovered on next launch (docs/payments.md).
       autoFinishTransactions: false,
     },
+    SocialLogin: {
+      // Optional sign-in (docs/auth.md): Apple (AuthenticationServices) and Google
+      // (GoogleSignIn SDK) only. `cap sync` drops the other providers' SDKs from
+      // the plugin's Package.swift, so the Facebook SDK never ships in the app.
+      providers: { apple: true, google: true, facebook: false, twitter: false },
+      logLevel: 1,
+    },
   },
   experimental: {
     ios: {

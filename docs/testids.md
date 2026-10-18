@@ -102,4 +102,12 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
 | `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |
 | `theme-dark`, `theme-light`, `theme-system` | Profile → Appearance: the Dark / Light / System segments (saves the choice and switches at once) |
+| `account-section` | Profile → Account (`data-state=signed-out\|signed-in`); absent when not signed in and no provider is set up for this platform |
+| `signin-apple`, `signin-google` | the "Sign in with Apple" button and the "Sign in with Google" button (drawn in the iOS app; on the web, the box Google's own button renders into). Wherever sign-in buttons show (Profile, `signin-sheet`) |
+| `account-signed-in` | the "Signed in with Apple / Google" row (email underneath) |
+| `account-sign-out`, `account-sign-out-confirm` | Profile → Account "Sign out", and the confirm sheet's "Sign out" (actually signs out; the device starts fresh) |
+| `account-delete`, `account-delete-sheet`, `account-delete-confirm` | "Delete account", its confirm sheet's body (what's deleted, what stays), and "Delete account" in it (actually deletes) |
+| `signin-sheet` | the reusable sign-in sheet's body (`SignInSheet`: Home's card, the welcome screen) |
+| `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
+| `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |

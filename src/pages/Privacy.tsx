@@ -66,7 +66,7 @@ export default function Privacy() {
           <p className="eyebrow text-ink-brand">The short version</p>
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">We keep as little as a squares board needs.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
-            <Check>No accounts, no ads, no tracking.</Check>
+            <Check>No account needed, no ads, no tracking.</Check>
             <Check>Card and Apple Pay details never reach us.</Check>
             <Check>We never sell or share your information.</Check>
             <Check>Ask, and we'll delete what we hold.</Check>
@@ -74,9 +74,12 @@ export default function Privacy() {
         </Card>
 
         <Section title="What we collect">
-          <ListGroup footer="We don't collect your email, phone number, contacts, photos, location or health data. There are no analytics or advertising SDKs.">
+          <ListGroup footer="We don't collect your phone number, contacts, photos, location or health data, or your email unless you sign in and share it. There are no analytics or advertising SDKs.">
             <Fact icon={<UserIcon />} title="A random device ID">
               Created the first time you open JaxSquares and stored on your device, so we can recognize your squares and the boards you host or join. It isn't your Apple or advertising identifier.
+            </Fact>
+            <Fact icon={<LockIcon />} title="If you sign in (optional)">
+              Signing in with Apple or Google gives us the account ID they assign you and, if you share it, your email. We use them only to keep your boards on every device you sign in on, and we show your email only to you. Sign in with Apple lets you hide your email.
             </Fact>
             <Fact icon={<PencilIcon />} title="The name you choose">
               The display name, color and emoji you pick. Everyone in that board can see them, and a nickname is fine.
@@ -104,6 +107,7 @@ export default function Privacy() {
               <Check>Recording scores and winning squares</Check>
               <Check>Sending the notifications you asked for</Check>
               <Check>Letting hosts draw the numbers once a board is paid for</Check>
+              <Check>Keeping your boards on every device you sign in on</Check>
               <Check>Preventing abuse</Check>
             </ul>
             <ul className="mt-1 flex flex-col gap-2">
@@ -117,7 +121,8 @@ export default function Privacy() {
         <Section title="Who processes it for us">
           <ListGroup footer="Each provider handles data under its own privacy terms, and only for these purposes.">
             <ListRow title="Cloudflare" subtitle="Hosting and database" />
-            <ListRow title="Apple" subtitle="In-App Purchase and push delivery" />
+            <ListRow title="Apple" subtitle="In-App Purchase, push delivery, Sign in with Apple" />
+            <ListRow title="Google" subtitle="Sign in with Google (optional)" />
             <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
             <ListRow title="Stripe" subtitle="Web payments for the host fee" />
           </ListGroup>
@@ -141,6 +146,7 @@ export default function Privacy() {
         <Section title="How long we keep it">
           <ListGroup>
             <Fact title="Boards and their data">Until the host deletes the board.</Fact>
+            <Fact title="Your account">Until you delete it. Your boards and squares stay on their boards afterwards, no longer tied to you.</Fact>
             <Fact title="Purchase records">As long as tax and accounting law requires.</Fact>
             <Fact title="Push tokens">Deleted when you turn notifications off, or when Apple or Google tells us a token is no longer valid.</Fact>
           </ListGroup>
@@ -156,6 +162,9 @@ export default function Privacy() {
             </Fact>
             <Fact icon={<BellIcon />} title="Notifications">
               Turn them off in the app, or in iOS Settings → Notifications → JaxSquares.
+            </Fact>
+            <Fact icon={<LockIcon />} title="Sign out or delete your account">
+              In Profile → Account. Signing out takes your boards off that device. Deleting your account removes your sign-in, email and device links, and revokes JaxSquares' access to your Apple ID. Your boards and squares stay on their boards for the other players.
             </Fact>
             <Fact icon={<RefreshIcon />} title="Start fresh">
               Delete the app, or clear this site's data in your browser, and the device ID is removed from your device.

@@ -3,7 +3,8 @@
 // Web (incl. iOS 16.4+ home-screen web apps): service worker + Push API, keyed
 // by the VAPID public key from /api/config. Native (Capacitor iOS/Android): FCM
 // via @capacitor-firebase/messaging. Either way the device is registered with
-// POST /api/push/register under this device's clientId.
+// POST /api/push/register under this device's clientId (the account's, on the
+// server, while it's signed in: every signed-in device gets the account's pushes).
 //
 // Startup: call initPush() once (safe on every load). In UI code:
 //   getPushState()        -> what to show ("needs-install" = iOS Safari tab: show "Add to Home Screen")
@@ -14,7 +15,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import type { PushRegistration } from "../../shared/types";
-import { getClientId } from "./identity";
+import { getClientId, isSignedIn } from "./identity";
 import { getStored, onAppResume, removeStored, setStored } from "./native";
 
 export type PushState =
@@ -57,7 +58,12 @@ let syncing: Promise<void> | null = null;
 async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE}/api${path}`, {
     method,
-    headers: { "x-client-id": getClientId(), ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: {
+      "x-client-id": getClientId(),
+      // Signed in, this device registers as its account (see identityHeaders in api.ts).
+      ...(isSignedIn() ? { "x-signed-in": "1" } : {}),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -510,6 +516,40 @@ export function initPush(): void {
   }
   document.addEventListener("visibilitychange", onAppVisible);
   onAppVisible();
+}
+
+/**
+ * This device's push registration (FCM token or web push endpoint) without
+ * asking for anything, or null when it has none. Signing out sends it so the
+ * account's pushes stop reaching this device.
+ */
+export async function currentPushTarget(): Promise<{ endpoint?: string; token?: string } | null> {
+  try {
+    if (isNative()) {
+      const { FirebaseMessaging } = await loadFm();
+      if ((await FirebaseMessaging.checkPermissions()).receive !== "granted") return null;
+      return { token: (await FirebaseMessaging.getToken()).token };
+    }
+    if (!("serviceWorker" in navigator)) return null;
+    const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    return sub ? { endpoint: sub.endpoint } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Forgets the per-board mute settings cached here (signing out: they were the account's). */
+export function clearMutedCache(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(MUTED_KEY(""))) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    // storage unavailable: nothing cached
+  }
 }
 
 /** Sends a "you're all set" push to this device. Resolves to how many devices accepted it. */

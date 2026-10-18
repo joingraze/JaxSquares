@@ -4,6 +4,7 @@
 
 import type {
   AppConfig,
+  AuthProvider,
   CellsInput,
   CreateGameInput,
   CreateGameResponse,
@@ -12,9 +13,12 @@ import type {
   JoinInput,
   League,
   ManualWinnerInput,
+  MeResponse,
   PushRegistration,
   ScheduleResponse,
   ScoreInput,
+  SignInInput,
+  SignOutInput,
   UpdateGameInput,
 } from "../../shared/types";
 import { PAYMENT_REQUIRED_CODE } from "../../shared/types";
@@ -23,6 +27,7 @@ import {
   forgetSeen,
   getAdminToken,
   getClientId,
+  isSignedIn,
   linkAdminToken,
   rememberGame,
   saveAdminToken,
@@ -83,8 +88,20 @@ function fallbackMessage(status: number): string {
   return `Request failed (${status})`;
 }
 
-export async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+/**
+ * Every request's identity headers: the device's clientId, plus `x-signed-in`
+ * while it's signed in, so the server never answers from a cached "not signed
+ * in" right after a sign-in (worker/auth/canonical.ts). The hint only asks for
+ * a fresh lookup; it proves nothing.
+ */
+export function identityHeaders(): Record<string, string> {
   const headers: Record<string, string> = { "x-client-id": getClientId() };
+  if (isSignedIn()) headers["x-signed-in"] = "1";
+  return headers;
+}
+
+export async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
+  const headers = identityHeaders();
   if (opts.adminToken) headers["x-admin-token"] = opts.adminToken;
   if (opts.body !== undefined) headers["content-type"] = "application/json";
 
@@ -246,6 +263,13 @@ export const api = {
     request<{ ok: true }>("POST", "/push/unregister", { body: target }),
   getMuted: (id: string) => request<{ muted: boolean }>("GET", g(id, "/mute")),
   setMuted: (id: string, muted: boolean) => request<{ ok: true }>("POST", g(id, "/mute"), { body: { muted } }),
+
+  // ---- Optional sign-in (docs/auth.md); src/lib/auth.ts runs the flows ----
+  /** Who this device is: its public id, its account and its boards' admin tokens. */
+  me: () => request<MeResponse>("GET", "/me"),
+  signIn: (provider: AuthProvider, input: SignInInput) => request<MeResponse>("POST", `/auth/${provider}`, { body: input, timeoutMs: 30_000 }),
+  signOut: (input: SignOutInput) => request<{ ok: true }>("POST", "/auth/sign-out", { body: input }),
+  deleteAccount: () => request<{ ok: true }>("DELETE", "/account"),
 };
 
 /** A friendly message for any thrown value (for toasts). */

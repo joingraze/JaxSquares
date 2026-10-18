@@ -1,11 +1,13 @@
 // Profile (/me): who I am on the boards (name, sticker, color, with a live
 // preview square), my notifications (one card for every state), what each
-// board will ping about next (with per-board mutes), host links and About.
+// board will ping about next (with per-board mutes), the optional account,
+// host links and About.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LockIcon, MoonIcon, PawIcon, PencilIcon, PhoneIcon, SunIcon, TrophyIcon } from "../components/icons";
 import { Button, Card, ListGroup, ListRow, SegmentedControl, TopBar, cx, useToast, type SegmentOption } from "../components/ui";
+import { AccountSection } from "../features/account";
 import { appVersion, WEB_VERSION } from "../features/notifications/profile/appVersion";
 import { HostLinksSheet } from "../features/notifications/profile/HostLinksSheet";
 import { LookSheet } from "../features/notifications/profile/LookSheet";
@@ -79,6 +81,8 @@ export default function Profile() {
         <NotificationsCard status={push} games={games} />
 
         {pushIsOn(push) && games && <BoardPings games={games} />}
+
+        <AccountSection />
 
         <ListGroup title="Hosting">
           <ListRow

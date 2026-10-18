@@ -1,4 +1,4 @@
-// Account-free identity for this device.
+// Identity for this device (no account needed; signing in is optional).
 //
 // - clientId: random secret sent as `x-client-id` on every request. It is the
 //   device's only credential, so it never appears in a URL, a share, the UI or
@@ -6,6 +6,10 @@
 // - playerId: the public id the server uses for this device in every payload
 //   (Player.id, Square.playerId, Activity.actor, results), derived one-way from
 //   the clientId (shared/playerId.ts). Compare against this to find "mine".
+//   Signed in, the server acts as the account's canonical clientId, so the
+//   public id is the account's: the server hands it over (GET /api/me, the
+//   sign-in response) and it's stored here, so "mine" works offline at startup.
+// - account: who this device is signed in as (shown only on this device).
 // - profile: the name/color/emoji used when joining a board.
 // - admin tokens: one per hosted game, sent as `x-admin-token`.
 // - known games: ids this device created or joined (for hydration + dashboard).
@@ -18,7 +22,8 @@
 // values back in either direction.
 
 import { useSyncExternalStore } from "react";
-import { derivePlayerId, derivePlayerIdSync } from "../../shared/playerId";
+import { derivePlayerId, derivePlayerIdSync, isPlayerId } from "../../shared/playerId";
+import type { AccountInfo } from "../../shared/types";
 import { getStored, removeStored, setStored } from "./native";
 
 export const STORAGE_KEYS = {
@@ -27,6 +32,10 @@ export const STORAGE_KEYS = {
   games: "jaxsquares.games",
   seen: "jaxsquares.seen",
   admin: (gameId: string) => `jaxsquares.admin.${gameId}`,
+  /** The server's public id for this device when it differs from the derived one (signed in): `{ for, id }`. */
+  playerId: "jaxsquares.playerId",
+  /** The account this device is signed in to (AccountInfo), absent when it isn't. */
+  account: "jaxsquares.account",
 } as const;
 
 /** Server limit for player names (worker cleanProfile). */
@@ -121,9 +130,9 @@ export function subscribeIdentity(listener: () => void): () => void {
 }
 
 if (typeof window !== "undefined") {
-  // Another tab changed the profile.
+  // Another tab changed the profile, or signed in or out.
   window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE_KEYS.profile || e.key === null) emit();
+    if (e.key === STORAGE_KEYS.profile || e.key === STORAGE_KEYS.account || e.key === STORAGE_KEYS.clientId || e.key === null) emit();
   });
 }
 
@@ -151,16 +160,133 @@ export function getClientId(): string {
 
 let playerIdCache: { clientId: string; playerId: string } | null = null;
 
-/**
- * This device's public player id: what GameState uses for Player.id,
- * Square.playerId, Activity.actor and results. Synchronous: hydrateIdentity
- * computes it with WebCrypto at startup; if anything asks earlier (or the
- * clientId changed) it is derived on the spot with the same hash.
- */
-export function getPlayerId(): string {
+/** The public id derived from this device's own clientId. */
+function ownPlayerId(): string {
   const clientId = getClientId();
   if (playerIdCache?.clientId !== clientId) playerIdCache = { clientId, playerId: derivePlayerIdSync(clientId) };
   return playerIdCache.playerId;
+}
+
+let serverIdCache: { raw: string | null; value: { for: string; id: string } | null } | null = null;
+
+/** The stored server-confirmed public id, tied to the device id it was given for (`for` = that device's derived id). */
+function serverPlayerId(): { for: string; id: string } | null {
+  const raw = readLocal(STORAGE_KEYS.playerId);
+  if (serverIdCache?.raw !== raw) {
+    let value: { for: string; id: string } | null = null;
+    try {
+      const v = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+      if (v && isPlayerId(v.for) && isPlayerId(v.id)) value = { for: v.for, id: v.id };
+    } catch {
+      // corrupt: ignore it, the derived id stands
+    }
+    serverIdCache = { raw, value };
+  }
+  return serverIdCache.value;
+}
+
+/**
+ * This device's public player id: what GameState uses for Player.id,
+ * Square.playerId, Activity.actor and results. Signed in, it's the account's
+ * id as the server confirmed it (GET /api/me), kept across launches; else it's
+ * derived from the clientId. Synchronous: hydrateIdentity computes the derived
+ * one with WebCrypto at startup; if anything asks earlier (or the clientId
+ * changed) it is derived on the spot with the same hash. A stored server id
+ * only counts for the clientId it was given for.
+ */
+export function getPlayerId(): string {
+  const own = ownPlayerId();
+  const server = serverPlayerId();
+  return server && server.for === own ? server.id : own;
+}
+
+// ---- Account (optional sign-in) ----
+
+let accountCache: { raw: string | null; value: AccountInfo | null } | null = null;
+
+function parseAccount(raw: string | null): AccountInfo | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Record<string, unknown>;
+    if (v.provider !== "apple" && v.provider !== "google") return null;
+    return {
+      provider: v.provider,
+      email: typeof v.email === "string" ? v.email : null,
+      name: typeof v.name === "string" ? v.name : null,
+      since: typeof v.since === "number" ? v.since : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Who this device is signed in as, or null. Stable reference until it changes. */
+export function getAccount(): AccountInfo | null {
+  const raw = readLocal(STORAGE_KEYS.account);
+  if (accountCache?.raw !== raw) accountCache = { raw, value: parseAccount(raw) };
+  return accountCache.value;
+}
+
+export function isSignedIn(): boolean {
+  return getAccount() !== null;
+}
+
+/** React binding: the account, re-rendering on sign-in and sign-out (this tab or another). */
+export function useAccount(): AccountInfo | null {
+  return useSyncExternalStore(subscribeIdentity, getAccount, getAccount);
+}
+
+/**
+ * Stores who the server says this device is (GET /api/me, the sign-in
+ * response): its public id (kept only when it differs from the derived one)
+ * and its account. Returns true when either changed.
+ */
+export function setServerIdentity(playerId: string, account: AccountInfo | null): boolean {
+  const beforeId = getPlayerId();
+  const beforeAccount = readLocal(STORAGE_KEYS.account);
+  const own = ownPlayerId();
+  if (isPlayerId(playerId) && playerId !== own) persist(STORAGE_KEYS.playerId, JSON.stringify({ for: own, id: playerId }));
+  else if (readLocal(STORAGE_KEYS.playerId) !== null) unpersist(STORAGE_KEYS.playerId);
+  const nextAccount = account ? JSON.stringify(account) : null;
+  if (nextAccount) {
+    if (nextAccount !== beforeAccount) persist(STORAGE_KEYS.account, nextAccount);
+  } else if (beforeAccount !== null) {
+    unpersist(STORAGE_KEYS.account);
+  }
+  const changed = beforeId !== getPlayerId() || beforeAccount !== nextAccount;
+  if (changed) emit();
+  return changed;
+}
+
+/** Keys in localStorage starting with `prefix` (admin tokens kept for boards no longer listed, say). */
+function localKeysWith(prefix: string): string[] {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    return keys;
+  } catch {
+    return [...memory.keys()].filter((k) => k.startsWith(prefix));
+  }
+}
+
+/**
+ * Signing out: the device starts fresh. A new clientId, and the stored player
+ * id, account, profile, known boards with their admin tokens and the seen list
+ * are gone (here and in the native store). Device settings (theme, push
+ * on/off) stay.
+ */
+export function wipeIdentity(): void {
+  for (const id of getKnownGames()) unpersist(STORAGE_KEYS.admin(id));
+  for (const key of localKeysWith(STORAGE_KEYS.admin(""))) unpersist(key);
+  for (const key of [STORAGE_KEYS.games, STORAGE_KEYS.seen, STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account]) unpersist(key);
+  linkTokens.clear();
+  persist(STORAGE_KEYS.clientId, newClientId());
+  playerIdCache = null;
+  emit();
+  for (const l of seenListeners) l();
 }
 
 async function primePlayerId(): Promise<void> {
@@ -315,6 +441,24 @@ export function saveAdminToken(gameId: string, token: string): void {
   rememberGame(gameId);
 }
 
+/**
+ * Stores the admin tokens the server says this identity holds (GET /api/me):
+ * real board codes only, overwriting a different token held here (the
+ * server's is authoritative, unlike a host link's). Notifies once; returns how
+ * many changed.
+ */
+export function saveAdminTokens(tokens: Record<string, string>): number {
+  let changed = 0;
+  for (const [gameId, token] of Object.entries(tokens)) {
+    if (!GAME_ID_RE.test(gameId) || typeof token !== "string" || !token || getAdminToken(gameId) === token) continue;
+    saveAdminToken(gameId, token);
+    linkTokens.delete(gameId);
+    changed++;
+  }
+  if (changed > 0) emit();
+  return changed;
+}
+
 export function getAdminToken(gameId: string): string | null {
   return readLocal(STORAGE_KEYS.admin(gameId));
 }
@@ -459,7 +603,8 @@ export interface PersistentStore {
 
 /**
  * Startup step (await before the first render): mirrors identity between
- * localStorage and the native store. `getStored` adopts whichever side has the
+ * localStorage and the native store (the clientId, profile, server player id
+ * and account). `getStored` adopts whichever side has the
  * value (native wins on conflict); the known-games and seen-games lists are
  * merged so neither side loses boards, then each known game's admin token is
  * restored. Finally
@@ -519,8 +664,11 @@ async function hydrateFrom(store: PersistentStore): Promise<void> {
     await store.setStored(STORAGE_KEYS.clientId, id);
   }
 
-  const profile = await store.getStored(STORAGE_KEYS.profile);
-  if (profile) writeLocal(STORAGE_KEYS.profile, profile);
+  // The profile, and the server-confirmed player id and account when signed in.
+  for (const key of [STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account]) {
+    const value = await store.getStored(key);
+    if (value) writeLocal(key, value);
+  }
 
   const merged = await mergeIds(store, STORAGE_KEYS.games, localGames, KNOWN_GAMES_MAX);
   await mergeIds(store, STORAGE_KEYS.seen, localSeen, SEEN_GAMES_MAX);

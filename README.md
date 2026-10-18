@@ -1,8 +1,9 @@
 # JaxSquares 🏈🟩
 
 A mobile-first app for playing football squares with friends. Create a board,
-share a link, and friends claim squares from their phones. No accounts, no app
-install needed (there's an iPhone app too), and every change shows up on every
+share a link, and friends claim squares from their phones. No account or app
+install needed (there's an iPhone app too, and an optional Sign in with Apple /
+Google keeps your boards on every device), and every change shows up on every
 open board within a second.
 
 **No money moves between players, ever.** There are no prices per square, pots,
@@ -110,7 +111,7 @@ src/             React app
                  invite (QR, code), notifications
   components/ui  Component kit (browse at /kit in dev)
   lib/           api client, identity, live (useGame), native bridges, push, checkout
-docs/            Architecture contract, payments, push, iOS, App Store
+docs/            Architecture contract, payments, push, sign-in, iOS, App Store
 ```
 
 ## Local development
@@ -152,6 +153,7 @@ working) until its values are set.
 | Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID` | [docs/payments.md](docs/payments.md) |
 | Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `FCM_SERVICE_ACCOUNT` | [docs/push.md](docs/push.md) |
 | App links | `APPLE_TEAM_ID`, `APPLE_BUNDLE_ID`, `ANDROID_PACKAGE`, `ANDROID_SHA256_CERT_FINGERPRINTS` | [docs/ios.md](docs/ios.md) |
+| Sign-in (optional) | vars `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `APPLE_SERVICES_ID`; secrets `APPLE_KEY_ID`, `APPLE_SIGNIN_PRIVATE_KEY` (with `APPLE_TEAM_ID`) | [docs/auth.md](docs/auth.md) |
 | General | `APP_ORIGIN` | `wrangler.jsonc` |
 
 ## Deploying to Cloudflare

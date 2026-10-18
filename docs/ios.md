@@ -14,7 +14,7 @@ app when it isn't.
 | Minimum iOS | 15.0 |
 | Devices | iPhone only, portrait only (iPads run it in iPhone mode) |
 | Capacitor | 8.5 |
-| Plugins | app, haptics, preferences, share, splash-screen, status-bar, `@capacitor-firebase/messaging` (push), `@capgo/native-purchases` (IAP) |
+| Plugins | app, haptics, preferences, share, splash-screen, status-bar, `@capacitor-firebase/messaging` (push), `@capgo/native-purchases` (IAP), `@capgo/capacitor-social-login` (optional Sign in with Apple / Google, Apple + Google providers only) |
 | Background | `#060c09` (pitch-950, `--color-canvas`) everywhere: WebView, launch screen, splash, status bar |
 
 ## What's already configured
@@ -52,7 +52,8 @@ The repo already contains these, so don't redo them in Xcode:
   - Light status bar text during launch.
   - `arm64`.
 - **`ios/App/App/App.entitlements`** contains `aps-environment` (Push
-  Notifications) and `com.apple.developer.associated-domains` =
+  Notifications), `com.apple.developer.applesignin` = `Default` (Sign in with
+  Apple) and `com.apple.developer.associated-domains` =
   `applinks:jaxsquares.com`. The project wires it in through
   `CODE_SIGN_ENTITLEMENTS`.
 - **`ios/App/App/PrivacyInfo.xcprivacy`** is the privacy manifest. It declares
@@ -103,19 +104,24 @@ npx cap open ios
 Run step 2 after every web build, every plugin install and every edit to
 `capacitor.config.ts`. It also recreates three gitignored things:
 `ios/App/App/public`, `ios/App/App/capacitor.config.json` and
-`ios/App/CapApp-SPM/symlinks/`.
+`ios/App/CapApp-SPM/symlinks/`. It also runs the sign-in plugin's hook, which
+comments the Facebook SDK out of
+`node_modules/@capgo/capacitor-social-login/Package.swift` (from
+`plugins.SocialLogin.providers` in `capacitor.config.ts`), so always sync after
+`npm ci` and before opening Xcode, or Xcode would fetch the Facebook SDK.
 
 In Xcode:
 
 1. Select the **App** target → **Signing & Capabilities**.
 2. Choose your **Team** and keep **Automatically manage signing** on.
    - Xcode registers `com.jaxsquares.app`.
-   - Because of the entitlements file, Xcode turns on Push Notifications and
-     Associated Domains for the App ID.
+   - Because of the entitlements file, Xcode turns on Push Notifications,
+     Sign in with Apple and Associated Domains for the App ID.
    - In-App Purchase needs no entitlement.
-3. Check that the capabilities list shows these three entries. Don't add
+3. Check that the capabilities list shows these four entries. Don't add
    duplicates.
    - **Push Notifications**
+   - **Sign in with Apple**
    - **Associated Domains** containing `applinks:jaxsquares.com`
    - **Background Modes** with **Remote notifications** ticked
 4. Pick an iPhone simulator or a plugged-in device and press **Run**.
@@ -132,6 +138,32 @@ npx cap run ios -l --host <your-mac-LAN-IP> --port 5173
 
 This sets `server.url` for that run only, so the WebView loads your dev server.
 Don't commit a `server.url`.
+
+## Sign in with Apple / Google (optional accounts)
+
+The model and the full setup are in `docs/auth.md`. The iOS-specific parts:
+
+1. **Apple** works with no extra setup in the app: the entitlement is in
+   `App.entitlements` (enable "Sign in with Apple" on the App ID if automatic
+   signing doesn't), and the server accepts tokens for the bundle id. It shows
+   first wherever Google shows (guideline 4.8). Test on a device or a simulator
+   signed in to an Apple Account.
+2. **Google** needs a new build:
+   - Add the iOS OAuth client's reversed client id
+     (`com.googleusercontent.apps.…`) as a second `CFBundleURLTypes` entry in
+     `ios/App/App/Info.plist`.
+   - Build with `VITE_GOOGLE_IOS_CLIENT_ID=<the iOS client id>` (e.g.
+     `VITE_GOOGLE_IOS_CLIENT_ID=… npm run ios`). The app only offers Google when
+     this matches the server's `GOOGLE_IOS_CLIENT_ID`: Google's SDK crashes the
+     app when the URL scheme is missing, so builds made without it never show
+     the button.
+   - GoogleSignIn finishes inside `ASWebAuthenticationSession`, so the app
+     doesn't forward URLs to it. If a Google sign-in ever hangs after Google's
+     sheet closes, forward the URL in `SceneDelegate`'s `openURLContexts` to
+     `GIDSignIn.sharedInstance.handle(url)` first (this needs Xcode to check).
+3. Account deletion is in Profile → Account → Delete account (guideline
+   5.1.1(v)); it revokes the Apple token when the Sign in with Apple key is set
+   on the server (`docs/auth.md`, step 2.3). Mention it in the App Review notes.
 
 ## Push notifications
 

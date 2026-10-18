@@ -16,6 +16,7 @@ import { ArrowRightIcon, MailIcon, ShareIcon, WifiOffIcon } from "../../componen
 import { Button, buttonStyles, celebrate, cx, Jax, JaxCheer, LiveDot, useToast } from "../../components/ui";
 import { inviteUrl, type ApiError } from "../../lib/api";
 import { forgetSeen, getPlayerId, rememberSeen, useProfile } from "../../lib/identity";
+import { SignInCard } from "../account";
 import { isMyBoard } from "../../lib/live";
 import { haptic, shareLink } from "../../lib/native";
 import { celebratedWins, markCelebrated } from "../board/storage";
@@ -276,6 +277,9 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
             <HowItWorks />
           </div>
         )}
+
+        {/* Optional sign-in, once there are boards worth keeping (hidden when signed in, dismissed or unavailable). */}
+        <SignInCard className="home-enter" style={enter()} />
 
         <button
           type="button"
