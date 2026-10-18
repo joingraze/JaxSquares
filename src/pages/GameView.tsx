@@ -13,7 +13,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, unitOf } from "../../shared/formats";
+import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
 import { GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
@@ -728,7 +728,8 @@ export default function GameView() {
           .map((w) => {
             const r = results.find((x) => x.periodKey === w.periodKey);
             const amount = r ? (w.reverse ? r.reverseAmount : r.amount) : null;
-            return `${periodPhrase(w.periodKey, w.label).short}${w.reverse ? " (reverse)" : ""}${amount ? ` · ${formatAmount(amount, unit)}` : ""}`;
+            const kind = r?.scoreKind ? ` · ${scorePlayLabel(r.scoreKind, r.scorePoints)}` : "";
+            return `${periodPhrase(w.periodKey, w.label).short}${kind}${w.reverse ? " (reverse)" : ""}${amount ? ` · ${formatAmount(amount, unit)}` : ""}`;
           })
           .join(", ")}`
       : null;

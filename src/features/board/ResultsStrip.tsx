@@ -4,11 +4,13 @@
 // swipeable strip: newest first on every-score boards (so it opens on the
 // score in play), in game order when quarter-ends are mixed in (scrolled to
 // what's next). A period whose square nobody took says so plainly ("Nobody
-// had 7–3"); the host can pick a winner from host tools. Amounts are
-// display-only: "Q1 · $200", "Reverse · $50".
+// had 7–3"); the host can pick a winner from host tools. Every-score entries
+// say what kind of score they were ("Score 3 · TD · $50", "XP", "FG", "2-pt",
+// "Safety"). Amounts are display-only: "Q1 · $200", "Reverse · $50", and a
+// range for a score still to come when amounts go by score type ("$10–$50").
 
 import { useEffect, useRef } from "react";
-import { everyScoreIndex, formatAmount, periodPhrase } from "../../../shared/formats";
+import { everyScoreIndex, formatAmount, formatRange, periodPhrase, scorePlayLabel } from "../../../shared/formats";
 import type { AmountUnit, Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
 import { Avatar, cx, LiveDot } from "../../components/ui";
@@ -68,6 +70,7 @@ export function ResultsStrip({
   if (cards.length === 0) return null;
   const abbr = (t: Team) => t.abbr || t.name.slice(0, 3).toUpperCase();
   const money = (n: number | null) => (n ? formatAmount(n, unit) : null);
+  const span = (r: { min: number; max: number } | null) => (r ? formatRange(r, unit) : null);
 
   return (
     <div
@@ -84,8 +87,14 @@ export function ResultsStrip({
         // The headline award: the square, or the reverse square where only it wins.
         const mainId = r ? (reverseOnly ? r.reverseWinnerPlayerId : r.winnerPlayerId) : null;
         const main = mainId ? byId.get(mainId) : null;
-        const mainAmount = money(reverseOnly ? card.reverseAmount : card.amount);
-        const revAmount = !reverseOnly && card.awardsReverse ? money(card.reverseAmount) : null;
+        // Decided: what it showed. Still to come: what it can show (a range with amounts by score type).
+        const mainAmount = r ? money(reverseOnly ? card.reverseAmount : card.amount) : span(reverseOnly ? card.reverseRange : card.range);
+        const revAmount = !reverseOnly && card.awardsReverse ? (r ? money(card.reverseAmount) : span(card.reverseRange)) : null;
+        const kind = r?.scoreKind ? scorePlayLabel(r.scoreKind, r.scorePoints) : null;
+        // A score still to come with amounts by score type: its range sits in the card, not the label.
+        const upcoming = !r ? (reverseOnly ? card.reverseRange : card.range) : null;
+        const byType = !!upcoming && upcoming.min !== upcoming.max;
+        const rangeInBody = !predraw && byType;
         const revWinner = r?.reverseWinnerPlayerId ? byId.get(r.reverseWinnerPlayerId) : null;
         const note = (reverseOnly ? card.reversePrize : card.prize) ?? card.reversePrize;
         const iWon = !!r && (r.winnerPlayerId === me || r.reverseWinnerPlayerId === me);
@@ -94,7 +103,7 @@ export function ResultsStrip({
         const now = card.status === "live" && everyScoreIndex(card.key) === null ? liveNow : null;
         const liveOwner = now?.playerId ? byId.get(now.playerId) : null;
         const short = periodPhrase(card.key, card.label).short;
-        const noAmounts = !card.amount && !card.reverseAmount;
+        const noAmounts = !card.amount && !card.reverseAmount && !card.range && !card.reverseRange;
         return (
           <button
             key={card.key}
@@ -106,7 +115,7 @@ export function ResultsStrip({
             onClick={() => onSelect(selected ? null : card.key)}
             className={cx(
               "pressable relative flex shrink-0 flex-col gap-2 rounded-[1.125rem] p-3 text-left ring-1 ring-inset disabled:cursor-default",
-              grid ? "min-w-0" : "w-[9.5rem]",
+              grid ? "min-w-0" : "w-[10rem]",
               grid && cards.length % 2 === 1 && card === cards[cards.length - 1] && "col-span-2",
               iWon
                 ? "jx-shine bg-[linear-gradient(160deg,rgb(255_194_51/0.28),rgb(255_171_15/0.08)_70%)] bg-surface-2 ring-gold-line/60 shadow-glow-gold"
@@ -119,9 +128,13 @@ export function ResultsStrip({
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className={cx("eyebrow min-w-0 truncate", card.status === "done" ? "text-ink-gold" : "text-ink-muted")}>
+              <span
+                data-testid="result-label"
+                className={cx("eyebrow min-w-0 truncate", card.status === "done" ? "text-ink-gold" : "text-ink-muted")}
+              >
                 {short}
-                {mainAmount && !(predraw && !r) && <span className="tabular-nums text-ink-gold"> · {mainAmount}</span>}
+                {kind && <span data-kind={r?.scoreKind} className="text-ink"> · {kind}</span>}
+                {mainAmount && !(predraw && !r) && !rangeInBody && <span className="tabular-nums text-ink-gold"> · {mainAmount}</span>}
               </span>
               {card.status === "live" && (
                 <span className="eyebrow flex shrink-0 items-center gap-1 text-ink-live">
@@ -181,7 +194,15 @@ export function ResultsStrip({
                     <span className="font-display text-title-3 font-extrabold leading-none tabular-nums text-ink-gold">{mainAmount}</span>
                   )}
                   <span className="text-caption font-semibold text-ink-muted">
-                    {reverseOnly ? "Reverse square" : revAmount ? `+ ${revAmount} reverse` : card.awardsReverse ? "+ reverse square" : "Winning square"}
+                    {reverseOnly
+                      ? "Reverse square"
+                      : revAmount
+                        ? `+ ${revAmount} reverse`
+                        : card.awardsReverse
+                          ? "+ reverse square"
+                          : byType
+                            ? "By score type"
+                            : "Winning square"}
                   </span>
                 </div>
               )
@@ -200,6 +221,7 @@ export function ResultsStrip({
                     ?
                   </span>
                   <span className="truncate text-subhead font-bold text-ink-subtle">TBD</span>
+                  {rangeInBody && <span className="ml-auto shrink-0 text-footnote font-extrabold tabular-nums text-ink-gold">{mainAmount}</span>}
                 </span>
               </>
             )}

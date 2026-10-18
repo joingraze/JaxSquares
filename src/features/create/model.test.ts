@@ -219,7 +219,8 @@ describe("format copy", () => {
       "The square matching the last digit of each team's score wins every time the score changes. Flip the digits and that square wins after Q1, at halftime, after Q3 and at the final.",
     );
     expect(formatLine(owner)).toBe("Every score + quarters · Reverse on quarters · 10×10");
-    expect(rulesTitle(owner)).toBe("Custom rules");
+    expect(rulesTitle(owner)).toBe("Every score + reverse");
+    expect(rulesTitle(withRules({ ...defaultFormat(), rules: OWNER_RULES.slice(0, 3) }))).toBe("Custom rules");
     expect(rulesTitle(withRules(defaultFormat()))).toBe("Every quarter");
     expect(describeBoard(owner)).not.toMatch(/\$|money|bet|wager|pot\b|payout|buy-in/i);
   });

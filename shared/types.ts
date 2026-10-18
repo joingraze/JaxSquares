@@ -3,7 +3,7 @@
 //
 // JaxSquares never handles money between players: it never collects, holds,
 // sends or tracks a payment between them. A host may show a square price and
-// prize amounts (GameFormat.squarePrice, Prize.amount) as display-only,
+// prize amounts (GameFormat.squarePrice, Prize.amount, Prize.byKind) as display-only,
 // structured fields in "$" or points, plus a free-text note per prize ("Loser
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the creator
@@ -35,6 +35,13 @@ export type BoardSize = 100 | 25;
 export type Moment = "score" | "q1" | "q2" | "q3" | "final";
 
 /**
+ * The kind of score an every-score entry was (football): derived on read from
+ * its change versus the entry before it (`entryPlays` in shared/squares.ts),
+ * never stored, so host corrections and overturned scores stay consistent.
+ */
+export type ScoreKind = "touchdown" | "fieldGoal" | "conversion" | "safety";
+
+/**
  * What a winning square gets. `amount` is display-only (in the board's unit):
  * JaxSquares never collects or sends it. `note` is free text ("" when none),
  * checked by validatePrizeNote.
@@ -42,6 +49,14 @@ export type Moment = "score" | "q1" | "q2" | "q3" | "final";
 export interface Prize {
   amount: number | null;
   note: string;
+  /**
+   * Every score change only (the "score" moment's square/reverse): a
+   * display-only amount per kind of score, so a conversion can show less than
+   * a touchdown. `amount` stays the default for a kind without its own value
+   * and for an entry whose kind can't be told. Absent = `amount` for every
+   * score (rules made before it behave exactly as before).
+   */
+  byKind?: Partial<Record<ScoreKind, number>>;
 }
 
 /** Who wins at one moment. */

@@ -1,7 +1,8 @@
 // The board's rules for everyone, read-only: what wins when, which square
-// (or the reverse square), the amounts and notes, the square price, the cap,
-// and the line that the app never collects or sends money. The host also gets
-// "Edit rules & prizes", which opens the editor in the host tools.
+// (or the reverse square), the amounts (each kind of score's, when every
+// score change shows amounts by score type) and notes, the square price, the
+// cap, and the line that the app never collects or sends money. The host also
+// gets "Edit rules & prizes", which opens the editor in the host tools.
 
 import { AMOUNTS_DISCLAIMER, BOARD_SIZE_INFO, freshNumbersAllowed, rulesOf, rulesSummary } from "../../../shared/formats";
 import type { Game } from "../../../shared/types";
@@ -99,17 +100,34 @@ function RuleRow({ line }: { line: RuleLine }) {
       <div className="min-w-0 flex-1">
         <p className="text-callout font-bold text-ink">{line.label}</p>
         <p className="text-caption text-ink-subtle">{line.when}</p>
-        <ul className="mt-1.5 flex flex-col gap-1">
+        <ul className="mt-1.5 flex flex-col gap-1.5">
           {line.sides.map((s) => (
-            <li key={s.side} className="flex min-w-0 items-baseline gap-1.5 text-subhead">
-              {s.side === "reverse" ? (
-                <RefreshIcon size={13} className="shrink-0 self-center text-ink-subtle" />
-              ) : (
-                <span aria-hidden className="h-2 w-2 shrink-0 self-center rounded-[3px] bg-gold-400" />
+            <li key={s.side} className="flex min-w-0 flex-col gap-1.5">
+              <span className="flex min-w-0 items-baseline gap-1.5 text-subhead">
+                {s.side === "reverse" ? (
+                  <RefreshIcon size={13} className="shrink-0 self-center text-ink-subtle" />
+                ) : (
+                  <span aria-hidden className="h-2 w-2 shrink-0 self-center rounded-[3px] bg-gold-400" />
+                )}
+                <span className="shrink-0 font-semibold text-ink-muted">{s.side === "square" ? "Square" : "Reverse"}</span>
+                {s.amount && !s.kinds && <b className={cx("shrink-0 font-display font-extrabold tabular-nums text-ink-gold")}>{s.amount}</b>}
+                {s.note && <span className="min-w-0 truncate text-ink-muted">· {s.note}</span>}
+              </span>
+              {s.kinds && (
+                // Amounts by score type: each kind of score with what it shows.
+                <span data-testid="rules-kinds" data-side={s.side} className="grid grid-cols-2 gap-1.5">
+                  {s.kinds.map((k) => (
+                    <span
+                      key={k.kind}
+                      data-kind={k.kind}
+                      className="flex min-w-0 items-baseline justify-between gap-2 rounded-lg bg-surface-4/70 px-2.5 py-1.5 ring-1 ring-inset ring-line"
+                    >
+                      <span className="truncate text-footnote font-semibold text-ink-muted">{k.label}</span>
+                      <b className="shrink-0 font-display text-subhead font-extrabold tabular-nums text-ink-gold">{k.amount}</b>
+                    </span>
+                  ))}
+                </span>
               )}
-              <span className="shrink-0 font-semibold text-ink-muted">{s.side === "square" ? "Square" : "Reverse"}</span>
-              {s.amount && <b className={cx("shrink-0 font-display font-extrabold tabular-nums text-ink-gold")}>{s.amount}</b>}
-              {s.note && <span className="min-w-0 truncate text-ink-muted">· {s.note}</span>}
             </li>
           ))}
         </ul>

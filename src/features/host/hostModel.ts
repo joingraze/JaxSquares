@@ -9,6 +9,7 @@ import {
   everyScorePeriod,
   hasScoreMoment,
   mentionsMoney,
+  prizeAmount,
   prizeFor,
   ruleForPeriodKey,
   rulesOf,
@@ -18,6 +19,7 @@ import {
   boardPeriods,
   cellKey,
   drawFor,
+  entryPlayFor,
   fixedPeriodsOf,
   liveLabel,
   primaryAward,
@@ -28,6 +30,7 @@ import {
   winningCell,
   type Cell,
   type PeriodResult,
+  type ScorePlay,
 } from "../../../shared/squares";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
@@ -437,11 +440,19 @@ export function addPoints(value: string, points: number): string {
 }
 
 /** Football scoring plays for every-score boards. */
-export const QUICK_ADDS: readonly { points: number; label: string }[] = [
-  { points: 7, label: "TD" },
-  { points: 3, label: "FG" },
-  { points: 2, label: "2PT" },
-  { points: 1, label: "XP" },
+/**
+ * The every-score pad's one-tap points for the team that scored. A
+ * touchdown is +6 and its kick or 2-point try is saved as its own score
+ * (like the live feed records them), so the touchdown's square gets its
+ * turn and each shows its kind's amount. A safety is also +2: the kind
+ * comes from the order (2 right after that team's touchdown is a conversion).
+ */
+export const QUICK_ADDS: readonly { points: number; label: string; name: string }[] = [
+  { points: 6, label: "TD", name: "touchdown" },
+  { points: 3, label: "FG", name: "field goal" },
+  { points: 1, label: "XP", name: "extra point" },
+  { points: 2, label: "2-PT", name: "2-point try" },
+  { points: 2, label: "Safety", name: "safety" },
 ];
 
 export interface WinnerPreview {
@@ -453,9 +464,11 @@ export interface WinnerPreview {
   digitX: number;
   digitY: number;
   prize: string | null;
-  /** Display-only amount the square (or, on a reverse-only moment, the reverse square) wins. */
+  /** Display-only amount the square (or, on a reverse-only moment, the reverse square) wins (by kind, for a score entry). */
   amount: number | null;
   unit: AmountUnit;
+  /** A score entry: the kind of score this would be (from the entry before it), when it can tell. */
+  play: ScorePlay | null;
   /** Only the reverse square wins this moment: `cell` is the reverse square. */
   reverseOnly: boolean;
   /** A host pick that will keep overriding the computed square. */
@@ -481,6 +494,8 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
   const rev = rule?.reverse && !reverseOnly ? swapped : null;
   const legacy = !state.game.format.rules?.length;
   const note = legacy ? prizeFor(state.game.prizes, real) : (reverseOnly ? rule?.reverse?.note : rule?.square?.note) || null;
+  const football = !state.game.sport || state.game.sport === "football";
+  const play = football && everyScoreIndex(real) !== null ? entryPlayFor(state.scores, real, scoreX, scoreY) : null;
   return {
     periodKey: real,
     cell,
@@ -489,8 +504,9 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
     digitX: scoreX % 10,
     digitY: scoreY % 10,
     prize: note,
-    amount: (reverseOnly ? rule?.reverse?.amount : rule?.square?.amount) ?? null,
+    amount: prizeAmount(reverseOnly ? rule?.reverse : rule?.square, play?.kind),
     unit: unitOf(state.game.format),
+    play,
     reverseOnly,
     manual: state.manualWinners.find((m) => m.periodKey === real) ?? null,
   };

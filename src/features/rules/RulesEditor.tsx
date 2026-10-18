@@ -1,21 +1,31 @@
 // The rules & prizes editor, shared by the create page and the host's edit
 // sheet. It leads with the host's explicit choice of how prizes read (dollars,
-// points or just for fun) and the square price, then one row per moment: on or
-// off, which squares win (square, reverse or both), each with an optional
-// amount, and an optional note behind "Add note". Rows that are off fold to one
-// line, so it never becomes a wall of inputs.
+// points or just for fun) and the square price (one-tap picks or any amount,
+// what the whole board adds up to, how the prizes compare, and "Split the
+// $1,000" to fill the prizes in one tap), then one row per moment: on or off,
+// which squares win (square, reverse or both), each with an optional amount,
+// and an optional note behind "Add note". The every-score row also offers the
+// reverse at each quarter and amounts by score type. Rows that are off fold
+// to one line, so it never becomes a wall of inputs.
 //
 // Once scoring has started (`locked`), which moments win and which squares are
 // shown disabled with the reason; amounts and notes stay editable.
 
-import { useEffect, useState, type ReactNode } from "react";
-import { AMOUNTS_DISCLAIMER, MOMENT_INFO, PRIZE_MAX_LENGTH } from "../../../shared/formats";
-import type { Moment, MomentRule } from "../../../shared/types";
+import { useState, type ReactNode } from "react";
+import { AMOUNTS_DISCLAIMER, MOMENT_INFO, PRIZE_MAX_LENGTH, formatAmount } from "../../../shared/formats";
+import type { BoardSize, Moment, MomentRule } from "../../../shared/types";
 import { CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusIcon } from "../../components/icons";
 import { Badge, SegmentedControl, Switch, TextField, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
+import { AmountField } from "./AmountField";
+import { EveryScoreOptions } from "./EveryScoreOptions";
 import {
+  PRICE_CHIPS,
   SIDES,
+  boardTotal,
+  byKindOn,
+  boardTotalLabel,
+  budgetText,
   canCopyToFixed,
   copyToFixed,
   editorRows,
@@ -23,12 +33,14 @@ import {
   noteProblems,
   parseAmount,
   parsePrice,
-  amountText,
-  presetOf,
+  presetChoice,
+  prizeBudget,
   setMoment,
   setPrize,
   setSides,
   sidesOf,
+  splitOptions,
+  splitSharesBoth,
   type PrizeChoice,
   type RulesDraft,
   type Side,
@@ -38,6 +50,8 @@ import {
 export interface RulesEditorProps {
   draft: RulesDraft;
   onChange: (draft: RulesDraft) => void;
+  /** Squares on the board, for what the whole board adds up to at the square price. */
+  boardSize: BoardSize;
   /** Why which moments win can't change any more (shown, with those controls disabled). */
   locked?: string | null;
 }
@@ -62,13 +76,13 @@ const WHEN: Record<Moment, string> = {
 
 const SIDE_LABEL: Record<Side, string> = { square: "Square", reverse: "Reverse" };
 
-export function RulesEditor({ draft, onChange, locked = null }: RulesEditorProps) {
+export function RulesEditor({ draft, onChange, boardSize, locked = null }: RulesEditorProps) {
   const set = (patch: Partial<RulesDraft>) => onChange({ ...draft, ...patch });
   const setRules = (rules: MomentRule[]) => set({ rules });
   const amounts = draft.choice === "$" || draft.choice === "pts";
   const unit = draft.choice === "pts" ? "pts" : "$";
   const problems = noteProblems(draft.rules);
-  const custom = presetOf(draft.rules) === null;
+  const custom = presetChoice(draft.rules) === null;
   const rows = editorRows(draft.rules);
 
   return (
@@ -82,21 +96,13 @@ export function RulesEditor({ draft, onChange, locked = null }: RulesEditorProps
       </section>
 
       {amounts && (
-        <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
-          <div className="min-w-0">
-            <p className="text-callout font-bold text-ink">Square price</p>
-            <p className="mt-0.5 text-footnote text-ink-subtle">What one square costs</p>
-          </div>
-          <AmountField
-            testId="rules-square-price"
-            label="Square price"
-            value={draft.squarePrice}
-            unit={unit}
-            parse={parsePrice}
-            onChange={(squarePrice) => set({ squarePrice })}
-            className="w-34 shrink-0"
-          />
-        </div>
+        <SquarePrice
+          draft={draft}
+          unit={unit}
+          boardSize={boardSize}
+          onPrice={(squarePrice) => set({ squarePrice })}
+          onRules={setRules}
+        />
       )}
 
       {draft.choice === "fun" && (
@@ -131,10 +137,180 @@ export function RulesEditor({ draft, onChange, locked = null }: RulesEditorProps
               amounts={amounts}
               unit={unit}
               problems={problems}
+              fun={draft.choice === "fun"}
+              onNeedAmounts={(rules) => set({ choice: "$", rules })}
             />
           ))}
         </ul>
       </section>
+    </div>
+  );
+}
+
+// ---- Square price: quick picks, the board's total, and splitting it ----
+
+function SquarePrice({
+  draft,
+  unit,
+  boardSize,
+  onPrice,
+  onRules,
+}: {
+  draft: RulesDraft;
+  unit: "$" | "pts";
+  boardSize: BoardSize;
+  onPrice: (price: number | null) => void;
+  onRules: (rules: MomentRule[]) => void;
+}) {
+  const total = boardTotal(draft.squarePrice, boardSize);
+  return (
+    <section aria-label="Square price" data-testid="square-price" className="overflow-hidden rounded-2xl bg-surface-3 ring-1 ring-inset ring-line">
+      <div className="flex items-center justify-between gap-3 px-3.5 pt-3">
+        <div className="min-w-0">
+          <p className="text-callout font-bold text-ink">Square price</p>
+          <p className="mt-0.5 text-footnote text-ink-subtle">What one square costs</p>
+        </div>
+        <AmountField
+          testId="rules-square-price"
+          label="Square price"
+          value={draft.squarePrice}
+          unit={unit}
+          parse={parsePrice}
+          onChange={onPrice}
+          className="w-34 shrink-0"
+        />
+      </div>
+      <div role="group" aria-label="Quick square prices" className="grid grid-cols-4 gap-2 px-3.5 pb-3.5 pt-3">
+        {PRICE_CHIPS[unit].map((value) => {
+          const selected = draft.squarePrice === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              data-testid="price-chip"
+              data-price={value}
+              aria-pressed={selected}
+              onClick={() => {
+                void haptic("selection");
+                onPrice(selected ? null : value);
+              }}
+              className={cx(
+                "pressable h-10 rounded-xl font-display text-subhead font-extrabold tabular-nums transition-colors",
+                selected
+                  ? "bg-brand-400 text-ink-inverse shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
+                  : "bg-surface-2 text-ink ring-1 ring-inset ring-line hover:bg-surface-4",
+              )}
+            >
+              {unit === "$" ? formatAmount(value, unit) : value.toLocaleString("en-US")}
+            </button>
+          );
+        })}
+      </div>
+      {total !== null && <BoardTotal rules={draft.rules} total={total} unit={unit} boardSize={boardSize} onRules={onRules} />}
+    </section>
+  );
+}
+
+/**
+ * "All 100 squares: $1,000", how the fixed prizes compare ("$800 of $1,000 ·
+ * $200 left", "+ every score" when every score change shows amounts too:
+ * their total depends on the game), and "Split the $1,000".
+ */
+function BoardTotal({
+  rules,
+  total,
+  unit,
+  boardSize,
+  onRules,
+}: {
+  rules: MomentRule[];
+  total: number;
+  unit: "$" | "pts";
+  boardSize: BoardSize;
+  onRules: (rules: MomentRule[]) => void;
+}) {
+  const budget = prizeBudget(rules, total);
+  const text = budgetText(budget, unit);
+  const options = splitOptions(rules, total, unit);
+  const totalText = formatAmount(total, unit);
+  const detailTone =
+    budget.status === "over" ? "text-ink-danger" : budget.status === "exact" ? "text-ink-brand" : "text-ink-gold";
+  const extra = budget.everyScore ? (budget.status === "none" ? "Total depends on the game" : "+ every score") : null;
+  return (
+    <div className="flex flex-col gap-3 border-t border-line bg-ink/3 px-3.5 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-subhead font-semibold text-ink-muted">{boardTotalLabel(boardSize)}</span>
+        <span data-testid="board-total" className="font-display text-headline font-extrabold tabular-nums text-ink">
+          {totalText}
+        </span>
+      </div>
+      <div data-testid="prize-budget" data-status={budget.status} className="flex items-start justify-between gap-3">
+        <span className="text-subhead font-semibold text-ink-muted">Prizes</span>
+        <span className="flex min-w-0 flex-col items-end text-right">
+          <span className={cx("font-display text-callout font-extrabold tabular-nums", budget.status === "none" ? "text-ink-subtle" : "text-ink")}>
+            {text.main}
+          </span>
+          {(text.detail || extra) && (
+            <span className="flex items-center gap-1 text-caption font-bold tabular-nums">
+              {text.detail && (
+                <span className={cx("inline-flex items-center gap-0.5", detailTone)}>
+                  {budget.status === "exact" && <CheckIcon size={12} strokeWidth={3} />}
+                  {text.detail}
+                </span>
+              )}
+              {text.detail && extra && <span aria-hidden className="text-ink-subtle">·</span>}
+              {extra && <span className="text-ink-subtle">{extra}</span>}
+            </span>
+          )}
+        </span>
+      </div>
+      {options.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="eyebrow px-0.5 text-ink-subtle">Split the {totalText}</p>
+          <div className={cx("grid gap-2", options.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
+            {options.map((o) => (
+              <button
+                key={o.style}
+                type="button"
+                data-testid="prize-split"
+                data-split={o.style}
+                aria-pressed={o.selected}
+                aria-label={`${o.label}: ${o.preview}`}
+                onClick={() => {
+                  void haptic("selection");
+                  onRules(o.rules);
+                }}
+                className={cx(
+                  "pressable flex flex-col gap-1.5 rounded-xl p-2.5 text-left ring-inset transition-[background-color,box-shadow]",
+                  o.selected ? "bg-brand-400/10 ring-2 ring-brand-line" : "bg-surface-2 ring-1 ring-line-strong hover:bg-surface-4",
+                )}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-subhead font-extrabold text-ink">{o.label}</span>
+                  {o.selected ? (
+                    <CheckIcon size={15} strokeWidth={3} className="shrink-0 text-ink-brand" />
+                  ) : (
+                    <span className="shrink-0 text-caption font-extrabold text-ink-brand">Fill in</span>
+                  )}
+                </span>
+                <span className="flex flex-col gap-0.5">
+                  {o.parts.map((part) => (
+                    <span key={part.label} className="flex items-baseline justify-between gap-2 text-caption tabular-nums">
+                      <span className="font-semibold text-ink-muted">{part.label}</span>
+                      <span className="font-bold text-ink">{part.amount}</span>
+                    </span>
+                  ))}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="px-0.5 text-caption leading-snug text-ink-subtle">
+            {splitSharesBoth(rules) ? "Where both squares win, the square and the reverse share it evenly. " : ""}
+            {budget.everyScore ? "Every-score prizes come on top. " : ""}
+            You can change any amount after.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -193,6 +369,8 @@ function MomentRow({
   amounts,
   unit,
   problems,
+  fun,
+  onNeedAmounts,
 }: {
   moment: Moment;
   rule: MomentRule | null;
@@ -202,6 +380,8 @@ function MomentRow({
   amounts: boolean;
   unit: "$" | "pts";
   problems: Record<string, string>;
+  fun: boolean;
+  onNeedAmounts: (rules: MomentRule[]) => void;
 }) {
   const on = !!rule;
   const [notesOpen, setNotesOpen] = useState(false);
@@ -210,6 +390,8 @@ function MomentRow({
   const onlyRule = on && rules.length === 1;
   const sides = rule ? sidesOf(rule) : "square";
   const onSides = SIDES.filter((s) => !!rule?.[s]);
+  // Amounts by score type replace the one amount (it moves into their grid as "Other scores").
+  const sideAmounts = amounts && !(moment === "score" && byKindOn(rules));
   const others = rules.filter((r) => r.moment !== "score" && r.moment !== moment);
   const copyLabel = others.length === 1 ? `Same for ${MOMENT_INFO[others[0].moment].short}` : "Same for every quarter";
 
@@ -244,10 +426,10 @@ function MomentRow({
               { value: "both", label: "Both", disabled: locked && sides !== "both" },
             ]}
           />
-          {(amounts || !showNotes) && (
+          {(sideAmounts || !showNotes) && (
             // The amount(s), with "Note" alongside until a note is open.
             <div className="flex items-end gap-2">
-              {amounts && (
+              {sideAmounts && (
                 <div className={cx("grid min-w-0 flex-1 gap-2", onSides.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
                   {onSides.map((side) => (
                     <AmountField
@@ -275,11 +457,11 @@ function MomentRow({
                   }}
                   className={cx(
                     "pressable tap-target flex h-11 shrink-0 items-center gap-1 rounded-xl text-footnote font-bold text-ink-brand",
-                    amounts ? "bg-surface-2 px-3 ring-1 ring-inset ring-line" : "-ml-1 px-1",
+                    sideAmounts ? "bg-surface-2 px-3 ring-1 ring-inset ring-line" : "-ml-1 px-1",
                   )}
                 >
                   <PlusIcon size={15} strokeWidth={2.6} />
-                  {amounts ? "Note" : "Add note"}
+                  {sideAmounts ? "Note" : "Add note"}
                 </button>
               )}
             </div>
@@ -298,6 +480,17 @@ function MomentRow({
               <CopyIcon size={14} />
               {copyLabel}
             </button>
+          )}
+          {moment === "score" && (
+            <EveryScoreOptions
+              rules={rules}
+              onRules={onRules}
+              unit={amounts ? unit : null}
+              fun={fun}
+              onNeedAmounts={onNeedAmounts}
+              locked={locked}
+              className="mt-0.5 bg-surface-2"
+            />
           )}
           {showNotes &&
             onSides.map((side) => (
@@ -334,79 +527,5 @@ function MomentChip({ moment, on }: { moment: Moment; on: boolean }) {
     >
       {moment === "score" ? <FootballIcon size={18} /> : MOMENT_INFO[moment].short}
     </span>
-  );
-}
-
-// ---- Amounts ----
-
-/**
- * A display-only amount: "$" before it or "pts" after it, a decimal keypad,
- * "" for none. Keeps what's typed while it's being typed; a value that isn't
- * a number (or is too big) shows why under it and isn't used.
- */
-export function AmountField({
-  value,
-  onChange,
-  unit,
-  label,
-  caption,
-  parse,
-  testId,
-  data,
-  className,
-}: {
-  value: number | null;
-  onChange: (value: number | null) => void;
-  unit: "$" | "pts";
-  /** Accessible name. */
-  label: string;
-  /** Small label above the field ("Square", "Reverse"). */
-  caption?: string;
-  parse: (text: string) => { value: number | null; error: string | null };
-  testId: string;
-  data?: Record<string, string>;
-  className?: string;
-}) {
-  const [text, setText] = useState(() => amountText(value));
-  const parsed = parse(text);
-  // Follow outside changes (a preset, "same for every quarter") without fighting the typing.
-  useEffect(() => {
-    if (parse(text).value !== value) setText(amountText(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the value changes from outside
-  }, [value]);
-  return (
-    <label className={cx("block", className)}>
-      {caption && <span className="mb-1 block px-1 text-caption font-bold text-ink-muted">{caption}</span>}
-      <span
-        className={cx(
-          "flex h-11 items-center gap-1 rounded-xl bg-surface-2 px-3 ring-1 ring-inset transition-shadow focus-within:ring-2",
-          parsed.error ? "ring-danger-500 focus-within:ring-danger-500" : "ring-line-strong focus-within:ring-brand-line",
-        )}
-      >
-        {unit === "$" && <span className="font-display text-body font-extrabold text-ink-muted">$</span>}
-        <input
-          data-testid={testId}
-          {...data}
-          aria-label={label}
-          aria-invalid={parsed.error ? true : undefined}
-          inputMode="decimal"
-          enterKeyHint="done"
-          autoComplete="off"
-          placeholder="Amount"
-          value={text}
-          onChange={(e) => {
-            const next = e.target.value;
-            setText(next);
-            const p = parse(next);
-            if (!p.error) onChange(p.value);
-          }}
-          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          className="h-full min-w-0 flex-1 bg-transparent font-display text-body font-extrabold tabular-nums text-ink outline-none placeholder:font-sans placeholder:font-medium placeholder:text-ink-subtle"
-        />
-        {unit === "pts" && <span className="text-footnote font-bold text-ink-muted">pts</span>}
-        {!parsed.error && parsed.value !== null && <CheckIcon size={14} strokeWidth={3} className="shrink-0 text-ink-brand" />}
-      </span>
-      {parsed.error && <span className="mt-1 block px-1 text-caption font-semibold text-ink-danger">{parsed.error}</span>}
-    </label>
   );
 }

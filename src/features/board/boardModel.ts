@@ -12,6 +12,7 @@ import {
   periodPhrase,
   PRESET_INFO,
   prizeFor,
+  prizeRange,
   ruleFor,
   ruleForPeriodKey,
   rulesOf,
@@ -479,6 +480,11 @@ export interface NowView {
   reverseOnly: boolean;
   /** Display-only amount the square in play wins, and the board's unit. */
   amount: number | null;
+  /**
+   * What it can show: one amount, or lowest and highest when every score
+   * change shows amounts by score type (the next score's kind isn't known yet).
+   */
+  range: { min: number; max: number } | null;
   unit: AmountUnit;
   /** Where the next common score lands (TD or field goal, either team), and whose square it is. */
   outcomes: { play: ScoringPlay; cell: Cell; ownerId: string | null }[];
@@ -564,6 +570,7 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
     mineCount: mineKeys.size,
     reverseOnly,
     amount: (reverseOnly ? rule?.reverse?.amount : rule?.square?.amount) ?? null,
+    range: prizeRange(reverseOnly ? rule?.reverse : rule?.square),
     unit: unitOf(game.format),
   };
 }
@@ -603,13 +610,21 @@ export interface PeriodCard {
   /** Display-only amounts (in the board's unit). */
   amount: number | null;
   reverseAmount: number | null;
+  /**
+   * What a card still to come can show: lowest and highest amount (they
+   * differ when every score change shows amounts by score type). A decided
+   * card's is its amount.
+   */
+  range: { min: number; max: number } | null;
+  reverseRange: { min: number; max: number } | null;
 }
 
 /** A card's prize facts, from its result or (still to come) its rule. */
 function cardPrizes(game: Pick<Game, "format" | "prizes">, key: string, result: PeriodResult | null) {
+  const one = (n: number | null) => (n ? { min: n, max: n } : null);
   if (result) {
     const { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount } = result;
-    return { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount };
+    return { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount, range: one(amount), reverseRange: one(reverseAmount) };
   }
   const rule = ruleForPeriodKey(rulesOf(game.format), key);
   const legacy = !game.format.rules?.length;
@@ -620,6 +635,8 @@ function cardPrizes(game: Pick<Game, "format" | "prizes">, key: string, result: 
     awardsReverse: !!rule?.reverse,
     amount: rule?.square?.amount ?? null,
     reverseAmount: rule?.reverse?.amount ?? null,
+    range: prizeRange(rule?.square),
+    reverseRange: prizeRange(rule?.reverse),
   };
 }
 

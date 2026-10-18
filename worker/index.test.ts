@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR } from "../shared/formats";
 import { derivePlayerIdSync } from "../shared/playerId";
-import { MAX_PLAYERS } from "../shared/squares";
+import { MAX_PLAYERS, resolveResults } from "../shared/squares";
 import type { CreateGameResponse, GameState, GameSummary, LiveUpdate } from "../shared/types";
 import type { Env } from "./env";
 import { ACTIVITY_KEEP, DRAFT_TTL_MS, HOUSEKEEPING_MINUTE, housekeeping, isHousekeepingTick } from "./housekeeping";
@@ -343,13 +343,19 @@ describe("every-score entries", () => {
     const winnerPushes = () => vi.mocked(notify).mock.calls.map((c) => c[2]).filter((e) => e.kind === "winner");
 
     await poll(0, 0); // kickoff: the board locks
+    vi.mocked(notify).mockClear();
     await poll(7, 0);
-    expect(await entries()).toEqual([["s1", 7, 0]]);
+    // A touchdown and its kick in one poll: two entries, so the touchdown's square still wins its turn.
+    expect(await entries()).toEqual([
+      ["s1", 6, 0],
+      ["s2", 7, 0],
+    ]);
+    expect(winnerPushes().map((e) => e.kind === "winner" && e.periodKey)).toEqual(["s1", "s2"]);
     expect((await call("POST", `/games/${id}/winners`, { admin, body: { periodKey: "s1", row: 1, col: 1 } })).status).toBe(200);
 
     // The touchdown is overturned on review: back to 0-0. 0-0 is never a winning
-    // score, so Score 1 goes (its pick too) and nothing new is announced, on this
-    // poll or the next.
+    // score, so both of its entries go (Score 1's pick too) and nothing new is
+    // announced, on this poll or the next.
     vi.mocked(notify).mockClear();
     await poll(0, 0);
     await poll(0, 0);
@@ -363,10 +369,18 @@ describe("every-score entries", () => {
     await poll(10, 0);
     expect(await entries()).toEqual([
       ["s1", 3, 0],
-      ["s2", 10, 0],
+      ["s2", 9, 0],
+      ["s3", 10, 0],
     ]);
-    // A touchdown corrected to a field goal by the other side's count (10-0 -> 6-0):
-    // Score 2 is that corrected score, not a third entry.
+    // Just the kick is taken back (10-0 -> 9-0): only its entry goes.
+    await poll(9, 0);
+    expect(await entries()).toEqual([
+      ["s1", 3, 0],
+      ["s2", 9, 0],
+    ]);
+    await poll(10, 0);
+    // A touchdown corrected to a field goal (10-0 -> 6-0): both of its entries
+    // go, and Score 2 is that corrected score.
     vi.mocked(notify).mockClear();
     await poll(6, 0);
     expect(await entries()).toEqual([
@@ -677,6 +691,56 @@ describe("rules and prizes", () => {
     expect(await bad(ownerFormat({ rules: [{ moment: "q1", square: null, reverse: null }] }))).toMatch(/square or a reverse/);
   });
 
+  it("takes amounts by score type on every score change, and only there", async () => {
+    const byKind = { touchdown: 50, conversion: 10 };
+    const rules = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { ...byKind, safety: null } } } : r));
+    const res = await call<CreateGameResponse>("POST", "/games", { body: createInput({ format: ownerFormat({ rules }), prizes: {} }) });
+    expect(res.status).toBe(201);
+    expect(res.body.game.format.rules?.[0].square).toEqual({ amount: 30, note: "", byKind });
+    // Rules without it are stored exactly as before (no byKind key at all).
+    const plain = await call<CreateGameResponse>("POST", "/games", { body: createInput({ format: ownerFormat(), prizes: {} }) });
+    expect(plain.body.game.format.rules?.every((r) => !("byKind" in (r.square ?? {})) && !("byKind" in (r.reverse ?? {})))).toBe(true);
+
+    const bad = async (format: Record<string, unknown>) => {
+      const out = await call<{ error: string }>("POST", "/games", { body: createInput({ format, prizes: {} }) });
+      return [out.status, out.body.error];
+    };
+    const onQ1 = ownerRules.map((r) => (r.moment === "q1" ? { ...r, reverse: { amount: 200, note: "", byKind: { touchdown: 5 } } } : r));
+    expect(await bad(ownerFormat({ rules: onQ1 }))).toEqual([400, "Amounts by score type only go with every score change."]);
+    const zero = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { conversion: 0 } } } : r));
+    expect(await bad(ownerFormat({ rules: zero }))).toEqual([400, "The conversion amount must be a number above 0, up to 1,000,000"]);
+    const unknown = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { pick6: 70 } } } : r));
+    expect(await bad(ownerFormat({ rules: unknown }))).toEqual([400, "Unknown score type"]);
+    const fun = ownerRules.map((r) => ({ ...r, square: r.square ? { amount: null, note: "", byKind } : null, reverse: r.reverse ? { ...r.reverse, amount: null } : null }));
+    expect(await bad(ownerFormat({ rules: fun, justForFun: true, squarePrice: null }))).toEqual([400, "A just-for-fun board doesn't show a square price or amounts."]);
+  });
+
+  it("lets the host change amounts by score type any time (they don't change who wins)", async () => {
+    const { id, admin } = await openBoard({ format: ownerFormat(), prizes: {} });
+    const withKinds = (byKind: Record<string, number> | undefined) => ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind } } : r));
+    await call("POST", `/games/${id}/lock`, { admin });
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 6, scoreY: 0 } })).status).toBe(200);
+    // Scoring has started: who wins is locked, amounts by kind still change.
+    const edited = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: ownerFormat({ rules: withKinds({ touchdown: 50, conversion: 10 }) }) } });
+    expect(edited.status).toBe(200);
+    const { state } = edited.body;
+    expect(state.game.format.rules?.[0].square?.byKind).toEqual({ touchdown: 50, conversion: 10 });
+    expect(state.activity[0]).toMatchObject({ type: "rules", data: { scoring: false } });
+    // Score 1 (a touchdown) now shows the touchdown amount; the next score (the kick), the conversion's.
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 7, scoreY: 0 } })).status).toBe(200);
+    const after = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    const results = resolveResults(after);
+    expect(results.filter((r) => r.periodKey.startsWith("s")).map((r) => [r.periodKey, r.scoreKind, r.amount])).toEqual([
+      ["s1", "touchdown", 50],
+      ["s2", "conversion", 10],
+    ]);
+    // Activity carries no amounts.
+    expect(after.activity.every((a) => !JSON.stringify(a.data).match(/amount|byKind|"\$/i))).toBe(true);
+    // Back to one amount for every score.
+    const cleared = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: ownerFormat({ rules: withKinds(undefined) }) } });
+    expect(cleared.body.state.game.format.rules?.[0].square).toEqual({ amount: 30, note: "" });
+  });
+
   it("lets the host change who wins until the first score, then only amounts and notes", async () => {
     const { id, admin } = await openBoard({ format: ownerFormat(), prizes: {} });
     const patch = (format: Record<string, unknown>, opts: { client?: string; admin?: string } = {}) =>
@@ -791,17 +855,30 @@ describe("rules and prizes", () => {
     await applyLiveUpdate(env, id, update(2, [7, 0], [3, 0], 1), async () => {});
     await applyLiveUpdate(env, id, update(2, [7, 7], [3, 0], 1), async () => {});
     const state = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    // Each touchdown and its kick seen in one poll are two entries.
     expect(state.scores.map((s) => [s.periodKey, s.scoreX, s.scoreY, s.source]).sort()).toEqual([
       ["q1", 7, 3, "live"],
-      ["s1", 7, 0, "live"],
-      ["s2", 7, 3, "live"],
-      ["s3", 14, 3, "live"],
+      ["s1", 6, 0, "live"],
+      ["s2", 7, 0, "live"],
+      ["s3", 7, 3, "live"],
+      ["s4", 13, 3, "live"],
+      ["s5", 14, 3, "live"],
+    ]);
+    const kinds = resolveResults(state)
+      .filter((r) => r.periodKey.startsWith("s"))
+      .map((r) => [r.periodKey, r.scoreKind, r.scorePoints]);
+    expect(kinds).toEqual([
+      ["s1", "touchdown", 6],
+      ["s2", "conversion", 1],
+      ["s3", "fieldGoal", 3],
+      ["s4", "touchdown", 6],
+      ["s5", "conversion", 1],
     ]);
     // The game ends: the Final is recorded with the last entry, and the board goes final.
     await applyLiveUpdate(env, id, update(4, [7, 7, 0, 3], [3, 0, 0, 0], 4, true), async () => {});
     const done = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
     expect(done.game.status).toBe("final");
-    expect(done.scores.map((s) => s.periodKey).sort()).toEqual(["final", "q1", "q2", "q3", "s1", "s2", "s3", "s4"]);
+    expect(done.scores.map((s) => s.periodKey).sort()).toEqual(["final", "q1", "q2", "q3", "s1", "s2", "s3", "s4", "s5", "s6"]);
   });
 });
 

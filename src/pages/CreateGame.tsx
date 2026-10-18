@@ -400,7 +400,14 @@ export default function CreateGame() {
             subtitle={rulesSubtitle}
             action="Change"
           >
-            <FormatPicker format={format} onChange={setFormat} teamX={teams?.teamX} teamY={teams?.teamY} />
+            <FormatPicker
+              format={format}
+              onChange={setFormat}
+              prizeChoice={prizeChoice}
+              onPrizeChoice={setPrizeChoice}
+              teamX={teams?.teamX}
+              teamY={teams?.teamY}
+            />
           </Disclosure>
           <div aria-hidden className="mx-4 h-px bg-line" />
           <Disclosure
@@ -421,7 +428,7 @@ export default function CreateGame() {
             action={prizesSet ? "Edit" : "Set"}
             testId="prizes-open"
           >
-            <RulesEditor draft={rulesDraft} onChange={editRules} />
+            <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} />
           </Disclosure>
           <div aria-hidden className="mx-4 h-px bg-line" />
           <Disclosure

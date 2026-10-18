@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
-import type { GameState } from "../../../shared/types";
+import type { BoardSize, GameState } from "../../../shared/types";
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -52,7 +52,7 @@ import {
   draftOf,
   lockViolation,
   noteProblems,
-  presetOf,
+  presetChoice,
   prizeLineup,
   prizesSummary,
   rulesLock,
@@ -373,6 +373,7 @@ export function HostSheet(props: HostSheetProps) {
         onChange={setRulesDraft}
         lock={lock}
         violation={violation}
+        boardSize={game.format.boardSize}
       />
     );
     footer = (
@@ -723,13 +724,15 @@ function RulesEditView({
   onChange,
   lock,
   violation,
+  boardSize,
 }: {
   draft: RulesDraft;
   onChange: (draft: RulesDraft) => void;
   lock: ReturnType<typeof rulesLock>;
   violation: string | null;
+  boardSize: BoardSize;
 }) {
-  const preset = presetOf(draft.rules);
+  const preset = presetChoice(draft.rules);
   return (
     <div className="flex flex-col gap-5 pb-2">
       <section aria-label="Presets" className="flex flex-col gap-2">
@@ -742,7 +745,7 @@ function RulesEditView({
               data-preset={p}
               selected={preset === p}
               disabled={!!lock.scoring && preset !== p}
-              onClick={() => onChange({ ...draft, rules: selectPreset(draft.rules, p) })}
+              onClick={() => preset !== p && onChange({ ...draft, rules: selectPreset(draft.rules, p) })}
             >
               {PRESET_INFO[p].short}
             </Chip>
@@ -750,7 +753,7 @@ function RulesEditView({
           {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
         </div>
       </section>
-      <RulesEditor draft={draft} onChange={onChange} locked={lock.scoring} />
+      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} locked={lock.scoring} />
       {canUseFreshNumbers(draft.rules) && (
         <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
           <Switch

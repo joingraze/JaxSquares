@@ -42,10 +42,10 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 
 - No money between players: JaxSquares never collects, holds, sends or tracks
   payment between them. A host may show a square price and prize amounts as
-  display-only, structured fields (`GameFormat.squarePrice`, `Prize.amount`, in
-  "$" or points), or mark the board "Just for fun"; nothing is shown when the
-  host sets neither. Copy near those inputs says the app never collects or
-  sends money (`AMOUNTS_DISCLAIMER`).
+  display-only, structured fields (`GameFormat.squarePrice`, `Prize.amount`,
+  `Prize.byKind`, in "$" or points), or mark the board "Just for fun";
+  nothing is shown when the host sets neither. Copy near those inputs says
+  the app never collects or sends money (`AMOUNTS_DISCLAIMER`).
 - No betting vocabulary anywhere (UI copy, push, errors): never "bet", "wager",
   "pot", "payout", "buy-in", "jackpot", "odds", "stakes", "gamble". Say "square
   price", "prize", "amount".
@@ -60,6 +60,11 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   boards): never branch on `format.periods`. The host edits rules and prizes
   any time (PATCH `format`); who wins locks at the first score, fresh numbers
   at the draw, board size never (409).
+- Every score change may show an amount per kind of score (`Prize.byKind`,
+  score moment only; `amount` stays the default). Kinds (TD, FG, conversion,
+  safety) are derived on read from the ordered entries (`entryPlays` in
+  `shared/squares.ts`), never stored; read amounts through `PeriodResult` /
+  `prizeAmount`, not `rule.square.amount`.
 - The only payment is the creator paying to open a board (`docs/payments.md`).
 
 ## Conventions

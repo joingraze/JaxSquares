@@ -19,6 +19,17 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `rules-editor` | the rules & prizes editor (create page and the host sheet's Rules & prizes view) |
 | `rules-choice`, `rules-choice-option` | how prizes read: the three choices, each with `data-choice=$\|pts\|fun` (Dollars, Points, Just for fun) |
 | `rules-square-price` | the square price input (after picking Dollars or Points) |
+| `square-price` | the square price card (input, quick picks, and once a price is set the board's total and the split) |
+| `price-chip` | each one-tap square price (`data-price=<value>`, `aria-pressed` when it's the price; tapping the picked one clears it) |
+| `board-total` | "All 100 squares: $1,000", the board's total at the square price |
+| `prize-budget` | "Prizes: $800 of $1,000" with left / over / adds up and "+ every score" (`data-status=none\|under\|exact\|over`) |
+| `prize-split` | each "Split the $1,000" choice (`data-split=even\|bigger-final`, `aria-pressed` when the amounts already match it): fills the fixed moments' amounts |
+| `every-score-options` | the every-score setups (the create page's Every score card, and the editor's every-score row) |
+| `every-score-reverse` | "Also pay the reverse at each quarter and the final" switch |
+| `every-score-reverse-amount` | create page only: one reverse amount for every quarter-end and the final |
+| `every-score-by-kind` | "Amount by score type" switch |
+| `score-kind-amount` | an amount by score type (`data-kind=touchdown\|fieldGoal\|conversion\|safety`, `data-side=square\|reverse`) |
+| `score-kind-other` | "Other scores": the every-score default amount while amounts go by score type (`data-side`) |
 | `rule-row` | one row per moment (`data-moment=score\|q1\|q2\|q3\|final`, `data-on=true\|false`) |
 | `rule-toggle` | a moment's on/off switch (inside its `rule-row`; disabled once scoring has started) |
 | `rule-sides` | a moment's Square / Reverse / Both control (inside its `rule-row`) |
@@ -31,9 +42,11 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `prize-lineup` | the compact square price / prize line (open board, invite landing, join sheet); opens the rules sheet. Not rendered when the host set nothing |
 | `rules-open` | the "Rules & prizes" pill above the board's results; opens the rules sheet |
 | `rules-sheet`, `rules-line`, `rules-price` | the read-only rules sheet's body, one line per moment (`data-moment`), and its square price pill |
+| `rules-kinds` | the rules sheet's amounts by score type on the every-score line (`data-side`; each tile has `data-kind`) |
 | `rules-edit` | host only: "Edit rules & prizes" in the rules sheet (opens the host sheet's editor) |
 | `score-moment` | on boards that award every score and quarter-ends: the host score pad's "+ Score / Q1 / Half / Q3 / Final" control |
 | `result-card` | each period card in the results strip (`data-card=<period key>`) |
+| `result-label` | a result card's label: "Score 3 · TD · $50" (its kind part has `data-kind`) |
 | `prize-totals` | the host sheet's prize totals under Winners (boards with amounts) |
 | `player-squares-value` | what a player's squares come to at the square price, on the players list while squares are picked |
 | `create-submit` | the button that creates the board / opens checkout |
@@ -49,6 +62,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `jax-cheer` | not a control: the Jax cheer overlay while it plays after one of my squares wins (board and Home), for screenshot harnesses |
 | `host-lock` | lock board + draw numbers |
 | `score-x`, `score-y`, `score-save` | host score entry |
+| `score-quick-adds`, `score-quick-add` | the every-score pad's one-tap points (`data-play=TD\|FG\|XP\|2-PT\|Safety`: +6, +3, +1, +2, +2) for the team being typed |
 | `host-open` | the host bar button that opens the host sheet |
 | `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step |
 | `host-bar-action` | the host bar's next-action pill |

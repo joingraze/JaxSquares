@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
   AMOUNTS_DISCLAIMER,
+  BY_KIND_MOMENT_ERROR,
   MONEY_ERRORS,
+  SCORE_KIND_INFO,
+  fixedPrizeTotal,
+  formatRange,
+  kindAmounts,
+  prizeAmount,
+  prizeRange,
+  scorePlayLabel,
+  splitPrizes,
+  splitStyles,
+  tidyPrize,
+  wholeShares,
   periodPhrase,
   PERIOD_PRESETS,
   PRESET_INFO,
@@ -480,6 +492,138 @@ describe("amounts", () => {
     expect(hasAmounts(withRules(fmt()))).toBe(false);
     expect(hasAmounts({ ...fmt(), squarePrice: 5 })).toBe(true);
     expect(hasAmounts({ ...fmt(), rules: OWNER_RULES })).toBe(true);
+  });
+});
+
+describe("amounts by score type", () => {
+  const scoreRule = (square: Record<string, unknown>, moment = "score") => ({ ...fmt(), rules: [{ moment, square: { amount: 30, note: "", ...square }, reverse: null }] });
+
+  it("accepts them on every score change, rounded to cents, in a fixed order", () => {
+    expect(formatError(scoreRule({ byKind: { touchdown: 50, conversion: 10 } }))).toBeNull();
+    const f = sanitizeFormat(scoreRule({ byKind: { safety: 20.005, conversion: 10, touchdown: 50, fieldGoal: null } }));
+    expect(f.rules?.[0].square).toEqual({ amount: 30, note: "", byKind: { touchdown: 50, conversion: 10, safety: 20.01 } });
+    expect(Object.keys(f.rules?.[0].square?.byKind ?? {})).toEqual(["touchdown", "conversion", "safety"]);
+    // None set: no byKind at all, so older rules look exactly as before.
+    expect(sanitizeFormat(scoreRule({ byKind: {} })).rules?.[0].square).toEqual({ amount: 30, note: "" });
+    expect(sanitizeFormat(scoreRule({ byKind: null })).rules?.[0].square).toEqual({ amount: 30, note: "" });
+    expect(formatError(scoreRule({ byKind: {} }))).toBeNull();
+  });
+
+  it("validates each like an amount, and only on every score change", () => {
+    for (const bad of [0, -1, 1_000_001, "10", Number.NaN]) {
+      expect(formatError(scoreRule({ byKind: { conversion: bad } })), String(bad)).toBe("The conversion amount must be a number above 0, up to 1,000,000");
+    }
+    expect(formatError(scoreRule({ byKind: { touchdown: 50, pick6: 70 } }))).toBe("Unknown score type");
+    expect(formatError(scoreRule({ byKind: [50] }))).toMatch(/score type/);
+    expect(formatError(scoreRule({ byKind: { touchdown: 50 } }, "q1"))).toBe(BY_KIND_MOMENT_ERROR);
+    // An empty one on a quarter is just nothing.
+    expect(formatError(scoreRule({ byKind: {} }, "q1"))).toBeNull();
+    // Lenient: dropped from fixed moments, bad values dropped.
+    expect(sanitizeFormat(scoreRule({ byKind: { touchdown: 50 } }, "final")).rules?.[0].square).toEqual({ amount: 30, note: "" });
+    expect(sanitizeFormat(scoreRule({ byKind: { touchdown: -5, safety: 20, pick6: 9 } })).rules?.[0].square?.byKind).toEqual({ safety: 20 });
+  });
+
+  it("aren't allowed on a just-for-fun board, and clear with the amounts", () => {
+    const fun = { ...scoreRule({ amount: null, byKind: { touchdown: 50 } }), justForFun: true };
+    expect(formatError(fun)).toBe(JUST_FOR_FUN_ERROR);
+    expect(withRules(fun as unknown as GameFormat).rules?.[0].square).toEqual({ amount: null, note: "" });
+    expect(sanitizeFormat(fun).rules?.[0].square).toEqual({ amount: null, note: "" });
+  });
+
+  it("count as amounts, and don't change who wins when", () => {
+    const f = scoreRule({ amount: null, byKind: { touchdown: 50 } }) as GameFormat;
+    expect(hasAmounts(f)).toBe(true);
+    expect(rulesShape(f.rules!)).toBe(rulesShape([{ moment: "score", square: { amount: null, note: "" }, reverse: null }]));
+  });
+
+  it("read per kind, falling back to the default amount", () => {
+    const p = { amount: 30, note: "", byKind: { touchdown: 50, conversion: 10 } };
+    expect([prizeAmount(p, "touchdown"), prizeAmount(p, "conversion"), prizeAmount(p, "fieldGoal"), prizeAmount(p, null)]).toEqual([50, 10, 30, 30]);
+    expect(kindAmounts(p)).toEqual([
+      { kind: "touchdown", amount: 50 },
+      { kind: "fieldGoal", amount: 30 },
+      { kind: "conversion", amount: 10 },
+      { kind: "safety", amount: 30 },
+    ]);
+    expect(prizeRange(p)).toEqual({ min: 10, max: 50 });
+    // No default: kinds without their own show nothing.
+    expect(kindAmounts({ amount: null, note: "", byKind: { touchdown: 50, conversion: 10 } }).map((k) => k.kind)).toEqual(["touchdown", "conversion"]);
+    expect(prizeRange({ amount: 25, note: "" })).toEqual({ min: 25, max: 25 });
+    expect(prizeRange({ amount: null, note: "" })).toBeNull();
+    expect(formatRange({ min: 10, max: 50 })).toBe("$10–$50");
+    expect(formatRange({ min: 10, max: 50 }, "pts")).toBe("10–50 pts");
+    expect(formatRange({ min: 50, max: 50 })).toBe("$50");
+    expect(tidyPrize({ amount: 5, note: "", byKind: {} })).toEqual({ amount: 5, note: "" });
+    expect(tidyPrize({ amount: 5, note: "", byKind: { safety: 2, touchdown: 9 } })).toEqual({ amount: 5, note: "", byKind: { touchdown: 9, safety: 2 } });
+  });
+
+  it("labels plays short and in full, never with betting words", () => {
+    expect(scorePlayLabel("touchdown", 6)).toBe("TD");
+    expect(scorePlayLabel("conversion", 1)).toBe("XP");
+    expect(scorePlayLabel("conversion", 2)).toBe("2-pt");
+    expect(scorePlayLabel("conversion", 1, true)).toBe("Extra point");
+    expect(scorePlayLabel("conversion", 2, true)).toBe("2-point try");
+    expect(scorePlayLabel("fieldGoal", 3, true)).toBe("Field goal");
+    expect(scorePlayLabel("safety", 2)).toBe("Safety");
+    expect(JSON.stringify(SCORE_KIND_INFO)).not.toMatch(BETTING_WORDS);
+  });
+});
+
+describe("splitting the board's total", () => {
+  const quarters = rulesForPreset("quarters", false);
+  const amounts = (rules: MomentRule[]) => rules.map((r) => [r.moment, r.square?.amount ?? null, r.reverse?.amount ?? null]);
+
+  it("shares whole units that add up to the total, the leftover to the later shares", () => {
+    expect(wholeShares(1000, [1, 1, 1, 1])).toEqual([250, 250, 250, 250]);
+    expect(wholeShares(1000, [1, 1, 1, 2])).toEqual([200, 200, 200, 400]);
+    expect(wholeShares(1000, [1, 2])).toEqual([333, 667]);
+    expect(wholeShares(250, [1, 1, 1, 1])).toEqual([62, 62, 63, 63]);
+    expect(wholeShares(62.5, [1, 1])).toEqual([31, 31]);
+    expect(wholeShares(0, [1, 1])).toEqual([0, 0]);
+  });
+
+  it("splits evenly, or with a bigger final, across whichever moments are on", () => {
+    expect(amounts(splitPrizes(quarters, 1000, "even"))).toEqual([
+      ["q1", 250, null],
+      ["q2", 250, null],
+      ["q3", 250, null],
+      ["final", 250, null],
+    ]);
+    expect(amounts(splitPrizes(quarters, 1000, "bigger-final")).map((a) => a[1])).toEqual([200, 200, 200, 400]);
+    expect(amounts(splitPrizes(rulesForPreset("halves", false), 1000, "bigger-final")).map((a) => a[1])).toEqual([333, 667]);
+    expect(fixedPrizeTotal(splitPrizes(quarters, 2500, "bigger-final"))).toBe(2500);
+  });
+
+  it("fills reverse-only moments, shares a moment paying both evenly, and leaves every score alone", () => {
+    const rules: MomentRule[] = [
+      { moment: "score", square: { amount: 25, note: "", byKind: { conversion: 5 } }, reverse: null },
+      { moment: "q1", square: null, reverse: { amount: null, note: "" } },
+      { moment: "q2", square: { amount: 1, note: "Wings" }, reverse: { amount: null, note: "" } },
+      { moment: "final", square: null, reverse: { amount: null, note: "Pride" } },
+    ];
+    const split = splitPrizes(rules, 1001, "even");
+    expect(amounts(split)).toEqual([
+      ["score", 25, null],
+      ["q1", null, 333],
+      ["q2", 167, 167],
+      ["final", null, 334],
+    ]);
+    expect(split[0]).toBe(rules[0]);
+    expect(split[2].square?.note).toBe("Wings");
+    expect(split[3].reverse?.note).toBe("Pride");
+    expect(fixedPrizeTotal(split)).toBe(1001);
+  });
+
+  it("offers the choices that make sense", () => {
+    expect(splitStyles(quarters)).toEqual(["even", "bigger-final"]);
+    expect(splitStyles(rulesForPreset("final", false))).toEqual(["even"]);
+    expect(splitStyles(rulesForPreset("every-score", false))).toEqual([]);
+    expect(splitStyles(quarters.filter((r) => r.moment !== "final"))).toEqual(["even"]);
+  });
+
+  it("totals the fixed moments only", () => {
+    expect(fixedPrizeTotal(OWNER_RULES)).toBe(800);
+    expect(fixedPrizeTotal(rulesForPreset("every-score", false))).toBe(0);
   });
 });
 

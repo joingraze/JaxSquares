@@ -5,7 +5,7 @@ import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
 import {
   drawNumbers,
   liveChanged,
-  nextEveryScoreEntry,
+  nextEveryScoreEntries,
   periodScoresFromLinescores,
   primaryAward,
   resolveResults,
@@ -159,8 +159,9 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
 /**
  * Apply a provider update to a linked board: upsert live status + completed
  * period scores (never replacing a host-entered score), append every-score
- * entries when the total goes up (and drop the feed's entries when it's
- * corrected down), lock at kickoff if the host hasn't, and mark the board
+ * entries when the total goes up (a touchdown and its conversion seen in one
+ * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
+ * when it's corrected down, lock at kickoff if the host hasn't, and mark the board
  * final when the game ends. Pushes the new state and sends pushes.
  *
  * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
@@ -215,8 +216,7 @@ export async function applyLiveUpdate(
     retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
     for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
     scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
-    const entry = nextEveryScoreEntry(scores, live.scoreX, live.scoreY);
-    if (entry) changed.push(entry);
+    changed.push(...nextEveryScoreEntries(scores, live.scoreX, live.scoreY));
   }
   const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
   for (const ps of periodScoresFromLinescores(game.format, update)) {

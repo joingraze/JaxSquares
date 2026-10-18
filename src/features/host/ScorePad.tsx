@@ -1,10 +1,11 @@
 // Score entry for the host: two big team tiles (real inputs, so a hardware
 // keyboard and test harnesses can type), a chunky on-screen keypad that never
-// summons the phone keyboard, football quick-adds for every-score boards, and
-// a live "who wins if you save this" preview.
+// summons the phone keyboard, football quick-adds for every-score boards
+// (+TD, +FG, +XP, +2-pt, Safety), and a live "who wins if you save this"
+// preview that says what kind of score it is.
 
 import type { ReactNode } from "react";
-import { formatAmount } from "../../../shared/formats";
+import { formatAmount, scorePlayLabel } from "../../../shared/formats";
 import type { GameState, Player, Team } from "../../../shared/types";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
@@ -89,20 +90,25 @@ export function Keypad({
   return (
     <div className="flex flex-col gap-2">
       {quickAdds && (
-        <p className="-mb-0.5 px-1 text-footnote font-bold text-ink-muted">
-          Points for <span className="font-extrabold text-ink">{activeTeam.abbr || activeTeam.name}</span>
+        <p className="-mb-0.5 flex items-baseline justify-between gap-2 px-1 text-footnote font-bold text-ink-muted">
+          <span className="min-w-0 truncate">
+            Points for <span className="font-extrabold text-ink">{activeTeam.abbr || activeTeam.name}</span>
+          </span>
+          <span className="shrink-0 text-caption font-semibold text-ink-subtle">Save the TD, then the kick</span>
         </p>
       )}
       {quickAdds && (
-        <div className="grid grid-cols-4 gap-2" role="group" aria-label={`Add points for ${activeTeam.name}`}>
+        <div data-testid="score-quick-adds" className="grid grid-cols-5 gap-1.5" role="group" aria-label={`Add points for ${activeTeam.name}`}>
           {QUICK_ADDS.map((q) => (
             <button
-              key={q.points}
+              key={q.label}
               type="button"
               tabIndex={-1}
+              data-testid="score-quick-add"
+              data-play={q.label}
               onMouseDown={keep}
               onClick={() => entry.add(q.points)}
-              aria-label={`Add ${q.points} for ${activeTeam.name}`}
+              aria-label={`Add a ${q.name} (${q.points}) for ${activeTeam.name}`}
               className={cx(
                 "pressable flex h-12 flex-col items-center justify-center rounded-2xl ring-1 ring-inset",
                 entry.active === "x"
@@ -111,7 +117,7 @@ export function Keypad({
               )}
             >
               <span className="font-display text-headline font-extrabold leading-none tabular-nums">+{q.points}</span>
-              <span className="mt-0.5 text-[0.625rem] font-extrabold uppercase tracking-[0.08em] text-ink-muted">{q.label}</span>
+              <span className="mt-0.5 text-[0.625rem] font-extrabold uppercase tracking-[0.06em] text-ink-muted">{q.label}</span>
             </button>
           ))}
         </div>
@@ -295,7 +301,14 @@ export function ScorePreview({
   let title: ReactNode;
   // What it wins (display-only), then the note: "$200 · Loser buys wings"; "(reverse)" when only the reverse square wins.
   let sub: string | null =
-    [p.amount ? formatAmount(p.amount, p.unit) : null, p.prize, p.reverseOnly ? "reverse square" : null].filter(Boolean).join(" · ") || null;
+    [
+      p.play ? scorePlayLabel(p.play.kind, p.play.points, true) : null,
+      p.amount ? formatAmount(p.amount, p.unit) : null,
+      p.prize,
+      p.reverseOnly ? "reverse square" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
   if (p.manual) {
     title = (
       <>

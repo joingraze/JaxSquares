@@ -98,13 +98,14 @@ export function PlayersList({
                       {value && <span data-testid="player-squares-value" className="shrink-0 text-caption font-bold tabular-nums text-ink-gold">{value}</span>}
                     </div>
                   ) : (
-                    <p className="mt-0.5 flex items-center gap-1.5 text-caption text-ink-subtle">
+                    // Wraps rather than running under the wins pill (squares, their value at the price, and "Leading").
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-ink-subtle">
                       <span className="whitespace-nowrap tabular-nums">
                         {squares === 1 ? "1 square" : `${squares} squares`}
                         {value ? ` · ${value}` : ""}
                       </span>
                       {leads && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-ink-live">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-ink-live">
                           <LiveDot />
                           Leading {leading?.label}
                         </span>

@@ -6,7 +6,7 @@
 // reverse square wins a moment, the row is about the reverse square.
 
 import type { ReactNode } from "react";
-import { formatAmount, unitOf } from "../../../shared/formats";
+import { formatAmount, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward } from "../../../shared/squares";
 import type { GameState, Player } from "../../../shared/types";
 import { PencilIcon, TrophyIcon } from "../../components/icons";
@@ -61,8 +61,10 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
         const empty = decided && !winner && !row.manual;
         const mine = winner?.id === me;
         const amount = money(award?.amount ?? null);
+        // Every-score entries say what kind of score it was ("Touchdown", "Extra point").
+        const kind = r?.scoreKind ? scorePlayLabel(r.scoreKind, r.scorePoints, true) : null;
         const scoreLine = row.score
-          ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
+          ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${kind ? ` · ${kind}` : ""}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
           : null;
 
         const actions: RowAction[] = [];

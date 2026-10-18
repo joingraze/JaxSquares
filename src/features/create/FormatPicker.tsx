@@ -2,24 +2,38 @@
 // preset cards (each with a tiny game timeline showing when a square wins),
 // an Advanced list of switches, and a live "how this board works" summary with
 // a mini board. Card tags never change; the summary is the one place a
-// modifier's effect shows ("8 winners" with reverse on). Rules fine-tuned in
+// modifier's effect shows ("8 winners" with reverse on). With Every score
+// picked, its two setups sit right under the cards: the reverse at each
+// quarter and the final, and amounts by score type. Rules fine-tuned in
 // "Square price & prizes" (say, every score plus the quarters) show as a
 // "Custom rules" card; tapping a preset goes back to it, keeping amounts.
 
 import type { CSSProperties } from "react";
-import { BOARD_SIZE_INFO, PERIOD_PRESETS, PRESET_INFO, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import { BOARD_SIZE_INFO, PERIOD_PRESETS, PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
 import type { GameFormat, MomentRule, Team } from "../../../shared/types";
 import { cx, Switch } from "../../components/ui";
 import { readableTeamColor } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
-import { allReverse, canUseFreshNumbers, presetOf, selectPreset, setReverseEverywhere } from "../rules/rulesModel";
+import { EveryScoreOptions } from "../rules/EveryScoreOptions";
+import {
+  allReverse,
+  canUseFreshNumbers,
+  presetChoice,
+  selectPreset,
+  setReverseEverywhere,
+  type PrizeChoice,
+} from "../rules/rulesModel";
 import { boardHeadlineParts, describeBoard, winnersTag } from "./model";
 import { useResolvedTheme } from "../../lib/theme";
 
 export interface FormatPickerProps {
   format: GameFormat;
   onChange: (format: GameFormat) => void;
+  /** How prizes read (the amounts by score type use its unit; "fun" hides them). */
+  prizeChoice?: PrizeChoice;
+  /** Amounts by score type turned on before dollars or points were chosen. */
+  onPrizeChoice?: (choice: PrizeChoice) => void;
   /** Team colors for the mini board (falls back to the board defaults). */
   teamX?: Team | null;
   teamY?: Team | null;
@@ -39,9 +53,11 @@ const ADVANCED = {
   fresh: { label: "New numbers each quarter", description: "A fresh draw before every quarter." },
 };
 
-export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerProps) {
+export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoice, teamX, teamY }: FormatPickerProps) {
   const rules = rulesOf(format);
-  const current = presetOf(rules);
+  // Every score with the reverse at each quarter-end is still the Every score card.
+  const current = presetChoice(rules);
+  const unit = prizeChoice === "$" || prizeChoice === "pts" ? prizeChoice : null;
   // Canonical after every change: periods/reverse follow the rules, fresh numbers only where they apply.
   const set = (patch: Partial<GameFormat>) => onChange(withRules({ ...format, ...patch }));
   const setRules = (next: MomentRule[]) => set({ rules: next });
@@ -55,7 +71,8 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
             preset={preset}
             selected={current === preset}
             onSelect={() => {
-              if (current !== preset) void haptic("selection");
+              if (current === preset) return;
+              void haptic("selection");
               setRules(selectPreset(rules, preset));
             }}
           />
@@ -75,6 +92,23 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
           </div>
         )}
       </div>
+
+      {hasScoreMoment(rules) && (
+        <div className="-mt-1.5 flex flex-col gap-2 animate-fade-in">
+          <p className="eyebrow px-1 text-ink-subtle">Every score options</p>
+          <EveryScoreOptions
+            rules={rules}
+            onRules={setRules}
+            unit={unit}
+            fun={prizeChoice === "fun"}
+            onNeedAmounts={(next) => {
+              onPrizeChoice?.("$");
+              setRules(next);
+            }}
+            reverseAmount
+          />
+        </div>
+      )}
 
       <div>
         <p className="eyebrow px-1 text-ink-subtle">Advanced</p>

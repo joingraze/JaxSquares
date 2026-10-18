@@ -9,6 +9,7 @@ import {
   everyScorePeriod,
   fixedPeriods,
   hasScoreMoment,
+  prizeAmount,
   prizeFor,
   ruleFor,
   ruleForPeriodKey,
@@ -25,6 +26,7 @@ import type {
   NumberDraw,
   Period,
   Score,
+  ScoreKind,
   Square,
 } from "./types";
 
@@ -210,6 +212,94 @@ export function boardPeriods(game: Pick<Game, "format" | "periods">, scores: Sco
   return mergePeriods(fixed, entryPeriods(scoreBy.keys(), scoreBy), scoreBy);
 }
 
+// ---- Kinds of score (every-score entries) ----
+
+/** What one every-score entry was: the kind of score, which team scored, and how many points. */
+export interface ScorePlay {
+  kind: ScoreKind;
+  /** The team whose score went up. */
+  team: "x" | "y";
+  /** How many points it went up by (tells an extra point from a 2-point try). */
+  points: number;
+}
+
+type ScorePoint = Pick<Score, "scoreX" | "scoreY">;
+
+/**
+ * The play that took the score from `prev` (0-0 before the first entry) to
+ * `cur`, given the play that made `prev`. Only one team's score may go up:
+ * 6 = touchdown; 3 = field goal; 1 = conversion; 2 = conversion right after
+ * that team's touchdown (a 6-point entry), else a safety; 7 or 8 = a
+ * touchdown and its conversion landing together. Anything else (both teams
+ * changed, a score went down, an odd jump) is null: it shows the default amount.
+ */
+export function scorePlayBetween(prev: ScorePoint | null, cur: ScorePoint, prevPlay: ScorePlay | null = null): ScorePlay | null {
+  const dx = cur.scoreX - (prev?.scoreX ?? 0);
+  const dy = cur.scoreY - (prev?.scoreY ?? 0);
+  if (dx < 0 || dy < 0 || (dx > 0) === (dy > 0)) return null;
+  const team = dx > 0 ? "x" : "y";
+  const points = dx > 0 ? dx : dy;
+  switch (points) {
+    case 6:
+    case 7:
+    case 8:
+      return { kind: "touchdown", team, points };
+    case 3:
+      return { kind: "fieldGoal", team, points };
+    case 1:
+      return { kind: "conversion", team, points };
+    case 2: {
+      const afterTouchdown = prevPlay?.kind === "touchdown" && prevPlay.points === 6 && prevPlay.team === team;
+      return { kind: afterTouchdown ? "conversion" : "safety", team, points };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Every-score entries in order (by index), whatever order they're stored in. */
+function orderedEntries<T extends Pick<Score, "periodKey">>(scores: readonly T[]): T[] {
+  return scores
+    .filter((s) => everyScoreIndex(s.periodKey) !== null)
+    .sort((a, b) => (everyScoreIndex(a.periodKey) ?? 0) - (everyScoreIndex(b.periodKey) ?? 0));
+}
+
+/**
+ * The play behind each every-score entry (s1..sN), keyed by period key: each
+ * entry against the one before it (0-0 before the first), see
+ * scorePlayBetween. Derived on read from the ordered entries, never stored,
+ * so a host correction or an overturned score re-derives what follows.
+ */
+export function entryPlays(scores: readonly Pick<Score, "periodKey" | "scoreX" | "scoreY">[]): Map<string, ScorePlay | null> {
+  const out = new Map<string, ScorePlay | null>();
+  let prev: ScorePoint | null = null;
+  let prevPlay: ScorePlay | null = null;
+  for (const e of orderedEntries(scores)) {
+    const play = scorePlayBetween(prev, e, prevPlay);
+    out.set(e.periodKey, play);
+    prev = e;
+    prevPlay = play;
+  }
+  return out;
+}
+
+/**
+ * The play an entry would be if the host saved this score for it: `key` is
+ * an entry ("s3", replacing what's there) or anything else for a new one
+ * after the latest. null when it can't tell.
+ */
+export function entryPlayFor(scores: readonly Score[], key: string, scoreX: number, scoreY: number): ScorePlay | null {
+  const entries = orderedEntries(scores).filter((s) => s.periodKey !== key);
+  const n = everyScoreIndex(key) ?? (everyScoreIndex(entries.at(-1)?.periodKey ?? "") ?? 0) + 1;
+  const draft = { periodKey: `s${n}`, scoreX, scoreY };
+  return entryPlays([...entries, draft]).get(draft.periodKey) ?? null;
+}
+
+/** Plays for a board's entries: football boards only (another sport's points mean other things). */
+function boardPlays(game: Pick<Game, "sport">, scores: readonly Score[]): Map<string, ScorePlay | null> {
+  return !game.sport || game.sport === "football" ? entryPlays(scores) : new Map();
+}
+
 export interface PeriodResult {
   periodKey: string;
   label: string;
@@ -230,10 +320,21 @@ export interface PeriodResult {
   prize: string | null;
   /** The reverse square's note, or null. */
   reversePrize: string | null;
-  /** Display-only amount for the square, in the board's unit. */
+  /**
+   * Display-only amount for the square, in the board's unit (for a score
+   * entry with amounts by score type, the one for its kind).
+   */
   amount: number | null;
-  /** Display-only amount for the reverse square. */
+  /** Display-only amount for the reverse square (by kind too). */
   reverseAmount: number | null;
+  /**
+   * Every-score entries on a football board: the kind of score, from its
+   * change versus the entry before it (see entryPlays); null for fixed
+   * periods and when it can't tell.
+   */
+  scoreKind: ScoreKind | null;
+  /** The points behind `scoreKind` (1 = extra point, 2 = 2-point try); null without a kind. */
+  scorePoints: number | null;
   /** "host" when the winner comes from a ManualWinner override. */
   source: "auto" | "host";
 }
@@ -261,6 +362,7 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
   // A host pick may exist for an entry whose score was removed; keep it.
   const entries = hasScoreMoment(rules) ? entryPeriods([...scoreBy.keys(), ...manualBy.keys()], scoreBy) : [];
   const periods = mergePeriods(fixedPeriodsOf(game), entries, scoreBy);
+  const plays = entries.length > 0 ? boardPlays(game, scores) : new Map<string, ScorePlay | null>();
 
   const out: PeriodResult[] = [];
   for (const p of periods) {
@@ -273,6 +375,7 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
     const picked = manual ? { row: manual.row, col: manual.col } : null;
     const cell = rule.square ? (picked ?? (score && draw ? winningCell(score, draw) : null)) : null;
     const rev = rule.reverse ? ((!rule.square ? picked : null) ?? (score && draw ? reverseCell(score, draw) : null)) : null;
+    const play = plays.get(p.key) ?? null;
     out.push({
       periodKey: p.key,
       label: p.label,
@@ -285,8 +388,10 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
       awardsReverse: !!rule.reverse,
       prize: rule.square ? (legacy ? prizeFor(game.prizes, p.key) : rule.square.note || null) : null,
       reversePrize: rule.reverse?.note || null,
-      amount: rule.square?.amount ?? null,
-      reverseAmount: rule.reverse?.amount ?? null,
+      amount: prizeAmount(rule.square, play?.kind),
+      reverseAmount: prizeAmount(rule.reverse, play?.kind),
+      scoreKind: play?.kind ?? null,
+      scorePoints: play?.points ?? null,
       source: manual ? "host" : "auto",
     });
   }
@@ -375,7 +480,7 @@ function cumulative(linescores: number[], n: number): number {
  * Half = after 2 periods. Final only once the game is over and includes OT;
  * it uses the provider's game total, which is authoritative over linescores.
  * Only the fixed moments the rules award; every-score entries come from
- * nextEveryScoreEntry (a board with both gets both).
+ * nextEveryScoreEntries (a board with both gets both).
  */
 export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdate): PeriodScore[] {
   const out: PeriodScore[] = [];
@@ -400,12 +505,17 @@ export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdat
 }
 
 /**
- * For every-score boards: the entry to append when the game score has moved on
- * from the latest recorded entry (0-0 before the first score). null when
- * unchanged, and when either team is below it: that's a correction (a score
- * overturned on review), not a new score; see retractedEntries.
+ * For every-score boards: the entries to append when the live score has
+ * moved on from the latest recorded entry (0-0 before the first score), in
+ * order. One team up 7 or 8 with the other unchanged is a touchdown and its
+ * conversion landing in one poll: that's two entries, the touchdown (+6)
+ * first, so its square still wins its turn. Anything else is one entry at
+ * the new score. Empty when unchanged, and when either team is below it:
+ * that's a correction (a score overturned on review), not a new score; see
+ * retractedEntries. Host-typed entries never go through this: they're
+ * recorded as typed.
  */
-export function nextEveryScoreEntry(scores: Score[], scoreX: number, scoreY: number): PeriodScore | null {
+export function nextEveryScoreEntries(scores: Score[], scoreX: number, scoreY: number): PeriodScore[] {
   let last: Score | null = null;
   let maxN = 0;
   for (const s of scores) {
@@ -417,18 +527,28 @@ export function nextEveryScoreEntry(scores: Score[], scoreX: number, scoreY: num
   }
   const lastX = last?.scoreX ?? 0;
   const lastY = last?.scoreY ?? 0;
-  if (lastX === scoreX && lastY === scoreY) return null;
-  if (scoreX < lastX || scoreY < lastY) return null;
-  const p = everyScorePeriod(maxN + 1);
-  return { periodKey: p.key, label: p.label, scoreX, scoreY };
+  if (lastX === scoreX && lastY === scoreY) return [];
+  if (scoreX < lastX || scoreY < lastY) return [];
+  const entry = (n: number, x: number, y: number): PeriodScore => {
+    const p = everyScorePeriod(n);
+    return { periodKey: p.key, label: p.label, scoreX: x, scoreY: y };
+  };
+  const dx = scoreX - lastX;
+  const dy = scoreY - lastY;
+  const touchdownAndTry = (d: number, other: number) => (d === 7 || d === 8) && other === 0;
+  if (touchdownAndTry(dx, dy)) return [entry(maxN + 1, lastX + 6, lastY), entry(maxN + 2, scoreX, scoreY)];
+  if (touchdownAndTry(dy, dx)) return [entry(maxN + 1, lastX, lastY + 6), entry(maxN + 2, scoreX, scoreY)];
+  return [entry(maxN + 1, scoreX, scoreY)];
 }
 
 /**
  * For every-score boards: the feed's entries the live score has taken back
  * (a touchdown overturned, a stat correction), newest first. Live entries
  * the score is now below are dropped until it's at or above the latest one
- * left; a host-entered entry is never dropped. With them gone,
- * nextEveryScoreEntry gives the corrected score's entry, if any.
+ * left; a host-entered entry is never dropped. A touchdown recorded as two
+ * entries (+6, then the conversion) unwinds the same way: a conversion taken
+ * back drops just its entry. With them gone, nextEveryScoreEntries gives the
+ * corrected score's entries, if any.
  */
 export function retractedEntries(scores: Score[], scoreX: number, scoreY: number): string[] {
   const entries = scores

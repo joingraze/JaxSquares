@@ -16,6 +16,7 @@ import type {
   Period,
   PeriodsPreset,
   Prize,
+  ScoreKind,
 } from "./types";
 
 /** A preset a host can pick (every board's rules either match one or are "custom"). */
@@ -104,6 +105,30 @@ export const FRESH_NUMBERS_INFO = {
   label: "New numbers each quarter",
   description: "Numbers are reshuffled for every quarter.",
 };
+
+/** Kinds of score, in the order the editor and the rules sheet list them. */
+export const SCORE_KINDS: readonly ScoreKind[] = ["touchdown", "fieldGoal", "conversion", "safety"];
+
+/** How each kind of score reads: `label` in sheets and the editor, `short` on chips and cards. */
+export const SCORE_KIND_INFO: Record<ScoreKind, { label: string; short: string }> = {
+  touchdown: { label: "Touchdown", short: "TD" },
+  fieldGoal: { label: "Field goal", short: "FG" },
+  conversion: { label: "Conversion", short: "Conv" },
+  safety: { label: "Safety", short: "Safety" },
+};
+
+/**
+ * One scoring play as it reads: "TD" / "Touchdown", "FG" / "Field goal",
+ * "XP" / "Extra point" and "2-pt" / "2-point try" (a conversion, told apart
+ * by its points), "Safety". `full` for sheets, short for chips and cards.
+ */
+export function scorePlayLabel(kind: ScoreKind, points: number | null, full = false): string {
+  if (kind === "conversion") {
+    if (points === 2) return full ? "2-point try" : "2-pt";
+    if (points === 1) return full ? "Extra point" : "XP";
+  }
+  return full ? SCORE_KIND_INFO[kind].label : SCORE_KIND_INFO[kind].short;
+}
 
 /** The line every price/amount input carries: amounts are for show, never moved by the app. */
 export const AMOUNTS_DISCLAIMER = "Shown to everyone before they pick squares. JaxSquares never collects or sends money.";
@@ -260,15 +285,144 @@ export function formatAmount(amount: number, unit: AmountUnit = "$"): string {
   return `$${n}`;
 }
 
+/** True when a prize shows an amount: its own, or one for a kind of score. */
+export function prizeHasAmount(prize: Prize | null | undefined): boolean {
+  if (!prize) return false;
+  return !!prize.amount || hasByKind(prize);
+}
+
 /** True when the board shows any amount (a square price or a prize amount). */
 export function hasAmounts(format: Pick<GameFormat, "periods" | "reverse" | "rules" | "squarePrice">): boolean {
   if (format.squarePrice) return true;
-  return rulesOf(format).some((r) => !!r.square?.amount || !!r.reverse?.amount);
+  return hasPrizeAmounts(format);
 }
 
 /** True when any prize (not counting the square price) has an amount. */
 export function hasPrizeAmounts(format: Pick<GameFormat, "periods" | "reverse" | "rules">): boolean {
-  return rulesOf(format).some((r) => !!r.square?.amount || !!r.reverse?.amount);
+  return rulesOf(format).some((r) => prizeHasAmount(r.square) || prizeHasAmount(r.reverse));
+}
+
+/** True when a prize has an amount for some kind of score (every score change only). */
+export function hasByKind(prize: Prize | null | undefined): boolean {
+  return SCORE_KINDS.some((k) => !!prize?.byKind?.[k]);
+}
+
+/**
+ * The amount a prize shows for a score of this kind: its own `byKind` value,
+ * else the default `amount` (also for a score whose kind can't be told).
+ */
+export function prizeAmount(prize: Prize | null | undefined, kind?: ScoreKind | null): number | null {
+  if (!prize) return null;
+  const own = kind ? prize.byKind?.[kind] : undefined;
+  return own || prize.amount || null;
+}
+
+/**
+ * Each kind of score with the amount it shows (its own, else the default),
+ * in SCORE_KINDS order; kinds with neither are left out.
+ */
+export function kindAmounts(prize: Prize | null | undefined): { kind: ScoreKind; amount: number }[] {
+  if (!prize) return [];
+  return SCORE_KINDS.flatMap((kind) => {
+    const amount = prizeAmount(prize, kind);
+    return amount ? [{ kind, amount }] : [];
+  });
+}
+
+/**
+ * Lowest and highest amount a prize can show: with amounts by score type,
+ * across the kinds (the default counts for kinds without their own), else
+ * its one amount. null without any.
+ */
+export function prizeRange(prize: Prize | null | undefined): { min: number; max: number } | null {
+  if (!prize) return null;
+  const amounts = hasByKind(prize) ? kindAmounts(prize).map((k) => k.amount) : prize.amount ? [prize.amount] : [];
+  if (amounts.length === 0) return null;
+  return { min: Math.min(...amounts), max: Math.max(...amounts) };
+}
+
+/** "$50", "$10–$50", "10–50 pts". */
+export function formatRange(range: { min: number; max: number }, unit: AmountUnit = "$"): string {
+  if (range.min === range.max) return formatAmount(range.min, unit);
+  if (unit === "pts") return `${range.min.toLocaleString("en-US", { maximumFractionDigits: 2 })}–${formatAmount(range.max, unit)}`;
+  return `${formatAmount(range.min, unit)}–${formatAmount(range.max, unit)}`;
+}
+
+/**
+ * What the fixed moments (quarter-ends, halftime, final) give out in all, in
+ * the board's unit: each square's and reverse square's amount once. Every
+ * score change isn't in it: its total depends on the game.
+ */
+export function fixedPrizeTotal(rules: readonly MomentRule[]): number {
+  const sum = rules
+    .filter((r) => r.moment !== "score")
+    .reduce((n, r) => n + (r.square?.amount ?? 0) + (r.reverse?.amount ?? 0), 0);
+  return round2(sum);
+}
+
+// ---- Splitting the board's total across the prizes ----
+
+/**
+ * How "Split the $1,000" shares the board's total across the fixed moments
+ * that are on: `even` gives each the same; `bigger-final` gives the Final
+ * twice a quarter's share (Q1 20% · Half 20% · Q3 20% · Final 40% with all
+ * four on; Half 33% · Final 67% with just those two).
+ */
+export type SplitStyle = "even" | "bigger-final";
+
+const SPLIT_WEIGHTS: Record<SplitStyle, Record<Exclude<Moment, "score">, number>> = {
+  even: { q1: 1, q2: 1, q3: 1, final: 1 },
+  "bigger-final": { q1: 1, q2: 1, q3: 1, final: 2 },
+};
+
+/**
+ * Whole amounts (dollars or points) in proportion to `weights` that add up
+ * to exactly `total` (floored to a whole number): the largest remainders get
+ * the leftover units, ties going to the later share (the Final).
+ */
+export function wholeShares(total: number, weights: readonly number[]): number[] {
+  const whole = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : 0;
+  const sum = weights.reduce((n, w) => n + w, 0);
+  if (sum <= 0) return weights.map(() => 0);
+  const exact = weights.map((w) => (whole * w) / sum);
+  const out = exact.map((v) => Math.floor(v));
+  let left = whole - out.reduce((n, v) => n + v, 0);
+  const order = exact.map((v, i) => ({ i, rem: v - Math.floor(v) })).sort((a, b) => b.rem - a.rem || b.i - a.i);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
+}
+
+/** The split choices that make sense for these rules: none without a fixed moment; "Bigger final" only with the Final and another one. */
+export function splitStyles(rules: readonly MomentRule[]): SplitStyle[] {
+  const fixed = fixedMoments(rules);
+  if (fixed.length === 0) return [];
+  return fixed.length > 1 && fixed.includes("final") ? ["even", "bigger-final"] : ["even"];
+}
+
+/**
+ * The rules with the fixed moments' amounts filled from the board's total,
+ * in whole units that add up to it. A moment where both the square and the
+ * reverse square win shares its part evenly between them (the square gets
+ * an odd unit). Every score change, notes and who wins stay as they are.
+ */
+export function splitPrizes(rules: readonly MomentRule[], total: number, style: SplitStyle): MomentRule[] {
+  const fixed = fixedMoments(rules);
+  const shares = wholeShares(total, fixed.map((m) => SPLIT_WEIGHTS[style][m]));
+  const shareOf = new Map<Moment, number>(fixed.map((m, i) => [m, shares[i]]));
+  const set = (p: Prize | null, amount: number): Prize | null => (p ? { ...p, amount: amount > 0 ? amount : null } : null);
+  return rules.map((r) => {
+    const share = shareOf.get(r.moment);
+    if (share === undefined) return r;
+    if (r.square && r.reverse) {
+      const rev = Math.floor(share / 2);
+      return { ...r, square: set(r.square, share - rev), reverse: set(r.reverse, rev) };
+    }
+    return { ...r, square: set(r.square, share), reverse: set(r.reverse, share) };
+  });
 }
 
 type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -289,7 +443,56 @@ export function tidyNote(v: unknown): string {
   return v.replace(/\s+/g, " ").trim().slice(0, PRIZE_MAX_LENGTH).trim();
 }
 
-function checkPrize(v: unknown): Checked<Prize | null> {
+/** Amounts by score type on a moment other than every score change (the API answers 400). */
+export const BY_KIND_MOMENT_ERROR = "Amounts by score type only go with every score change.";
+
+/**
+ * Amounts by score type from API input: undefined when there are none; each
+ * a number above 0 up to AMOUNT_MAX, rounded to cents, in SCORE_KINDS order.
+ * A null value leaves that kind on the default amount.
+ */
+function checkByKind(v: unknown): Checked<Partial<Record<ScoreKind, number>> | undefined> {
+  if (v === null || v === undefined) return { ok: true, value: undefined };
+  if (typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "Amounts by score type need a number for each type" };
+  const input = v as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !(SCORE_KINDS as readonly string[]).includes(key))) return { ok: false, error: "Unknown score type" };
+  const out: Partial<Record<ScoreKind, number>> = {};
+  for (const kind of SCORE_KINDS) {
+    const amount = checkAmount(input[kind], AMOUNT_MAX, `The ${SCORE_KIND_INFO[kind].label.toLowerCase()} amount`);
+    if (!amount.ok) return amount;
+    if (amount.value !== null) out[kind] = amount.value;
+  }
+  return { ok: true, value: Object.keys(out).length > 0 ? out : undefined };
+}
+
+/** Lenient: the valid amounts by score type in an input (unknown kinds and bad amounts dropped), or undefined. */
+function lenientByKind(v: unknown): Partial<Record<ScoreKind, number>> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+  const input = v as Record<string, unknown>;
+  const out: Partial<Record<ScoreKind, number>> = {};
+  for (const kind of SCORE_KINDS) {
+    const amount = checkAmount(input[kind], AMOUNT_MAX, "");
+    if (amount.ok && amount.value !== null) out[kind] = amount.value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/** A prize as stored: `byKind` only when it has a value. */
+function prizeOf(amount: number | null, note: string, byKind: Partial<Record<ScoreKind, number>> | undefined): Prize {
+  return byKind ? { amount, note, byKind } : { amount, note };
+}
+
+/**
+ * A prize's amounts by score type the way they're stored: only kinds with an
+ * amount, in SCORE_KINDS order, and no `byKind` at all when there are none.
+ */
+export function tidyPrize(prize: Prize): Prize {
+  const { byKind, ...rest } = prize;
+  const kinds = lenientByKind(byKind);
+  return kinds ? { ...rest, byKind: kinds } : rest;
+}
+
+function checkPrize(v: unknown, moment: Moment): Checked<Prize | null> {
   if (v === null || v === undefined) return { ok: true, value: null };
   if (typeof v !== "object" || Array.isArray(v)) return { ok: false, error: "Each prize needs an amount and a note" };
   const p = v as Record<string, unknown>;
@@ -299,7 +502,10 @@ function checkPrize(v: unknown): Checked<Prize | null> {
   const note = tidyNote(p.note);
   const problem = note ? validatePrizeNote(note) : null;
   if (problem) return { ok: false, error: problem };
-  return { ok: true, value: { amount: amount.value, note } };
+  const byKind = checkByKind(p.byKind);
+  if (!byKind.ok) return byKind;
+  if (byKind.value && moment !== "score") return { ok: false, error: BY_KIND_MOMENT_ERROR };
+  return { ok: true, value: prizeOf(amount.value, note, byKind.value) };
 }
 
 /** Strict check of a rules list; the canonical rules, or the message the API answers 400 with. */
@@ -313,9 +519,9 @@ function checkRules(v: unknown): Checked<MomentRule[]> {
     if (typeof r.moment !== "string" || !(MOMENTS as readonly string[]).includes(r.moment)) return { ok: false, error: "Unknown winning moment" };
     const moment = r.moment as Moment;
     if (out.some((x) => x.moment === moment)) return { ok: false, error: "Each moment can only be listed once" };
-    const square = checkPrize(r.square);
+    const square = checkPrize(r.square, moment);
     if (!square.ok) return square;
-    const reverse = checkPrize(r.reverse);
+    const reverse = checkPrize(r.reverse, moment);
     if (!reverse.ok) return reverse;
     if (!square.value && !reverse.value) return { ok: false, error: `${MOMENT_INFO[moment].label} needs a square or a reverse winner` };
     out.push({ moment, square: square.value, reverse: reverse.value });
@@ -326,12 +532,13 @@ function checkRules(v: unknown): Checked<MomentRule[]> {
 /** Lenient: the valid rules in a list (bad amounts dropped, notes that mention money cleared), or null when none. */
 function sanitizeRules(v: unknown): MomentRule[] | null {
   if (!Array.isArray(v)) return null;
-  const prize = (x: unknown): Prize | null => {
+  const prize = (x: unknown, moment: Moment): Prize | null => {
     if (!x || typeof x !== "object" || Array.isArray(x)) return null;
     const p = x as Record<string, unknown>;
     const amount = checkAmount(p.amount, AMOUNT_MAX, "");
     const note = tidyNote(p.note);
-    return { amount: amount.ok ? amount.value : null, note: note && !validatePrizeNote(note) ? note : "" };
+    const byKind = moment === "score" ? lenientByKind(p.byKind) : undefined;
+    return prizeOf(amount.ok ? amount.value : null, note && !validatePrizeNote(note) ? note : "", byKind);
   };
   const out: MomentRule[] = [];
   for (const item of v) {
@@ -341,8 +548,8 @@ function sanitizeRules(v: unknown): MomentRule[] | null {
     if (typeof r.moment !== "string" || !(MOMENTS as readonly string[]).includes(r.moment)) continue;
     const moment = r.moment as Moment;
     if (out.some((x) => x.moment === moment)) continue;
-    const square = prize(r.square);
-    const reverse = prize(r.reverse);
+    const square = prize(r.square, moment);
+    const reverse = prize(r.reverse, moment);
     if (!square && !reverse) continue;
     out.push({ moment, square, reverse });
   }
@@ -360,8 +567,8 @@ function isBoardSize(v: unknown): v is BoardSize {
 /** A just-for-fun board with a square price or an amount (the API answers 400). */
 export const JUST_FOR_FUN_ERROR = "A just-for-fun board doesn't show a square price or amounts.";
 
-/** Rules with every amount cleared (notes kept), for a just-for-fun board. */
-function withoutAmounts(rules: readonly MomentRule[]): MomentRule[] {
+/** Rules with every amount cleared (amounts by score type too; notes kept), for a just-for-fun board. */
+export function withoutAmounts(rules: readonly MomentRule[]): MomentRule[] {
   const clear = (p: Prize | null): Prize | null => (p ? { amount: null, note: p.note } : null);
   return rules.map((r) => ({ ...r, square: clear(r.square), reverse: clear(r.reverse) }));
 }
@@ -386,7 +593,7 @@ export function formatError(input: unknown): string | null {
     const rules = checkRules(f.rules);
     if (!rules.ok) return rules.error;
     if (f.freshNumbers && !freshNumbersAllowed(rules.value)) return "New numbers each quarter can't go with a winner on every score";
-    if (f.justForFun === true && rules.value.some((r) => r.square?.amount || r.reverse?.amount)) return JUST_FOR_FUN_ERROR;
+    if (f.justForFun === true && rules.value.some((r) => prizeHasAmount(r.square) || prizeHasAmount(r.reverse))) return JUST_FOR_FUN_ERROR;
     return null;
   }
   if (!isPreset(f.periods)) return "Unknown scoring format";

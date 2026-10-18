@@ -241,7 +241,7 @@ describe("HostControls", () => {
     const save = await screen.findByTestId("score-save");
     expect(save).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /Switch to Bills/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Add 3 for Bills" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add a field goal (3) for Bills" }));
     expect(save).toHaveTextContent("Add Score 2");
     fireEvent.click(save);
     await waitFor(() => expect(setScore).toHaveBeenCalledWith("hst123", { periodKey: "next", scoreX: 7, scoreY: 3 }));

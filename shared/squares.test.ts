@@ -12,7 +12,10 @@ import {
   liveChanged,
   liveLabel,
   myWins,
-  nextEveryScoreEntry,
+  nextEveryScoreEntries,
+  entryPlayFor,
+  entryPlays,
+  scorePlayBetween,
   periodKeyForLive,
   periodScoresFromLinescores,
   resolveResults,
@@ -401,19 +404,27 @@ describe("periodScoresFromLinescores", () => {
   });
 });
 
-describe("nextEveryScoreEntry", () => {
+describe("nextEveryScoreEntries", () => {
+  const live = (k: string, x: number, y: number) => score(k, x, y, { source: "live" });
+  /** What the feed's entries become after one poll: retractions first, then the new entries. */
+  const poll = (scores: Score[], x: number, y: number): Score[] => {
+    const gone = retractedEntries(scores, x, y);
+    const kept = scores.filter((s) => !gone.includes(s.periodKey));
+    return [...kept, ...nextEveryScoreEntries(kept, x, y).map((e) => live(e.periodKey, e.scoreX, e.scoreY))];
+  };
+  const keys = (scores: Score[]) => scores.map((s) => `${s.periodKey} ${s.scoreX}-${s.scoreY}`);
+
   it("does nothing at 0-0", () => {
-    expect(nextEveryScoreEntry([], 0, 0)).toBeNull();
+    expect(nextEveryScoreEntries([], 0, 0)).toEqual([]);
   });
 
   it("never appends a score below the latest entry: that's a correction, not a new score", () => {
     // A touchdown overturned on review: 7-0 back to 0-0 must not make 0-0 a winner.
-    expect(nextEveryScoreEntry([score("s1", 7, 0, { source: "live" })], 0, 0)).toBeNull();
-    expect(nextEveryScoreEntry([score("s1", 7, 7), score("s2", 14, 7)], 7, 10)).toBeNull();
+    expect(nextEveryScoreEntries([score("s1", 7, 0, { source: "live" })], 0, 0)).toEqual([]);
+    expect(nextEveryScoreEntries([score("s1", 7, 7), score("s2", 14, 7)], 7, 10)).toEqual([]);
   });
 
   it("finds the live entries a correction took back, newest first, never a host's", () => {
-    const live = (k: string, x: number, y: number) => score(k, x, y, { source: "live" });
     expect(retractedEntries([live("s1", 7, 0)], 0, 0)).toEqual(["s1"]);
     expect(retractedEntries([live("s1", 3, 0), live("s3", 10, 7), live("s2", 10, 0)], 3, 0)).toEqual(["s3", "s2"]);
     expect(retractedEntries([live("s1", 3, 0), live("s2", 10, 0)], 10, 3)).toEqual([]);
@@ -422,20 +433,126 @@ describe("nextEveryScoreEntry", () => {
     const scores = [live("s1", 3, 0), live("s2", 10, 0)];
     const gone = retractedEntries(scores, 6, 0);
     expect(gone).toEqual(["s2"]);
-    expect(nextEveryScoreEntry(scores.filter((s) => !gone.includes(s.periodKey)), 6, 0)).toEqual({ periodKey: "s2", label: "Score 2", scoreX: 6, scoreY: 0 });
+    expect(nextEveryScoreEntries(scores.filter((s) => !gone.includes(s.periodKey)), 6, 0)).toEqual([{ periodKey: "s2", label: "Score 2", scoreX: 6, scoreY: 0 }]);
   });
 
   it("appends s1 for the first score and sN+1 after the latest entry", () => {
-    expect(nextEveryScoreEntry([], 3, 0)).toEqual({ periodKey: "s1", label: "Score 1", scoreX: 3, scoreY: 0 });
-    const scores = [score("s1", 3, 0), score("s2", 3, 7)];
-    expect(nextEveryScoreEntry(scores, 3, 7)).toBeNull();
-    expect(nextEveryScoreEntry(scores, 3, 8)).toEqual({ periodKey: "s3", label: "Score 3", scoreX: 3, scoreY: 8 });
+    expect(nextEveryScoreEntries([], 3, 0)).toEqual([{ periodKey: "s1", label: "Score 1", scoreX: 3, scoreY: 0 }]);
+    const scores = [score("s1", 3, 0), score("s2", 3, 6)];
+    expect(nextEveryScoreEntries(scores, 3, 6)).toEqual([]);
+    expect(nextEveryScoreEntries(scores, 3, 9)).toEqual([{ periodKey: "s3", label: "Score 3", scoreX: 3, scoreY: 9 }]);
   });
 
   it("compares against the highest-numbered entry, not array order", () => {
     const scores = [score("s10", 20, 17), score("s9", 17, 17)];
-    expect(nextEveryScoreEntry(scores, 20, 17)).toBeNull();
-    expect(nextEveryScoreEntry(scores, 20, 20)?.periodKey).toBe("s11");
+    expect(nextEveryScoreEntries(scores, 20, 17)).toEqual([]);
+    expect(nextEveryScoreEntries(scores, 20, 20).map((e) => e.periodKey)).toEqual(["s11"]);
+  });
+
+  it("splits a touchdown and its conversion seen in one poll: the touchdown (+6) first", () => {
+    expect(nextEveryScoreEntries([], 7, 0)).toEqual([
+      { periodKey: "s1", label: "Score 1", scoreX: 6, scoreY: 0 },
+      { periodKey: "s2", label: "Score 2", scoreX: 7, scoreY: 0 },
+    ]);
+    // The row team, and a 2-point try (+8).
+    expect(nextEveryScoreEntries([score("s1", 3, 0)], 3, 8).map((e) => [e.periodKey, e.scoreX, e.scoreY])).toEqual([
+      ["s2", 3, 6],
+      ["s3", 3, 8],
+    ]);
+    // The kinds come out right: TD, then the conversion.
+    const scores = poll(poll([], 7, 0), 7, 8);
+    expect([...entryPlays(scores).values()].map((p) => p && [p.kind, p.team, p.points])).toEqual([
+      ["touchdown", "x", 6],
+      ["conversion", "x", 1],
+      ["touchdown", "y", 6],
+      ["conversion", "y", 2],
+    ]);
+  });
+
+  it("doesn't split anything else: both teams changed, or other jumps", () => {
+    expect(nextEveryScoreEntries([], 7, 3)).toHaveLength(1);
+    expect(nextEveryScoreEntries([], 9, 0)).toHaveLength(1);
+    expect(nextEveryScoreEntries([], 14, 0)).toHaveLength(1);
+    expect(nextEveryScoreEntries([score("s1", 6, 0)], 7, 0)).toEqual([{ periodKey: "s2", label: "Score 2", scoreX: 7, scoreY: 0 }]);
+  });
+
+  it("unwinds a split touchdown when the feed takes it back", () => {
+    const split = poll([live("s1", 3, 0)], 10, 0);
+    expect(keys(split)).toEqual(["s1 3-0", "s2 9-0", "s3 10-0"]);
+    // The touchdown is overturned: both of its entries go, and nothing new is added.
+    expect(retractedEntries(split, 3, 0)).toEqual(["s3", "s2"]);
+    expect(keys(poll(split, 3, 0))).toEqual(["s1 3-0"]);
+    // Only the conversion is taken back: just its entry goes; the touchdown keeps its turn.
+    expect(retractedEntries(split, 9, 0)).toEqual(["s3"]);
+    expect(keys(poll(split, 9, 0))).toEqual(["s1 3-0", "s2 9-0"]);
+    // Corrected to a field goal instead: the corrected score is the next entry.
+    expect(keys(poll(split, 6, 0))).toEqual(["s1 3-0", "s2 6-0"]);
+    // Corrected to a touchdown and a 2-point try: the conversion entry is replaced.
+    expect(keys(poll(poll(split, 9, 0), 11, 0))).toEqual(["s1 3-0", "s2 9-0", "s3 11-0"]);
+  });
+
+  it("never drops a host-typed entry, even after a split", () => {
+    const scores = [score("s1", 7, 0), ...poll([score("s1", 7, 0)], 14, 0).slice(1)];
+    expect(keys(scores)).toEqual(["s1 7-0", "s2 13-0", "s3 14-0"]);
+    expect(retractedEntries(scores, 7, 0)).toEqual(["s3", "s2"]);
+    expect(retractedEntries(scores, 0, 0)).toEqual(["s3", "s2"]);
+  });
+});
+
+describe("kinds of score (every-score entries)", () => {
+  const kinds = (...points: [number, number][]) =>
+    [...entryPlays(points.map(([x, y], i) => score(`s${i + 1}`, x, y))).values()].map((p) => (p ? `${p.kind}:${p.points}` : null));
+
+  it("reads one team's change against the entry before it (0-0 before the first)", () => {
+    expect(kinds([6, 0], [7, 0], [7, 3], [7, 9], [7, 10], [10, 10])).toEqual([
+      "touchdown:6",
+      "conversion:1",
+      "fieldGoal:3",
+      "touchdown:6",
+      "conversion:1",
+      "fieldGoal:3",
+    ]);
+  });
+
+  it("2 is a conversion right after that team's touchdown, else a safety", () => {
+    expect(kinds([6, 0], [8, 0])).toEqual(["touchdown:6", "conversion:2"]);
+    expect(kinds([2, 0])).toEqual(["safety:2"]);
+    expect(kinds([3, 0], [5, 0])).toEqual(["fieldGoal:3", "safety:2"]);
+    // The other team's touchdown just before: a safety for this one.
+    expect(kinds([0, 6], [2, 6])).toEqual(["touchdown:6", "safety:2"]);
+    // After a touchdown that already took its conversion (7 or 8 at once): a safety.
+    expect(kinds([7, 0], [9, 0])).toEqual(["touchdown:7", "safety:2"]);
+    expect(kinds([0, 8], [0, 10])).toEqual(["touchdown:8", "safety:2"]);
+  });
+
+  it("7 or 8 at once is a touchdown with its conversion", () => {
+    expect(kinds([7, 0], [7, 8])).toEqual(["touchdown:7", "touchdown:8"]);
+  });
+
+  it("gives no kind when both teams changed, a score went down, or an odd jump", () => {
+    expect(kinds([7, 3])).toEqual([null]);
+    expect(kinds([9, 0], [9, 4], [23, 4])).toEqual([null, null, null]);
+    expect(kinds([7, 0], [6, 0])).toEqual(["touchdown:7", null]);
+    expect(scorePlayBetween({ scoreX: 3, scoreY: 0 }, { scoreX: 3, scoreY: 0 })).toBeNull();
+  });
+
+  it("follows entry order, not storage order, and re-derives after a correction", () => {
+    const stored = [score("s3", 7, 3), score("s1", 6, 0), score("s2", 7, 0)];
+    expect(entryPlays(stored).get("s2")).toEqual({ kind: "conversion", team: "x", points: 1 });
+    expect(entryPlays(stored).get("s3")).toEqual({ kind: "fieldGoal", team: "y", points: 3 });
+    // The host fixes Score 1 to a field goal: Score 2 is now an odd jump.
+    const fixed = stored.map((s) => (s.periodKey === "s1" ? score("s1", 3, 0) : s));
+    expect(entryPlays(fixed).get("s2")).toBeNull();
+    // Fixed periods aren't entries.
+    expect(entryPlays([score("q1", 7, 0)]).size).toBe(0);
+  });
+
+  it("previews the play a score would be for a new or an edited entry", () => {
+    const scores = [score("s1", 6, 0), score("s2", 7, 0), score("q1", 7, 0)];
+    expect(entryPlayFor(scores, "next", 7, 3)).toMatchObject({ kind: "fieldGoal", team: "y" });
+    expect(entryPlayFor(scores, "next", 7, 6)).toMatchObject({ kind: "touchdown" });
+    expect(entryPlayFor(scores, "s2", 8, 0)).toMatchObject({ kind: "conversion", points: 2 });
+    expect(entryPlayFor([], "next", 2, 0)).toMatchObject({ kind: "safety" });
   });
 });
 
@@ -675,5 +792,53 @@ describe("rules: amounts on a classic board", () => {
       amount: null,
       reverseAmount: null,
     });
+  });
+});
+
+describe("rules: amounts by score type (every score change)", () => {
+  // The owner's example: TD $50, conversion $10 (FG and safety on the default $30); reverse each quarter $200.
+  const byKind = { touchdown: 50, conversion: 10 };
+  const rules: MomentRule[] = [
+    { moment: "score", square: { amount: 30, note: "", byKind }, reverse: null },
+    ...OWNER_RULES.slice(1),
+  ];
+  const game = rulesGame(rules);
+  const squares = [sq(0, 6, "ana"), sq(0, 7, "ben"), sq(3, 7, "cy"), sq(5, 7, "dee"), sq(7, 3, "eve")];
+  const scores = [score("s1", 6, 0), score("s2", 7, 0), score("s3", 7, 3), score("q1", 7, 3), score("s4", 7, 5), score("s5", 10, 7)];
+  const results = resolveResults(input(game, squares, scores));
+  const by = (k: string) => results.find((r) => r.periodKey === k)!;
+
+  it("each entry carries its kind and the amount for it", () => {
+    expect(["s1", "s2", "s3", "s4", "s5"].map((k) => [k, by(k).scoreKind, by(k).scorePoints, by(k).amount])).toEqual([
+      ["s1", "touchdown", 6, 50],
+      ["s2", "conversion", 1, 10],
+      ["s3", "fieldGoal", 3, 30],
+      ["s4", "safety", 2, 30],
+      // Both teams changed: no kind, so the default amount.
+      ["s5", null, null, 30],
+    ]);
+    // Fixed periods have no kind and keep their own amounts.
+    expect(by("q1")).toMatchObject({ scoreKind: null, scorePoints: null, reverseAmount: 200 });
+  });
+
+  it("totals each player's prizes from the amounts by kind", () => {
+    expect(prizeTotals(results)).toEqual({ ana: 50, ben: 10, cy: 30, dee: 30, eve: 200 });
+    expect(playerTake(by("s2"), "ben")).toEqual({ amount: 10, note: null, square: true, reverse: false });
+  });
+
+  it("a reverse square on every score uses its own amounts by kind", () => {
+    const both: MomentRule[] = [{ moment: "score", square: { amount: 40, note: "", byKind: { conversion: 5 } }, reverse: { amount: 20, note: "", byKind: { touchdown: 25 } } }];
+    const [s1, s2] = resolveResults(input(rulesGame(both), [], [score("s1", 6, 0), score("s2", 7, 0)]));
+    expect([s1.amount, s1.reverseAmount, s2.amount, s2.reverseAmount]).toEqual([40, 25, 5, 20]);
+  });
+
+  it("rules without amounts by kind behave exactly as before (kinds still show)", () => {
+    const [s1] = resolveResults(input(rulesGame(OWNER_RULES), [], [score("s1", 6, 0)]));
+    expect(s1).toMatchObject({ amount: 50, scoreKind: "touchdown", scorePoints: 6 });
+  });
+
+  it("only football boards get kinds", () => {
+    const [s1] = resolveResults(input(rulesGame(rules, { sport: "basketball" }), [], [score("s1", 3, 0)]));
+    expect(s1).toMatchObject({ scoreKind: null, amount: 30 });
   });
 });
