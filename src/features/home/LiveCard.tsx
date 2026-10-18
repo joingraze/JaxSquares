@@ -13,6 +13,7 @@ import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
 import { RoleLabel, TickNumber } from "./BoardBits";
 import { capitalize, liveSnapshot, phraseOf, withTeamColors, type LiveSnapshot } from "./sections";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface LiveCardProps {
   game: GameSummary;
@@ -23,6 +24,7 @@ export interface LiveCardProps {
 }
 
 export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
+  const theme = useResolvedTheme();
   const snap = state ? liveSnapshot(state, me) : null;
   const fallback = !snap && game.live ? game.live : null;
   const inProgress = snap?.inProgress ?? fallback?.state === "in";
@@ -43,10 +45,10 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
       className="pressable block h-full rounded-card"
     >
       <article
-        style={teamVars(game.teamX, game.teamY)}
+        style={teamVars(game.teamX, game.teamY, theme)}
         className={cx(
           "relative h-full overflow-hidden rounded-card bg-surface-2 p-4 shadow-card ring-1 ring-inset",
-          snap?.meWinning ? "ring-gold-400/60" : "ring-line-strong",
+          snap?.meWinning ? "ring-gold-line/60" : "ring-line-strong",
         )}
       >
         {/* Team-color floodlights from each side. */}
@@ -80,7 +82,7 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
           <div className="mt-2.5 flex items-center gap-2 text-footnote text-ink-muted">
             <span className="font-semibold">{game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}</span>
             {wins.size > 0 && !(bannerIsMyWin && wins.size === 1) && (
-              <span className="inline-flex min-w-0 items-center gap-1 font-bold text-gold-300">
+              <span className="inline-flex min-w-0 items-center gap-1 font-bold text-ink-gold">
                 <TrophyIcon size={13} strokeWidth={2.4} className="shrink-0" />
                 <span className="truncate">
                   {wins.size === 1 && firstWin ? `Hit ${phraseOf(firstWin.periodKey, firstWin.label).moment}` : `${wins.size} hits`}
@@ -159,7 +161,7 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
 
   if (!leader) {
     return (
-      <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
+      <div className="mt-3 flex items-center gap-3 rounded-2xl bg-canvas/50 px-3 py-2.5 ring-1 ring-inset ring-line">
         <span aria-hidden className="grid h-9 w-9 place-items-center rounded-full bg-surface-4 text-lg">
           🎲
         </span>
@@ -195,7 +197,7 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
         ? `hit ${moment}`.trim()
         : `had the square ${moment}`.trim();
   return (
-    <div className="mt-3 flex items-center gap-3 rounded-2xl bg-black/25 px-3 py-2.5 ring-1 ring-inset ring-line">
+    <div className="mt-3 flex items-center gap-3 rounded-2xl bg-canvas/50 px-3 py-2.5 ring-1 ring-inset ring-line">
       {leader.player ? (
         <Avatar name={leader.player.name} color={leader.player.color} emoji={leader.player.emoji} size="md" decorative />
       ) : (
@@ -214,11 +216,11 @@ function LeaderStrip({ snap }: { snap: LiveSnapshot }) {
 function MyWinBanner({ title, sub, digits }: { title: string; sub: string; digits: string | null }) {
   const profile = useProfile();
   return (
-    <div className="mt-3 flex animate-win-glow items-center gap-3 rounded-2xl bg-[linear-gradient(100deg,rgb(255_194_51/0.28),rgb(255_171_15/0.1))] px-3 py-2.5 ring-1 ring-inset ring-gold-400/60">
+    <div className="mt-3 flex animate-win-glow items-center gap-3 rounded-2xl bg-[linear-gradient(100deg,rgb(255_194_51/0.28),rgb(255_171_15/0.1))] px-3 py-2.5 ring-1 ring-inset ring-gold-line/60">
       <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="md" ring="gold" decorative />
       <div className="min-w-0 flex-1">
         <p className="truncate font-display text-headline font-extrabold text-foil">{title}</p>
-        {sub && <p className="truncate text-caption font-semibold text-gold-200/80">{sub}</p>}
+        {sub && <p className="truncate text-caption font-semibold text-ink-gold/80">{sub}</p>}
       </div>
       {digits && <DigitsChip digits={digits} tone="gold" />}
     </div>

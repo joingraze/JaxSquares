@@ -9,6 +9,7 @@ import { kickoffLabel, shortMatchup, teamVars } from "../../lib/format";
 import "./invite.css";
 import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, peopleInOrder, squaresLeftLabel } from "./inviteModel";
 import { useNewArrival } from "./useNewArrival";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface InviteHeroProps {
   state: GameState;
@@ -36,6 +37,7 @@ function pickOnBoard() {
 }
 
 export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps) {
+  const theme = useResolvedTheme();
   const { game } = state;
   const host = hostOf(state);
   const people = peopleInOrder(state);
@@ -56,7 +58,7 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
   return (
     <section
       aria-label="You're invited"
-      style={teamVars(game.teamX, game.teamY)}
+      style={teamVars(game.teamX, game.teamY, theme)}
       className={cx("invite-rise relative overflow-hidden rounded-card bg-surface-2 shadow-float ring-1 ring-inset ring-line-strong", className)}
     >
       {/* Team-color floodlights */}

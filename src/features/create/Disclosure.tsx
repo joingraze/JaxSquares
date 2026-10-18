@@ -29,7 +29,7 @@ export function Disclosure({ open, onToggle, icon, title, subtitle, action, chil
           void haptic("selection");
           onToggle();
         }}
-        className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-white/4"
+        className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-ink/4"
       >
         <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4 text-ink-muted">
           {icon}
@@ -38,7 +38,7 @@ export function Disclosure({ open, onToggle, icon, title, subtitle, action, chil
           <span className="block truncate text-callout font-bold text-ink">{title}</span>
           <span className="mt-0.5 block truncate text-footnote text-ink-muted">{subtitle}</span>
         </span>
-        <span className="shrink-0 text-subhead font-bold text-brand-400">{open ? "Done" : action}</span>
+        <span className="shrink-0 text-subhead font-bold text-ink-brand">{open ? "Done" : action}</span>
         <ChevronDownIcon size={18} className={cx("-ml-1 -mr-1 shrink-0 text-ink-subtle transition-transform duration-300", open && "rotate-180")} />
       </button>
       {open && (

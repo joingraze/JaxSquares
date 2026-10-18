@@ -17,6 +17,7 @@ import { teamVars } from "../../lib/format";
 import { teamShort, type AlertChip, type AlertSubject } from "./activity";
 import type { BoardAlert } from "./alerts";
 import "./notifications.css";
+import { useResolvedTheme } from "../../lib/theme";
 
 type Glyph = Extract<AlertSubject, { kind: "system" }>["glyph"];
 
@@ -24,7 +25,7 @@ const GLYPH: Record<Glyph, { cls: string; icon: (px: number) => ReactNode }> = {
   numbers: { cls: "bg-brand-400 text-ink-inverse", icon: (px) => <LockIcon size={px} /> },
   score: { cls: "bg-live-500 text-white", icon: (px) => <FootballIcon size={px} /> },
   winner: { cls: "bg-gold-400 text-ink-inverse", icon: (px) => <TrophyIcon size={px} filled /> },
-  final: { cls: "bg-ink text-ink-inverse", icon: (px) => <FlagIcon size={px} /> },
+  final: { cls: "bg-ink text-canvas", icon: (px) => <FlagIcon size={px} /> },
   board: { cls: "bg-surface-4 text-ink", icon: (px) => <GridIcon size={px} /> },
 };
 
@@ -112,7 +113,7 @@ function TeamTag({ which, children }: { which: "x" | "y"; children: ReactNode })
 /** The score or my numbers, team-colored like the board's own scoreboard and Your numbers. */
 export function AlertChipView({ chip, state, className }: { chip: AlertChip; state: GameState; className?: string }) {
   const { teamX, teamY } = state.game;
-  const vars = teamVars(teamX, teamY) as CSSProperties;
+  const vars = teamVars(teamX, teamY, useResolvedTheme()) as CSSProperties;
   const x = teamShort(teamX).slice(0, 4).toUpperCase();
   const y = teamShort(teamY).slice(0, 4).toUpperCase();
   if (chip.kind === "score") {

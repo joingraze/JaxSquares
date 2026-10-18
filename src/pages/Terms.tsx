@@ -12,7 +12,7 @@ function Section({ n, title, children }: { n: number; title: string; children: R
   return (
     <section className="flex flex-col gap-2.5">
       <h2 className="flex items-baseline gap-2.5 px-1 font-display text-title-3 font-extrabold text-ink">
-        <span aria-hidden className="w-6 shrink-0 text-right tabular-nums text-brand-400">
+        <span aria-hidden className="w-6 shrink-0 text-right tabular-nums text-ink-brand">
           {n}
         </span>
         {title}
@@ -29,8 +29,8 @@ function Point({ children, no }: { children: ReactNode; no?: boolean }) {
         aria-hidden
         className={
           no
-            ? "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/8 text-ink-muted"
-            : "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-400/15 text-brand-400"
+            ? "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink/8 text-ink-muted"
+            : "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-400/15 text-ink-brand"
         }
       >
         {no ? <XIcon size={12} strokeWidth={3} /> : <CheckIcon size={12} strokeWidth={3.2} />}
@@ -40,7 +40,7 @@ function Point({ children, no }: { children: ReactNode; no?: boolean }) {
   );
 }
 
-const link = "font-semibold text-brand-400 underline-offset-2 hover:underline";
+const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
 export default function Terms() {
   return (
@@ -48,7 +48,7 @@ export default function Terms() {
       <TopBar title="Terms" subtitle={`Last updated ${UPDATED}`} back />
       <div className="flex flex-col gap-8 px-safe pt-1">
         <Card tone="brand" padding="lg">
-          <p className="eyebrow text-brand-300">In plain words</p>
+          <p className="eyebrow text-ink-brand">In plain words</p>
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">JaxSquares is a free-to-play game board for friends.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
             <Point>Joining a board and claiming squares is always free.</Point>
@@ -80,7 +80,7 @@ export default function Terms() {
 
         <Section n={3} title="Prizes are just notes">
           <Card padding="md" className="flex gap-3">
-            <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-gold-400">
+            <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-ink-gold">
               <GiftIcon size={19} />
             </span>
             <p>
@@ -126,7 +126,7 @@ export default function Terms() {
         <Section n={7} title="Be a good sport">
           <ListGroup>
             <div className="flex gap-3 px-4 py-3.5">
-              <UsersIcon size={20} className="mt-0.5 shrink-0 text-accent-400" />
+              <UsersIcon size={20} className="mt-0.5 shrink-0 text-ink-accent" />
               <p>
                 Pick names, board names and notes you'd be happy to say out loud at the watch party. Don't harass anyone, pretend to be someone
                 else, or use JaxSquares to break the law.

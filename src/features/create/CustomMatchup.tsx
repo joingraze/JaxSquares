@@ -92,7 +92,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
               aria-hidden
               className={cx(
                 "grid h-10 w-10 place-items-center rounded-xl border-2 border-dashed text-ink-subtle transition-colors",
-                missing ? "border-danger-500/70 text-danger-400" : "border-white/18",
+                missing ? "border-danger-500/70 text-ink-danger" : "border-ink/18",
               )}
             >
               <PlusIcon size={18} strokeWidth={2.6} />
@@ -102,7 +102,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
         <div
           className={cx(
             "flex h-12 min-w-0 flex-1 items-center gap-2 rounded-btn bg-surface-3 pl-3.5 pr-1.5 ring-1 ring-inset transition-shadow focus-within:ring-2",
-            missing ? "animate-shake ring-danger-500" : "ring-line-strong focus-within:ring-brand-400 focus-within:shadow-[0_0_0_4px_rgb(198_249_31/0.14)]",
+            missing ? "animate-shake ring-danger-500" : "ring-line-strong focus-within:ring-brand-line focus-within:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-brand-line)_14%,transparent)]",
           )}
         >
           <input
@@ -199,7 +199,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
       ) : null}
 
       {showErrors && (!x.trim() || !y.trim()) ? (
-        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
+        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
           <AlertIcon size={14} />
           {!x.trim() && !y.trim() ? "Add both teams to make the board." : "Add the other team to make the board."}
         </p>

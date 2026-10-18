@@ -118,14 +118,14 @@ function InboxGroup({
 }) {
   return (
     <section>
-      <h3 className={cx("eyebrow mb-1 px-1", unread ? "text-brand-400" : "text-ink-subtle")}>{title}</h3>
+      <h3 className={cx("eyebrow mb-1 px-1", unread ? "text-ink-brand" : "text-ink-subtle")}>{title}</h3>
       <ul className="flex flex-col">
         {items.map((item) => (
           <li key={item.id}>
             <button
               type="button"
               onClick={() => onOpen(item.href)}
-              className="pressable flex min-h-14 w-full items-center gap-3 rounded-2xl px-1 py-2 text-left hover:bg-white/4"
+              className="pressable flex min-h-14 w-full items-center gap-3 rounded-2xl px-1 py-2 text-left hover:bg-ink/4"
             >
               <ItemArt item={item} />
               <span className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ function InboxGroup({
                 </span>
               </span>
               <span className="shrink-0 self-start pt-0.5 text-caption text-ink-subtle">{relativeTime(item.at, Math.max(now, item.at))}</span>
-              {unread && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-brand-400" />}
+              {unread && <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-brand-line" />}
             </button>
           </li>
         ))}
@@ -166,7 +166,7 @@ function PushRow({ status, onAsk, onSettings }: { status: PushStatus; onAsk: () 
   if (pushIsOn(status)) {
     return (
       <p className="mb-4 flex items-center gap-2 px-1 text-footnote text-ink-muted">
-        <CheckIcon size={15} strokeWidth={3} className="shrink-0 text-brand-400" />
+        <CheckIcon size={15} strokeWidth={3} className="shrink-0 text-ink-brand" />
         <span className="flex-1">Lock-screen alerts are on for this device.</span>
         <button type="button" onClick={onSettings} className="pressable -my-2 min-h-11 px-2 font-bold text-ink">
           Settings
@@ -191,7 +191,7 @@ function PushRow({ status, onAsk, onSettings }: { status: PushStatus; onAsk: () 
           : { title: "Get these on your lock screen", body: "Wins, numbers and friends joining, even when the app is closed.", cta: "Turn on", act: onAsk };
   return (
     <div className="mb-4 flex items-center gap-3 rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
-      <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-400/14 text-brand-300">
+      <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-400/14 text-ink-brand">
         <BellIcon size={18} />
       </span>
       <div className="min-w-0 flex-1">

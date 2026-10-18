@@ -116,7 +116,7 @@ export function InstallGuide({ compact = false }: { compact?: boolean }) {
       <ol className="flex flex-col gap-4" aria-label="Add JaxSquares to your Home Screen">
         <Step
           n={1}
-          visual={<ShareGlyph size={24} className="text-brand-300" />}
+          visual={<ShareGlyph size={24} className="text-ink-brand" />}
           note={<>On iOS 26 and later, tap ••• first, then Share.</>}
         >
           Tap Share in Safari&rsquo;s toolbar
@@ -187,14 +187,14 @@ export function SettingsArt({ os, className }: { os: "ios" | "android"; classNam
   return (
     <div aria-hidden className={cx("relative px-2 pt-8", className)}>
       <div className="jxn-settings">
-        <div className="flex items-center gap-1 border-b border-white/8 px-3 py-2 text-caption font-semibold text-ink-muted">
-          <ChevronLeftIcon size={15} className="text-brand-300" />
-          <span className="text-brand-300">{os === "ios" ? "Notifications" : "App info"}</span>
+        <div className="flex items-center gap-1 border-b border-ink/8 px-3 py-2 text-caption font-semibold text-ink-muted">
+          <ChevronLeftIcon size={15} className="text-ink-brand" />
+          <span className="text-ink-brand">{os === "ios" ? "Notifications" : "App info"}</span>
           <span className="flex-1 text-center font-bold text-ink">{os === "ios" ? "JaxSquares" : "Notifications"}</span>
           <span className="w-[5.5rem]" />
         </div>
         <div className="flex items-center gap-3 px-3 py-2.5">
-          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[9px] bg-canvas ring-1 ring-white/10">
+          <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-[9px] bg-canvas ring-1 ring-ink/10">
             <LogoMark size={32} />
           </span>
           <span className="min-w-0 flex-1 text-callout font-semibold text-ink">
@@ -219,9 +219,9 @@ export function BrowserArt({ className }: { className?: string }) {
           <TapHint />
           <TuneGlyph size={19} />
         </span>
-        <span className="min-w-0 flex-1 truncate rounded-full bg-white/6 px-3 py-1.5 text-footnote text-ink-muted">jaxsquares.com</span>
+        <span className="min-w-0 flex-1 truncate rounded-full bg-ink/6 px-3 py-1.5 text-footnote text-ink-muted">jaxsquares.com</span>
       </div>
-      <div className="relative z-[1] mx-3 -mt-1 flex items-center gap-2.5 rounded-2xl bg-surface-4 px-3 py-2.5 shadow-float ring-1 ring-inset ring-white/8">
+      <div className="relative z-[1] mx-3 -mt-1 flex items-center gap-2.5 rounded-2xl bg-surface-4 px-3 py-2.5 shadow-float ring-1 ring-inset ring-ink/8">
         <BellIcon size={17} className="text-ink-muted" />
         <span className="flex-1 text-footnote font-semibold text-ink">Notifications</span>
         <span className="rounded-lg bg-brand-400 px-2.5 py-1 text-caption font-extrabold text-ink-inverse">Allow</span>
@@ -233,18 +233,18 @@ export function BrowserArt({ className }: { className?: string }) {
 const STEP_ICONS: Record<Exclude<BlockedKind, "install">, ReactNode[]> = {
   "ios-settings": [
     <GearGlyph size={24} className="text-ink" key="g" />,
-    <BellIcon size={23} className="text-brand-300" key="b" />,
-    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+    <BellIcon size={23} className="text-ink-brand" key="b" />,
+    <ToggleGlyph size={26} className="text-ink-brand" key="t" />,
   ],
   "android-settings": [
     <GearGlyph size={24} className="text-ink" key="g" />,
-    <BellIcon size={23} className="text-brand-300" key="b" />,
-    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+    <BellIcon size={23} className="text-ink-brand" key="b" />,
+    <ToggleGlyph size={26} className="text-ink-brand" key="t" />,
   ],
   browser: [
-    <TuneGlyph size={24} className="text-brand-300" key="u" />,
+    <TuneGlyph size={24} className="text-ink-brand" key="u" />,
     <GearGlyph size={24} className="text-ink" key="g" />,
-    <ToggleGlyph size={26} className="text-brand-300" key="t" />,
+    <ToggleGlyph size={26} className="text-ink-brand" key="t" />,
   ],
 };
 
@@ -278,7 +278,7 @@ export function StateIcon({ tone, children }: { tone: "brand" | "danger" | "mute
       className={cx(
         "grid h-12 w-12 shrink-0 place-items-center rounded-2xl",
         tone === "brand" && "bg-brand-400 text-ink-inverse shadow-glow-brand",
-        tone === "danger" && "bg-danger-500/14 text-danger-300 ring-1 ring-inset ring-danger-500/35",
+        tone === "danger" && "bg-danger-500/14 text-ink-danger ring-1 ring-inset ring-danger-500/35",
         tone === "muted" && "bg-surface-4 text-ink-muted",
       )}
     >

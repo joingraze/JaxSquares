@@ -41,7 +41,7 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
       className={cx(
         "jx-now-card relative overflow-hidden rounded-card ring-1 ring-inset",
         now.mine && !now.everyScore
-          ? "bg-[linear-gradient(135deg,rgb(198_249_31/0.2),rgb(198_249_31/0.04)_60%)] bg-surface-2 ring-brand-400/60"
+          ? "bg-[linear-gradient(135deg,rgb(198_249_31/0.2),rgb(198_249_31/0.04)_60%)] bg-surface-2 ring-brand-line/60"
           : now.live
             ? "bg-[linear-gradient(135deg,rgb(255_64_64/0.2),rgb(255_64_64/0.03)_60%)] bg-surface-2 ring-live-500/50"
             : "bg-surface-2 ring-line-strong",
@@ -78,7 +78,7 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
                   {period.short}
                 </span>
               )}
-              <span className={cx("min-w-0 truncate font-display text-headline font-extrabold leading-tight", now.mine ? "text-brand-300" : "text-ink")}>
+              <span className={cx("min-w-0 truncate font-display text-headline font-extrabold leading-tight", now.mine ? "text-ink-brand" : "text-ink")}>
                 {now.mine ? "You!" : owner ? owner.name : "Empty square"}
               </span>
               {/* The square's numbers, labeled by team (never by color alone). */}
@@ -98,7 +98,7 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
 
 function DigitTag({ abbr, digit, side, hot }: { abbr: string; digit: string; side: "x" | "y"; hot: boolean }) {
   return (
-    <span aria-hidden className="flex h-6 items-center gap-1 rounded-lg bg-black/30 py-0.5 pl-1.5 pr-0.5 ring-1 ring-inset ring-line-strong">
+    <span aria-hidden className="flex h-6 items-center gap-1 rounded-lg bg-canvas/60 py-0.5 pl-1.5 pr-0.5 ring-1 ring-inset ring-line-strong">
       <span className="flex items-center gap-1 text-[0.625rem] font-extrabold tracking-wide text-ink-muted">
         <span className={cx("h-1.5 w-1.5 rounded-full", side === "x" ? "bg-team-x" : "bg-team-y")} />
         {abbr}
@@ -106,7 +106,7 @@ function DigitTag({ abbr, digit, side, hot }: { abbr: string; digit: string; sid
       <span
         className={cx(
           "grid h-5 min-w-5 place-items-center rounded-md px-1 font-display text-footnote font-extrabold tabular-nums",
-          hot ? "bg-live-500 text-white" : "bg-ink text-ink-inverse",
+          hot ? "bg-live-500 text-white" : "bg-ink text-canvas",
         )}
       >
         {digit}
@@ -154,7 +154,7 @@ function NextScore({
               Live
             </span>
           )}
-          <span className={cx("eyebrow truncate", now.live ? "text-live-300" : "text-ink-muted")}>
+          <span className={cx("eyebrow truncate", now.live ? "text-ink-live" : "text-ink-muted")}>
             {now.live && now.detail ? `Next score wins · ${now.detail}` : "Next score wins"}
           </span>
         </span>
@@ -169,7 +169,7 @@ function NextScore({
               key={`${o.play.team}${o.play.points}`}
               className={cx(
                 "flex h-8 min-w-0 items-center gap-1.5 rounded-xl pl-1.5 pr-2 ring-1 ring-inset",
-                mine ? "bg-brand-400/15 ring-brand-400/70" : "bg-black/20 ring-line",
+                mine ? "bg-brand-400/15 ring-brand-line/70" : "bg-canvas/40 ring-line",
               )}
             >
               <TeamChip side={o.play.team} team={teamOf(o.play.team)} points={[o.play.points]} />
@@ -178,7 +178,7 @@ function NextScore({
               ) : (
                 <span aria-hidden className="h-[22px] w-[22px] shrink-0 rounded-full border border-dashed border-line-strong" />
               )}
-              <span className={cx("min-w-0 truncate text-footnote font-bold", mine ? "text-brand-300" : p ? "text-ink" : "text-ink-subtle")}>
+              <span className={cx("min-w-0 truncate text-footnote font-bold", mine ? "text-ink-brand" : p ? "text-ink" : "text-ink-subtle")}>
                 {mine ? "You!" : p ? p.name : "Empty"}
               </span>
             </li>
@@ -210,10 +210,10 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
     icon = <TrophyIcon size={13} filled />;
     text = now.threat ? (
       <>
-        <b className="font-extrabold text-brand-300">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf))} would hand it to {nameOf(now.threat.ownerId)}.
+        <b className="font-extrabold text-ink-brand">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf))} would hand it to {nameOf(now.threat.ownerId)}.
       </>
     ) : (
-      <b className="font-extrabold text-brand-300">Hold on! It's yours if nobody scores.</b>
+      <b className="font-extrabold text-ink-brand">Hold on! It's yours if nobody scores.</b>
     );
   } else if (now.path && now.path.plays.length > 0) {
     chips = now.path.plays;
@@ -235,7 +235,7 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
     .filter((t) => t.points.length > 0);
 
   return (
-    <div className="jx-now-path flex items-center gap-2 border-t border-line bg-black/20 px-3 py-1.5">
+    <div className="jx-now-path flex items-center gap-2 border-t border-line bg-canvas/40 px-3 py-1.5">
       <span
         aria-hidden
         className={cx("grid h-6 w-6 shrink-0 place-items-center rounded-full", leading ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink")}

@@ -34,8 +34,8 @@ export interface BoardCardProps {
 }
 
 const STATUS_TONE: Record<CardModel["statusTone"], string> = {
-  brand: "text-brand-300",
-  gold: "text-gold-300",
+  brand: "text-ink-brand",
+  gold: "text-ink-gold",
   muted: "text-ink-muted",
 };
 
@@ -47,7 +47,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
       className={cx(
         "relative overflow-hidden rounded-card bg-surface-2 py-3 pl-3 pr-3 shadow-card ring-1 ring-inset transition-transform duration-200 ease-spring",
         "has-[>a:active]:scale-[0.98] has-[>a:active]:duration-75",
-        gold ? "ring-gold-400/40" : "ring-line",
+        gold ? "ring-gold-line/40" : "ring-line",
       )}
     >
       {gold && <div aria-hidden className="pointer-events-none absolute inset-0 bg-[linear-gradient(120deg,rgb(255_194_51/0.1),transparent_60%)]" />}
@@ -115,7 +115,7 @@ function BuzzLine({ buzz, isNew, now }: { buzz: Buzz; isNew: boolean; now: numbe
         {buzz.others > 0 && <span className="text-ink-subtle"> +{buzz.others} more</span>}
       </span>
       <span className="shrink-0 text-ink-subtle">· {relativeTime(buzz.at, now)}</span>
-      {isNew && <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-400" />}
+      {isNew && <span aria-hidden className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-brand-line" />}
     </p>
   );
 }

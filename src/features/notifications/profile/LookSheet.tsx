@@ -82,7 +82,7 @@ export function LookSheet({ open, onClose }: LookSheetProps) {
               }}
               className={cx(
                 "pressable grid aspect-square place-items-center rounded-xl text-[1.45rem] leading-none",
-                on ? "bg-brand-400/18 ring-2 ring-brand-400" : "bg-surface-3 ring-1 ring-inset ring-line",
+                on ? "bg-brand-400/18 ring-2 ring-brand-line" : "bg-surface-3 ring-1 ring-inset ring-line",
               )}
             >
               <span aria-hidden className="translate-y-[0.04em]">
@@ -115,7 +115,7 @@ export function LookSheet({ open, onClose }: LookSheetProps) {
               className={cx(
                 "pressable grid aspect-square place-items-center rounded-full",
                 "shadow-[inset_0_-3px_0_rgb(0_0_0/0.18),inset_0_2px_0_rgb(255_255_255/0.35)]",
-                on && "ring-2 ring-brand-400 ring-offset-[3px] ring-offset-surface-2",
+                on && "ring-2 ring-brand-line ring-offset-[3px] ring-offset-surface-2",
               )}
             >
               {on && <CheckIcon size={18} strokeWidth={3.2} />}

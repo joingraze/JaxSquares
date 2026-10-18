@@ -16,6 +16,7 @@ import { lockBackground } from "../../components/ui/modalLock";
 import { readableTeamColor, teamVars } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { landingOrder, numbersFor } from "./hostModel";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface NumberRevealProps {
   game: Pick<Game, "name" | "teamX" | "teamY" | "format">;
@@ -40,6 +41,7 @@ const LAND_MS = 720;
 const CYCLE = 10;
 
 export function NumberReveal({ game, squares, players, me, draw, drawLabel, onClose, onShare }: NumberRevealProps) {
+  const theme = useResolvedTheme();
   const n = gridSize(game.format.boardSize);
   const pair = n === 5;
   const reduced = useMemo(() => prefersReducedMotion(), []);
@@ -232,7 +234,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
   };
 
   const vars = {
-    ...teamVars(game.teamX, game.teamY),
+    ...teamVars(game.teamX, game.teamY, theme),
     "--n": n,
     "--s": `${s}px`,
     "--fs": `${fs}px`,
@@ -253,7 +255,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
     >
       <div className="flex h-12 shrink-0 items-center justify-between px-4">
         <span className="eyebrow flex items-center gap-2 text-ink-muted">
-          {done ? <CheckIcon size={14} strokeWidth={3.2} className="text-brand-400" /> : <LiveDot tone="gold" />}
+          {done ? <CheckIcon size={14} strokeWidth={3.2} className="text-ink-brand" /> : <LiveDot tone="gold" />}
           {status}
         </span>
         {!done && draw && !reduced && (

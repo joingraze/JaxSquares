@@ -38,13 +38,13 @@ function Tile({ side, team, entry }: { side: Side; team: Team; entry: ScoreEntry
       <span className="relative flex items-center gap-2 px-3 pt-2.5">
         <span
           aria-hidden
-          className={cx("h-3 w-3 shrink-0 rounded-full ring-2 ring-white/15", side === "x" ? "bg-team-x" : "bg-team-y")}
+          className={cx("h-3 w-3 shrink-0 rounded-full ring-2 ring-ink/15", side === "x" ? "bg-team-x" : "bg-team-y")}
         />
         <span className="min-w-0 flex-1 truncate font-display text-headline font-extrabold uppercase leading-tight tracking-[0.02em] text-ink">
           {team.abbr || team.name}
         </span>
         {active && (
-          <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-caption font-bold text-ink">Typing</span>
+          <span className="shrink-0 rounded-full bg-ink/10 px-2 py-0.5 text-caption font-bold text-ink">Typing</span>
         )}
       </span>
       <input
@@ -188,7 +188,7 @@ export function SuggestionChip({ entry, teamX, teamY }: { entry: ScoreEntry; tea
       aria-pressed={used}
       className={cx(
         "pressable flex min-h-11 w-full items-center gap-3 rounded-2xl px-3.5 py-2 text-left ring-1 ring-inset transition-colors",
-        used ? "bg-brand-400/10 ring-brand-400/45" : "bg-surface-3/70 ring-line-strong [border-style:dashed]",
+        used ? "bg-brand-400/10 ring-brand-line/45" : "bg-surface-3/70 ring-line-strong [border-style:dashed]",
       )}
     >
       <span className="min-w-0 flex-1">
@@ -257,7 +257,7 @@ export function ScorePreview({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <p className={cx("truncate text-callout font-extrabold", notice.tone === "win" ? "text-gold-200" : "text-ink")}>{notice.title}</p>
+          <p className={cx("truncate text-callout font-extrabold", notice.tone === "win" ? "text-ink-gold" : "text-ink")}>{notice.title}</p>
           {notice.detail && <p className="truncate text-footnote text-ink-muted">{notice.detail}</p>}
         </div>
       </div>
@@ -303,7 +303,7 @@ export function ScorePreview({
   } else if (owner) {
     title = mine ? (
       <>
-        <b className="font-extrabold text-brand-300">You</b> {verb} {moment}
+        <b className="font-extrabold text-ink-brand">You</b> {verb} {moment}
       </>
     ) : (
       <>

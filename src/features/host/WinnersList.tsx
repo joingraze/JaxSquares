@@ -83,7 +83,7 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
             key: "pick",
             label: "Pick winner",
             aria: `Pick the ${row.label} winner by hand`,
-            icon: <TrophyIcon size={14} className="text-gold-400" />,
+            icon: <TrophyIcon size={14} className="text-ink-gold" />,
             tone: "quiet",
             onClick: () => onPick(row.key, row.label),
           });
@@ -110,7 +110,7 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
                 className={cx(
                   "grid h-10 min-w-10 shrink-0 place-items-center rounded-xl px-1.5 font-display text-footnote font-extrabold",
                   empty
-                    ? "bg-gold-400/12 text-gold-300 ring-1 ring-inset ring-gold-400/45"
+                    ? "bg-gold-400/12 text-ink-gold ring-1 ring-inset ring-gold-line/45"
                     : decided
                       ? "bg-gold-400 text-ink-inverse shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
                       : "bg-surface-4 text-ink-muted",

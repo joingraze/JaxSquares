@@ -224,8 +224,8 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           }}
           className="pressable mx-auto flex min-h-11 items-center gap-1.5 rounded-full px-4 py-2 text-subhead font-bold text-ink-muted hover:text-ink"
         >
-          Have a code? <span className="text-brand-400">Join a board</span>
-          <ArrowRightIcon size={16} strokeWidth={2.6} className="text-brand-400" />
+          Have a code? <span className="text-ink-brand">Join a board</span>
+          <ArrowRightIcon size={16} strokeWidth={2.6} className="text-ink-brand" />
         </button>
       </div>
 

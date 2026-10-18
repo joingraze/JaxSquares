@@ -37,6 +37,9 @@
 }
 
 .jx-board {
+  /* How much volt fills my squares (calm once the game is on, louder while picking). */
+  --mine-fill: 16%;
+  --mine-fill-open: 22%;
   --axis: 22px;
   --gap: 2px;
   --cell: calc((100cqw - var(--axis) - var(--gap) * var(--n)) / var(--n));
@@ -148,8 +151,8 @@
 }
 .jx-board[data-now="projected"] .jx-axis[data-hot="true"] {
   --tint: var(--color-ink);
-  color: var(--color-ink-inverse);
-  box-shadow: 0 0 12px -3px rgb(255 255 255 / 0.6);
+  color: var(--color-canvas);
+  box-shadow: 0 0 12px -3px color-mix(in srgb, var(--color-ink) 60%, transparent);
 }
 
 /* Zoomed: sticky headers get a canvas moat so panned squares never peek around them. */
@@ -183,8 +186,8 @@
   padding: 0;
   border: 0;
   border-radius: calc(var(--cell) * 0.2);
-  background: rgb(255 255 255 / 0.04);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  background: color-mix(in srgb, var(--color-ink) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 5%, transparent);
   color: var(--color-ink);
   transition:
     transform 260ms var(--ease-spring),
@@ -207,8 +210,8 @@
 
 /* Open squares on a board taking claims: inviting, with a faint plus. */
 .jx-board[data-open="true"] .jx-cell[data-state="empty"] {
-  background: rgb(198 249 31 / 0.045);
-  box-shadow: inset 0 0 0 1px rgb(198 249 31 / 0.13);
+  background: var(--brand-wash);
+  box-shadow: inset 0 0 0 1px var(--brand-wash-ring);
 }
 .jx-board[data-open="true"] .jx-cell[data-state="empty"]::before {
   content: "";
@@ -216,39 +219,39 @@
   height: 28%;
   opacity: 0.32;
   background:
-    linear-gradient(var(--color-brand-300), var(--color-brand-300)) center / 100% 2px no-repeat,
-    linear-gradient(var(--color-brand-300), var(--color-brand-300)) center / 2px 100% no-repeat;
+    linear-gradient(var(--color-ink-brand), var(--color-ink-brand)) center / 100% 2px no-repeat,
+    linear-gradient(var(--color-ink-brand), var(--color-ink-brand)) center / 2px 100% no-repeat;
 }
 @media (hover: hover) {
   .jx-board[data-open="true"] .jx-cell[data-state="empty"]:hover {
-    background: rgb(198 249 31 / 0.12);
+    background: var(--brand-wash-ring);
   }
 }
 
 /* Locked board, nobody took this one. */
 .jx-board[data-open="false"] .jx-cell[data-state="empty"] {
-  background: rgb(255 255 255 / 0.02);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.035);
+  background: color-mix(in srgb, var(--color-ink) 2%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 3.5%, transparent);
 }
 
 /* Someone else's: tinted in their color so a player's squares read as a set. */
 .jx-cell[data-state="taken"] {
-  background: color-mix(in srgb, var(--p) 16%, rgb(255 255 255 / 0.03));
+  background: color-mix(in srgb, var(--p) 16%, color-mix(in srgb, var(--color-ink) 3%, transparent));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--p) 22%, transparent);
 }
 
 /* Mine: a clear volt ring. Louder while picking, calmer once the game is on. */
 .jx-cell[data-state="mine"],
 .jx-cell[data-mine="true"][data-state="selected"] {
-  background: color-mix(in srgb, var(--color-brand-400) 16%, var(--color-canvas));
-  box-shadow: inset 0 0 0 1.5px var(--color-brand-400);
+  background: color-mix(in srgb, var(--color-brand-400) var(--mine-fill), var(--color-canvas));
+  box-shadow: inset 0 0 0 1.5px var(--color-brand-line);
   z-index: 1;
 }
 .jx-board[data-open="true"] .jx-cell[data-state="mine"] {
-  background: color-mix(in srgb, var(--color-brand-400) 22%, var(--color-canvas));
+  background: color-mix(in srgb, var(--color-brand-400) var(--mine-fill-open), var(--color-canvas));
   box-shadow:
-    inset 0 0 0 2px var(--color-brand-400),
-    0 0 12px -3px rgb(198 249 31 / 0.65);
+    inset 0 0 0 2px var(--color-brand-line),
+    0 0 12px -3px var(--brand-glow);
 }
 
 .jx-cell[data-state="selected"][data-mine="false"] {
@@ -256,7 +259,7 @@
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.45),
     inset 0 -2px 0 var(--color-brand-600),
-    0 0 16px -2px rgb(198 249 31 / 0.7);
+    0 0 16px -2px var(--brand-glow);
   color: var(--color-ink-inverse);
   animation: jx-select 300ms var(--ease-spring) both;
   z-index: 1;
@@ -265,7 +268,7 @@
 /* Mine, picked to give back. */
 .jx-cell[data-release="true"][data-state="selected"] {
   background: color-mix(in srgb, var(--color-danger-500) 26%, var(--color-canvas));
-  box-shadow: inset 0 0 0 2px var(--color-danger-400);
+  box-shadow: inset 0 0 0 2px var(--color-ink-danger);
   animation: jx-shake-sm 320ms ease-in-out both;
 }
 .jx-cell[data-release="true"] .jx-sticker {
@@ -275,12 +278,12 @@
 
 /* Earlier winners mid-game: a gold ring and a trophy pip, no glow. */
 .jx-cell[data-state="winner"] {
-  background: color-mix(in srgb, var(--p) 16%, rgb(255 255 255 / 0.03));
-  box-shadow: inset 0 0 0 1.5px var(--color-gold-400);
+  background: color-mix(in srgb, var(--p) 16%, color-mix(in srgb, var(--color-ink) 3%, transparent));
+  box-shadow: inset 0 0 0 1.5px var(--color-gold-line);
   z-index: 1;
 }
 .jx-cell[data-state="winner"][data-mine="true"] {
-  background: color-mix(in srgb, var(--color-brand-400) 16%, var(--color-canvas));
+  background: color-mix(in srgb, var(--color-brand-400) var(--mine-fill), var(--color-canvas));
 }
 
 /* Final board, or a result card was tapped: the winners in full gold. */
@@ -291,12 +294,12 @@
     0 0 0 2px var(--color-gold-300),
     inset 0 1px 0 rgb(255 255 255 / 0.6),
     inset 0 -2px 0 var(--color-gold-700),
-    0 0 20px 0 rgb(255 171 15 / 0.75);
+    0 0 20px 0 var(--gold-glow);
   z-index: 2;
 }
 .jx-board[data-final="true"] .jx-cell[data-state="winner"][data-mine="true"] {
   box-shadow:
-    0 0 0 2px var(--color-brand-400),
+    0 0 0 2px var(--color-brand-line),
     inset 0 1px 0 rgb(255 255 255 / 0.6),
     inset 0 -2px 0 var(--color-gold-700),
     0 0 24px 2px rgb(255 171 15 / 0.85);
@@ -311,14 +314,14 @@
   0%,
   100% {
     box-shadow:
-      0 0 0 2px var(--color-brand-400),
+      0 0 0 2px var(--color-brand-line),
       inset 0 1px 0 rgb(255 255 255 / 0.6),
       inset 0 -2px 0 var(--color-gold-700),
       0 0 14px 0 rgb(255 171 15 / 0.6);
   }
   50% {
     box-shadow:
-      0 0 0 2px var(--color-brand-400),
+      0 0 0 2px var(--color-brand-line),
       inset 0 1px 0 rgb(255 255 255 / 0.6),
       inset 0 -2px 0 var(--color-gold-700),
       0 0 30px 6px rgb(255 171 15 / 0.85);
@@ -345,7 +348,7 @@
 }
 .jx-cell[data-live="true"][data-mine="true"] {
   box-shadow:
-    0 0 0 2.5px var(--color-brand-400),
+    0 0 0 2.5px var(--color-brand-line),
     0 0 22px 3px rgb(255 64 64 / 0.75);
 }
 .jx-cell[data-live="true"] .jx-cell-name {
@@ -364,10 +367,10 @@
 
 /* No game feed: the last recorded score's square, steady and white. */
 .jx-board[data-now="projected"] .jx-cell[data-live="true"] {
-  background: color-mix(in srgb, white 14%, var(--color-surface-3));
+  background: color-mix(in srgb, var(--color-ink) 14%, var(--color-surface-3));
   box-shadow:
-    0 0 0 2px white,
-    0 0 18px 1px rgb(255 255 255 / 0.35);
+    0 0 0 2px var(--color-ink),
+    0 0 18px 1px color-mix(in srgb, var(--color-ink) 35%, transparent);
 }
 .jx-board[data-now="projected"] .jx-cell[data-live="true"]::after {
   animation: none;
@@ -378,7 +381,7 @@
   position: absolute;
   inset: -3px;
   border-radius: calc(var(--cell) * 0.24);
-  border: 2px dashed var(--color-live-400);
+  border: 2px dashed var(--color-ink-live);
   opacity: 0.85;
   pointer-events: none;
 }
@@ -401,7 +404,7 @@
   cursor: crosshair;
 }
 .jx-board[data-picking="true"] .jx-cell:hover {
-  box-shadow: inset 0 0 0 2px var(--color-gold-300);
+  box-shadow: inset 0 0 0 2px var(--color-gold-line);
 }
 
 /* ---------- Owner sticker + name ---------- */
@@ -470,7 +473,7 @@
 }
 .jx-cell[data-state="mine"] .jx-cell-name,
 .jx-cell[data-state="winner"][data-mine="true"] .jx-cell-name {
-  color: var(--color-brand-200);
+  color: var(--color-ink-brand);
   opacity: 1;
 }
 .jx-cell[data-state="selected"][data-mine="false"] .jx-cell-name {
@@ -532,7 +535,7 @@
   backdrop-filter: blur(16px) saturate(1.4);
   box-shadow:
     inset 0 0 0 1px var(--color-line-strong),
-    0 10px 28px -6px rgb(0 0 0 / 0.7);
+    0 10px 28px -6px var(--drop-color);
   color: var(--color-ink);
   pointer-events: none;
   animation: jx-callout-in 220ms var(--ease-spring) both;
@@ -543,18 +546,18 @@
 }
 .jx-callout[data-tone="win"] {
   box-shadow:
-    inset 0 0 0 1px rgb(255 194 51 / 0.6),
-    0 10px 28px -6px rgb(0 0 0 / 0.7);
+    inset 0 0 0 1px color-mix(in srgb, var(--color-gold-line) 60%, transparent),
+    0 10px 28px -6px var(--drop-color);
 }
 .jx-callout[data-tone="brand"] {
   box-shadow:
-    inset 0 0 0 1px rgb(198 249 31 / 0.6),
-    0 10px 28px -6px rgb(0 0 0 / 0.7);
+    inset 0 0 0 1px color-mix(in srgb, var(--color-brand-line) 60%, transparent),
+    0 10px 28px -6px var(--drop-color);
 }
 .jx-callout[data-tone="warn"] {
   box-shadow:
     inset 0 0 0 1px rgb(255 64 64 / 0.55),
-    0 10px 28px -6px rgb(0 0 0 / 0.7);
+    0 10px 28px -6px var(--drop-color);
 }
 /* The little pointer down (or up) to the square. */
 .jx-callout::after {
@@ -589,10 +592,10 @@
 /* ---------- Team bands along the axes ---------- */
 
 .jx-band-x {
-  color: color-mix(in srgb, var(--team-x, #3ab7ff) 72%, white);
+  color: color-mix(in srgb, var(--team-x, #3ab7ff) 72%, var(--color-ink));
 }
 .jx-band-y {
-  color: color-mix(in srgb, var(--team-y, #ff66a6) 72%, white);
+  color: color-mix(in srgb, var(--team-y, #ff66a6) 72%, var(--color-ink));
   writing-mode: vertical-rl;
   transform: rotate(180deg);
 }
@@ -778,4 +781,12 @@
   .jx-board[data-final="true"] .jx-cell[data-state="winner"][data-mine="true"] {
     animation: none;
   }
+}
+
+/* ---------- Light theme ----------
+ * A volt wash barely shows on a light canvas: my squares take a fuller fill so
+ * they stay the loudest squares on the board. */
+:root[data-theme="light"] .jx-board {
+  --mine-fill: 34%;
+  --mine-fill-open: 48%;
 }

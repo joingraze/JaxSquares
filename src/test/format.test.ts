@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  contrastRatio,
   contrastText,
   distinctFrom,
   countdown,
@@ -60,6 +61,61 @@ describe("colors", () => {
     expect(vars["--team-x"]).toBe("#e31837");
     expect(vars["--team-x-ink"]).toBe("#ffffff");
     expect(vars["--team-y"]).toBe("#ff66a6");
+  });
+});
+
+describe("team colors on the light theme", () => {
+  /** --color-canvas of the light theme (src/index.css). */
+  const LIGHT_CANVAS = "#eef2ec";
+  const hueOf = (hex: string) => {
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+    const max = Math.max(r, g, b);
+    const d = max - Math.min(r, g, b);
+    if (d === 0) return 0;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+  };
+
+  it("keeps colors that already read on the light canvas, dark jerseys included", () => {
+    expect(readableTeamColor("#e31837", "#000", "light")).toBe("#e31837"); // Chiefs red
+    expect(readableTeamColor("#041E42", "#000", "light")).toBe("#041e42"); // Cowboys navy: not lifted like on dark
+    expect(readableTeamColor("#203731", "#000", "light")).toBe("#203731");
+  });
+
+  it("darkens too-light colors to 3:1 against the canvas, keeping the hue", () => {
+    for (const bright of ["#ffb612", "#ffc233", "#a5acaf", "#69db7c", "#ffffff"]) {
+      const out = readableTeamColor(bright, "#000", "light");
+      expect(out).not.toBe(bright);
+      expect(contrastRatio(out, LIGHT_CANVAS)).toBeGreaterThanOrEqual(3);
+      // The lightest passing shade, not a needless trip to black.
+      expect(contrastRatio(out, LIGHT_CANVAS)).toBeLessThan(3.3);
+      if (bright !== "#ffffff" && bright !== "#a5acaf") expect(Math.abs(hueOf(out) - hueOf(bright))).toBeLessThan(4);
+    }
+  });
+
+  it("darkens the stock fallbacks too", () => {
+    const out = readableTeamColor(undefined, "#3ab7ff", "light");
+    expect(contrastRatio(out, LIGHT_CANVAS)).toBeGreaterThanOrEqual(3);
+    expect(readableTeamColor(undefined, "#123456", "dark")).toBe("#123456");
+  });
+
+  it("gives teamVars legible colors and matching ink per theme", () => {
+    const dark = teamVars({ color: "#ffb612" }, { color: "#041e42" }) as Record<string, string>;
+    expect(dark["--team-x"]).toBe("#ffb612");
+    expect(dark["--team-x-ink"]).toBe("#060c09");
+    expect(luminance(dark["--team-y"])).toBeGreaterThan(luminance("#041e42")); // lifted for the night canvas
+
+    const light = teamVars({ color: "#ffb612" }, { color: "#041e42" }, "light") as Record<string, string>;
+    expect(contrastRatio(light["--team-x"], LIGHT_CANVAS)).toBeGreaterThanOrEqual(3);
+    expect(light["--team-y"]).toBe("#041e42");
+    expect(light["--team-x-ink"]).toBe(contrastText(light["--team-x"]));
+    expect(light["--team-y-ink"]).toBe("#ffffff");
+  });
+
+  it("swaps a clashing second color for a fallback that also reads on light", () => {
+    const y = distinctFrom("#3d5a8a", "#3a5f8f", "light");
+    expect(y).not.toBe("#3a5f8f");
+    expect(contrastRatio(y, LIGHT_CANVAS)).toBeGreaterThanOrEqual(3);
   });
 });
 

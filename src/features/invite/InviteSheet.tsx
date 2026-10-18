@@ -28,6 +28,7 @@ import {
 } from "./inviteModel";
 import { QrCode } from "./QrCode";
 import { useNewArrival } from "./useNewArrival";
+import { useResolvedTheme } from "../../lib/theme";
 
 /** A speech bubble: "send it as a text". */
 function ChatGlyph({ size = 22 }: { size?: number }) {
@@ -74,6 +75,7 @@ const FLASH_MS = 2000;
 const MINI_MARK = "!h-5 !w-auto min-w-6 !rounded-md px-1 !text-[0.5625rem]";
 
 export function InviteSheet({ state, open, onClose, justCreated = false }: InviteSheetProps) {
+  const theme = useResolvedTheme();
   const { game } = state;
   const url = inviteUrl(game.id);
   const myId = getPlayerId();
@@ -166,7 +168,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false }: Invit
         </Button>
       }
     >
-      <div style={teamVars(game.teamX, game.teamY)} className="flex flex-col gap-3.5">
+      <div style={teamVars(game.teamX, game.teamY, theme)} className="flex flex-col gap-3.5">
         {/* ---- Who's in: the one social signal ---- */}
         <div className="flex min-h-11 items-center gap-2.5">
           {arrival ? (
@@ -188,7 +190,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false }: Invit
                 void haptic("light");
                 onClose();
               }}
-              className="pressable -mr-2 inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-3 text-subhead font-extrabold text-brand-300 hover:bg-white/6"
+              className="pressable -mr-2 inline-flex h-11 shrink-0 items-center gap-1 rounded-full px-3 text-subhead font-extrabold text-ink-brand hover:bg-ink/6"
             >
               Claim yours first
               <ArrowRightIcon size={16} strokeWidth={2.6} />
@@ -261,10 +263,10 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
             aria-label={copied ? "Link copied" : "Copy invite link"}
             className="pressable w-full overflow-hidden rounded-[1.25rem] rounded-bl-md bg-surface-3 text-left ring-1 ring-inset ring-line-strong"
           >
-            <div className="relative aspect-[2/1] overflow-hidden bg-pitch-900">
+            <div className="relative aspect-[2/1] overflow-hidden bg-pitch-900 light:bg-surface-4">
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 opacity-60"
+                className="pointer-events-none absolute inset-0 opacity-60 light:opacity-30"
                 style={{
                   background:
                     "radial-gradient(85% 120% at 0% 0%, var(--team-x), transparent 62%), radial-gradient(85% 120% at 100% 100%, var(--team-y), transparent 62%)",
@@ -284,9 +286,9 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
                   <span
                     className={cx(
                       "mt-2 self-start truncate rounded-full px-2 py-0.5 text-caption font-extrabold",
-                      status.tone === "brand" && "bg-brand-400/15 text-brand-200",
-                      status.tone === "gold" && "bg-gold-400/20 text-gold-200",
-                      status.tone === "muted" && "bg-white/10 text-ink",
+                      status.tone === "brand" && "bg-brand-400/15 text-ink-brand",
+                      status.tone === "gold" && "bg-gold-400/20 text-ink-gold",
+                      status.tone === "muted" && "bg-ink/10 text-ink",
                     )}
                   >
                     {status.text}
@@ -309,14 +311,14 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
                 <p className="truncate text-subhead font-bold leading-snug text-ink">Join on JaxSquares</p>
                 <p className="truncate text-caption text-ink-muted">{displayLink(url)}</p>
               </div>
-              <span aria-hidden className={cx("shrink-0", copied ? "text-brand-300" : "text-ink-subtle")}>
+              <span aria-hidden className={cx("shrink-0", copied ? "text-ink-brand" : "text-ink-subtle")}>
                 {copied ? <CheckIcon size={18} strokeWidth={3} /> : <CopyIcon size={18} />}
               </span>
             </div>
           </button>
         </div>
       </div>
-      <p aria-live="polite" className={cx("-mt-1 pl-10 text-caption", copied ? "font-bold text-brand-300" : "text-ink-subtle")}>
+      <p aria-live="polite" className={cx("-mt-1 pl-10 text-caption", copied ? "font-bold text-ink-brand" : "text-ink-subtle")}>
         {copied ? "Copied. Paste it anywhere." : "Tap the card to copy the link."}
       </p>
     </figure>
@@ -355,12 +357,12 @@ function MiniBoard({ state }: { state: GameState }) {
   return (
     <div
       aria-hidden
-      className="grid h-[4.5rem] w-[4.5rem] shrink-0 gap-px rounded-md bg-black/40 p-1 ring-1 ring-inset ring-white/10"
+      className="grid h-[4.5rem] w-[4.5rem] shrink-0 gap-px rounded-md bg-canvas/70 p-1 ring-1 ring-inset ring-ink/10"
       style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
     >
       {Array.from({ length: n * n }, (_, i) => {
         const color = taken.get(i);
-        return <span key={i} className={cx("rounded-[1px]", !color && "bg-white/8")} style={color ? { backgroundColor: color } : undefined} />;
+        return <span key={i} className={cx("rounded-[1px]", !color && "bg-ink/8")} style={color ? { backgroundColor: color } : undefined} />;
       })}
     </div>
   );

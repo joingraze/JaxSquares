@@ -1,6 +1,7 @@
 import type { Team } from "../../../shared/types";
 import { contrastText, initialsOf, readableTeamColor } from "../../lib/format";
 import { cx } from "./cx";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface TeamMarkProps {
   team: Team;
@@ -12,7 +13,7 @@ const DIM = { sm: "h-7 w-7 text-[0.625rem] rounded-lg", md: "h-10 w-10 text-capt
 
 /** Team abbreviation on the team's color: the team-color moment for cards and score rows. */
 export function TeamMark({ team, size = "md", className }: TeamMarkProps) {
-  const color = readableTeamColor(team.color, "#45594c");
+  const color = readableTeamColor(team.color, "#45594c", useResolvedTheme());
   const abbr = (team.abbr || initialsOf(team.name)).slice(0, 4).toUpperCase();
   return (
     <span

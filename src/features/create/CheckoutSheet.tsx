@@ -35,6 +35,7 @@ import { haptic, platform } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
 import { formatLine } from "./model";
 import { VsBadge } from "./VsBadge";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface CheckoutDraft {
   game: Game;
@@ -365,7 +366,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
       footer={
         <div className="flex flex-col gap-3">
           {error && (
-            <p role="alert" className="flex items-start gap-1.5 px-1 text-footnote font-semibold text-danger-400 animate-fade-in">
+            <p role="alert" className="flex items-start gap-1.5 px-1 text-footnote font-semibold text-ink-danger animate-fade-in">
               <AlertIcon size={15} className="mt-px shrink-0" />
               {error}
             </p>
@@ -389,10 +390,11 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
 
 /** The board being opened, as an admission ticket in the two team colors. */
 function Ticket({ game }: { game: Game }) {
+  const theme = useResolvedTheme();
   const x = { ...game.teamX, color: game.teamX.color ?? CUSTOM_X_COLOR };
   const y = { ...game.teamY, color: game.teamY.color ?? CUSTOM_Y_COLOR };
-  const glowX = withAlpha(readableTeamColor(x.color, CUSTOM_X_COLOR), 0.22);
-  const glowY = withAlpha(readableTeamColor(y.color, CUSTOM_Y_COLOR), 0.22);
+  const glowX = withAlpha(readableTeamColor(x.color, CUSTOM_X_COLOR, theme), 0.22);
+  const glowY = withAlpha(readableTeamColor(y.color, CUSTOM_Y_COLOR, theme), 0.22);
   const linked = game.linkedEvent;
   return (
     <div
@@ -409,7 +411,7 @@ function Ticket({ game }: { game: Game }) {
         <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format)}</p>
       </div>
       {/* Perforation */}
-      <div aria-hidden className="relative h-0 border-t-2 border-dashed border-white/12">
+      <div aria-hidden className="relative h-0 border-t-2 border-dashed border-ink/12">
         <span className="absolute -left-2.5 -top-2.5 h-5 w-5 rounded-full bg-surface-2" />
         <span className="absolute -right-2.5 -top-2.5 h-5 w-5 rounded-full bg-surface-2" />
       </div>

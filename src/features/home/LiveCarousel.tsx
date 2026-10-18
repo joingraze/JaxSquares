@@ -72,7 +72,7 @@ export function LiveCarousel({ children, label }: { children: ReactNode; label: 
             onClick={() => go(i)}
             className={cx(
               "h-1.5 rounded-full transition-[width,background-color] duration-300 ease-out-quint",
-              i === active ? "w-5 bg-live-400" : "w-1.5 bg-white/20",
+              i === active ? "w-5 bg-live-400" : "w-1.5 bg-ink/20",
             )}
           />
         ))}

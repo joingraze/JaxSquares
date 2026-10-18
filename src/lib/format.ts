@@ -4,6 +4,7 @@
 import type { CSSProperties } from "react";
 import { NFL_TEAMS } from "../../shared/teams";
 import type { Game, GameStatus, League, Team } from "../../shared/types";
+import type { ResolvedTheme } from "./theme";
 
 // ---- Names ----
 
@@ -146,12 +147,13 @@ export function withAlpha(hex: string, alpha: number): string {
 
 /**
  * Team colors as CSS variables for a board container, so `bg-team-x`,
- * `text-team-y-ink` etc. work underneath it. Very dark team colors are lifted
- * so they still read on the night background.
+ * `text-team-y-ink` etc. work underneath it. Colors are adjusted so they read
+ * on the theme's canvas (see readableTeamColor); pass the resolved theme
+ * (useResolvedTheme()).
  */
-export function teamVars(teamX: Pick<Team, "color">, teamY: Pick<Team, "color">): CSSProperties {
-  const x = readableTeamColor(teamX.color, "#3ab7ff");
-  const y = distinctFrom(x, readableTeamColor(teamY.color, "#ff66a6"));
+export function teamVars(teamX: Pick<Team, "color">, teamY: Pick<Team, "color">, theme: ResolvedTheme = "dark"): CSSProperties {
+  const x = readableTeamColor(teamX.color, "#3ab7ff", theme);
+  const y = distinctFrom(x, readableTeamColor(teamY.color, "#ff66a6", theme), theme);
   return {
     "--team-x": x,
     "--team-y": y,
@@ -162,36 +164,36 @@ export function teamVars(teamX: Pick<Team, "color">, teamY: Pick<Team, "color">)
 
 /** Below this RGB distance two team colors read as the same (e.g. two navy jerseys). */
 const TEAM_MIN_DISTANCE = 90;
+/** Stand-ins for team Y when it clashes with team X: flare, gold, sky. */
+const TEAM_ALTERNATES = ["#ff66a6", "#ffc233", "#3ab7ff"];
 
 /**
  * Team Y's color, swapped for a contrasting fallback when it's too close to
  * team X's (Cowboys vs Giants are both navy), so the axes stay tellable apart.
+ * The fallbacks are adjusted for the theme like any team color.
  */
-export function distinctFrom(x: string, y: string): string {
+export function distinctFrom(x: string, y: string, theme: ResolvedTheme = "dark"): string {
   const distance = (a: string, b: string) => {
     const [ar, ag, ab] = rgbOf(a) ?? [0, 0, 0];
     const [br, bg, bb] = rgbOf(b) ?? [0, 0, 0];
     return Math.hypot(ar - br, ag - bg, ab - bb);
   };
   if (distance(x, y) >= TEAM_MIN_DISTANCE) return y;
-  return ["#ff66a6", "#ffc233", "#3ab7ff"].find((c) => distance(x, c) >= TEAM_MIN_DISTANCE) ?? y;
+  const alternates = theme === "light" ? TEAM_ALTERNATES.map((c) => readableTeamColor(c, c, "light")) : TEAM_ALTERNATES;
+  return alternates.find((c) => distance(x, c) >= TEAM_MIN_DISTANCE) ?? y;
 }
 
 /** Minimum HSL lightness for a team color on the night canvas. */
 const TEAM_MIN_LIGHTNESS = 0.34;
+/** The light theme's canvas (--color-canvas), and the contrast a team color needs against it (WCAG non-text, 3:1). */
+const LIGHT_CANVAS = "#eef2ec";
+const TEAM_MIN_CONTRAST_LIGHT = 3;
 
-/**
- * A team color that stays visible on the dark canvas: navy, black and forest
- * green jerseys are lifted in lightness while keeping their hue and saturation,
- * so Green Bay still reads green rather than grey.
- */
-export function readableTeamColor(color: string | undefined, fallback: string): string {
-  if (!isHexColor(color)) return fallback;
-  const [r, g, b] = rgbOf(color)!.map((v) => v / 255);
+function hslOf(hex: string): [number, number, number] {
+  const [r, g, b] = rgbOf(hex)!.map((v) => v / 255);
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
-  if (l >= TEAM_MIN_LIGHTNESS) return color.toLowerCase();
   const d = max - min;
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
   let h = 0;
@@ -200,7 +202,43 @@ export function readableTeamColor(color: string | undefined, fallback: string): 
     else if (max === g) h = (b - r) / d + 2;
     else h = (r - g) / d + 4;
   }
-  return hslToHex(h * 60, s, TEAM_MIN_LIGHTNESS);
+  return [h * 60, s, l];
+}
+
+/** WCAG contrast ratio between two colors (1 to 21). */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * A team color that stays visible on the theme's canvas, keeping its hue and
+ * saturation so Green Bay still reads green rather than grey:
+ * - dark: navy, black and forest green jerseys are lifted in lightness;
+ * - light: yellow, white and pastel jerseys are darkened until they hold 3:1
+ *   against the light canvas (the fallback too, since the stock ones are bright).
+ */
+export function readableTeamColor(color: string | undefined, fallback: string, theme: ResolvedTheme = "dark"): string {
+  if (theme === "light") return darkenForLight(isHexColor(color) ? color : fallback);
+  if (!isHexColor(color)) return fallback;
+  const [h, s, l] = hslOf(color);
+  if (l >= TEAM_MIN_LIGHTNESS) return color.toLowerCase();
+  return hslToHex(h, s, TEAM_MIN_LIGHTNESS);
+}
+
+function darkenForLight(color: string): string {
+  if (!isHexColor(color)) return color;
+  if (contrastRatio(color, LIGHT_CANVAS) >= TEAM_MIN_CONTRAST_LIGHT) return color.toLowerCase();
+  const [h, s, l] = hslOf(color);
+  // The lightest shade of the same hue that passes: binary search on HSL lightness.
+  let lo = 0;
+  let hi = l;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (contrastRatio(hslToHex(h, s, mid), LIGHT_CANVAS) >= TEAM_MIN_CONTRAST_LIGHT) lo = mid;
+    else hi = mid;
+  }
+  return hslToHex(h, s, lo);
 }
 
 function hslToHex(h: number, s: number, l: number): string {

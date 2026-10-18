@@ -9,7 +9,7 @@ const TONE: Record<BadgeTone, string> = {
   gold: "bg-gold-400 text-ink-inverse",
   live: "bg-live-500 text-white",
   accent: "bg-accent-500 text-white",
-  danger: "bg-danger-500/15 text-danger-300 ring-1 ring-inset ring-danger-500/40",
+  danger: "bg-danger-500/15 text-ink-danger ring-1 ring-inset ring-danger-500/40",
   outline: "text-ink-muted ring-1 ring-inset ring-line-strong",
 };
 

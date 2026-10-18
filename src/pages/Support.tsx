@@ -11,7 +11,7 @@ interface Faq {
   a: ReactNode;
 }
 
-const link = "font-semibold text-brand-400 underline-offset-2 hover:underline";
+const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
 const FAQS: Faq[] = [
   {
@@ -84,7 +84,7 @@ const FAQS: Faq[] = [
 function FaqItem({ faq, defaultOpen }: { faq: Faq; defaultOpen?: boolean }) {
   return (
     <details className="group" open={defaultOpen}>
-      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/3 active:bg-white/6 [&::-webkit-details-marker]:hidden">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-ink/3 active:bg-ink/6 [&::-webkit-details-marker]:hidden">
         <span className="flex-1 text-callout font-bold text-ink">{faq.q}</span>
         <ChevronDownIcon size={18} strokeWidth={2.4} className="shrink-0 text-ink-subtle transition-transform duration-200 group-open:rotate-180" />
       </summary>

@@ -37,7 +37,7 @@ export function Ticker({ note, onDismiss }: { note: Shown | null; onDismiss: () 
           className={cx(
             "jx-ticker pointer-events-auto flex min-h-12 w-full max-w-sm items-center gap-2.5 rounded-2xl bg-surface-3/95 py-2 pl-2 text-left shadow-float ring-1 ring-inset backdrop-blur-xl",
             note.onTap ? "pr-2.5" : "pr-3.5",
-            note.tone === "win" ? "ring-gold-400/55" : note.tone === "live" ? "ring-live-500/45" : "ring-line-strong",
+            note.tone === "win" ? "ring-gold-line/55" : note.tone === "live" ? "ring-live-500/45" : "ring-line-strong",
           )}
         >
           <span className={cx("grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-xl", note.icon ? "" : TONE[note.tone ?? "neutral"].chip)}>

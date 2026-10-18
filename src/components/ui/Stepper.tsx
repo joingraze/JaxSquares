@@ -105,7 +105,7 @@ export function Stepper({
           if (e.detail === 0) bump(dir);
         }}
         onContextMenu={(e) => e.preventDefault()}
-        className="pressable flex h-11 w-11 items-center justify-center rounded-xl bg-surface-4 text-ink ring-1 ring-inset ring-line hover:bg-pitch-600 disabled:opacity-35"
+        className="pressable flex h-11 w-11 items-center justify-center rounded-xl bg-surface-4 text-ink ring-1 ring-inset ring-line hover:bg-surface-5 disabled:opacity-35"
       >
         {dir === 1 ? <PlusIcon size={20} strokeWidth={2.5} /> : <MinusIcon size={20} strokeWidth={2.5} />}
       </button>
@@ -126,7 +126,7 @@ export function Stepper({
         aria-valuetext={valueText?.(value) ?? (typeof shown === "string" ? shown : undefined)}
         aria-disabled={disabled || undefined}
         onKeyDown={onKeyDown}
-        className="relative flex h-11 min-w-20 items-center justify-center overflow-hidden rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+        className="relative flex h-11 min-w-20 items-center justify-center overflow-hidden rounded-lg px-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-line"
       >
         <span key={value} className="animate-tick font-display text-title-3 font-extrabold tabular-nums">
           {shown}

@@ -1,8 +1,9 @@
 import type { Team } from "../../../../shared/types";
 import { contrastText, initialsOf, readableTeamColor } from "../../../lib/format";
+import { useResolvedTheme } from "../../../lib/theme";
 
 function Chip({ team, className }: { team: Team; className: string }) {
-  const color = readableTeamColor(team.color, "#45594c");
+  const color = readableTeamColor(team.color, "#45594c", useResolvedTheme());
   return (
     <span
       style={{ backgroundColor: color, color: contrastText(color) }}

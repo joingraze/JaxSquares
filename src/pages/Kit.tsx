@@ -32,6 +32,7 @@ import {
 } from "../components/ui";
 import { teamVars } from "../lib/format";
 import { PLAYER_COLORS, PLAYER_EMOJIS } from "../lib/identity";
+import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from "../lib/theme";
 
 const SWATCHES: [string, string[]][] = [
   ["pitch", ["950", "900", "850", "800", "700", "600", "500", "400", "300", "200", "100"]],
@@ -54,6 +55,8 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 export default function Kit() {
+  const theme = useResolvedTheme();
+  const themePreference = useThemePreference();
   const toast = useToast();
   const [sheet, setSheet] = useState(false);
   const [tab, setTab] = useState<"quarters" | "halves" | "final">("quarters");
@@ -69,10 +72,24 @@ export default function Kit() {
     <>
       <TopBar title="Kit" subtitle="Every piece, at phone size." back trailing={<IconButton label="Open sheet" icon={<Icons.MoreIcon />} onClick={() => setSheet(true)} />} />
       <div className="flex flex-col gap-8 px-safe">
+        <Section title="Theme">
+          <SegmentedControl<ThemePreference>
+            aria-label="Theme"
+            size="sm"
+            options={[
+              { value: "dark", label: "Dark", icon: <Icons.MoonIcon /> },
+              { value: "light", label: "Light", icon: <Icons.SunIcon /> },
+              { value: "system", label: "System", icon: <Icons.PhoneIcon /> },
+            ]}
+            value={themePreference}
+            onChange={setThemePreference}
+          />
+        </Section>
+
         <Section title="Brand">
           <Wordmark />
           <p className="font-display text-hero font-extrabold">
-            Game night, <span className="text-brand-400">squared.</span>
+            Game night, <span className="text-ink-brand">squared.</span>
           </p>
           <p className="font-display text-score font-extrabold tabular-nums">
             21<span className="text-ink-subtle">–</span>17
@@ -200,7 +217,7 @@ export default function Kit() {
         </Section>
 
         <Section title="Cards">
-          <Card style={teamVars(KC, PHI)} className="flex flex-col gap-4">
+          <Card style={teamVars(KC, PHI, theme)} className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <TeamMark team={KC} />
@@ -237,7 +254,7 @@ export default function Kit() {
             <ListRow
               title="Game updates"
               subtitle="Numbers drawn, kickoffs, winners"
-              leading={<Icons.BellIcon size={20} className="text-brand-400" />}
+              leading={<Icons.BellIcon size={20} className="text-ink-brand" />}
               trailing={<Switch checked={notify} onChange={setNotify} aria-label="Game updates" />}
             />
             <ListRow title="Privacy" leading={<Icons.InfoIcon size={20} className="text-ink-subtle" />} to="/privacy" />

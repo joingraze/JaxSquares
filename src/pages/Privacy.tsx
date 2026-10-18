@@ -27,7 +27,7 @@ function Fact({ icon, title, children }: { icon?: ReactNode; title: ReactNode; c
   return (
     <div className="flex gap-3.5 px-4 py-3.5">
       {icon && (
-        <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface-4 text-brand-400 [&>svg]:h-[1.15rem] [&>svg]:w-[1.15rem]">
+        <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface-4 text-ink-brand [&>svg]:h-[1.15rem] [&>svg]:w-[1.15rem]">
           {icon}
         </span>
       )}
@@ -46,8 +46,8 @@ function Check({ children, no }: { children: ReactNode; no?: boolean }) {
         aria-hidden
         className={
           no
-            ? "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-white/8 text-ink-muted"
-            : "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-400/15 text-brand-400"
+            ? "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink/8 text-ink-muted"
+            : "mt-px grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand-400/15 text-ink-brand"
         }
       >
         {no ? <XIcon size={12} strokeWidth={3} /> : <CheckIcon size={12} strokeWidth={3.2} />}
@@ -63,7 +63,7 @@ export default function Privacy() {
       <TopBar title="Privacy" subtitle={`Last updated ${UPDATED}`} back />
       <div className="flex flex-col gap-8 px-safe pt-1">
         <Card tone="brand" padding="lg">
-          <p className="eyebrow text-brand-300">The short version</p>
+          <p className="eyebrow text-ink-brand">The short version</p>
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">We keep as little as a squares board needs.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
             <Check>No accounts, no ads, no tracking.</Check>
@@ -125,7 +125,7 @@ export default function Privacy() {
 
         <Section title="Sharing inside a board">
           <Card padding="lg" className="flex gap-3.5">
-            <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-500/15 text-accent-400">
+            <span aria-hidden className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent-500/15 text-ink-accent">
               <UsersIcon size={19} />
             </span>
             <div className="text-callout text-ink-muted">
@@ -190,11 +190,11 @@ export default function Privacy() {
             <span className="select-all font-semibold text-ink-muted">{SUPPORT_EMAIL}</span>
             <br />
             See also our{" "}
-            <Link to="/terms" className="font-semibold text-brand-400 underline-offset-2 hover:underline">
+            <Link to="/terms" className="font-semibold text-ink-brand underline-offset-2 hover:underline">
               Terms
             </Link>{" "}
             and{" "}
-            <Link to="/support" className="font-semibold text-brand-400 underline-offset-2 hover:underline">
+            <Link to="/support" className="font-semibold text-ink-brand underline-offset-2 hover:underline">
               Support
             </Link>
             .

@@ -3,6 +3,7 @@
 // an iPhone 13/14 screenshot).
 //
 //   BASE=http://127.0.0.1:5190 OUT=bar/ours node e2e/capture.mjs [screen ...]
+//   THEME=light (or dark, system) captures with that Appearance choice saved on the device.
 //
 // Screens: home-empty, home, create, create-format, checkout, invite, board-newcomer,
 // join, board-open, board-locked, board-live, board-final, host, notify, profile.
@@ -13,6 +14,7 @@ import { mkdirSync } from "node:fs";
 const BASE = process.env.BASE ?? "http://127.0.0.1:5190";
 const OUT = process.env.OUT ?? "bar/ours";
 const EXECUTABLE = process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const THEME = process.env.THEME ?? "";
 const only = new Set(process.argv.slice(2));
 const want = (name) => only.size === 0 || only.has(name);
 mkdirSync(OUT, { recursive: true });
@@ -149,9 +151,10 @@ async function contextFor(browser, device) {
       localStorage.setItem("jaxsquares.games", JSON.stringify(d.games ?? []));
     }, device);
   }
-  await ctx.addInitScript(() => {
+  await ctx.addInitScript((theme) => {
     navigator.share = async () => {};
-  });
+    if (theme) localStorage.setItem("jaxsquares.theme", theme);
+  }, THEME);
   return ctx;
 }
 

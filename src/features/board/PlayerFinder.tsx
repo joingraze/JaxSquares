@@ -39,12 +39,12 @@ export function PlayerFinder({ players, counts, me, selected, onSelect }: Player
             onClick={() => onSelect(on ? null : p.id)}
             className={cx(
               "pressable flex h-7 items-center gap-1 rounded-full py-0.5 pl-0.5 pr-2 text-caption font-bold ring-1 ring-inset",
-              on ? "bg-ink text-ink-inverse ring-ink" : "bg-surface-2 text-ink ring-line-strong",
+              on ? "bg-ink text-canvas ring-ink" : "bg-surface-2 text-ink ring-line-strong",
             )}
           >
             <Avatar name={p.name} color={p.color} emoji={p.emoji} size="xs" decorative />
-            <span className={cx("max-w-[5rem] truncate", !on && mine && "text-brand-300")}>{mine ? "You" : p.name}</span>
-            <span className={cx("tabular-nums font-semibold", on ? "text-ink-inverse/60" : "text-ink-subtle")}>{counts.get(p.id) ?? 0}</span>
+            <span className={cx("max-w-[5rem] truncate", !on && mine && "text-ink-brand")}>{mine ? "You" : p.name}</span>
+            <span className={cx("tabular-nums font-semibold", on ? "text-canvas/60" : "text-ink-subtle")}>{counts.get(p.id) ?? 0}</span>
           </button>
         );
       })}

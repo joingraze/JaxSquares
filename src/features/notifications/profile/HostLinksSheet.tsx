@@ -40,7 +40,7 @@ export function HostLinksSheet({ open, onClose, games }: { open: boolean; onClos
           <span>Open it on another device to draw numbers and post scores from there.</span>
         </li>
       </ol>
-      <p className="mt-4 flex items-start gap-2.5 rounded-xl bg-gold-400/10 px-3 py-2.5 text-footnote font-semibold text-gold-200 ring-1 ring-inset ring-gold-400/25">
+      <p className="mt-4 flex items-start gap-2.5 rounded-xl bg-gold-400/10 px-3 py-2.5 text-footnote font-semibold text-ink-gold ring-1 ring-inset ring-gold-line/25">
         <LockIcon size={16} className="mt-px shrink-0" />
         Anyone with a host link can run that board. Send it only to yourself.
       </p>

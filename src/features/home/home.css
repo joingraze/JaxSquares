@@ -79,7 +79,7 @@
   height: 3px;
   margin-left: -0.5rem;
   border-radius: 2px;
-  background: var(--color-brand-400);
+  background: var(--color-brand-line);
   animation: join-caret 1s steps(1) infinite;
 }
 
@@ -113,7 +113,7 @@
 }
 @keyframes home-bump {
   0% { transform: scale(1); color: inherit; }
-  25% { transform: scale(1.28); color: var(--color-brand-300); }
+  25% { transform: scale(1.28); color: var(--color-ink-brand); }
   100% { transform: scale(1); }
 }
 

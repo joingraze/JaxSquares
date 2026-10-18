@@ -11,6 +11,7 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import type { Appearance, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
 import type { AppConfig, GameState, PaymentConfig } from "../../shared/types";
 import { getClientId } from "./identity";
+import { getResolvedTheme, type ResolvedTheme } from "./theme";
 
 export type CheckoutMethod = "test" | "iap" | "wallet" | "card";
 export type CheckoutResult = "paid" | "cancelled" | "failed";
@@ -430,18 +431,36 @@ async function getStripe(publishableKey?: string | null): Promise<Stripe | null>
   return p;
 }
 
-// Stripe renders in an iframe, so the theme tokens from src/index.css are repeated here.
-const APPEARANCE: Appearance = {
-  theme: "night",
-  variables: {
-    colorPrimary: "#22c55e",
-    colorBackground: "#131c30",
-    colorText: "#e6edf6",
-    colorDanger: "#fb7185",
-    borderRadius: "14px",
-    fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+// Stripe renders in an iframe, so colors are repeated here, per theme (read when the form mounts).
+const STRIPE_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+const APPEARANCE: Record<ResolvedTheme, Appearance> = {
+  dark: {
+    theme: "night",
+    variables: {
+      colorPrimary: "#22c55e",
+      colorBackground: "#131c30",
+      colorText: "#e6edf6",
+      colorDanger: "#fb7185",
+      borderRadius: "14px",
+      fontFamily: STRIPE_FONT,
+    },
+  },
+  // The light theme's tokens (src/index.css): white fields, ink text, the AA volt and red.
+  light: {
+    theme: "stripe",
+    variables: {
+      colorPrimary: "#4a6e00",
+      colorBackground: "#ffffff",
+      colorText: "#0f1a14",
+      colorTextSecondary: "#46594d",
+      colorDanger: "#c8152a",
+      borderRadius: "14px",
+      fontFamily: STRIPE_FONT,
+    },
   },
 };
+
+const appearance = (): Appearance => APPEARANCE[getResolvedTheme()];
 
 export interface MountedCheckout {
   destroy(): void;
@@ -482,12 +501,13 @@ export async function mountWalletButton(el: HTMLElement, opts: WalletButtonOptio
     return handle;
   }
 
-  const elements = stripe.elements({ clientSecret: opts.clientSecret, appearance: APPEARANCE });
+  const elements = stripe.elements({ clientSecret: opts.clientSecret, appearance: appearance() });
   element = elements.create("expressCheckout", {
     business: { name: "JaxSquares" },
     buttonHeight: opts.buttonHeight ?? 52,
     buttonType: { applePay: "plain", googlePay: "plain" },
-    buttonTheme: { applePay: "white", googlePay: "white" },
+    // Apple's rule: a white button on a dark sheet, a black one on a light sheet.
+    buttonTheme: getResolvedTheme() === "light" ? { applePay: "black", googlePay: "black" } : { applePay: "white", googlePay: "white" },
     layout: { maxColumns: 1, maxRows: 1, overflow: "never" },
     paymentMethods: {
       applePay: "auto",
@@ -533,7 +553,7 @@ export interface CardForm extends MountedCheckout {
 export async function mountCardForm(el: HTMLElement, opts: CardFormOptions): Promise<CardForm> {
   const stripe = await getStripe(opts.publishableKey).catch(() => null);
   if (!stripe) throw new CheckoutError("Checkout couldn't load. Check your connection and try again.", 0);
-  const elements = stripe.elements({ clientSecret: opts.clientSecret, appearance: APPEARANCE });
+  const elements = stripe.elements({ clientSecret: opts.clientSecret, appearance: appearance() });
   const payment: StripePaymentElement = elements.create("payment", {
     layout: "tabs",
     wallets: { applePay: "never", googlePay: "never" },

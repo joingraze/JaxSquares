@@ -427,7 +427,7 @@ function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: 
             ? "bg-gold-400 text-ink-inverse [--keycap-edge:var(--color-gold-700)]"
             : hot
               ? "bg-brand-400 text-ink-inverse [--keycap-edge:var(--color-brand-700)]"
-              : "bg-surface-4 text-ink ring-1 ring-inset ring-line [--keycap-edge:#0a120e]",
+              : "bg-surface-4 text-ink ring-1 ring-inset ring-line [--keycap-edge:var(--color-edge)]",
           nudge && "hx-nudge",
         )}
       >

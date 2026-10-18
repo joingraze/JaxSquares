@@ -10,6 +10,7 @@ import { checkHostToken } from "./lib/api";
 import { captureHostLink, getAdminToken, hydrateIdentity } from "./lib/identity";
 import { isNative } from "./lib/native";
 import { initPush } from "./lib/push";
+import { initTheme } from "./lib/theme";
 
 /** Never hold the first paint hostage to the native store. */
 const HYDRATE_TIMEOUT_MS = 1500;
@@ -38,6 +39,9 @@ function startPush(): void {
 }
 
 async function start(): Promise<void> {
+  // index.html already painted the saved theme; this keeps it in step (OS changes, the native store).
+  initTheme();
+
   // The opened screen's chunk (index.html already started downloading it): ready before the router
   // is created, so the first render shows the screen instead of waiting a round for a lazy route.
   const screenReady = preloadScreen(location.pathname);

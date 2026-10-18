@@ -329,7 +329,8 @@ rows per game in D1.
   `ios/`, `android/` – native/PWA shell.
 - `src/*` – client. `src/lib/api.ts` (typed client, `API_BASE` aware),
   `src/lib/live.ts` (socket + fallback polling), `src/lib/identity.ts`,
-  `src/lib/native.ts` (Capacitor bridges: share, haptics, push, IAP).
+  `src/lib/native.ts` (Capacitor bridges: share, haptics, push, IAP),
+  `src/lib/theme.ts` (appearance: dark / light / system).
 
 ## Client ↔ native
 
@@ -337,6 +338,26 @@ rows per game in D1.
   `VITE_API_BASE` (default `https://jaxsquares.com`). The web build uses same-origin.
 - Invite links are `https://jaxsquares.com/g/<id>`; universal links open the app,
   everyone else gets the web app with no install needed.
+
+## Appearance (client)
+
+- Per-device choice in Profile: `dark` (default, the brand look), `light` or
+  `system`, stored under `jaxsquares.theme` (localStorage, mirrored to Capacitor
+  Preferences). `src/lib/theme.ts` resolves it (`system` follows
+  `prefers-color-scheme` live) onto `<html data-theme="dark|light">`, the
+  `color-scheme` / `theme-color` metas and the native status bar style. The
+  inline `#theme-boot` script in `index.html` does the same before first paint,
+  so there is no dark-to-light flash; `theme.test.ts` keeps the two in step.
+- Styling: `src/index.css` defines dark values for the semantic tokens
+  (`canvas`, `surface`–`surface-5`, `edge`, `ink*`, `ink-brand|gold|live|danger|accent`
+  for colored text, `brand-line` / `gold-line` for rings and focus, `line*`,
+  `scrim`) and material variables (`--elevation-*`, `--glass-bg`, `--bar-bg`,
+  `--foil`, washes); `:root[data-theme="light"]` redefines them. Numbered scales
+  never change: they are for fills that look the same in both themes (volt
+  buttons with `text-ink-inverse`, gold chips). `light:` is a variant for the rare
+  per-element tweak. Colors computed in JS take the resolved theme:
+  `teamVars(x, y, theme)` / `readableTeamColor(c, fallback, theme)` with
+  `useResolvedTheme()` (team colors are lifted on dark and darkened to 3:1 on light).
 
 ## Board deep links (client)
 

@@ -86,6 +86,7 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.wrangler/**"],
+    // .claude/worktrees holds agents' scratch checkouts of this repo.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.wrangler/**", "**/.claude/**"],
   },
 });

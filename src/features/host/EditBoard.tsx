@@ -36,7 +36,7 @@ export function EditBoard({ game, draft, onChange }: EditBoardProps) {
       <section className="flex flex-col gap-3">
         <div className="px-1">
           <h3 className="flex items-center gap-1.5 text-subhead font-bold text-ink-muted">
-            <GiftIcon size={16} className="text-gold-400" />
+            <GiftIcon size={16} className="text-ink-gold" />
             Prizes
           </h3>
           <p className="mt-0.5 text-footnote text-ink-subtle">Bragging rights, snacks, chores. Never money.</p>

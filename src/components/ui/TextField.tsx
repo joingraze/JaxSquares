@@ -33,7 +33,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
           {label}
         </label>
         {counter && maxLength !== undefined && (
-          <span aria-hidden className={cx("text-caption tabular-nums", length >= maxLength ? "text-gold-400" : "text-ink-subtle")}>
+          <span aria-hidden className={cx("text-caption tabular-nums", length >= maxLength ? "text-ink-gold" : "text-ink-subtle")}>
             {length}/{maxLength}
           </span>
         )}
@@ -44,7 +44,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
           "focus-within:ring-2",
           error
             ? "animate-shake ring-danger-500 focus-within:ring-danger-500"
-            : "ring-line-strong focus-within:ring-brand-400 focus-within:shadow-[0_0_0_4px_rgb(198_249_31/0.14)]",
+            : "ring-line-strong focus-within:ring-brand-line focus-within:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-brand-line)_14%,transparent)]",
         )}
       >
         {leading && <span className="flex shrink-0 text-ink-subtle [&>svg]:h-5 [&>svg]:w-5">{leading}</span>}
@@ -64,7 +64,7 @@ export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function T
         {trailing && <span className="flex shrink-0 items-center text-ink-subtle">{trailing}</span>}
       </div>
       {error ? (
-        <p id={errorId} className="mt-1.5 flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
+        <p id={errorId} className="mt-1.5 flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
           <AlertIcon size={14} />
           {error}
         </p>

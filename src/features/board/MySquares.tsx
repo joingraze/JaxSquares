@@ -61,7 +61,7 @@ export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot
         className="pressable flex w-full items-center gap-3 px-3.5 py-2.5 text-left"
       >
         <span className="flex shrink-0 flex-col leading-none">
-          <span className="font-display text-title-3 font-extrabold tabular-nums text-brand-300">{numbers.length}</span>
+          <span className="font-display text-title-3 font-extrabold tabular-nums text-ink-brand">{numbers.length}</span>
           <span className="mt-0.5 text-[0.625rem] font-bold uppercase tracking-wider text-ink-subtle">{numbers.length === 1 ? "square" : "squares"}</span>
         </span>
         <span className="min-w-0 flex-1">
@@ -96,10 +96,10 @@ export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot
                   onClick={() => onSpot(on ? null : k)}
                   className={cx(
                     "pressable flex h-9 w-full items-center justify-center gap-1 rounded-xl px-2 text-footnote tabular-nums ring-1 ring-inset",
-                    on ? "bg-brand-400/20 ring-brand-400" : won ? "bg-gold-400/10 ring-gold-400/50" : "bg-surface-3 ring-line",
+                    on ? "bg-brand-400/20 ring-brand-line" : won ? "bg-gold-400/10 ring-gold-line/50" : "bg-surface-3 ring-line",
                   )}
                 >
-                  {won && <TrophyIcon size={12} filled className="mr-0.5 shrink-0 text-gold-300" />}
+                  {won && <TrophyIcon size={12} filled className="mr-0.5 shrink-0 text-ink-gold" />}
                   {pair(nb)}
                 </button>
               </li>

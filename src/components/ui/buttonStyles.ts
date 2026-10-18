@@ -6,9 +6,9 @@ export type ButtonSize = "sm" | "md" | "lg";
 /** Surface, edge and hover per variant. The text color lives in VARIANT_TEXT so a className color can replace it. */
 const VARIANT: Record<ButtonVariant, string> = {
   primary: "keycap bg-brand-400 [--keycap-edge:var(--color-brand-700)] hover:bg-brand-300",
-  secondary: "keycap bg-surface-4 [--keycap-edge:#0a120e] ring-1 ring-inset ring-line hover:bg-pitch-600",
-  outline: "pressable bg-transparent ring-1 ring-inset ring-line-strong hover:bg-white/6 active:bg-white/10",
-  ghost: "pressable bg-transparent hover:bg-white/6 active:bg-white/10",
+  secondary: "keycap bg-surface-4 [--keycap-edge:var(--color-edge)] ring-1 ring-inset ring-line hover:bg-surface-5",
+  outline: "pressable bg-transparent ring-1 ring-inset ring-line-strong hover:bg-ink/6 active:bg-ink/10",
+  ghost: "pressable bg-transparent hover:bg-ink/6 active:bg-ink/10",
   danger: "keycap bg-danger-500 [--keycap-edge:var(--color-danger-700)] hover:bg-danger-400",
   gold: "keycap bg-gold-400 [--keycap-edge:var(--color-gold-700)] hover:bg-gold-300",
 };

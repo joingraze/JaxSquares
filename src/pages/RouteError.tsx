@@ -14,7 +14,7 @@ export default function RouteError() {
         description={
           <>
             Something broke on our side. Reloading usually fixes it.
-            {import.meta.env.DEV && detail && <span className="mt-2 block font-mono text-caption text-danger-300">{detail}</span>}
+            {import.meta.env.DEV && detail && <span className="mt-2 block font-mono text-caption text-ink-danger">{detail}</span>}
           </>
         }
         action={<Button onClick={() => window.location.reload()}>Reload</Button>}

@@ -39,7 +39,7 @@ export function JoinedCard({ state, onDismiss, className }: JoinedCardProps) {
   return (
     <section
       aria-label="You're in"
-      className={cx("invite-rise relative overflow-hidden rounded-card bg-surface-2 p-3.5 shadow-float ring-1 ring-inset ring-brand-400/30", className)}
+      className={cx("invite-rise relative overflow-hidden rounded-card bg-surface-2 p-3.5 shadow-float ring-1 ring-inset ring-brand-line/30", className)}
     >
       <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_120%_at_0%_0%,rgb(198_249_31/0.14),transparent_60%)]" />
       <div className="relative flex items-start gap-3">

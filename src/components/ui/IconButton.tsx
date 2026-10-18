@@ -6,7 +6,7 @@ export type IconButtonVariant = "ghost" | "solid" | "glass" | "brand";
 export type IconButtonSize = "sm" | "md" | "lg";
 
 const VARIANT: Record<IconButtonVariant, string> = {
-  ghost: "text-ink hover:bg-white/6 active:bg-white/10",
+  ghost: "text-ink hover:bg-ink/6 active:bg-ink/10",
   solid: "bg-surface-3 text-ink ring-1 ring-inset ring-line hover:bg-surface-4",
   glass: "glass text-ink ring-1 ring-inset ring-line",
   brand: "bg-brand-400 text-ink-inverse hover:bg-brand-300",

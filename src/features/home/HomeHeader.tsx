@@ -29,7 +29,7 @@ export function HomeHeader({ name, headline, trailing, pulse = 0 }: HomeHeaderPr
           {headline ? (
             <span key={pulse} className={cx("block text-balance", pulse > 0 && "home-headline-win")}>
               {headline.lead}{" "}
-              <span className={cx(headline.tone === "win" ? "text-foil" : headline.tone === "live" ? "text-live-400" : "text-brand-400")}>
+              <span className={cx(headline.tone === "win" ? "text-foil" : headline.tone === "live" ? "text-ink-live" : "text-ink-brand")}>
                 {headline.hot}
               </span>
             </span>

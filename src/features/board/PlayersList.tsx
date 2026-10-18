@@ -51,7 +51,7 @@ export function PlayersList({
           const selected = selectedId === player.id;
           const removable = !!onRemove && player.id !== hostId && !isMe;
           return (
-            <li key={player.id} className={cx("flex items-center", selected && "bg-white/6")}>
+            <li key={player.id} className={cx("flex items-center", selected && "bg-ink/6")}>
               <button
                 type="button"
                 disabled={!onSelect || squares === 0}
@@ -60,7 +60,7 @@ export function PlayersList({
                 className={cx(
                   "flex min-h-13 min-w-0 flex-1 items-center gap-3 py-2 pl-4 text-left disabled:cursor-default",
                   onRemove ? "pr-1" : "pr-4",
-                  onSelect && squares > 0 && "active:bg-white/5",
+                  onSelect && squares > 0 && "active:bg-ink/5",
                 )}
               >
                 <Avatar
@@ -73,12 +73,12 @@ export function PlayersList({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-1.5">
-                    <span className={cx("truncate text-callout font-bold", isMe ? "text-brand-300" : "text-ink")}>{isMe ? "You" : player.name}</span>
+                    <span className={cx("truncate text-callout font-bold", isMe ? "text-ink-brand" : "text-ink")}>{isMe ? "You" : player.name}</span>
                     {player.id === hostId && <Badge tone="outline">Host</Badge>}
                   </div>
                   {stage === "picking" ? (
                     // Share of the board, as a slim bar.
-                    <div className="mt-1 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-white/6">
+                    <div className="mt-1 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-ink/6">
                       <div
                         className="h-full rounded-full transition-[width] duration-700 ease-out-quint"
                         style={{ width: `${(squares / maxSquares) * 100}%`, backgroundColor: player.color }}
@@ -88,7 +88,7 @@ export function PlayersList({
                     <p className="mt-0.5 flex items-center gap-1.5 text-caption text-ink-subtle">
                       <span className="tabular-nums">{squares === 1 ? "1 square" : `${squares} squares`}</span>
                       {leads && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-live-300">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-ink-live">
                           <LiveDot />
                           Leading {leading?.label}
                         </span>
@@ -104,7 +104,7 @@ export function PlayersList({
                     </span>
                   </span>
                 ) : wins > 0 ? (
-                  <span className="flex max-w-[45%] shrink-0 items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-footnote font-extrabold text-gold-300">
+                  <span className="flex max-w-[45%] shrink-0 items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-footnote font-extrabold text-ink-gold">
                     <TrophyIcon size={13} filled className="shrink-0" />
                     <span className="truncate">{winLabels.join(" · ")}</span>
                   </span>
@@ -121,7 +121,7 @@ export function PlayersList({
                   aria-label={`Remove ${player.name}`}
                   title={`Remove ${player.name}`}
                   onClick={() => onRemove(player.id)}
-                  className="pressable mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink-subtle active:bg-danger-500/15 active:text-danger-300"
+                  className="pressable mr-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-ink-subtle active:bg-danger-500/15 active:text-ink-danger"
                 >
                   <span className="grid h-7 w-7 place-items-center rounded-full bg-surface-4 ring-1 ring-inset ring-line">
                     <XIcon size={14} strokeWidth={2.6} />
@@ -136,7 +136,7 @@ export function PlayersList({
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="w-full border-t border-line py-3 text-subhead font-bold text-brand-300 active:bg-white/5"
+          className="w-full border-t border-line py-3 text-subhead font-bold text-ink-brand active:bg-ink/5"
         >
           {all ? "Show less" : `Show all ${total}`}
         </button>

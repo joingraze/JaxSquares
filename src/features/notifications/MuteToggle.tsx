@@ -95,7 +95,7 @@ export function MuteToggle({ gameId, variant = "row", label, className, onChange
         aria-hidden
         className={cx(
           "grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors",
-          muted ? "bg-surface-4 text-ink-subtle" : "bg-brand-400/14 text-brand-300",
+          muted ? "bg-surface-4 text-ink-subtle" : "bg-brand-400/14 text-ink-brand",
         )}
       >
         {muted ? <BellOffIcon size={18} /> : <BellIcon size={18} />}

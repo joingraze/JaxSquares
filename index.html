@@ -9,6 +9,7 @@
       name="description"
       content="Football squares with your friends. Make a board, share the link, and follow every score live."
     />
+    <!-- Dark by default; the theme script below switches both metas for the light theme. -->
     <meta name="theme-color" content="#060c09" />
     <meta name="color-scheme" content="dark" />
     <!-- Scores like 21-14 must not turn into phone links. -->
@@ -47,9 +48,33 @@
     />
     <meta name="twitter:image" content="https://jaxsquares.com/og-image.png" />
 
-    <!-- Paint the app background before the CSS bundle arrives: no white flash on launch. -->
+    <!--
+      Theme before first paint (no dark-to-light flash): the saved choice from Profile
+      ("dark" default, "light", or "system"), resolved like src/lib/theme.ts does, onto
+      <html data-theme> and the metas. Colors = THEME_COLORS in theme.ts (theme.test.ts checks).
+    -->
+    <script id="theme-boot">
+      (function () {
+        var d = document.documentElement, t = "dark";
+        try {
+          var p = localStorage.getItem("jaxsquares.theme");
+          if (p === "light") t = "light";
+          else if (p === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) t = "light";
+        } catch (e) {}
+        d.setAttribute("data-theme", t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute("content", t === "light" ? "#eef2ec" : "#060c09");
+        m = document.querySelector('meta[name="color-scheme"]');
+        if (m) m.setAttribute("content", t);
+        // Home-screen web app on iOS: dark status bar text over the light canvas (read at launch only).
+        m = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (m && t === "light") m.setAttribute("content", "default");
+      })();
+    </script>
+    <!-- Paint the app background before the CSS bundle arrives: no flash on launch. -->
     <style>
-      html { background: #060c09; }
+      html { background: #060c09; color-scheme: dark; }
+      html[data-theme="light"] { background: #eef2ec; color-scheme: light; }
     </style>
   </head>
   <body>

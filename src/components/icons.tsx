@@ -276,3 +276,18 @@ export const WifiOffIcon = make(
     <path d="M12 19.5h.01M8.6 16a5 5 0 0 1 6.8 0M5 12.5a10 10 0 0 1 4.2-2.3M14.8 10.2A10 10 0 0 1 19 12.5M2 9a15 15 0 0 1 3.6-2.4M11 5a15 15 0 0 1 11 4M3 3l18 18" />
   </>,
 );
+export const MoonIcon = make("Moon", <path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6Z" />, { fillable: true });
+export const SunIcon = make(
+  "Sun",
+  <>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" />
+  </>,
+);
+export const PhoneIcon = make(
+  "Phone",
+  <>
+    <rect x="6.5" y="2.5" width="11" height="19" rx="2.8" />
+    <path d="M10.5 18.5h3" />
+  </>,
+);

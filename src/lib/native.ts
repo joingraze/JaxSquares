@@ -163,16 +163,31 @@ export function pathFromAppUrl(raw: string): string | null {
 let started = false;
 
 /**
- * Native app start-up: light status bar text, hide the launch screen once the
- * first frame has painted, and route universal links / jaxsquares:// links into
- * the SPA. Call once after the first render. Returns a cleanup function.
+ * Status bar text that reads on the theme's canvas: light text over the dark
+ * theme, dark text over the light one. No-op on the web (theme-color covers it).
+ */
+export async function setStatusBarTheme(theme: "dark" | "light"): Promise<void> {
+  if (!isNative()) return;
+  try {
+    await StatusBar.setStyle({ style: theme === "light" ? Style.Light : Style.Dark });
+  } catch {
+    // cosmetic
+  }
+}
+
+/**
+ * Native app start-up: status bar text for the current theme, hide the launch
+ * screen once the first frame has painted, and route universal links /
+ * jaxsquares:// links into the SPA. Call once after the first render. Returns a
+ * cleanup function.
  */
 export function initNative(opts: { navigate: (path: string) => void }): () => void {
   if (!isNative() || started) return () => {};
   started = true;
   const handles: Promise<{ remove: () => Promise<void> }>[] = [];
 
-  StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+  // The theme is on <html> before first paint (index.html); theme.ts keeps the bar in step after that.
+  void setStatusBarTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
   if (platform() === "android") StatusBar.setOverlaysWebView({ overlay: true }).catch(() => {});
 
   // Two frames: React has committed and the browser has painted it.

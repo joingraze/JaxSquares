@@ -13,9 +13,8 @@
     radial-gradient(120% 140% at 0% 0%, rgb(255 194 51 / 0.13), transparent 55%),
     var(--color-surface-2);
   box-shadow:
-    inset 0 0 0 1px rgb(255 194 51 / 0.22),
-    inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 16px 32px -20px rgb(0 0 0 / 0.8);
+    inset 0 0 0 1px color-mix(in srgb, var(--color-gold-line) 22%, transparent),
+    var(--elevation-card);
 }
 
 /* Unpaid board: the bar is the call to action. */
@@ -25,9 +24,8 @@
     radial-gradient(120% 140% at 100% 100%, rgb(255 194 51 / 0.1), transparent 60%),
     var(--color-surface-2);
   box-shadow:
-    inset 0 0 0 1px rgb(198 249 31 / 0.3),
-    inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 16px 32px -20px rgb(0 0 0 / 0.8);
+    inset 0 0 0 1px color-mix(in srgb, var(--color-brand-line) 30%, transparent),
+    var(--elevation-card);
 }
 
 /* While the host sheet is up, confetti (canvas-confetti draws on a fixed canvas
@@ -141,7 +139,7 @@ html[data-hx-quiet] body > canvas {
   background: var(--color-surface-4);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.08),
-    0 3px 0 #0a120e;
+    0 3px 0 var(--color-edge);
   transition:
     transform 200ms var(--ease-spring),
     box-shadow 200ms var(--ease-spring),
@@ -154,8 +152,8 @@ html[data-hx-quiet] body > canvas {
   transform: translateY(2px);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.05),
-    0 1px 0 #0a120e;
-  background: var(--color-pitch-600);
+    0 1px 0 var(--color-edge);
+  background: var(--color-surface-5);
   transition-duration: 50ms;
 }
 
@@ -172,7 +170,7 @@ html[data-hx-quiet] body > canvas {
   background:
     radial-gradient(80% 45% at 0% 0%, color-mix(in srgb, var(--team-x) 32%, transparent), transparent 70%),
     radial-gradient(80% 45% at 100% 100%, color-mix(in srgb, var(--team-y) 30%, transparent), transparent 70%),
-    radial-gradient(60% 30% at 50% 0%, rgb(214 255 120 / 0.12), transparent 70%),
+    radial-gradient(60% 30% at 50% 0%, var(--floodlight-left), transparent 70%),
     var(--color-canvas);
   animation: hx-reveal-in 320ms var(--ease-out-quint) both;
 }
@@ -274,8 +272,8 @@ html[data-hx-quiet] body > canvas {
   place-items: center;
   overflow: hidden;
   border-radius: calc(var(--s) * 0.22);
-  background: rgb(255 255 255 / 0.04);
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  background: color-mix(in srgb, var(--color-ink) 4%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-ink) 5%, transparent);
 }
 
 /* Whose square it is: the owner's emoji (or initial), so the draw shows who got what. */

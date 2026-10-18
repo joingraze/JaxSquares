@@ -109,8 +109,8 @@ export function JoinCodeSheet({ open, onClose }: JoinCodeSheetProps) {
                 aria-hidden
                 className={cx(
                   "relative grid h-15 place-items-center rounded-2xl bg-surface-3 font-display text-title-2 font-extrabold uppercase text-ink ring-1 ring-inset transition-[box-shadow,background-color] duration-150",
-                  error ? "ring-danger-500/70" : filled ? "ring-brand-400/50" : "ring-line-strong",
-                  active && !error && "join-code-active ring-2 ring-brand-400",
+                  error ? "ring-danger-500/70" : filled ? "ring-brand-line/50" : "ring-line-strong",
+                  active && !error && "join-code-active ring-2 ring-brand-line",
                 )}
               >
                 {filled ? <span className="animate-pop">{c}</span> : null}
@@ -139,7 +139,7 @@ export function JoinCodeSheet({ open, onClose }: JoinCodeSheetProps) {
       <p
         id="join-code-help"
         role={error ? "alert" : undefined}
-        className={cx("mt-3 flex min-h-5 items-start gap-1.5 px-1 text-footnote", error ? "font-semibold text-danger-400" : "text-ink-subtle")}
+        className={cx("mt-3 flex min-h-5 items-start gap-1.5 px-1 text-footnote", error ? "font-semibold text-ink-danger" : "text-ink-subtle")}
       >
         {error ? (
           <>

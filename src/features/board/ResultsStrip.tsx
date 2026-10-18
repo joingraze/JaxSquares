@@ -67,24 +67,24 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
               grid ? "min-w-0" : "w-[9.5rem]",
               grid && cards.length % 2 === 1 && card === cards[cards.length - 1] && "col-span-2",
               iWon
-                ? "jx-shine bg-[linear-gradient(160deg,rgb(255_194_51/0.28),rgb(255_171_15/0.08)_70%)] bg-surface-2 ring-gold-400/60 shadow-glow-gold"
+                ? "jx-shine bg-[linear-gradient(160deg,rgb(255_194_51/0.28),rgb(255_171_15/0.08)_70%)] bg-surface-2 ring-gold-line/60 shadow-glow-gold"
                 : card.status === "live"
                   ? "bg-[linear-gradient(160deg,rgb(255_64_64/0.16),transparent_70%)] bg-surface-2 ring-live-500/45"
                   : card.status === "done"
                     ? "bg-surface-2 ring-line-strong"
                     : "bg-surface-2/60 ring-line",
-              selected && "!ring-2 !ring-gold-300",
+              selected && "!ring-2 !ring-gold-line",
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className={cx("eyebrow", card.status === "done" ? "text-gold-300" : "text-ink-muted")}>{periodPhrase(card.key, card.label).short}</span>
+              <span className={cx("eyebrow", card.status === "done" ? "text-ink-gold" : "text-ink-muted")}>{periodPhrase(card.key, card.label).short}</span>
               {card.status === "live" && (
-                <span className="eyebrow flex items-center gap-1 text-live-400">
+                <span className="eyebrow flex items-center gap-1 text-ink-live">
                   <LiveDot />
                   Live
                 </span>
               )}
-              {card.status === "next" && !predraw && !/next/i.test(card.label) && <span className="eyebrow text-brand-300">Up next</span>}
+              {card.status === "next" && !predraw && !/next/i.test(card.label) && <span className="eyebrow text-ink-brand">Up next</span>}
               {r?.source === "host" && <span className="eyebrow text-ink-subtle">Host pick</span>}
             </div>
 
@@ -110,7 +110,7 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
                     <RefreshIcon size={12} className="shrink-0" />
                     <span className="truncate">
                       Reverse:{" "}
-                      <b className={cx("font-bold", r.reverseWinnerPlayerId === me ? "text-brand-300" : "text-ink")}>
+                      <b className={cx("font-bold", r.reverseWinnerPlayerId === me ? "text-ink-brand" : "text-ink")}>
                         {r.reverseWinnerPlayerId === me ? "You" : (revWinner?.name ?? "nobody")}
                       </b>
                     </span>
@@ -157,7 +157,7 @@ export function ResultsStrip({ cards, players, me, teamX, teamY, reverse, predra
                 "flex min-w-0 items-start gap-1.5 font-semibold leading-snug",
                 !(predraw && !r) && "mt-auto",
                 predraw && !r ? "text-subhead" : "text-caption",
-                card.prize ? "text-gold-300" : "text-ink-subtle",
+                card.prize ? "text-ink-gold" : "text-ink-subtle",
               )}
             >
               <GiftIcon size={predraw && !r ? 16 : 13} className="mt-px shrink-0" />
@@ -192,7 +192,7 @@ function WinnerLine({
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <Avatar name={player.name} color={player.color} emoji={player.emoji} size="xs" ring={mine ? "brand" : "gold"} decorative />
-      <span className={cx("truncate text-subhead font-extrabold", mine ? "text-brand-300" : "text-ink")}>{mine ? "You!" : player.name}</span>
+      <span className={cx("truncate text-subhead font-extrabold", mine ? "text-ink-brand" : "text-ink")}>{mine ? "You!" : player.name}</span>
     </span>
   );
 }

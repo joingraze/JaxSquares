@@ -5,7 +5,7 @@ export function LogoMark({ size = 32, className }: { size?: number; className?: 
   const cells = [0, 1, 2];
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden className={cx("shrink-0", className)}>
-      <rect width="32" height="32" rx="9" fill="var(--color-canvas)" />
+      <rect width="32" height="32" rx="9" fill="var(--color-pitch-950)" />
       {cells.flatMap((r) =>
         cells.map((c) => {
           const lit = r === 1 && c === 2;
@@ -32,7 +32,7 @@ export function Wordmark({ className }: { className?: string }) {
     <span className={cx("inline-flex items-center gap-2", className)}>
       <LogoMark size={28} />
       <span className="font-display text-title-3 font-extrabold tracking-[-0.03em]">
-        Jax<span className="text-brand-400">Squares</span>
+        Jax<span className="text-ink-brand">Squares</span>
       </span>
     </span>
   );

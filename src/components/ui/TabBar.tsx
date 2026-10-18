@@ -93,7 +93,7 @@ function Tab({ to, label, icon, end }: { to: string; label: string; icon: (activ
     >
       {({ isActive }) => (
         <>
-          <span key={String(isActive)} className={cx("grid h-6 place-items-center", isActive && "animate-tab-bounce text-brand-400")}>
+          <span key={String(isActive)} className={cx("grid h-6 place-items-center", isActive && "animate-tab-bounce text-ink-brand")}>
             {icon(isActive)}
           </span>
           <span className="text-[0.6875rem] font-bold leading-none">{label}</span>

@@ -271,7 +271,7 @@ export function BottomSheet({
         aria-hidden
         onClick={requestClose}
         className={cx(
-          "absolute inset-0 bg-black/65 backdrop-blur-[2px] transition-opacity duration-300",
+          "absolute inset-0 bg-scrim backdrop-blur-[2px] transition-opacity duration-300",
           shown ? "opacity-100" : "opacity-0",
         )}
       />
@@ -305,7 +305,7 @@ export function BottomSheet({
           onPointerCancel={endDrag}
           className={cx("shrink-0 touch-none px-5 pb-2 pt-2.5", dismissible && "cursor-grab active:cursor-grabbing")}
         >
-          <div aria-hidden className="mx-auto h-1.5 w-10 rounded-full bg-white/20" />
+          <div aria-hidden className="mx-auto h-1.5 w-10 rounded-full bg-ink/20" />
           {(title || dismissible) && (
             <div className={cx("flex items-start gap-3", title ? "mt-3" : "mt-1 justify-end")}>
               {title && (

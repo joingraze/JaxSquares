@@ -14,7 +14,7 @@ export interface ProgressRingProps {
   className?: string;
 }
 
-const STROKE = { brand: "stroke-brand-400", gold: "stroke-gold-400", accent: "stroke-accent-500" } as const;
+const STROKE = { brand: "stroke-brand-line", gold: "stroke-gold-400", accent: "stroke-accent-500" } as const;
 
 export function ProgressRing({ value, size = 56, stroke = 6, tone = "brand", children, label, className }: ProgressRingProps) {
   const v = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
@@ -31,7 +31,7 @@ export function ProgressRing({ value, size = 56, stroke = 6, tone = "brand", chi
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-white/10" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-ink/10" />
         <circle
           cx={size / 2}
           cy={size / 2}

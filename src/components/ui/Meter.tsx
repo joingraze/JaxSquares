@@ -42,7 +42,7 @@ export function Meter({ value, max, label, showCount = true, tone = "brand", siz
         aria-valuemax={max}
         aria-valuenow={value}
         aria-label={typeof label === "string" ? label : undefined}
-        className={cx("overflow-hidden rounded-full bg-white/8", size === "sm" ? "h-1.5" : "h-2.5")}
+        className={cx("overflow-hidden rounded-full bg-ink/8", size === "sm" ? "h-1.5" : "h-2.5")}
       >
         <div
           className={cx("h-full rounded-full transition-[width] duration-700 ease-out-quint", FILL[full ? "gold" : tone])}

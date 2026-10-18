@@ -8,10 +8,10 @@ const STEPS = [
     body: "Tap any open squares. Friends join from your link.",
     art: (
       <span className="grid h-full w-full grid-cols-2 gap-[3px] p-[7px]">
-        <span className="rounded-[3px] bg-white/12" />
+        <span className="rounded-[3px] bg-ink/12" />
         <span className="rounded-[3px] bg-brand-400" />
         <span className="rounded-[3px] bg-accent-400/80" />
-        <span className="rounded-[3px] bg-white/12" />
+        <span className="rounded-[3px] bg-ink/12" />
       </span>
     ),
   },
@@ -25,7 +25,7 @@ const STEPS = [
     body: (
       <>
         End of a quarter at <span className="font-bold text-ink">24–17</span>? The{" "}
-        <span className="font-bold text-gold-300">4·7</span> square wins.
+        <span className="font-bold text-ink-gold">4·7</span> square wins.
       </>
     ),
     art: <TrophyIcon size={18} strokeWidth={2.4} className="text-ink-inverse" />,

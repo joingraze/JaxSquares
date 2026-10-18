@@ -75,7 +75,7 @@ function FinalRow({ game, state, me }: { game: GameSummary; state: GameState | u
         <>
           {score && <span className="font-bold tabular-nums text-ink">{score}</span>}
           {score && " · "}
-          <span className={wins.length > 0 ? "font-semibold text-gold-300" : undefined}>{subtitle}</span>
+          <span className={wins.length > 0 ? "font-semibold text-ink-gold" : undefined}>{subtitle}</span>
         </>
       }
       trailing={

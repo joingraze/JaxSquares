@@ -30,7 +30,7 @@ export function Switch({ checked, onChange, label, description, disabled, classN
       }}
       className={cx(
         "tap-target relative inline-flex h-7.5 w-12.5 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200",
-        checked ? "bg-brand-400" : "bg-pitch-600",
+        checked ? "bg-brand-400" : "bg-surface-5",
         "disabled:opacity-40",
       )}
     >

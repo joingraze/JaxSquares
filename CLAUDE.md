@@ -57,6 +57,13 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   `ink` (`ink-muted`, `ink-subtle`, `ink-inverse`), `line` (`line-strong`).
   Prefer the semantic aliases, then the scales. Fonts: Bricolage Grotesque for
   display (`font-display`), Figtree for UI (`font-sans`).
+- Dark is the default theme; light and system are a Profile setting
+  (`src/lib/theme.ts`, `<html data-theme>`). `:root[data-theme="light"]` redefines
+  the semantic tokens, so use them rather than fixed colors: `text-ink-brand|gold|live|danger|accent`
+  for colored text, `brand-line`/`gold-line` for rings and focus, `ink/N` (not
+  `white/N`) for tints, `bg-scrim` for backdrops. Keep the scales for fills that
+  look the same in both themes, and pass `useResolvedTheme()` to
+  `teamVars`/`readableTeamColor`.
 
 ## Before committing
 

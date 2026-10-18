@@ -77,8 +77,8 @@ export function MiniBoard({ className }: { className?: string }) {
           HAW
         </span>
         <span className="font-display text-callout font-extrabold tabular-nums text-ink">
-          2<span className="text-gold-400">4</span>
-          <span className="mx-1 text-ink-subtle">–</span>2<span className="text-gold-400">7</span>
+          2<span className="text-ink-gold">4</span>
+          <span className="mx-1 text-ink-subtle">–</span>2<span className="text-ink-gold">7</span>
         </span>
         <span className="rounded-md px-1 text-[0.625rem] font-black text-white" style={{ background: TEAM_Y }}>
           RID
@@ -117,7 +117,7 @@ function Axis({ digit, color, hot }: { digit: number; color: string; hot: boolea
 
 function MiniCell({ cell, lane }: { cell: Cell; lane: boolean }) {
   const base = "aspect-square rounded-[5px]";
-  const emptyBg = lane ? "bg-gold-400/12 ring-1 ring-inset ring-gold-400/15" : "bg-white/[0.045] ring-1 ring-inset ring-white/[0.04]";
+  const emptyBg = lane ? "bg-gold-400/12 ring-1 ring-inset ring-gold-line/15" : "bg-ink/[0.045] ring-1 ring-inset ring-ink/[0.04]";
   if (cell.kind === "empty") return <span className={cx(base, emptyBg)} />;
   if (cell.kind === "win") {
     return (

@@ -86,7 +86,7 @@
   }
   40% {
     transform: scale(1.06);
-    outline-color: var(--color-brand-400);
+    outline-color: var(--color-brand-line);
   }
 }
 

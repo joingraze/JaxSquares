@@ -73,6 +73,7 @@ import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } fr
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
+import { useResolvedTheme } from "../../lib/theme";
 
 export type HostView = "home" | "lock" | "edit" | "end" | "delete" | "players" | "remove";
 
@@ -120,6 +121,7 @@ interface Notice extends SavedNotice {
 }
 
 export function HostSheet(props: HostSheetProps) {
+  const theme = useResolvedTheme();
   const { state, open, view, onView, onClose, actions, me } = props;
   const { game } = state;
   const linked = isLinked(game);
@@ -464,7 +466,7 @@ export function HostSheet(props: HostSheetProps) {
                       type="button"
                       disabled={actions.busy !== null}
                       onClick={() => void removeScore()}
-                      className="pressable tap-target rounded-full px-1 py-1.5 text-footnote font-bold text-danger-400 disabled:opacity-40"
+                      className="pressable tap-target rounded-full px-1 py-1.5 text-footnote font-bold text-ink-danger disabled:opacity-40"
                     >
                       Remove {scoreName(label)}
                     </button>
@@ -544,7 +546,7 @@ export function HostSheet(props: HostSheetProps) {
     );
     if (scoring) {
       footer = (
-        <div style={teamVars(game.teamX, game.teamY)}>
+        <div style={teamVars(game.teamX, game.teamY, theme)}>
           <ScorePreview state={state} entry={entry} label={label} moment={moment} me={me} notice={noticeLive} />
           <Button
             data-testid="score-save"
@@ -567,7 +569,7 @@ export function HostSheet(props: HostSheetProps) {
 
   return (
     <BottomSheet open={open} onClose={onClose} title={title} description={description} footer={footer} dismissible={actions.busy !== "delete"}>
-      <div key={view} style={teamVars(game.teamX, game.teamY)} className={view === "home" ? "hx-view-pop" : "hx-view-push"}>
+      <div key={view} style={teamVars(game.teamX, game.teamY, theme)} className={view === "home" ? "hx-view-pop" : "hx-view-push"}>
         {body}
       </div>
     </BottomSheet>
@@ -613,7 +615,7 @@ function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "
     <span
       className={cx(
         "grid h-9 w-9 place-items-center rounded-xl",
-        tone === "danger" ? "bg-danger-500/15 text-danger-400" : "bg-surface-4 text-ink",
+        tone === "danger" ? "bg-danger-500/15 text-ink-danger" : "bg-surface-4 text-ink",
       )}
     >
       {children}
@@ -625,7 +627,7 @@ function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "
 
 function DraftHero({ onOpenBoard }: { onOpenBoard: () => void }) {
   return (
-    <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-brand-400/35">
+    <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-brand-line/35">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-30"
@@ -732,7 +734,7 @@ function AutoHero({ state, started, onFix }: { state: GameState; started: boolea
     <div className="rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
       {pre ? (
         <div className="flex items-center gap-3.5">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-400/12 text-brand-300 ring-1 ring-inset ring-brand-400/25">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-400/12 text-ink-brand ring-1 ring-inset ring-brand-line/25">
             <ClockIcon size={24} />
           </span>
           <div className="min-w-0">
@@ -773,10 +775,10 @@ function FinalHero({ state, onFix }: { state: GameState; onFix: () => void }) {
   const manual = new Set(state.manualWinners.map((m) => m.periodKey));
   const empties = results.filter((r) => !r.winnerPlayerId && !manual.has(r.periodKey)).length;
   return (
-    <div className="relative overflow-hidden rounded-card bg-[linear-gradient(160deg,rgb(255_194_51/0.2),rgb(255_171_15/0.05)_60%)] bg-surface-2 p-4 shadow-glow-gold ring-1 ring-inset ring-gold-400/40">
+    <div className="relative overflow-hidden rounded-card bg-[linear-gradient(160deg,rgb(255_194_51/0.2),rgb(255_171_15/0.05)_60%)] bg-surface-2 p-4 shadow-glow-gold ring-1 ring-inset ring-gold-line/40">
       <div className="mb-3 flex items-center justify-center gap-2">
-        <TrophyIcon size={18} filled className="text-gold-400" />
-        <span className="eyebrow text-gold-300">Final</span>
+        <TrophyIcon size={18} filled className="text-ink-gold" />
+        <span className="eyebrow text-ink-gold">Final</span>
       </div>
       <BigScore state={state} score={scoreLine(state)} />
       <p className="mt-3 text-center text-footnote text-ink-muted">
@@ -799,7 +801,7 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
       <span
         className={cx(
           "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-xl",
-          tone === "warn" ? "bg-gold-400/15 text-gold-300" : "bg-surface-4 text-ink",
+          tone === "warn" ? "bg-gold-400/15 text-ink-gold" : "bg-surface-4 text-ink",
         )}
       >
         {icon}
@@ -884,7 +886,7 @@ function DeleteConfirm({ state }: { state: GameState }) {
         {pluralize(f.claimed, "square")}, {pluralize(f.players, "player")}
         {state.scores.length > 0 ? `, ${pluralize(state.scores.length, "score")} and every winner` : ""}. Anyone opening the link sees that it was deleted.
       </p>
-      <p className="rounded-2xl bg-danger-500/10 px-3.5 py-3 text-subhead font-semibold text-danger-300 ring-1 ring-inset ring-danger-500/30">
+      <p className="rounded-2xl bg-danger-500/10 px-3.5 py-3 text-subhead font-semibold text-ink-danger ring-1 ring-inset ring-danger-500/30">
         This can't be undone.
       </p>
     </div>

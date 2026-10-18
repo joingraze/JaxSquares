@@ -237,7 +237,7 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
           <ul className="mt-4 flex flex-col gap-1.5" aria-label="What you'll get">
             {copy.scope.map((s) => (
               <li key={s} className="flex items-center gap-2 text-footnote font-semibold text-ink">
-                <span aria-hidden className="grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-brand-400/16 text-brand-300">
+                <span aria-hidden className="grid h-4.5 w-4.5 shrink-0 place-items-center rounded-full bg-brand-400/16 text-ink-brand">
                   <CheckIcon size={11} strokeWidth={3.4} />
                 </span>
                 {s}
@@ -288,7 +288,7 @@ export function PreviewBanners({ boardName, lines }: { boardName: string; lines:
     <div aria-hidden className="jxn-banners">
       {lines.map((line, i) => (
         <div key={line} className="jxn-banner" data-back={i === 0}>
-          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-canvas ring-1 ring-white/10">
+          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[10px] bg-canvas ring-1 ring-ink/10">
             <LogoMark size={36} />
           </span>
           <span className="min-w-0 flex-1">

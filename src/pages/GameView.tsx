@@ -65,6 +65,7 @@ import { pluralize, teamVars } from "../lib/format";
 import { getAdminToken, getPlayerId, isHostOf, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
+import { useResolvedTheme } from "../lib/theme";
 
 // Not in the board's own chunk: host tools (only the host needs them; see hostDevice below) and the
 // sheets, which all start closed and load once the board is up.
@@ -83,6 +84,7 @@ const CALLOUT_MS = 2600;
 const GLORY_MS = 15_000;
 
 export default function GameView() {
+  const theme = useResolvedTheme();
   const id = useParams().id?.toLowerCase();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -735,7 +737,7 @@ export default function GameView() {
   };
 
   return (
-    <div style={teamVars(game.teamX, game.teamY)} className="flex flex-1 flex-col">
+    <div style={teamVars(game.teamX, game.teamY, theme)} className="flex flex-1 flex-col">
       <TopBar
         title={compactTitle ?? game.name}
         large={false}
@@ -745,7 +747,7 @@ export default function GameView() {
 
       <div className="flex flex-col gap-3 px-safe pt-1">
         {connection === "offline" && (
-          <p className="flex items-center gap-2 rounded-2xl bg-danger-500/12 px-3.5 py-2 text-footnote font-semibold text-danger-300 ring-1 ring-inset ring-danger-500/30">
+          <p className="flex items-center gap-2 rounded-2xl bg-danger-500/12 px-3.5 py-2 text-footnote font-semibold text-ink-danger ring-1 ring-inset ring-danger-500/30">
             <WifiOffIcon size={16} />
             You're offline. Showing the last update.
           </p>
@@ -860,7 +862,7 @@ export default function GameView() {
             </div>
           )}
 
-          <div className={cx("rounded-[1.1rem] px-2", pick && "outline-2 outline-offset-2 outline-gold-400/80 outline-dashed")}>
+          <div className={cx("rounded-[1.1rem] px-2", pick && "outline-2 outline-offset-2 outline-gold-line/80 outline-dashed")}>
             <Board
               game={game}
               cells={cells}
@@ -893,7 +895,7 @@ export default function GameView() {
                     aria-label={zoom ? "Fit the whole board" : "Zoom in on the board"}
                     className={cx(
                       "pressable flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-footnote font-extrabold ring-1 ring-inset",
-                      zoom ? "bg-brand-400 text-ink-inverse ring-brand-400" : "bg-surface-3 text-ink ring-line-strong",
+                      zoom ? "bg-brand-400 text-ink-inverse ring-brand-line" : "bg-surface-3 text-ink ring-line-strong",
                     )}
                   >
                     {zoom ? <GridIcon size={15} /> : <SearchIcon size={15} />}
@@ -932,7 +934,7 @@ export default function GameView() {
                 <button
                   type="button"
                   onClick={() => void brag()}
-                  className="pressable flex h-7 items-center gap-1 rounded-full bg-gold-400/15 px-2.5 text-caption font-extrabold text-gold-300 ring-1 ring-inset ring-gold-400/40"
+                  className="pressable flex h-7 items-center gap-1 rounded-full bg-gold-400/15 px-2.5 text-caption font-extrabold text-ink-gold ring-1 ring-inset ring-gold-line/40"
                 >
                   <TrophyIcon size={12} filled />
                   Brag
@@ -1076,8 +1078,8 @@ function CalloutBody({ icon, title, detail, extra, now }: { icon?: ReactNode; ti
       <span className="min-w-0">
         <span className="block text-subhead font-extrabold leading-tight text-ink">{title}</span>
         {detail && <span className="block text-caption font-semibold leading-snug text-ink-muted tabular-nums">{detail}</span>}
-        {extra && <span className="block text-caption font-bold leading-snug text-gold-300">{extra}</span>}
-        {now && <span className="block text-caption font-bold leading-snug text-live-300">{now}</span>}
+        {extra && <span className="block text-caption font-bold leading-snug text-ink-gold">{extra}</span>}
+        {now && <span className="block text-caption font-bold leading-snug text-ink-live">{now}</span>}
       </span>
     </span>
   );
@@ -1102,7 +1104,7 @@ function BoardHint({
     if (mineCount === 0) return <b className="font-bold text-ink">Tap open squares to pick yours.</b>;
     return (
       <span>
-        <b className="font-bold text-brand-300">You have {mineCount}</b>
+        <b className="font-bold text-ink-brand">You have {mineCount}</b>
         {left !== null ? ` · ${left} left` : ""} · Tap one of yours to give it back
       </span>
     );
@@ -1110,7 +1112,7 @@ function BoardHint({
   if (phase === "final") return <span>That's the final whistle. Gold squares took the prizes.</span>;
   return mineCount > 0 ? (
     <span>
-      <b className="font-bold text-brand-300">Your {mineCount === 1 ? "square is" : `${mineCount} squares are`} highlighted.</b> Every period is decided.
+      <b className="font-bold text-ink-brand">Your {mineCount === 1 ? "square is" : `${mineCount} squares are`} highlighted.</b> Every period is decided.
     </span>
   ) : (
     <span>Every period is decided. Tap any square to see whose it is.</span>
@@ -1170,14 +1172,14 @@ function WinShelf({ labels, prize, onBrag, onShow }: { labels: string[]; prize: 
   const joinedLabels = list.join(" + ");
   const title = list.length === 1 ? `You won ${list[0]}!` : joinedLabels.length <= 12 ? `You won ${joinedLabels}!` : `You won ${list.length} times!`;
   return (
-    <section aria-label="Your wins" className="flex items-center gap-2.5 rounded-2xl bg-gold-400/12 py-1 pl-2 pr-1 ring-1 ring-inset ring-gold-400/40">
+    <section aria-label="Your wins" className="flex items-center gap-2.5 rounded-2xl bg-gold-400/12 py-1 pl-2 pr-1 ring-1 ring-inset ring-gold-line/40">
       <button type="button" onClick={onShow} className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 text-left">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gold-400 text-ink-inverse">
           <TrophyIcon size={17} filled />
         </span>
         <span className="min-w-0 truncate text-subhead">
-          <b className="font-extrabold text-gold-200">{title}</b>
-          {prize && <span className="text-gold-300/80"> · {prize}</span>}
+          <b className="font-extrabold text-ink-gold">{title}</b>
+          {prize && <span className="text-ink-gold/80"> · {prize}</span>}
         </span>
       </button>
       <Button variant="gold" size="sm" onClick={onBrag} className="shrink-0">

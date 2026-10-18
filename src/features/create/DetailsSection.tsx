@@ -67,7 +67,7 @@ export function DetailsPanel({ format, name, autoName, onName, maxPerPlayer, onM
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 px-1">
-          <GiftIcon size={16} className="text-gold-400" />
+          <GiftIcon size={16} className="text-ink-gold" />
           <p className="text-subhead font-bold text-ink-muted">Prizes</p>
           <span className="text-footnote text-ink-subtle">· optional, just for fun</span>
         </div>

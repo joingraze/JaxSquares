@@ -30,7 +30,7 @@ export function Welcome() {
         <h1 className="font-display text-hero font-extrabold text-ink">
           Football squares,
           <br />
-          <span className="text-brand-400">live with your crew.</span>
+          <span className="text-ink-brand">live with your crew.</span>
         </h1>
         <p className="mt-2.5 max-w-[22rem] text-callout text-ink-muted">
           Make a board, text the link, and watch the squares fill up. Scores and winners land live.

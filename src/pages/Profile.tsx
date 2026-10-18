@@ -3,8 +3,8 @@
 // board will ping about next (with per-board mutes), host links and About.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LockIcon, PencilIcon, TrophyIcon } from "../components/icons";
-import { Button, Card, ListGroup, ListRow, TopBar, cx, useToast } from "../components/ui";
+import { LockIcon, MoonIcon, PencilIcon, PhoneIcon, SunIcon, TrophyIcon } from "../components/icons";
+import { Button, Card, ListGroup, ListRow, SegmentedControl, TopBar, cx, useToast, type SegmentOption } from "../components/ui";
 import { appVersion, WEB_VERSION } from "../features/notifications/profile/appVersion";
 import { HostLinksSheet } from "../features/notifications/profile/HostLinksSheet";
 import { LookSheet } from "../features/notifications/profile/LookSheet";
@@ -17,6 +17,7 @@ import { api } from "../lib/api";
 import { pluralize } from "../lib/format";
 import { getProfile, useProfile, type Profile as Look } from "../lib/identity";
 import { useMyGames } from "../lib/live";
+import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from "../lib/theme";
 
 export default function Profile() {
   const profile = useProfile();
@@ -79,7 +80,7 @@ export default function Profile() {
         <ListGroup title="Hosting">
           <ListRow
             leading={
-              <span className="grid h-9 w-9 place-items-center rounded-full bg-gold-400/12 text-gold-300 ring-1 ring-inset ring-gold-400/25">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-gold-400/12 text-ink-gold ring-1 ring-inset ring-gold-line/25">
                 <LockIcon size={17} />
               </span>
             }
@@ -89,6 +90,8 @@ export default function Profile() {
             chevron
           />
         </ListGroup>
+
+        <Appearance />
 
         <ListGroup
           title="About"
@@ -154,11 +157,33 @@ function Hero({ profile, stats, named, onEdit }: { profile: Look; stats: MyStats
   );
 }
 
+const THEME_OPTIONS: readonly SegmentOption<ThemePreference>[] = [
+  { value: "dark", label: "Dark", icon: <MoonIcon />, testId: "theme-dark" },
+  { value: "light", label: "Light", icon: <SunIcon />, testId: "theme-light" },
+  { value: "system", label: "System", icon: <PhoneIcon />, testId: "theme-system" },
+];
+
+/** Dark (the game-night default), light, or match the phone. Switches on tap; saved on this device. */
+function Appearance() {
+  const preference = useThemePreference();
+  const resolved = useResolvedTheme();
+  return (
+    <ListGroup
+      title="Appearance"
+      footer={preference === "system" ? `Matching your phone: ${resolved} right now.` : "System matches your phone's light or dark setting."}
+    >
+      <div className="px-3 py-3">
+        <SegmentedControl aria-label="Theme" options={THEME_OPTIONS} value={preference} onChange={setThemePreference} />
+      </div>
+    </ListGroup>
+  );
+}
+
 function Stat({ label, value, gold }: { label: string; value: number | undefined; gold?: boolean }) {
   const lit = gold && (value ?? 0) > 0;
   return (
     <div className="flex flex-col items-center py-3.5 [&+&]:border-l [&+&]:border-line">
-      <dd className={cx("flex items-center gap-1 font-display text-title-3 font-extrabold tabular-nums", lit ? "text-gold-300" : "text-ink")}>
+      <dd className={cx("flex items-center gap-1 font-display text-title-3 font-extrabold tabular-nums", lit ? "text-ink-gold" : "text-ink")}>
         {lit && <TrophyIcon size={16} filled />}
         {value === undefined ? "–" : value.toLocaleString("en-US")}
       </dd>

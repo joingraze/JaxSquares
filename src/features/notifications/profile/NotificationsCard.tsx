@@ -118,7 +118,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
         footer={on ? SCOPE : undefined}
       >
         {on && !off && (
-          <button type="button" onClick={busy ? undefined : test} className="pressable flex min-h-13 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-white/3">
+          <button type="button" onClick={busy ? undefined : test} className="pressable flex min-h-13 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-ink/3">
             <span aria-hidden className="grid h-8 w-8 place-items-center rounded-full bg-surface-4 text-ink-muted">
               <SparklesIcon size={17} />
             </span>
@@ -230,7 +230,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
             ["The JaxSquares app", "Turn them on from Profile in the app."],
           ].map(([where, how]) => (
             <li key={where} className="flex gap-3 rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
-              <BellIcon size={18} className="mt-0.5 shrink-0 text-brand-300" />
+              <BellIcon size={18} className="mt-0.5 shrink-0 text-ink-brand" />
               <span>
                 <span className="block text-callout font-bold text-ink">{where}</span>
                 <span className="block text-footnote text-ink-muted">{how}</span>
@@ -279,11 +279,11 @@ function Shell({
       <div
         className={cx(
           "overflow-hidden rounded-card bg-surface-2 shadow-card ring-1 ring-inset [&>*+*]:border-t [&>*+*]:border-line",
-          tone === "ask" ? "ring-brand-400/30 bg-[linear-gradient(120deg,rgb(198_249_31/0.07),transparent_55%)]" : tone === "blocked" ? "ring-danger-500/25" : "ring-line",
+          tone === "ask" ? "ring-brand-line/30 bg-[linear-gradient(120deg,rgb(198_249_31/0.07),transparent_55%)]" : tone === "blocked" ? "ring-danger-500/25" : "ring-line",
         )}
       >
         {onClick ? (
-          <button type="button" onClick={onClick} className="pressable flex w-full items-center gap-3.5 p-4 text-left hover:bg-white/3">
+          <button type="button" onClick={onClick} className="pressable flex w-full items-center gap-3.5 p-4 text-left hover:bg-ink/3">
             {head}
           </button>
         ) : (

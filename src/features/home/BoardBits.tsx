@@ -37,7 +37,7 @@ export function SectionHeader({
   tone?: "muted" | "live" | "brand" | "gold";
   trailing?: ReactNode;
 }) {
-  const color = { muted: "text-ink-subtle", live: "text-live-400", brand: "text-brand-400", gold: "text-gold-400" }[tone];
+  const color = { muted: "text-ink-subtle", live: "text-ink-live", brand: "text-ink-brand", gold: "text-ink-gold" }[tone];
   return (
     <div className="mb-2.5 flex items-center gap-2 px-1">
       {icon}
@@ -121,7 +121,7 @@ export function FillMeter({ value, max, gold = false, className }: { value: numb
       aria-valuemax={max}
       aria-valuenow={value}
       aria-label={`${value} of ${max} squares claimed`}
-      className={cx("relative h-1.5 min-w-0 overflow-hidden rounded-full bg-white/8 ring-1 ring-inset ring-white/4", className)}
+      className={cx("relative h-1.5 min-w-0 overflow-hidden rounded-full bg-ink/8 ring-1 ring-inset ring-ink/4", className)}
     >
       <div
         className={cx("h-full rounded-full transition-[width] duration-700 ease-out-quint", full ? "bg-gold-400" : "bg-brand-400")}

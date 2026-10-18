@@ -12,8 +12,17 @@
  * Figtree (UI). Both self-hosted via @fontsource, imported in main.tsx.
  *
  * Dark-first on purpose: it's a game-night app, usually used in a dim room
- * next to a TV.
+ * next to a TV. Dark is the default; a light "day game" theme is opt-in from
+ * Profile (src/lib/theme.ts sets data-theme="light" on <html>). The light
+ * theme only redefines the semantic aliases and the material variables below,
+ * so anything built from them follows the theme. The numbered scales (pitch,
+ * brand, gold...) never change: use them for fills that look the same in both
+ * themes (a volt button, a gold trophy chip), and the semantic aliases for
+ * everything that sits on the canvas.
  */
+
+/* `light:` for the rare per-element tweak a token can't express (artwork). */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 /* static: every token is emitted as a CSS variable even if no class uses it, so
    inline styles and JS (var(--color-gold-400)) can always rely on them. */
@@ -117,18 +126,38 @@
   --color-danger-700: #a6121c;
   --color-danger-900: #4a060b;
 
-  /* ---------- Semantic aliases (prefer these in screens) ---------- */
+  /* ---------- Semantic aliases (prefer these in screens) ----------
+     Dark values here; the light theme redefines every one of them at the end
+     of this file. */
   --color-canvas: #060c09;
   --color-surface: #0c1410;
   --color-surface-2: #111a15;
   --color-surface-3: #16211b;
   --color-surface-4: #223029;
+  /* Hover / pressed state of a surface-4 control (secondary button, keypad key, switch track). */
+  --color-surface-5: #2f3f35;
+  /* The solid edge a neutral keycap (surface-4) sinks into. */
+  --color-edge: #0a120e;
   --color-ink: #f3f7f1;
   --color-ink-muted: #a3b8ab;
-  --color-ink-subtle: #6c8375;
+  /* AA (4.5:1) on canvas, surface-2 and surface-3. */
+  --color-ink-subtle: #768d7f;
+  /* Text on the bright fills (volt, gold, light team colors). Dark in both themes. */
   --color-ink-inverse: #060c09;
+  /* Accent text and icons on the canvas or a surface: AA in both themes.
+     Use these (not text-brand-400 etc.) for colored words. */
+  --color-ink-brand: #d5ff52;
+  --color-ink-gold: #ffd56b;
+  --color-ink-live: #ff6b6b;
+  --color-ink-danger: #ff6b6b;
+  --color-ink-accent: #ff66a6;
+  /* Volt / gold as a ring, outline or stroke on the canvas (selected states, focus). */
+  --color-brand-line: #c6f91f;
+  --color-gold-line: #ffc233;
   --color-line: rgb(255 255 255 / 0.08);
   --color-line-strong: rgb(255 255 255 / 0.15);
+  /* Behind sheets and dialogs. */
+  --color-scrim: rgb(0 0 0 / 0.65);
 
   /* ---------- Shape ---------- */
   --radius-btn: 1rem;
@@ -136,12 +165,14 @@
   --radius-sheet: 1.75rem;
   --radius-tile: 0.625rem;
 
-  /* ---------- Depth ---------- */
-  --shadow-card: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 16px 32px -20px rgb(0 0 0 / 0.8);
-  --shadow-float: inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 18px 40px -12px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
-  --shadow-sheet: 0 -20px 60px -10px rgb(0 0 0 / 0.75);
-  --shadow-glow-brand: 0 0 0 1px rgb(198 249 31 / 0.35), 0 10px 32px -8px rgb(198 249 31 / 0.45);
-  --shadow-glow-gold: 0 0 0 1px rgb(255 194 51 / 0.45), 0 12px 36px -8px rgb(255 171 15 / 0.55);
+  /* ---------- Depth ----------
+     Values live in the --elevation-* / --glow-* variables (:root below) so the
+     light theme can soften them; Tailwind inlines theme shadows otherwise. */
+  --shadow-card: var(--elevation-card);
+  --shadow-float: var(--elevation-float);
+  --shadow-sheet: var(--elevation-sheet);
+  --shadow-glow-brand: var(--glow-brand);
+  --shadow-glow-gold: var(--glow-gold);
 
   /* ---------- Motion ---------- */
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -250,6 +281,27 @@
   --tabbar-gap: 0.625rem;
   /* Space a page must leave at the bottom; the shell sets it to 0 when the tab bar is hidden. */
   --shell-bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + max(var(--safe-bottom), 0.5rem));
+
+  /* ---------- Materials (dark values; the light theme redefines them below) ---------- */
+  --elevation-card: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 16px 32px -20px rgb(0 0 0 / 0.8);
+  --elevation-float: inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 18px 40px -12px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
+  --elevation-sheet: 0 -20px 60px -10px rgb(0 0 0 / 0.75);
+  --glow-brand: 0 0 0 1px rgb(198 249 31 / 0.35), 0 10px 32px -8px rgb(198 249 31 / 0.45);
+  --glow-gold: 0 0 0 1px rgb(255 194 51 / 0.45), 0 12px 36px -8px rgb(255 171 15 / 0.55);
+  /* A soft halo / drop used by small floating things (thumbs, callouts, chips). */
+  --drop-color: rgb(0 0 0 / 0.6);
+  --glass-bg: rgb(12 20 16 / 0.95);
+  --bar-bg: rgb(10 17 13);
+  --floodlight-left: rgb(214 255 120 / 0.1);
+  --floodlight-right: rgb(214 255 120 / 0.08);
+  --yard-line: rgb(255 255 255 / 0.03);
+  --shimmer-highlight: rgb(255 255 255 / 0.06);
+  --foil: linear-gradient(180deg, var(--color-gold-200) 0%, var(--color-gold-400) 55%, var(--color-gold-600) 100%);
+  /* Volt washes on the canvas: open squares, "yours" glows. */
+  --brand-wash: rgb(198 249 31 / 0.045);
+  --brand-wash-ring: rgb(198 249 31 / 0.13);
+  --brand-glow: rgb(198 249 31 / 0.65);
+  --gold-glow: rgb(255 171 15 / 0.75);
 }
 
 @layer base {
@@ -300,12 +352,12 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand-400);
+    outline: 2px solid var(--color-brand-line);
     outline-offset: 2px;
   }
 
   ::selection {
-    background: rgb(198 249 31 / 0.3);
+    background: color-mix(in srgb, var(--color-brand-400) 30%, transparent);
     color: var(--color-ink);
   }
 
@@ -360,7 +412,7 @@
   --keycap-depth: 4px;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.28),
-    0 var(--keycap-depth) 0 var(--keycap-edge, var(--color-pitch-950));
+    0 var(--keycap-depth) 0 var(--keycap-edge, var(--color-edge));
   transition:
     transform 240ms var(--ease-spring),
     box-shadow 240ms var(--ease-spring),
@@ -370,7 +422,7 @@
     transform: translateY(calc(var(--keycap-depth) - 1px));
     box-shadow:
       inset 0 1px 0 rgb(255 255 255 / 0.2),
-      0 1px 0 var(--keycap-edge, var(--color-pitch-950));
+      0 1px 0 var(--keycap-edge, var(--color-edge));
     transition-duration: 60ms;
   }
 }
@@ -404,14 +456,14 @@
  * behind never competes with the labels on top.
  */
 @utility glass {
-  background-color: rgb(12 20 16 / 0.95);
+  background-color: var(--glass-bg);
   -webkit-backdrop-filter: saturate(180%) blur(24px);
   backdrop-filter: saturate(180%) blur(24px);
 }
 
 /* A sticky top bar once content scrolls under it: solid (nothing ghosts behind the title), with a hairline under it. */
 @utility bar-solid {
-  background-color: rgb(10 17 13);
+  background-color: var(--bar-bg);
   box-shadow: 0 1px 0 var(--color-line);
 }
 
@@ -424,7 +476,7 @@
 
 /* Gold foil text for wins. */
 @utility text-foil {
-  background: linear-gradient(180deg, var(--color-gold-200) 0%, var(--color-gold-400) 55%, var(--color-gold-600) 100%);
+  background: var(--foil);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -443,14 +495,14 @@
    lines that fade out down the screen. Used on the shell's fixed backdrop. */
 @utility floodlights {
   background:
-    radial-gradient(70% 38% at 8% -6%, rgb(214 255 120 / 0.1), transparent 70%),
-    radial-gradient(70% 38% at 92% -6%, rgb(214 255 120 / 0.08), transparent 70%),
+    radial-gradient(70% 38% at 8% -6%, var(--floodlight-left), transparent 70%),
+    radial-gradient(70% 38% at 92% -6%, var(--floodlight-right), transparent 70%),
     var(--color-canvas);
   &::before {
     content: "";
     position: absolute;
     inset: 0;
-    background: repeating-linear-gradient(180deg, transparent 0 87px, rgb(255 255 255 / 0.03) 87px 88px);
+    background: repeating-linear-gradient(180deg, transparent 0 87px, var(--yard-line) 87px 88px);
     -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 55%);
     mask-image: linear-gradient(180deg, #000 0%, transparent 55%);
   }
@@ -462,11 +514,87 @@
   background-image: linear-gradient(
     100deg,
     transparent 30%,
-    rgb(255 255 255 / 0.06) 50%,
+    var(--shimmer-highlight) 50%,
     transparent 70%
   );
   background-size: 200% 100%;
   animation: var(--animate-shimmer);
+}
+
+/* ---------- Light theme: "day game" ----------
+ * Sun on the turf instead of floodlights: a pale green-grey canvas with white
+ * cards, deep green-black ink, volt kept as the energetic fill (always with
+ * dark text) and darker volt / gold / red for text and rings so they pass AA.
+ * Contrast (WCAG) on canvas / white / surface-4: ink 15.7 / 17.8 / 14.5;
+ * ink-muted 6.6 / 7.5 / 6.1; ink-subtle 5.0 / 5.7 / 4.6; ink-brand 5.3 / 6.0 / 4.8;
+ * ink-gold 5.1 / 5.8 / 4.7; ink-live and ink-danger 5.2 / 5.8 / 4.7; brand-line
+ * 3.2 / 3.6 and gold-line 3.1 / 3.5 (rings and focus: 3:1 for UI).
+ * Keep in sync: THEME_COLORS in src/lib/theme.ts and the pre-paint style in index.html.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-canvas: #eef2ec;
+  --color-surface: #f6f8f4;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #f2f5f0;
+  --color-surface-4: #e3e9e2;
+  --color-surface-5: #d5ddd5;
+  --color-edge: #bfcbc1;
+  --color-ink: #0f1a14;
+  --color-ink-muted: #46594d;
+  --color-ink-subtle: #586b5f;
+  --color-ink-brand: #4a6e00;
+  --color-ink-gold: #8f5a00;
+  --color-ink-live: #c8152a;
+  --color-ink-danger: #c8152a;
+  --color-ink-accent: #c0135a;
+  --color-brand-line: #6d9400;
+  --color-gold-line: #c27a00;
+  --color-line: rgb(16 42 26 / 0.1);
+  --color-line-strong: rgb(16 42 26 / 0.18);
+  --color-scrim: rgb(9 22 14 / 0.4);
+
+  --elevation-card: inset 0 1px 0 0 rgb(255 255 255 / 0.8), 0 1px 2px rgb(20 44 28 / 0.06), 0 12px 28px -18px rgb(20 44 28 / 0.28);
+  --elevation-float: inset 0 1px 0 0 rgb(255 255 255 / 0.8), 0 14px 32px -14px rgb(20 44 28 / 0.3), 0 2px 6px rgb(20 44 28 / 0.08);
+  --elevation-sheet: 0 -12px 40px -12px rgb(20 44 28 / 0.22);
+  --glow-brand: 0 0 0 1px rgb(109 148 0 / 0.35), 0 10px 26px -10px rgb(136 179 0 / 0.6);
+  --glow-gold: 0 0 0 1px rgb(194 122 0 / 0.4), 0 12px 30px -10px rgb(224 138 0 / 0.5);
+  --drop-color: rgb(20 44 28 / 0.22);
+  --glass-bg: rgb(255 255 255 / 0.9);
+  --bar-bg: rgb(244 247 242);
+  --floodlight-left: rgb(198 249 31 / 0.22);
+  --floodlight-right: rgb(255 213 107 / 0.18);
+  --yard-line: rgb(16 42 26 / 0.035);
+  --shimmer-highlight: rgb(255 255 255 / 0.85);
+  --foil: linear-gradient(180deg, #d98a00 0%, #a86500 55%, #6e4200 100%);
+  --brand-wash: rgb(150 200 0 / 0.1);
+  --brand-wash-ring: rgb(90 130 0 / 0.25);
+  --brand-glow: rgb(136 179 0 / 0.5);
+  --gold-glow: rgb(224 138 0 / 0.5);
+}
+
+/* ---------- Switching themes (src/lib/theme.ts) ----------
+ * A short crossfade: a view transition where supported, else colors ease for
+ * a moment (in the base layer, so anything with its own transition keeps it).
+ * Reduced motion switches instantly (theme.ts skips both). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: ease;
+}
+@layer base {
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition:
+      background-color 260ms ease,
+      color 260ms ease,
+      border-color 260ms ease,
+      box-shadow 260ms ease,
+      fill 260ms ease,
+      stroke 260ms ease;
+  }
 }
 
 /* ---------- Motion preferences ---------- */

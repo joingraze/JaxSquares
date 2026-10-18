@@ -48,8 +48,8 @@ export function Avatar({ name, color, emoji, size = "md", ring = "none", classNa
         "shadow-[inset_0_-3px_0_rgb(0_0_0/0.18),inset_0_2px_0_rgb(255_255_255/0.35)]",
         !emoji && "font-display font-extrabold tracking-tight",
         ring === "cutout" && "ring-2 ring-canvas",
-        ring === "brand" && "ring-2 ring-brand-400 ring-offset-2 ring-offset-canvas",
-        ring === "gold" && "ring-2 ring-gold-400 ring-offset-2 ring-offset-canvas",
+        ring === "brand" && "ring-2 ring-brand-line ring-offset-2 ring-offset-canvas",
+        ring === "gold" && "ring-2 ring-gold-line ring-offset-2 ring-offset-canvas",
         className,
       )}
     >

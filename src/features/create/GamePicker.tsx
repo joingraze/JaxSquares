@@ -203,7 +203,7 @@ function GameList({
       </p>
 
       {searchPool.length > FIRST_ROWS && (
-        <div className="flex h-12 items-center gap-2 rounded-2xl bg-surface-2 pl-3.5 pr-1.5 ring-1 ring-inset ring-line transition-shadow focus-within:ring-2 focus-within:ring-brand-400">
+        <div className="flex h-12 items-center gap-2 rounded-2xl bg-surface-2 pl-3.5 pr-1.5 ring-1 ring-inset ring-line transition-shadow focus-within:ring-2 focus-within:ring-brand-line">
           <SearchIcon size={18} className="shrink-0 text-ink-subtle" />
           <input
             ref={searchRef}
@@ -270,7 +270,7 @@ function GameList({
                   type="button"
                   data-testid="week-see-all"
                   onClick={() => setLeadAll((v) => !v)}
-                  className="tap-target h-10 self-start rounded-xl px-2 text-subhead font-bold text-brand-400 hover:bg-white/5"
+                  className="tap-target h-10 self-start rounded-xl px-2 text-subhead font-bold text-ink-brand hover:bg-ink/5"
                 >
                   {leadAll ? "Show fewer" : `See all ${events.length} games`}
                 </button>
@@ -320,7 +320,7 @@ function GameList({
                 void haptic("selection");
                 setAllWeeks(true);
               }}
-              className="pressable flex h-12 items-center justify-center gap-1.5 rounded-2xl text-subhead font-bold text-brand-400 ring-1 ring-inset ring-line hover:bg-white/5"
+              className="pressable flex h-12 items-center justify-center gap-1.5 rounded-2xl text-subhead font-bold text-ink-brand ring-1 ring-inset ring-line hover:bg-ink/5"
             >
               <CalendarIcon size={16} />
               Full schedule · {hiddenWeeks} more {hiddenWeeks === 1 ? "week" : "weeks"}
@@ -332,7 +332,7 @@ function GameList({
       <p className="px-1 text-caption text-ink-subtle">Times in {zoneLabel()}</p>
 
       {showErrors && !selected && (
-        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
+        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
           <AlertIcon size={14} />
           Tap a game to put it on your board.
         </p>
@@ -356,7 +356,7 @@ function WeekHeader({ id, label, tag, range, open, onToggle }: { id: string; lab
       )}
     >
       <span className="min-w-0 truncate font-display text-headline font-extrabold text-ink">{label}</span>
-      {tag && <span className="shrink-0 rounded-full bg-brand-400/15 px-2 py-0.5 text-caption font-bold text-brand-300">{tag}</span>}
+      {tag && <span className="shrink-0 rounded-full bg-brand-400/15 px-2 py-0.5 text-caption font-bold text-ink-brand">{tag}</span>}
       <span className="ml-auto shrink-0 whitespace-nowrap text-footnote font-semibold tabular-nums text-ink-muted">{range}</span>
       <ChevronDownIcon size={18} className={cx("shrink-0 text-ink-subtle transition-transform duration-200", open && "rotate-180")} />
     </button>
@@ -403,7 +403,7 @@ function GameRow({ event, selected, grouped, onPick }: { event: ScheduleEvent; s
       className={cx(
         "pressable flex min-h-14 w-full items-center gap-3 rounded-2xl py-2 pl-2.5 pr-3 text-left ring-inset transition-[background-color,box-shadow]",
         selected
-          ? "bg-[linear-gradient(100deg,rgb(198_249_31/0.16),rgb(198_249_31/0.04)_70%)] bg-surface-2 ring-2 ring-brand-400"
+          ? "bg-[linear-gradient(100deg,rgb(198_249_31/0.16),rgb(198_249_31/0.04)_70%)] bg-surface-2 ring-2 ring-brand-line"
           : "bg-surface-2 ring-1 ring-line hover:bg-surface-3",
       )}
     >
@@ -434,11 +434,11 @@ function GameRow({ event, selected, grouped, onPick }: { event: ScheduleEvent; s
         {grouped ? (
           <>
             <span className="text-footnote font-semibold tabular-nums text-ink">{time}</span>
-            {soon && <span className="text-caption font-bold text-brand-300">{soon}</span>}
+            {soon && <span className="text-caption font-bold text-ink-brand">{soon}</span>}
           </>
         ) : (
           <>
-            <span className={cx("text-caption font-bold", soon ? "text-brand-300" : "text-ink-muted")}>{soon ?? day}</span>
+            <span className={cx("text-caption font-bold", soon ? "text-ink-brand" : "text-ink-muted")}>{soon ?? day}</span>
             <span className="text-footnote font-semibold tabular-nums text-ink">{time}</span>
           </>
         )}

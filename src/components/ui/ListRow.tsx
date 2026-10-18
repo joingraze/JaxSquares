@@ -40,7 +40,7 @@ export function ListRow({
   const showChevron = chevron ?? Boolean(to);
   const classes = cx(
     "flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left",
-    interactive && "transition-colors hover:bg-white/3 active:bg-white/6",
+    interactive && "transition-colors hover:bg-ink/3 active:bg-ink/6",
     disabled && "opacity-45",
     className,
   );
@@ -48,7 +48,7 @@ export function ListRow({
     <>
       {leading && <span className="flex shrink-0 items-center">{leading}</span>}
       <span className="min-w-0 flex-1">
-        <span className={cx("block truncate text-callout font-semibold", destructive ? "text-danger-400" : "text-ink")}>{title}</span>
+        <span className={cx("block truncate text-callout font-semibold", destructive ? "text-ink-danger" : "text-ink")}>{title}</span>
         {subtitle && <span className="mt-0.5 block truncate text-footnote text-ink-muted">{subtitle}</span>}
       </span>
       {detail && <span className="shrink-0 text-subhead tabular-nums text-ink-muted">{detail}</span>}

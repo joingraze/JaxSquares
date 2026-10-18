@@ -12,6 +12,7 @@ import { readableTeamColor } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
 import { boardHeadlineParts, describeBoard, winnersTag } from "./model";
+import { useResolvedTheme } from "../../lib/theme";
 
 export interface FormatPickerProps {
   format: GameFormat;
@@ -99,7 +100,7 @@ export function FormatGlyph({ preset }: { preset: PeriodsPreset }) {
   return (
     <svg aria-hidden viewBox="0 0 28 12" className="h-3 w-7 overflow-visible">
       {[0, 1, 2, 3].map((q) => (
-        <rect key={q} x={q * 7 + 0.5} y={5} width={6} height={2} rx={1} className="fill-white/20" />
+        <rect key={q} x={q * 7 + 0.5} y={5} width={6} height={2} rx={1} className="fill-ink/20" />
       ))}
       {marks.map((at, i) => (
         <circle key={i} cx={Math.max(2, Math.min(26, at * 28))} cy={6} r={many ? 1.6 : 2.6} className="fill-gold-400" />
@@ -123,7 +124,7 @@ function FormatCard({ preset, selected, onSelect }: { preset: PeriodsPreset; sel
       className={cx(
         "pressable relative flex min-h-24 flex-col items-start justify-between gap-3 overflow-hidden rounded-card p-3.5 text-left ring-inset transition-[background-color,box-shadow]",
         selected
-          ? "bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 ring-2 ring-brand-400"
+          ? "bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 ring-2 ring-brand-line"
           : "bg-surface-3 ring-1 ring-line hover:bg-surface-4",
       )}
     >
@@ -131,7 +132,7 @@ function FormatCard({ preset, selected, onSelect }: { preset: PeriodsPreset; sel
       <span aria-hidden className="relative block h-3 w-full">
         <span className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 gap-0.75">
           {[0, 1, 2, 3].map((q) => (
-            <span key={q} className={cx("h-1.5 flex-1 rounded-full transition-colors", selected ? "bg-brand-400/35" : "bg-white/10")} />
+            <span key={q} className={cx("h-1.5 flex-1 rounded-full transition-colors", selected ? "bg-brand-400/35" : "bg-ink/10")} />
           ))}
         </span>
         {marks.map((at, i) => (
@@ -148,7 +149,7 @@ function FormatCard({ preset, selected, onSelect }: { preset: PeriodsPreset; sel
       </span>
       <span className="block">
         <span className="block font-display text-headline font-extrabold leading-tight text-ink">{info.label}</span>
-        <span className={cx("mt-0.5 block text-footnote font-semibold", selected ? "text-brand-300" : "text-ink-subtle")}>{winnersTag(preset)}</span>
+        <span className={cx("mt-0.5 block text-footnote font-semibold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset)}</span>
       </span>
     </button>
   );
@@ -162,7 +163,7 @@ function HowItWorks({ format, teamX, teamY }: { format: GameFormat; teamX?: Team
     <div className="flex items-center gap-4 rounded-2xl bg-surface-3 p-3.5 ring-1 ring-inset ring-line">
       <MiniBoard format={format} teamX={teamX} teamY={teamY} />
       <div className="min-w-0 flex-1" aria-live="polite">
-        <p className="eyebrow text-brand-400">How this board works</p>
+        <p className="eyebrow text-ink-brand">How this board works</p>
         {/* Two whole phrases on their own lines, so neither can split. */}
         <p key={winners} className="mt-1 animate-tick font-display text-headline font-extrabold leading-snug text-ink">
           {winners}
@@ -185,8 +186,9 @@ function MiniBoard({ format, teamX, teamY }: { format: GameFormat; teamX?: Team 
   // A winning square (and its reverse) in board coordinates.
   const win = format.boardSize === 25 ? { r: 1, c: 3 } : { r: 2, c: 7 };
   const rev = { r: win.c, c: win.r };
-  const x = readableTeamColor(teamX?.color, CUSTOM_X_COLOR);
-  const y = readableTeamColor(teamY?.color, CUSTOM_Y_COLOR);
+  const theme = useResolvedTheme();
+  const x = readableTeamColor(teamX?.color, CUSTOM_X_COLOR, theme);
+  const y = readableTeamColor(teamY?.color, CUSTOM_Y_COLOR, theme);
   const style = { "--mx": x, "--my": y } as CSSProperties;
   return (
     <div aria-hidden style={style} className="relative h-24 w-24 shrink-0">
@@ -210,7 +212,7 @@ function MiniBoard({ format, teamX, teamY }: { format: GameFormat; teamX?: Team 
               key={i}
               className={cx(
                 "rounded-[2px] transition-colors duration-300",
-                isWin ? "z-10 scale-125 bg-gold-400 shadow-[0_0_10px_rgb(255_194_51/0.95)]" : isRev ? "z-10 scale-110 bg-gold-300 shadow-[0_0_8px_rgb(255_194_51/0.7)]" : !friend && "bg-white/5",
+                isWin ? "z-10 scale-125 bg-gold-400 shadow-[0_0_10px_rgb(255_194_51/0.95)]" : isRev ? "z-10 scale-110 bg-gold-300 shadow-[0_0_8px_rgb(255_194_51/0.7)]" : !friend && "bg-ink/5",
               )}
               style={friend && !isWin && !isRev ? { backgroundColor: friend, opacity: 0.55 } : undefined}
             />

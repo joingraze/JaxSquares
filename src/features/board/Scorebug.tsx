@@ -54,7 +54,7 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
       </div>
 
       {picking && (
-        <div className="relative flex min-h-10 items-center gap-2.5 border-t border-line bg-black/15 px-3.5 py-1.5">
+        <div className="relative flex min-h-10 items-center gap-2.5 border-t border-line bg-canvas/30 px-3.5 py-1.5">
           {state.players.length > 0 && (
             <AvatarGroup
               size="xs"
@@ -68,7 +68,7 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
             {phase === "draft" ? (
               "not open yet"
             ) : left === 0 ? (
-              <b className="font-bold text-brand-300">board full</b>
+              <b className="font-bold text-ink-brand">board full</b>
             ) : (
               <>
                 <span className="font-bold text-ink">{left}</span> left
@@ -204,7 +204,7 @@ function Center({
 function Crowd({ watching, connection }: { watching: number; connection: ConnectionState }) {
   if (connection === "offline") {
     return (
-      <span className="flex items-center gap-1 text-caption font-bold text-danger-300">
+      <span className="flex items-center gap-1 text-caption font-bold text-ink-danger">
         <WifiOffIcon size={12} />
         Offline
       </span>
@@ -240,7 +240,7 @@ function ConnectionPill({ connection, watching }: { connection: ConnectionState;
   }
   if (connection === "offline") {
     return (
-      <span className="flex shrink-0 items-center gap-1 rounded-full bg-danger-500/15 px-2 py-0.5 text-caption font-bold text-danger-300">
+      <span className="flex shrink-0 items-center gap-1 rounded-full bg-danger-500/15 px-2 py-0.5 text-caption font-bold text-ink-danger">
         <WifiOffIcon size={13} />
         Offline
       </span>

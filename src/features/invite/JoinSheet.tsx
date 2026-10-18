@@ -137,7 +137,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
       footer={
         <div className="flex flex-col gap-2">
           {error && (
-            <p role="alert" className="flex items-start gap-2 rounded-xl bg-danger-500/12 px-3 py-2 text-footnote font-semibold text-danger-300 ring-1 ring-inset ring-danger-500/30">
+            <p role="alert" className="flex items-start gap-2 rounded-xl bg-danger-500/12 px-3 py-2 text-footnote font-semibold text-ink-danger ring-1 ring-inset ring-danger-500/30">
               <AlertIcon size={16} className="mt-px shrink-0" />
               <span className="min-w-0 flex-1">{error}</span>
             </p>
@@ -171,7 +171,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
               type="button"
               onClick={startEditing}
               disabled={busy}
-              className="pressable inline-flex h-11 shrink-0 items-center rounded-full px-3.5 text-subhead font-bold text-brand-300 hover:bg-white/6"
+              className="pressable inline-flex h-11 shrink-0 items-center rounded-full px-3.5 text-subhead font-bold text-ink-brand hover:bg-ink/6"
             >
               Change
             </button>
@@ -216,7 +216,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
                 <button
                   type="button"
                   onClick={() => pick(shuffleLook(look, COLOR_VALUES, PLAYER_EMOJIS))}
-                  className="pressable tap-target -mr-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-footnote font-bold text-brand-400 hover:bg-white/6"
+                  className="pressable tap-target -mr-1 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-footnote font-bold text-ink-brand hover:bg-ink/6"
                 >
                   <ShuffleIcon size={15} strokeWidth={2.4} />
                   Shuffle
@@ -243,7 +243,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
                       className={cx(
                         "pressable grid h-11 w-11 shrink-0 place-items-center rounded-full text-[1.4rem] leading-none",
                         selected
-                          ? "ring-2 ring-white ring-offset-2 ring-offset-surface-2 shadow-[inset_0_-3px_0_rgb(0_0_0/0.18)]"
+                          ? "ring-2 ring-ink ring-offset-2 ring-offset-surface-2 shadow-[inset_0_-3px_0_rgb(0_0_0/0.18)]"
                           : "bg-surface-3 ring-1 ring-inset ring-line",
                       )}
                     >
@@ -276,7 +276,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
                         className={cx(
                           "grid h-6 w-6 place-items-center rounded-full transition-transform duration-200 ease-spring",
                           "shadow-[inset_0_-2px_0_rgb(0_0_0/0.2),inset_0_1px_0_rgb(255_255_255/0.35)]",
-                          selected && "scale-110 ring-2 ring-white ring-offset-2 ring-offset-surface-2",
+                          selected && "scale-110 ring-2 ring-ink ring-offset-2 ring-offset-surface-2",
                         )}
                       >
                         {selected && <CheckIcon size={13} strokeWidth={3.4} />}

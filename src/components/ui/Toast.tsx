@@ -189,7 +189,7 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) =
       onMouseLeave={() => setPaused(false)}
       className={cx(
         "pointer-events-auto flex min-h-13 w-full max-w-sm touch-none items-center gap-2.5 rounded-2xl bg-surface-3 py-2 pl-2 pr-2.5 shadow-float transition-[transform,opacity] duration-200",
-        tone === "win" ? "ring-1 ring-inset ring-gold-400/50 shadow-glow-gold" : "ring-1 ring-inset ring-line-strong",
+        tone === "win" ? "ring-1 ring-inset ring-gold-line/50 shadow-glow-gold" : "ring-1 ring-inset ring-line-strong",
         item.leaving ? "animate-toast-out" : "animate-toast-in",
       )}
     >
@@ -207,7 +207,7 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: (id: string) =
             item.action?.onClick();
             onDismiss(item.id);
           }}
-          className="pressable shrink-0 rounded-xl px-3 py-2 text-subhead font-extrabold text-brand-400 hover:bg-white/6 min-h-11"
+          className="pressable shrink-0 rounded-xl px-3 py-2 text-subhead font-extrabold text-ink-brand hover:bg-ink/6 min-h-11"
         >
           {item.action.label}
         </button>

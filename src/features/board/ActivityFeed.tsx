@@ -14,7 +14,7 @@ const GLYPH: Record<string, { chip: string; icon: (px: number) => ReactNode }> =
   locked: { chip: "bg-brand-400 text-ink-inverse", icon: (px) => <LockIcon size={px - 1} /> },
   score: { chip: "bg-live-500 text-white", icon: (px) => <FootballIcon size={px} /> },
   winner: { chip: "bg-gold-400 text-ink-inverse", icon: (px) => <TrophyIcon size={px} filled /> },
-  final: { chip: "bg-ink text-ink-inverse", icon: (px) => <FlagIcon size={px} /> },
+  final: { chip: "bg-ink text-canvas", icon: (px) => <FlagIcon size={px} /> },
   created: { chip: "bg-surface-4 text-ink-muted", icon: (px) => <SparklesIcon size={px} /> },
 };
 
@@ -60,7 +60,7 @@ export function ActivityFeed({ state, me, now }: { state: GameState; me: string;
               ) : (
                 <ActivityGlyph type={a.type} />
               )}
-              <span className={cx("min-w-0 flex-1 text-subhead leading-snug", win ? "font-bold text-gold-200" : "text-ink")}>
+              <span className={cx("min-w-0 flex-1 text-subhead leading-snug", win ? "font-bold text-ink-gold" : "text-ink")}>
                 {activityText(a, state, me)}
               </span>
               <time className="shrink-0 text-caption tabular-nums text-ink-subtle" dateTime={new Date(a.at).toISOString()}>
@@ -74,7 +74,7 @@ export function ActivityFeed({ state, me, now }: { state: GameState; me: string;
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="w-full border-t border-line py-3 text-subhead font-bold text-brand-300 active:bg-white/5"
+          className="w-full border-t border-line py-3 text-subhead font-bold text-ink-brand active:bg-ink/5"
         >
           {all ? "Show less" : "Show more"}
         </button>
