@@ -131,6 +131,7 @@ describe("the draft", () => {
     kickoff: NOW + 86_400_000,
     format: withRules({ ...defaultFormat(), boardSize: 25, squarePrice: 10, rules: rulesForPreset("halves", true) }),
     prizeChoice: "$",
+    prizesAuto: false,
     name: "Sunday Squares",
     nameTouched: true,
     maxPerPlayer: 4,
@@ -142,6 +143,14 @@ describe("the draft", () => {
     const store = memory();
     saveDraft(draft(), NOW, store);
     expect(loadDraft(NOW + 60_000, store)).toEqual(draft());
+  });
+
+  it("keeps following the suggested amounts in a draft saved before it could say", () => {
+    const store = memory();
+    const { prizesAuto: _drop, ...older } = draft();
+    void _drop;
+    saveDraft(older as WizardDraft, NOW, store);
+    expect(loadDraft(NOW, store)?.prizesAuto).toBe(true);
   });
 
   it("is gone once cleared (the board was made), or when it's from another session's day", () => {

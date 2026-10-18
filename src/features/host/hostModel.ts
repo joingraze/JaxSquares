@@ -24,6 +24,7 @@ import {
   liveLabel,
   primaryAward,
   resolveResults,
+  restSoFar,
   reverseCell,
   totalSquares,
   upcomingPeriod,
@@ -443,16 +444,17 @@ export function addPoints(value: string, points: number): string {
 /** Football scoring plays for every-score boards. */
 /**
  * The every-score pad's one-tap points for the team that scored. A
- * touchdown is +6 and its kick or 2-point try is saved as its own score
- * (like the live feed records them), so the touchdown's square gets its
- * turn and each shows its kind's amount. A safety is also +2: the kind
- * comes from the order (2 right after that team's touchdown is a conversion).
+ * touchdown is +6 and its extra point or 2-point conversion is saved as its
+ * own score (like the live feed records them), so the touchdown's square
+ * gets its turn and each shows its kind's amount. A safety is also +2: the
+ * kind comes from the order (2 right after that team's touchdown is a
+ * 2-point conversion).
  */
 export const QUICK_ADDS: readonly { points: number; label: string; name: string }[] = [
   { points: 6, label: "TD", name: "touchdown" },
   { points: 3, label: "FG", name: "field goal" },
   { points: 1, label: "XP", name: "extra point" },
-  { points: 2, label: "2-PT", name: "2-point try" },
+  { points: 2, label: "2-PT", name: "2-point conversion" },
   { points: 2, label: "Safety", name: "safety" },
 ];
 
@@ -465,11 +467,17 @@ export interface WinnerPreview {
   digitX: number;
   digitY: number;
   prize: string | null;
-  /** Display-only amount the square (or, on a reverse-only moment, the reverse square) wins (by kind, for a score entry). */
+  /**
+   * Display-only amount the square (or, on a reverse-only moment, the
+   * reverse square) wins (by kind, for a score entry; the rest of the board
+   * total so far for a final that takes it).
+   */
   amount: number | null;
   unit: AmountUnit;
-  /** A score entry: the kind of score this would be (from the entry before it), when it can tell. */
+  /** A score entry: the kind of score this would be (from the entry before it); null for a fixed period. */
   play: ScorePlay | null;
+  /** The final's square takes the rest of the board total: `amount` is that rest, as it stands. */
+  rest: boolean;
   /** Only the reverse square wins this moment: `cell` is the reverse square. */
   reverseOnly: boolean;
   /** A host pick that will keep overriding the computed square. */
@@ -505,10 +513,11 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
     digitX: scoreX % 10,
     digitY: scoreY % 10,
     prize: note,
-    amount: prizeAmount(reverseOnly ? rule?.reverse : rule?.square, play?.kind),
+    amount: !reverseOnly && rule?.square?.rest ? restSoFar(state) : prizeAmount(reverseOnly ? rule?.reverse : rule?.square, play?.kind),
     unit: unitOf(state.game.format),
     play,
     reverseOnly,
+    rest: !reverseOnly && !!rule?.square?.rest,
     manual: state.manualWinners.find((m) => m.periodKey === real) ?? null,
   };
 }

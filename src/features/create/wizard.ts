@@ -134,6 +134,12 @@ export interface WizardDraft {
   kickoff: number | null;
   format: GameFormat;
   prizeChoice: PrizeChoice;
+  /**
+   * The amounts still follow the suggestion (the host hasn't typed one): a
+   * new square price, game type, reverse or every-score option fills them in
+   * again. Absent in older drafts = true.
+   */
+  prizesAuto: boolean;
   name: string;
   nameTouched: boolean;
   maxPerPlayer: number;
@@ -237,6 +243,7 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
     kickoff,
     format,
     prizeChoice: choice,
+    prizesAuto: d.prizesAuto !== false,
     name: str(d.name, 60),
     nameTouched: d.nameTouched === true,
     maxPerPlayer: max,

@@ -99,6 +99,19 @@ async function nextTo(...steps: string[]) {
   }
 }
 
+function pickDollars() {
+  fireEvent.click(screen.getAllByTestId("rules-choice-option").find((el) => el.getAttribute("data-choice") === "$")!);
+}
+
+function pickPrice(price: number) {
+  fireEvent.click(screen.getAllByTestId("price-chip").find((el) => el.getAttribute("data-price") === String(price))!);
+}
+
+/** The prize amount fields on the prizes step, in game order (square then reverse at each moment). */
+function amounts(): string[] {
+  return screen.getAllByTestId("rule-amount").map((el) => (el as HTMLInputElement).value);
+}
+
 async function customTeams(x = "Chiefs", y = "Eagles") {
   fireEvent.click(await screen.findByTestId("custom-matchup"));
   fireEvent.change(await screen.findByTestId("team-x-input"), { target: { value: x } });
@@ -196,21 +209,93 @@ describe("the create flow", () => {
     expect(posted[0].linkedEvent).toBeNull();
   });
 
-  it("shows the lineup players will see once prizes are set from Review", async () => {
+  it("shows the lineup players will see once prizes are set from Review (the suggested amounts, filled in)", async () => {
     renderFlow();
     await onStep("game");
     await customTeams();
     await nextTo("format", "prizes", "details", "review");
     fireEvent.click(reviewCard("prizes"));
     await onStep("prizes");
-    fireEvent.click(screen.getAllByTestId("rules-choice-option").find((el) => el.getAttribute("data-choice") === "$")!);
-    fireEvent.click(screen.getAllByTestId("price-chip").find((el) => el.getAttribute("data-price") === "10")!);
-    fireEvent.click(screen.getAllByTestId("prize-split").find((el) => el.getAttribute("data-split") === "bigger-final")!);
+    pickDollars();
+    pickPrice(10);
+    expect(amounts()).toEqual(["200", "200", "200", "400"]);
     next();
     await onStep("review");
     expect(screen.getByTestId("review-prizes")).toHaveAttribute("data-state", "set");
-    expect(reviewCard("prizes")).toHaveTextContent("$10 a square");
-    expect(reviewCard("prizes")).toHaveTextContent("Final $400");
+    expect(reviewCard("prizes")).toHaveTextContent("$10 a square · Q1 $200 · Half $200 · Q3 $200 · Final $400");
+    await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].format.rules?.map((r) => r.square?.amount)).toEqual([200, 200, 200, 400]);
+  });
+
+  it("fills the suggested amounts in as the setup changes, until the host types one; then Use suggested amounts", async () => {
+    renderFlow();
+    await onStep("game");
+    await customTeams();
+    await nextTo("format", "prizes");
+    pickDollars();
+    pickPrice(10);
+    expect(amounts()).toEqual(["200", "200", "200", "400"]);
+    expect(screen.getByTestId("prizes-suggest")).toHaveAttribute("aria-pressed", "true");
+    // A new price fills them in again.
+    pickPrice(20);
+    expect(amounts()).toEqual(["400", "400", "400", "800"]);
+    // So does the game type and reverse (back on the format step).
+    fireEvent.click(screen.getByTestId("wizard-back"));
+    await onStep("format");
+    fireEvent.click(screen.getAllByTestId("format-option").find((el) => el.getAttribute("data-format") === "halves")!);
+    fireEvent.click(screen.getByTestId("format-reverse"));
+    await nextTo("prizes");
+    expect(amounts()).toEqual(["740", "80", "1100", "80"]);
+    expect(screen.getByTestId("prizes-basis")).toHaveTextContent("From the $2,000 board total");
+
+    // The host types an amount: nothing changes by itself after that.
+    const half = screen.getAllByTestId("rule-amount").find((el) => el.getAttribute("data-moment") === "q2" && el.getAttribute("data-side") === "square")!;
+    fireEvent.change(half, { target: { value: "500" } });
+    pickPrice(10);
+    expect(amounts()).toEqual(["500", "80", "1100", "80"]);
+    const button = screen.getByRole("button", { name: /^Use suggested amounts/ });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("prizes-basis")).toHaveTextContent("From the $1,000 board total");
+    fireEvent.click(button);
+    expect(amounts()).toEqual(["370", "40", "550", "40"]);
+    // Following again: a new price fills them in.
+    pickPrice(5);
+    expect(amounts()).toEqual(["180", "20", "280", "20"]);
+  });
+
+  it("every score: amounts by score type and the final's rest, and Review's lineup", async () => {
+    renderFlow();
+    await onStep("game");
+    await customTeams();
+    await nextTo("format");
+    fireEvent.click(screen.getAllByTestId("format-option").find((el) => el.getAttribute("data-format") === "every-score")!);
+    fireEvent.click(screen.getByTestId("every-score-reverse"));
+    await nextTo("prizes");
+    pickDollars();
+    pickPrice(10);
+    // Amount by score type is on by default.
+    const kinds = screen.getAllByTestId("score-kind-amount").map((el) => [el.getAttribute("data-kind"), (el as HTMLInputElement).value]);
+    expect(kinds).toEqual([
+      ["touchdown", "20"],
+      ["fieldGoal", "10"],
+      ["extraPoint", "5"],
+      ["twoPoint", "10"],
+      ["safety", "10"],
+    ]);
+    expect(screen.getByTestId("final-rest-field")).toHaveTextContent("The rest");
+    expect(screen.getByTestId("prize-budget")).toHaveTextContent("Score prizes come out of the $1,000 board total during the game; the final gets the rest.");
+    expect(screen.getByTestId("prize-estimate")).toHaveTextContent("A typical game uses about $430, leaving about $570 for the final.");
+    next();
+    await onStep("details");
+    next();
+    await onStep("review");
+    expect(reviewCard("prizes")).toHaveTextContent("$10 a square · $5–$20 every score · $40 reverse each quarter · Final: the rest");
+    await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const rules = posted[0].format.rules!;
+    expect(rules[0].square?.byKind).toEqual({ touchdown: 20, fieldGoal: 10, extraPoint: 5, twoPoint: 10, safety: 10 });
+    expect(rules.find((r) => r.moment === "final")?.square).toEqual({ amount: null, note: "", rest: true });
   });
 
   it("can't be deep-linked past an incomplete step", async () => {

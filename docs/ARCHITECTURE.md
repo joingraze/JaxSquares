@@ -10,8 +10,9 @@ exception so far: the public-id rename below, which closed an impersonation hole
 - No money moves between players, ever: the app never collects, holds, sends or
   tracks payment between them. A host may show a **square price** and **prize
   amounts** as structured, display-only fields (`GameFormat.squarePrice`,
-  `Prize.amount`, and on every score change `Prize.byKind`, an amount per kind
-  of score) in "$" or points (`GameFormat.unit`), or mark the board **just
+  `Prize.amount`, on every score change `Prize.byKind`, an amount per kind
+  of score, and on the final's square `Prize.rest`, "the rest of the board
+  total") in "$" or points (`GameFormat.unit`), or mark the board **just
   for fun** (`GameFormat.justForFun`: no amounts, players see a badge). Amounts
   are empty by default, so a default board shows no money at all. The inputs
   carry "Shown to everyone before they pick squares. JaxSquares never collects
@@ -354,13 +355,15 @@ rows per game in D1.
 score, q1, q2, q3, final.
 
 ```ts
-// The owner's example: every score -> the square, a touchdown $50 and a conversion $10
-// (a field goal or safety: the $30 default); each quarter-end -> the reverse square, $200.
+// The Every score card at $10 a square, with the reverse at each quarter and the final
+// (the suggested amounts): every score -> the square, by kind; each quarter-end -> the
+// reverse square, $40; the final -> the square takes the rest of the board total.
 { rules: [
-    { moment: "score", square: { amount: 30, note: "", byKind: { touchdown: 50, conversion: 10 } }, reverse: null },
-    { moment: "q1", square: null, reverse: { amount: 200, note: "" } },
+    { moment: "score", square: { amount: 10, note: "",
+        byKind: { touchdown: 20, fieldGoal: 10, extraPoint: 5, twoPoint: 10, safety: 10 } }, reverse: null },
+    { moment: "q1", square: null, reverse: { amount: 40, note: "" } },
     /* q2, q3 the same */
-    { moment: "final", square: null, reverse: { amount: 200, note: "Loser buys wings" } } ],
+    { moment: "final", square: { amount: null, note: "Loser buys wings", rest: true }, reverse: { amount: 40, note: "" } } ],
   unit: "$", squarePrice: 10, justForFun: false, periods: "custom", reverse: true, boardSize: 100, freshNumbers: false }
 ```
 
@@ -373,39 +376,89 @@ score, q1, q2, q3, final.
   stores `withRules(...)`: `periods` = the preset matching the moments (else
   "custom"), `reverse` = some rule has a reverse winner.
 - Amounts by score type (`Prize.byKind?: Partial<Record<ScoreKind, number>>`,
-  `ScoreKind` = `touchdown | fieldGoal | conversion | safety`): only on the
+  `ScoreKind` = `touchdown | fieldGoal | extraPoint | twoPoint | safety`,
+  `SCORE_KINDS` in that order; labels "Touchdown"/"TD", "Field goal"/"FG",
+  "Extra point"/"XP", "2-point conversion"/"2-PT", "Safety"): only on the
   score moment's `square`/`reverse` (400 `BY_KIND_MOMENT_ERROR` elsewhere;
   dropped by the lenient path); each value validated like an amount ("The
-  conversion amount must be a number above 0, up to 1,000,000"), an unknown kind
-  is a 400; stored in `SCORE_KINDS` order with only the kinds that have a
-  value, and no `byKind` key at all when none do, so rules without it are
-  byte-for-byte what they were. `amount` stays the default: a kind without its
-  own value, and an entry whose kind can't be told, show it. Just-for-fun
-  boards carry none (400, cleared leniently). Like any amount, they can change
-  any time (not part of `rulesShape`) and never leave the app.
+  2-point conversion amount must be a number above 0, up to 1,000,000"), an
+  unknown kind is a 400; stored in `SCORE_KINDS` order with only the kinds
+  that have a value, and no `byKind` key at all when none do, so rules without
+  it are byte-for-byte what they were. `amount` is the flat amount with score
+  types off, and a quiet fallback for a kind without its own value (older
+  data); the editor has no "Other scores" field. Just-for-fun boards carry
+  none (400, cleared leniently). Like any amount, they can change any time
+  (not part of `rulesShape`) and never leave the app.
+- Boards saved before the extra point and the 2-point conversion were told
+  apart may hold `byKind.conversion`: every read path treats it as both
+  `extraPoint` and `twoPoint` (`kindAmount`, so `prizeAmount`, `kindAmounts`,
+  `prizeRange` and results; `worker/db.ts` upgrades it on read with
+  `upgradeFormat`; `sanitizeFormat` / `tidyPrize` / the editor's `draftOf`
+  map it too, a kind's own value winning). New input with `conversion` is a
+  400 "Unknown score type".
 - Score kinds (`entryPlays` / `scorePlayBetween` in `shared/squares.ts`, pure):
-  each every-score entry's kind comes from its change versus the entry before
-  it (by index; 0-0 before the first). Only one team's score may go up: 6 =
-  touchdown; 3 = field goal; 1 = conversion; 2 = conversion right after that
-  team's 6-point touchdown entry, else a safety; 7 or 8 = touchdown (with its
-  conversion in one go). Both teams changing, a score going down, or any other
-  jump has no kind. Football boards only. Never stored: derived on read from
-  the ordered entries, so a host correction or an overturned score re-derives
-  what follows (no migration). `PeriodResult` carries `scoreKind` and
-  `scorePoints` (1 = extra point, 2 = 2-point try), and its `amount` /
-  `reverseAmount` come from `byKind` when set (`prizeAmount`), so winners,
-  `prizeTotals`, `playerTake` and the players list follow. Labels:
-  `scorePlayLabel` ("TD", "XP", "2-pt", "FG", "Safety" on chips and cards;
-  "Touchdown", "Extra point", "2-point try"... in sheets).
-- Splitting the board's total (`splitPrizes(rules, total, style)`, pure):
-  `even` or `bigger-final` (Final weighs twice a quarter: Q1 20% · Half 20% ·
-  Q3 20% · Final 40% with all four, Half 33% · Final 67% with two), across the
-  fixed moments that are on, in whole units (dollars or points) that add up to
-  the total (`wholeShares`: largest remainder, ties to the later moment). A
-  moment where both squares win shares its part evenly (the square gets an odd
-  unit). Every score change, notes and who wins are untouched; the amounts
-  stay editable. `splitStyles` offers "Bigger final" only with the Final and
-  another fixed moment, nothing without a fixed moment.
+  each every-score entry's kind comes from the change in one team's score
+  versus the entry before it (by index; 0-0 before the first), and every entry
+  gets one: 6 = touchdown; 3 = field goal; 1 = extra point; 2 = 2-point
+  conversion right after that team's 6-point touchdown entry, else a safety;
+  7 or 8 = touchdown (a host-typed touchdown and kick together). Both teams
+  can't score in one play, so a data gap showing both up counts the larger
+  rise (team X on a tie); any other jump reads as the nearest kind (6 or more
+  a touchdown, 3 to 5 a field goal, 1 or less an extra point; a host
+  correction downward reads by its size). Football boards only. Never stored:
+  derived on read from the ordered entries, so a host correction or an
+  overturned score re-derives what follows (no migration). `PeriodResult`
+  carries `scoreKind` and `scorePoints`, and its `amount` / `reverseAmount`
+  come from `byKind` (`prizeAmount`), so winners, `prizeTotals`, `playerTake`
+  and the players list follow. Labels: `scorePlayLabel(kind, full?)`.
+- The rest of the board total (`Prize.rest?: true`): only on the final
+  moment's `square` (400 `REST_MOMENT_ERROR` elsewhere) and only with a square
+  price (400 `REST_PRICE_ERROR`; a just-for-fun board: `JUST_FOR_FUN_ERROR`);
+  its `amount` is ignored and stored null; dropped leniently where it can't
+  go, and by `withRules` without a price. It's an amount, not who wins, so it
+  changes any time. The board total (`boardTotalOf`) is the square price ×
+  every square (100 or 25) before the numbers are drawn, × the claimed
+  squares after. The rest = that total minus every other prize a claimed
+  square won (score entries by kind, quarter/half squares and reverse
+  squares, the final's own reverse); an unclaimed winning square's prize stays
+  in the total; never below 0. `resolveResults` sets the final result's
+  `amount` to it with `amountIsRest: true` (so `prizeTotals` and the winners
+  follow; with the rest, everyone's totals add up to the claimed total);
+  `restSoFar(state)` is the same math over the results so far, for live
+  display. Copy: rules sheet "the rest of the board total, everything not won
+  during the game"; lineup "Final: the rest"; result card before the final
+  "Final · the rest" with "$640 so far", after "Final · $640"; the host
+  pad's preview "$640 (the rest)". Never in a push, preview or share text.
+- Suggested amounts (`suggestPrizes(rules, price, squares, unit)`, pure; T =
+  price × squares, p = the price; fixed amounts "nice": whole units under 10,
+  fives under 100, tens from 100, at least 1):
+  - Fixed moments only: the main prize at each moment (its square, else its
+    reverse) splits T by Q1 20 · Half 20 · Q3 20 · Final 40 (Halftime + Final
+    alone 40 · 60; other sets normalize those weights; the final alone 100%).
+    A reverse square beside a moment's square gets 4p first (capped so the
+    reverse prizes take at most 40% of T: a 5×5 board's quarters, or few
+    claimed squares), and the main prizes split T minus those. The last
+    moment (the Final) takes up the rounding, so they add up to exactly T.
+    $10 squares: quarters 200/200/200/400; with reverse $40 ×4 then
+    170/170/170/330; halves 400/600 (with reverse 370 + 40 / 550 + 40).
+  - Every score: by score type (on by default for the Every score card), one
+    base unit u = half the price (dollars: nearest $0.50, at least $0.50;
+    points: a whole point, at least 1; `kindUnit`), never rounded per kind:
+    touchdown 4u, field goal / 2-point conversion / safety 2u, extra point
+    1u ($1: 2 / 1 / 0.50; $10: 20 / 10 / 5; $25: 50 / 25 / 12.50). The flat
+    amount (score types off, and the fallback) is p. The reverse square on
+    every score gets the same table. The final's square takes the rest; any
+    other fixed square, and every reverse at a fixed moment, 4p.
+  - `typicalGameTotal(rules)`: 9 touchdowns, 8 extra points, 4 field goals,
+    one 2-point conversion (`TYPICAL_GAME`), plus the fixed moments' amounts
+    other than the rest. $10 squares, every score + reverse each quarter:
+    $430 of $1,000.
+- Splitting evenly (`splitEvenly(rules, total)`, pure): "Even", the
+  suggestion's alternative on fixed-moment boards, in whole units that add up
+  to the total (`wholeShares`: largest remainder, ties to the later moment).
+  A moment where both squares win shares its part evenly (the square gets an
+  odd unit); a final taking the rest gets its share instead. Every score
+  change, notes and who wins are untouched.
 - Boards made before rules existed have no `rules`: `rulesOf(format,
   legacyPrizes)` derives them from the preset + reverse and folds their
   `game.prizes` notes in; they resolve exactly as before.
@@ -419,25 +472,45 @@ score, q1, q2, q3, final.
   the board size never.
 - In-app helpers: `formatAmount` ("$50", "$2.50", "$1,000", "50 pts"),
   `formatRange` ("$10–$50"), `prizeRange` / `kindAmounts` (a prize's amounts
-  by score type), `fixedPrizeTotal` (what the fixed moments give out),
-  `prizeTotals(results)` (square + reverse amounts per player), `prizeLineup`
-  (the compact line players see before claiming: "$10 a square · $10–$50 every
-  score · $200 reverse each quarter").
+  by score type), `fixedPrizeTotal` (what the fixed moments give out, the
+  rest not counted), `prizeTotals(results)` (square + reverse amounts per
+  player), `prizeLineup` (the compact line players see before claiming: "$10
+  a square · $5–$20 every score · $40 reverse each quarter · Final: the
+  rest"; also the Home invite card's).
 - Editor (`src/features/rules`, shared by Create and the host's "Rules &
   prizes"): the square price takes one-tap picks (`PRICE_CHIPS`: $1–$100, or
-  1–500 points) or any amount; with a price it shows "All 100 squares:
-  $1,000" (`boardTotal`), "Prizes: $800 of $1,000" with "$200 left" / "$200
-  over" / "Adds up" and "+ every score" (`prizeBudget`: every-score prizes are
-  on top, their total depends on the game), and "Split the $1,000"
-  (`splitOptions`: Even / Bigger final, each with what every moment gets,
-  picked when the amounts already match). The every-score row, and the
-  create page's Every score card, offer "Also pay the reverse at each quarter
-  and the final" (`setReverseQuarters`: Q1, Half, Q3 and Final on with the
-  reverse square; the create card also takes one amount for all four) and
-  "Amount by score type" (`setByKind` / `setKindAmount`: Touchdown, Field
-  goal, Conversion, Safety, plus "Other scores" = the default `amount`). Every
-  score plus the reverse at each quarter-end still reads as the Every score
-  preset (`presetChoice`), titled "Every score + reverse".
+  1–500 points) or any amount; with a price it shows the board total ("All
+  100 squares: $1,000", or "62 claimed squares: $620" in the host's editor
+  once the numbers are drawn), then:
+  - Fixed-moment boards: "Prizes: $800 of $1,000" with "$200 left" / "$200
+    over" / "Adds up", or "The rest, $600, to the final" when the final takes
+    the rest (`prizeBudget` / `budgetText`), and "Split the $1,000": the
+    Suggested card and "Even" (`suggestedPrizes` / `evenSplit`, each with
+    what every prize gets, picked when the amounts already match).
+  - Every-score boards: "Score prizes come out of the $1,000 board total
+    during the game; the final gets the rest.", a typical game's estimate,
+    and over 80% of the total (`TIGHT_SHARE`) the warning "A typical game
+    would use about $X of the $T board total, leaving little for the final."
+    (`everyScoreBudgetText`), then the Suggested card.
+  - The Suggested card's "Use suggested amounts" re-applies the suggestion,
+    with the basis under it ("From the $1,000 board total"). The editor
+    never changes saved amounts by itself.
+  - The final's row, with a square price, has "The rest" / "Fixed amount"
+    (`setFinalRest`: a fixed amount starts at about what the rest would be,
+    `restEstimate`). "Same for every quarter" leaves a final's rest alone.
+  - The every-score row, and the create page's Every score card, offer "Also
+    pay the reverse at each quarter and the final" (`setReverseQuarters`:
+    Q1, Half, Q3 and Final on with the reverse square; the final keeps its
+    square; the create card also takes one amount for all four) and "Amount
+    by score type" (`setByKind` / `setKindAmount`: the five kinds, no "Other
+    scores"). Typing the touchdown moves the kinds the host hasn't set by
+    hand along as clean multiples (`setTouchdownAmount`: TD $100 makes FG,
+    2-PT and Safety $50, XP $25, with `kindUnit(TD / 4)`); a kind set to
+    anything else stops following; empty kinds fill in.
+  - The Every score card makes the score moment (amounts by score type on)
+    plus the final's square (`selectPreset`); with the reverse at each
+    quarter-end it still reads as the Every score preset
+    (`presetChoice` / `isEveryScoreSetup`), titled "Every score + reverse".
 
 ## Game rules (implemented in `shared/`)
 
@@ -467,9 +540,10 @@ score, q1, q2, q3, final.
   picks (`retractedEntries`), never a host's, and nothing is announced; a
   split touchdown unwinds the same way (a conversion taken back drops just
   its entry). Host-typed entries are recorded as typed: the host's score pad
-  adds +6 TD, +3 FG, +1 XP, +2 2-pt and +2 Safety for the team that scored
+  adds +6 TD, +3 FG, +1 XP, +2 2-PT and +2 Safety for the team that scored
   (save the touchdown, then the kick), and its preview names the kind and
-  its amount ("Touchdown · $50").
+  its amount ("Touchdown · $50", "2-point conversion · $10"; the final
+  taking the rest: "$640 (the rest)").
 - While a linked game is on, the period in play is `periodInPlay`: the live
   period's own, or the next undecided one once that's recorded (ESPN keeps
   period 2 through halftime). `liveCell`, the board's "Right now" and its draw
@@ -567,10 +641,19 @@ Next x3, Create.
   its reason above it only when a step is truly incomplete (`stepBlocker`):
   custom teams, a kickoff out of range, a prize note that talks money, the
   host's name, money in the board name.
-- The draft (tab, picks, teams, kickoff, format, prize choice, name, cap,
-  host name) lives in `sessionStorage` (`jaxsquares.createDraft`, 12 h), so a
-  reload keeps it; it's cleared once the board opens. A picked game that has
-  started since is dropped on restore.
+- The draft (tab, picks, teams, kickoff, format, prize choice, whether the
+  amounts still follow the suggestion, name, cap, host name) lives in
+  `sessionStorage` (`jaxsquares.createDraft`, 12 h), so a reload keeps it;
+  it's cleared once the board opens. A picked game that has started since is
+  dropped on restore.
+- Prizes fill themselves in (`autoFill` in `src/features/rules/rulesModel.ts`):
+  while the host hasn't typed an amount, a change to the square price, the
+  game type, reverse, the every-score options, the board size or the unit
+  re-applies the suggestion (`withSuggested`, all the board's squares);
+  taking the price away takes the suggested amounts with it. Typing an amount
+  (or picking "Even") stops it; nothing changes by itself after that, until
+  "Use suggested amounts" (the amounts match the suggestion again). Review
+  shows the lineup players will see.
 - Creating works as before (test mode / App Store open the board in one tap;
   a live web checkout opens `CheckoutSheet`). Opening the board first rewinds
   the flow's entries (`history.go(-wizardDepth)`), then replaces the first

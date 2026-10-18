@@ -89,7 +89,12 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
             </span>
             <span className="mt-0.5 block text-footnote font-semibold leading-snug text-ink-muted">
               {nowSentence(now)}
-              {now.range ? (
+              {now.rest ? (
+                <b className="font-extrabold tabular-nums text-ink-gold">
+                  {" "}
+                  · the rest{now.amount !== null ? ` (${formatAmount(now.amount, now.unit)} so far)` : ""}
+                </b>
+              ) : now.range ? (
                 <b className="font-extrabold tabular-nums text-ink-gold"> · {formatRange(now.range, now.unit)}</b>
               ) : now.amount ? (
                 <b className="font-extrabold tabular-nums text-ink-gold"> · {formatAmount(now.amount, now.unit)}</b>

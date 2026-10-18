@@ -97,9 +97,10 @@ describe("buildDeliveries", () => {
           squarePrice: 20,
           rules: [
             // Amounts by score type stay in the app too.
-            { moment: "score", square: { amount: 50, note: "", byKind: { touchdown: 70, conversion: 10, fieldGoal: 30 } }, reverse: null },
+            { moment: "score", square: { amount: 50, note: "", byKind: { touchdown: 70, extraPoint: 10, twoPoint: 20, fieldGoal: 30 } }, reverse: null },
             { moment: "q2", square: null, reverse: { amount: 200, note: "Loser buys wings" } },
-            { moment: "final", square: null, reverse: { amount: 1000, note: "" } },
+            // So does the rest of the board total.
+            { moment: "final", square: { amount: null, note: "", rest: true }, reverse: { amount: 1000, note: "" } },
           ],
         },
       });
@@ -111,7 +112,7 @@ describe("buildDeliveries", () => {
       const wrap = buildDeliveries(priced, players, { kind: "final" }, NOW);
       for (const d of [...half, ...every, ...fin, ...wrap]) {
         const text = `${d.content.title} ${d.content.body}`;
-        expect(text).not.toMatch(/\$|\b(10|20|30|50|70|200|1,?000)\b|pts?\b/);
+        expect(text).not.toMatch(/\$|\b(10|20|30|50|70|200|1,?000|2,?000)\b|pts?\b|\brest\b|board total/i);
       }
     });
 

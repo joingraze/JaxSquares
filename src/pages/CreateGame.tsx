@@ -6,7 +6,12 @@
 //   2. How squares win  the preset cards, every-score setups, board size,
 //                     reverse and fresh numbers.
 //   3. Square price & prizes  dollars / points / just for fun (skippable:
-//                     Review then flags "Square price: not set").
+//                     Review then flags "Square price: not set"). The
+//                     amounts fill themselves in from the square price
+//                     (suggestPrizes) whenever the price, the game type,
+//                     reverse or the every-score options change, until the
+//                     host types an amount; "Use suggested amounts" puts
+//                     them back.
 //   4. Final touches  board name, max squares per player, the host's name
 //                     when this device has none.
 //   5. Review         a card per step (tap to change it; Next from there comes
@@ -97,7 +102,7 @@ import {
 } from "../features/create/wizard";
 import { WizardProgress } from "../features/create/WizardProgress";
 import { RulesEditor } from "../features/rules/RulesEditor";
-import type { PrizeChoice, RulesDraft } from "../features/rules/rulesModel";
+import { autoFill, type PrizeChoice, type RulesDraft } from "../features/rules/rulesModel";
 
 interface Draft extends CheckoutDraft {
   /** inputSignature of the body that created it, so an unchanged re-tap reuses it. */
@@ -139,6 +144,8 @@ export default function CreateGame() {
   // Always with rules (notes and amounts live in them); the prize choice stays unset until the host picks one.
   const [format, setFormat] = useState<GameFormat>(() => restored?.format ?? withRules(defaultFormat()));
   const [prizeChoice, setPrizeChoice] = useState<PrizeChoice>(restored?.prizeChoice ?? null);
+  // The amounts follow the suggestion until the host types one (see autoFill).
+  const [prizesAuto, setPrizesAuto] = useState(restored?.prizesAuto ?? true);
   const [name, setName] = useState(restored?.name ?? "");
   const [nameTouched, setNameTouched] = useState(restored?.nameTouched ?? false);
   const [maxPerPlayer, setMaxPerPlayer] = useState(restored?.maxPerPlayer ?? 0);
@@ -235,8 +242,8 @@ export default function CreateGame() {
   // The draft survives a reload until the board is made.
   useEffect(() => {
     if (leavingTo.current || frozen) return;
-    saveDraft({ tab, tabTouched: tabTouched.current, picked, custom, kickoff, format, prizeChoice, name, nameTouched, maxPerPlayer, hostName });
-  }, [tab, picked, custom, kickoff, format, prizeChoice, name, nameTouched, maxPerPlayer, hostName, frozen]);
+    saveDraft({ tab, tabTouched: tabTouched.current, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName });
+  }, [tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen]);
 
   // Opening the board: rewind the flow's steps first (Back from the board then
   // goes where the host started), then replace the first one with the board.
@@ -469,10 +476,15 @@ export default function CreateGame() {
   // What players will see about prizes, as the host has it now.
   const shownFormat = createFormat(format, prizeChoice);
   const rulesDraft: RulesDraft = { rules, choice: prizeChoice, squarePrice: format.squarePrice ?? null, freshNumbers: format.freshNumbers };
-  const editRules = (d: RulesDraft) => {
-    setPrizeChoice(d.choice);
-    setFormat((f) => withRules({ ...f, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }));
+  /** Every change to how squares win or to the prizes: the suggested amounts follow it while the host hasn't typed one. */
+  const updatePrizes = (next: GameFormat, choice: PrizeChoice = prizeChoice) => {
+    const filled = autoFill({ format, choice: prizeChoice }, { format: next, choice }, prizesAuto);
+    setFormat(filled.format);
+    setPrizeChoice(choice);
+    setPrizesAuto(filled.auto);
   };
+  const editRules = (d: RulesDraft) =>
+    updatePrizes(withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }), d.choice);
   const matchupLabel = shortNames ? (matchup?.kind === "linked" ? `${shortNames[0]} @ ${shortNames[1]}` : `${shortNames[0]} vs ${shortNames[1]}`) : "";
   const info = STEP_INFO[step];
 
@@ -498,7 +510,7 @@ export default function CreateGame() {
       break;
     case "format":
       body = (
-        <FormatPicker format={format} onChange={setFormat} prizeChoice={prizeChoice} onPrizeChoice={setPrizeChoice} teamX={teams?.teamX} teamY={teams?.teamY} />
+        <FormatPicker format={format} onChange={(f, choice) => updatePrizes(f, choice)} prizeChoice={prizeChoice} teamX={teams?.teamX} teamY={teams?.teamY} />
       );
       break;
     case "prizes":

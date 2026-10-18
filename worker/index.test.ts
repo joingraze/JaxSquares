@@ -4,7 +4,7 @@
 // notify actors, money-free prize notes, rate limits and cron housekeeping.
 // Only the GameRoom (sockets) and push delivery are faked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR } from "../shared/formats";
+import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR, REST_MOMENT_ERROR, REST_PRICE_ERROR } from "../shared/formats";
 import { KICKOFF_ERRORS } from "../shared/kickoff";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { MAX_PLAYERS, resolveResults } from "../shared/squares";
@@ -695,7 +695,7 @@ describe("rules and prizes", () => {
   });
 
   it("takes amounts by score type on every score change, and only there", async () => {
-    const byKind = { touchdown: 50, conversion: 10 };
+    const byKind = { touchdown: 50, extraPoint: 10, twoPoint: 20 };
     const rules = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { ...byKind, safety: null } } } : r));
     const res = await call<CreateGameResponse>("POST", "/games", { body: createInput({ format: ownerFormat({ rules }), prizes: {} }) });
     expect(res.status).toBe(201);
@@ -710,10 +710,13 @@ describe("rules and prizes", () => {
     };
     const onQ1 = ownerRules.map((r) => (r.moment === "q1" ? { ...r, reverse: { amount: 200, note: "", byKind: { touchdown: 5 } } } : r));
     expect(await bad(ownerFormat({ rules: onQ1 }))).toEqual([400, "Amounts by score type only go with every score change."]);
-    const zero = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { conversion: 0 } } } : r));
-    expect(await bad(ownerFormat({ rules: zero }))).toEqual([400, "The conversion amount must be a number above 0, up to 1,000,000"]);
+    const zero = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { twoPoint: 0 } } } : r));
+    expect(await bad(ownerFormat({ rules: zero }))).toEqual([400, "The 2-point conversion amount must be a number above 0, up to 1,000,000"]);
     const unknown = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { pick6: 70 } } } : r));
     expect(await bad(ownerFormat({ rules: unknown }))).toEqual([400, "Unknown score type"]);
+    // The old shared "conversion" kind isn't taken from new input: the extra point and the 2-point conversion are.
+    const legacy = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { conversion: 10 } } } : r));
+    expect(await bad(ownerFormat({ rules: legacy }))).toEqual([400, "Unknown score type"]);
     const fun = ownerRules.map((r) => ({ ...r, square: r.square ? { amount: null, note: "", byKind } : null, reverse: r.reverse ? { ...r.reverse, amount: null } : null }));
     expect(await bad(ownerFormat({ rules: fun, justForFun: true, squarePrice: null }))).toEqual([400, "A just-for-fun board doesn't show a square price or amounts."]);
   });
@@ -724,24 +727,97 @@ describe("rules and prizes", () => {
     await call("POST", `/games/${id}/lock`, { admin });
     expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 6, scoreY: 0 } })).status).toBe(200);
     // Scoring has started: who wins is locked, amounts by kind still change.
-    const edited = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: ownerFormat({ rules: withKinds({ touchdown: 50, conversion: 10 }) }) } });
+    const edited = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: ownerFormat({ rules: withKinds({ touchdown: 50, extraPoint: 10 }) }) } });
     expect(edited.status).toBe(200);
     const { state } = edited.body;
-    expect(state.game.format.rules?.[0].square?.byKind).toEqual({ touchdown: 50, conversion: 10 });
+    expect(state.game.format.rules?.[0].square?.byKind).toEqual({ touchdown: 50, extraPoint: 10 });
     expect(state.activity[0]).toMatchObject({ type: "rules", data: { scoring: false } });
-    // Score 1 (a touchdown) now shows the touchdown amount; the next score (the kick), the conversion's.
+    // Score 1 (a touchdown) now shows the touchdown amount; the next score (the kick), the extra point's.
     expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 7, scoreY: 0 } })).status).toBe(200);
     const after = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
     const results = resolveResults(after);
     expect(results.filter((r) => r.periodKey.startsWith("s")).map((r) => [r.periodKey, r.scoreKind, r.amount])).toEqual([
       ["s1", "touchdown", 50],
-      ["s2", "conversion", 10],
+      ["s2", "extraPoint", 10],
     ]);
     // Activity carries no amounts.
     expect(after.activity.every((a) => !JSON.stringify(a.data).match(/amount|byKind|"\$/i))).toBe(true);
     // Back to one amount for every score.
     const cleared = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: ownerFormat({ rules: withKinds(undefined) }) } });
     expect(cleared.body.state.game.format.rules?.[0].square).toEqual({ amount: 30, note: "" });
+  });
+
+  it("reads a board saved with one conversion amount as the extra point's and the 2-point conversion's", async () => {
+    const { id, admin } = await openBoard({ format: ownerFormat(), prizes: {} });
+    const stored = ownerRules.map((r) => (r.moment === "score" ? { ...r, square: { amount: 30, note: "", byKind: { touchdown: 50, conversion: 10 } } } : r));
+    await t.d1.prepare(`UPDATE games SET format = ? WHERE id = ?`).bind(JSON.stringify({ ...ownerFormat(), rules: stored }), id).run();
+    const state = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    expect(state.game.format.rules?.[0].square?.byKind).toEqual({ touchdown: 50, extraPoint: 10, twoPoint: 10 });
+    await call("POST", `/games/${id}/lock`, { admin });
+    for (const [x, y] of [
+      [6, 0],
+      [7, 0],
+      [7, 6],
+      [7, 8],
+    ]) {
+      expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: x, scoreY: y } })).status).toBe(200);
+    }
+    const after = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    expect(resolveResults(after).filter((r) => r.periodKey.startsWith("s")).map((r) => [r.scoreKind, r.amount])).toEqual([
+      ["touchdown", 50],
+      ["extraPoint", 10],
+      ["touchdown", 50],
+      ["twoPoint", 10],
+    ]);
+    // The host's editor sends it back in the current kinds; an amount-only edit, any time.
+    const resaved = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: { ...ownerFormat(), rules: after.game.format.rules } } });
+    expect(resaved.status).toBe(200);
+  });
+
+  it("lets the final take the rest of the board total (with a square price), and changes it any time", async () => {
+    const rules = [
+      { moment: "score", square: { amount: 10, note: "", byKind: { touchdown: 20, fieldGoal: 10, extraPoint: 5, twoPoint: 10, safety: 10 } }, reverse: null },
+      { moment: "final", square: { amount: 300, note: "Wings", rest: true }, reverse: { amount: 40, note: "" } },
+    ];
+    const format = (over: Record<string, unknown> = {}) => ({ periods: "custom", reverse: true, boardSize: 25, freshNumbers: false, rules, unit: "$", squarePrice: 10, ...over });
+    const { id, admin } = await openBoard({ format: format(), prizes: {} });
+    const state = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    // Its amount is ignored: the rest is worked out from the board.
+    expect(state.game.format.rules?.[1].square).toEqual({ amount: null, note: "Wings", rest: true });
+
+    const bad = async (body: Record<string, unknown>) => {
+      const out = await call<{ error: string }>("POST", "/games", { body: createInput({ format: body, prizes: {} }) });
+      return [out.status, out.body.error];
+    };
+    expect(await bad(format({ squarePrice: null }))).toEqual([400, REST_PRICE_ERROR]);
+    const onReverse = [rules[0], { ...rules[1], square: { amount: 300, note: "" }, reverse: { amount: null, note: "", rest: true } }];
+    expect(await bad(format({ rules: onReverse }))).toEqual([400, REST_MOMENT_ERROR]);
+    const onScore = [{ ...rules[0], square: { amount: null, note: "", rest: true } }, rules[1]];
+    expect(await bad(format({ rules: onScore }))).toEqual([400, REST_MOMENT_ERROR]);
+
+    // The host can switch it to a fixed amount and back after scoring starts (it's an amount, not who wins).
+    await call("POST", `/games/${id}/lock`, { admin });
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "next", scoreX: 6, scoreY: 0 } })).status).toBe(200);
+    const fixed = [rules[0], { ...rules[1], square: { amount: 150, note: "Wings" } }];
+    const toFixed = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { format: format({ rules: fixed }) } });
+    expect(toFixed.status).toBe(200);
+    expect(toFixed.body.state.game.format.rules?.[1].square).toEqual({ amount: 150, note: "Wings" });
+    expect((await call("PATCH", `/games/${id}`, { admin, body: { format: format() } })).status).toBe(200);
+    // Taking the price away while the final takes the rest: refused.
+    const noPrice = await call<{ error: string }>("PATCH", `/games/${id}`, { admin, body: { format: format({ squarePrice: null }) } });
+    expect([noPrice.status, noPrice.body.error]).toEqual([400, REST_PRICE_ERROR]);
+
+    // The final: the claimed squares' total less what was won.
+    expect((await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "final", scoreX: 6, scoreY: 0 } })).status).toBe(200);
+    const done = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    const results = resolveResults(done);
+    const final = results.find((r) => r.periodKey === "final")!;
+    expect(final.amountIsRest).toBe(true);
+    const total = done.squares.length * 10;
+    const won = results.reduce((n, r) => n + (r.winnerPlayerId && !r.amountIsRest ? (r.amount ?? 0) : 0) + (r.reverseWinnerPlayerId ? (r.reverseAmount ?? 0) : 0), 0);
+    expect(final.amount).toBe(Math.max(0, total - won));
+    // Activity and the board's state carry no amount for the rest.
+    expect(done.activity.every((a) => !JSON.stringify(a.data).match(/amount|byKind|rest|"\$/i))).toBe(true);
   });
 
   it("lets the host change who wins until the first score, then only amounts and notes", async () => {
@@ -872,10 +948,10 @@ describe("rules and prizes", () => {
       .map((r) => [r.periodKey, r.scoreKind, r.scorePoints]);
     expect(kinds).toEqual([
       ["s1", "touchdown", 6],
-      ["s2", "conversion", 1],
+      ["s2", "extraPoint", 1],
       ["s3", "fieldGoal", 3],
       ["s4", "touchdown", 6],
-      ["s5", "conversion", 1],
+      ["s5", "extraPoint", 1],
     ]);
     // The game ends: the Final is recorded with the last entry, and the board goes final.
     await applyLiveUpdate(env, id, update(4, [7, 7, 0, 3], [3, 0, 0, 0], 4, true), async () => {});

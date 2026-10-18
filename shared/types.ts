@@ -3,7 +3,8 @@
 //
 // JaxSquares never handles money between players: it never collects, holds,
 // sends or tracks a payment between them. A host may show a square price and
-// prize amounts (GameFormat.squarePrice, Prize.amount, Prize.byKind) as display-only,
+// prize amounts (GameFormat.squarePrice, Prize.amount, Prize.byKind, and the
+// final's Prize.rest: "the rest of the board total") as display-only,
 // structured fields in "$" or points, plus a free-text note per prize ("Loser
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the creator
@@ -38,8 +39,11 @@ export type Moment = "score" | "q1" | "q2" | "q3" | "final";
  * The kind of score an every-score entry was (football): derived on read from
  * its change versus the entry before it (`entryPlays` in shared/squares.ts),
  * never stored, so host corrections and overturned scores stay consistent.
+ * Every entry has one. Boards saved before the extra point and the 2-point
+ * conversion were told apart may hold `byKind.conversion`: it reads as both
+ * (`kindAmount` and `upgradeFormat` in shared/formats.ts).
  */
-export type ScoreKind = "touchdown" | "fieldGoal" | "conversion" | "safety";
+export type ScoreKind = "touchdown" | "fieldGoal" | "extraPoint" | "twoPoint" | "safety";
 
 /**
  * What a winning square gets. `amount` is display-only (in the board's unit):
@@ -51,12 +55,19 @@ export interface Prize {
   note: string;
   /**
    * Every score change only (the "score" moment's square/reverse): a
-   * display-only amount per kind of score, so a conversion can show less than
-   * a touchdown. `amount` stays the default for a kind without its own value
-   * and for an entry whose kind can't be told. Absent = `amount` for every
-   * score (rules made before it behave exactly as before).
+   * display-only amount per kind of score, so an extra point can show less
+   * than a touchdown. `amount` is the flat amount when there are none, and a
+   * quiet fallback for a kind missing from older data. Absent = `amount` for
+   * every score (rules made before it behave exactly as before).
    */
   byKind?: Partial<Record<ScoreKind, number>>;
+  /**
+   * The final score's square only, and only with a square price: it shows
+   * "the rest of the board total", everything the other prizes didn't give
+   * out (`resolveResults` / `restSoFar` in shared/squares.ts). `amount` is
+   * ignored and stored null. Display-only like every amount.
+   */
+  rest?: true;
 }
 
 /** Who wins at one moment. */

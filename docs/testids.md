@@ -33,17 +33,22 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `rules-editor` | the rules & prizes editor (the create flow's Square price & prizes step and the host sheet's Rules & prizes view) |
 | `rules-choice`, `rules-choice-option` | how prizes read: the three choices, each with `data-choice=$\|pts\|fun` (Dollars, Points, Just for fun) |
 | `rules-square-price` | the square price input (after picking Dollars or Points) |
-| `square-price` | the square price card (input, quick picks, and once a price is set the board's total and the split) |
+| `square-price` | the square price card (input, quick picks, and once a price is set the board's total, the budget and the suggested amounts) |
 | `price-chip` | each one-tap square price (`data-price=<value>`, `aria-pressed` when it's the price; tapping the picked one clears it) |
-| `board-total` | "All 100 squares: $1,000", the board's total at the square price |
-| `prize-budget` | "Prizes: $800 of $1,000" with left / over / adds up and "+ every score" (`data-status=none\|under\|exact\|over`) |
-| `prize-split` | each "Split the $1,000" choice (`data-split=even\|bigger-final`, `aria-pressed` when the amounts already match it): fills the fixed moments' amounts |
+| `board-total` | "All 100 squares: $1,000" (or "62 claimed squares: $620" in the host's editor after the draw), the board's total at the square price |
+| `prize-budget` | fixed moments: "Prizes: $800 of $1,000" with left / over / adds up / "The rest, $600, to the final" (`data-status=none\|under\|exact\|over\|rest`); every score: "Score prizes come out of the $1,000 board total during the game; the final gets the rest." (`data-status=ok\|tight`) |
+| `prize-estimate` | every score: "A typical game uses about $430, leaving about $570 for the final." |
+| `prize-warning` | every score, when a typical game would use over 80% of the total: "A typical game would use about $27 of the $25 board total, leaving little for the final." |
+| `prizes-suggest` | the Suggested amounts card: what each prize gets; "Use suggested amounts" fills them in (`aria-pressed` / "In use" when the amounts already are the suggestion) |
+| `prizes-basis` | the line under it: "From the $1,000 board total. You can change any amount after." |
+| `prize-split` | "Even", the suggestion's alternative on fixed-moment boards (`data-split=even`, `aria-pressed` when the amounts already match it) |
+| `final-rest` | the final's row, with a square price: "The rest" / "Fixed amount" (segments `final-rest-on`, `final-rest-off`) |
+| `final-rest-field` | where the final's square amount would be while it takes the rest ("The rest") |
 | `every-score-options` | the every-score setups (under the create flow's Every score card, and the editor's every-score row) |
 | `every-score-reverse` | "Also pay the reverse at each quarter and the final" switch |
 | `every-score-reverse-amount` | create flow only: one reverse amount for every quarter-end and the final |
 | `every-score-by-kind` | "Amount by score type" switch |
-| `score-kind-amount` | an amount by score type (`data-kind=touchdown\|fieldGoal\|conversion\|safety`, `data-side=square\|reverse`) |
-| `score-kind-other` | "Other scores": the every-score default amount while amounts go by score type (`data-side`) |
+| `score-kind-amount` | an amount by score type (`data-kind=touchdown\|fieldGoal\|extraPoint\|twoPoint\|safety`, `data-side=square\|reverse`); kinds not set by hand follow the touchdown |
 | `rule-row` | one row per moment (`data-moment=score\|q1\|q2\|q3\|final`, `data-on=true\|false`) |
 | `rule-toggle` | a moment's on/off switch (inside its `rule-row`; disabled once scoring has started) |
 | `rule-sides` | a moment's Square / Reverse / Both control (inside its `rule-row`) |
@@ -57,10 +62,12 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `rules-open` | the "Rules & prizes" pill above the board's results; opens the rules sheet |
 | `rules-sheet`, `rules-line`, `rules-price` | the read-only rules sheet's body, one line per moment (`data-moment`), and its square price pill |
 | `rules-kinds` | the rules sheet's amounts by score type on the every-score line (`data-side`; each tile has `data-kind`) |
+| `rules-rest` | the rules sheet's final line when its square takes the rest: "The rest of the board total, everything not won during the game" |
 | `rules-edit` | host only: "Edit rules & prizes" in the rules sheet (opens the host sheet's editor) |
 | `score-moment` | on boards that award every score and quarter-ends: the host score pad's "+ Score / Q1 / Half / Q3 / Final" control |
 | `result-card` | each period card in the results strip (`data-card=<period key>`) |
-| `result-label` | a result card's label: "Score 3 · TD · $50" (its kind part has `data-kind`) |
+| `result-label` | a result card's label: "Score 3 · TD · $50" (its kind part has `data-kind`), "Final · the rest", "Final · $640" |
+| `result-rest` | a result card still to come that takes the rest: "$640 so far" |
 | `prize-totals` | the host sheet's prize totals under Winners (boards with amounts) |
 | `player-squares-value` | what a player's squares come to at the square price, on the players list while squares are picked |
 | `home-invites` | Home's "Invites" section: open boards with squares left where I have none (an invite link I only opened, or a board I joined without picking) |

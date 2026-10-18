@@ -2,12 +2,15 @@
 // turned on (the create page's Every score card and the editor's every-score
 // row): "Also pay the reverse at each quarter and the final" (one switch that
 // turns on Q1, Half, Q3 and Final for the reverse square) and "Amount by
-// score type" (a touchdown, field goal, conversion and safety can each show
-// their own amount, so a conversion can show less than a touchdown).
+// score type" (a touchdown, field goal, extra point, 2-point conversion and
+// safety can each show their own amount, so an extra point can show less than
+// a touchdown). The kinds the host hasn't set by hand follow the touchdown as
+// clean multiples (TD $100: FG, 2-PT and Safety $50, XP $25).
 //
 // Amounts are display-only: the app never collects or sends money.
 
-import { SCORE_KIND_INFO, SCORE_KINDS, ruleFor } from "../../../shared/formats";
+import { useEffect, useRef } from "react";
+import { SCORE_KIND_INFO, SCORE_KINDS, kindAmount, ruleFor } from "../../../shared/formats";
 import type { MomentRule, ScoreKind } from "../../../shared/types";
 import { Switch, cx } from "../../components/ui";
 import { AmountField } from "./AmountField";
@@ -19,9 +22,9 @@ import {
   reverseQuartersOn,
   setByKind,
   setKindAmount,
-  setPrize,
   setReverseQuarters,
   setReverseQuartersAmount,
+  setTouchdownAmount,
   type Side,
 } from "./rulesModel";
 
@@ -87,7 +90,7 @@ export function EveryScoreOptions({ rules, onRules, unit, fun = false, onNeedAmo
           <Switch
             data-testid="every-score-by-kind"
             label="Amount by score type"
-            description="A conversion can show less than a touchdown."
+            description="An extra point can show less than a touchdown."
             checked={kindsOn && !!unit}
             onChange={(on) => {
               const next = setByKind(rules, on);
@@ -104,13 +107,21 @@ export function EveryScoreOptions({ rules, onRules, unit, fun = false, onNeedAmo
 
 /**
  * One amount per kind of score, for each square the every-score rule awards
- * (a 2×2 grid for one, a row per kind with Square / Reverse columns for
- * both), then "Other scores": the rule's one amount, which a kind left empty
- * shows too (its placeholder says so), as does a change that isn't one score
- * (both teams at once).
+ * (two by two for one, a row per kind with Square / Reverse columns for
+ * both). Typing the touchdown moves the kinds not set by hand along with it
+ * (setTouchdownAmount); a kind left empty falls back to the flat amount.
  */
 function KindAmounts({ rule, rules, onRules, unit }: { rule: MomentRule; rules: MomentRule[]; onRules: (rules: MomentRule[]) => void; unit: "$" | "pts" }) {
   const sides = SIDES.filter((s) => !!rule[s]);
+  // The last touchdown each side had: the others follow it, even after the field was cleared mid-typing.
+  const touchdownOf = (side: Side) => kindAmount(rule[side], "touchdown") ?? null;
+  const lastTouchdown = useRef<Record<Side, number | null>>({ square: touchdownOf("square"), reverse: touchdownOf("reverse") });
+  useEffect(() => {
+    for (const side of SIDES) {
+      const td = touchdownOf(side);
+      if (td) lastTouchdown.current[side] = td;
+    }
+  });
   const field = (side: Side, kind: ScoreKind, caption?: string) => {
     const prize = rule[side]!;
     return (
@@ -120,39 +131,25 @@ function KindAmounts({ rule, rules, onRules, unit }: { rule: MomentRule; rules: 
         data={{ "data-kind": kind, "data-side": side }}
         label={`${SCORE_KIND_INFO[kind].label}: ${SIDE_LABEL[side].toLowerCase()} amount`}
         caption={caption}
-        value={prize.byKind?.[kind] ?? null}
-        placeholder={prize.amount ? String(prize.amount) : "Amount"}
+        value={kindAmount(prize, kind) ?? null}
         unit={unit}
         parse={parseAmount}
-        onChange={(amount) => onRules(setKindAmount(rules, side, kind, amount))}
+        onChange={(amount) =>
+          onRules(
+            kind === "touchdown"
+              ? setTouchdownAmount(rules, side, amount, unit, lastTouchdown.current[side])
+              : setKindAmount(rules, side, kind, amount),
+          )
+        }
       />
     );
   };
-  const other = (side: Side, className?: string) => (
-    <AmountField
-      key={`${side}-other`}
-      testId="score-kind-other"
-      data={{ "data-side": side }}
-      label={`Other scores: ${SIDE_LABEL[side].toLowerCase()} amount`}
-      value={rule[side]?.amount ?? null}
-      unit={unit}
-      parse={parseAmount}
-      onChange={(amount) => onRules(setPrize(rules, "score", side, { amount }))}
-      className={className}
-    />
-  );
   return (
     <div className="flex flex-col gap-2.5 animate-fade-in">
       {sides.length === 1 ? (
-        <>
-          <div className="grid grid-cols-2 gap-x-2 gap-y-2.5">{SCORE_KINDS.map((kind) => field(sides[0], kind, SCORE_KIND_INFO[kind].label))}</div>
-          <div className="flex items-center justify-between gap-3">
-            <p className="min-w-0 text-subhead font-semibold text-ink-muted">Other scores</p>
-            {other(sides[0], "w-34 shrink-0")}
-          </div>
-        </>
+        <div className="grid grid-cols-2 gap-x-2 gap-y-2.5">{SCORE_KINDS.map((kind) => field(sides[0], kind, SCORE_KIND_INFO[kind].label))}</div>
       ) : (
-        <div className="grid grid-cols-[minmax(0,5.5rem)_1fr_1fr] items-center gap-x-2 gap-y-2">
+        <div className="grid grid-cols-[minmax(0,6.5rem)_1fr_1fr] items-center gap-x-2 gap-y-2">
           <span />
           {sides.map((s) => (
             <span key={s} className="px-1 text-caption font-bold text-ink-muted">
@@ -161,17 +158,13 @@ function KindAmounts({ rule, rules, onRules, unit }: { rule: MomentRule; rules: 
           ))}
           {SCORE_KINDS.map((kind) => (
             <div key={kind} className="contents">
-              <span className="truncate text-footnote font-bold text-ink-muted">{SCORE_KIND_INFO[kind].label}</span>
+              <span className="text-footnote font-bold leading-tight text-ink-muted">{SCORE_KIND_INFO[kind].label}</span>
               {sides.map((s) => field(s, kind))}
             </div>
           ))}
-          <span className="truncate text-footnote font-bold text-ink-muted">Other scores</span>
-          {sides.map((s) => other(s))}
         </div>
       )}
-      <p className="px-1 text-caption leading-snug text-ink-subtle">
-        Conversion: the extra point or 2-point try. Other scores: a type left empty, or both teams scoring at once.
-      </p>
+      <p className="px-1 text-caption leading-snug text-ink-subtle">Amounts you haven't changed follow the touchdown.</p>
     </div>
   );
 }

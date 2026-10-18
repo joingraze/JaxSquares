@@ -1,6 +1,7 @@
 // The board's rules for everyone, read-only: what wins when, which square
 // (or the reverse square), the amounts (each kind of score's, when every
-// score change shows amounts by score type) and notes, the square price, the
+// score change shows amounts by score type; "the rest of the board total"
+// for a final that takes it) and notes, the square price, the
 // cap, and the line that the app never collects or sends money. The host also
 // gets "Edit rules & prizes", which opens the editor in the host tools.
 
@@ -113,6 +114,13 @@ function RuleRow({ line }: { line: RuleLine }) {
                 {s.amount && !s.kinds && <b className={cx("shrink-0 font-display font-extrabold tabular-nums text-ink-gold")}>{s.amount}</b>}
                 {s.note && <span className="min-w-0 truncate text-ink-muted">· {s.note}</span>}
               </span>
+              {s.rest && (
+                // The final takes whatever the other prizes didn't give out.
+                <span data-testid="rules-rest" className="rounded-lg bg-gold-400/10 px-2.5 py-1.5 text-footnote leading-snug ring-1 ring-inset ring-gold-line/30">
+                  <b className="font-display font-extrabold text-ink-gold">The rest of the board total</b>
+                  <span className="text-ink-muted">, everything not won during the game</span>
+                </span>
+              )}
               {s.kinds && (
                 // Amounts by score type: each kind of score with what it shows.
                 <span data-testid="rules-kinds" data-side={s.side} className="grid grid-cols-2 gap-1.5">
@@ -120,9 +128,9 @@ function RuleRow({ line }: { line: RuleLine }) {
                     <span
                       key={k.kind}
                       data-kind={k.kind}
-                      className="flex min-w-0 items-baseline justify-between gap-2 rounded-lg bg-surface-4/70 px-2.5 py-1.5 ring-1 ring-inset ring-line"
+                      className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-surface-4/70 px-2.5 py-1.5 ring-1 ring-inset ring-line"
                     >
-                      <span className="truncate text-footnote font-semibold text-ink-muted">{k.label}</span>
+                      <span className="min-w-0 text-footnote font-semibold leading-tight text-ink-muted">{k.label}</span>
                       <b className="shrink-0 font-display text-subhead font-extrabold tabular-nums text-ink-gold">{k.amount}</b>
                     </span>
                   ))}

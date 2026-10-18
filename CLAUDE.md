@@ -61,10 +61,19 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   any time (PATCH `format`); who wins locks at the first score, fresh numbers
   at the draw, board size never (409).
 - Every score change may show an amount per kind of score (`Prize.byKind`,
-  score moment only; `amount` stays the default). Kinds (TD, FG, conversion,
-  safety) are derived on read from the ordered entries (`entryPlays` in
-  `shared/squares.ts`), never stored; read amounts through `PeriodResult` /
-  `prizeAmount`, not `rule.square.amount`.
+  score moment only; `amount` is the flat amount with score types off and a
+  quiet fallback). Five kinds: `touchdown`, `fieldGoal`, `extraPoint`,
+  `twoPoint`, `safety`; every entry gets one, derived on read from the
+  ordered entries (`entryPlays` in `shared/squares.ts`), never stored. A
+  stored legacy `byKind.conversion` reads as both `extraPoint` and `twoPoint`
+  (`kindAmount` / `upgradeFormat`); new input with it is a 400.
+- The final's square can take "the rest of the board total" (`Prize.rest`,
+  final square only, needs a square price): board total (price × all squares
+  before the draw, × claimed squares after) minus every other prize a claimed
+  square won, never below 0. Read it through `PeriodResult.amount`
+  (`amountIsRest`) or `restSoFar(state)`, never from the rule. Suggested
+  amounts (`suggestPrizes`) fill the create flow until the host types one.
+  Read amounts through `PeriodResult` / `prizeAmount`, not `rule.square.amount`.
 - The only payment is the creator paying to open a board (`docs/payments.md`).
 
 ## Conventions

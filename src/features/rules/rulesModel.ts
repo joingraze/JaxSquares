@@ -8,6 +8,7 @@
 import {
   AMOUNT_MAX,
   FIXED_MOMENTS,
+  KIND_UNITS,
   MOMENT_INFO,
   MOMENTS,
   SCORE_KIND_INFO,
@@ -20,23 +21,29 @@ import {
   formatRange,
   hasAmounts,
   hasByKind,
+  hasRest,
+  hasScoreMoment,
   freshNumbersAllowed,
+  kindAmount,
   kindAmounts,
+  kindUnit,
   matchingPreset,
-  prizeHasAmount,
+  niceAmount,
   prizeRange,
+  restAllowed,
   ruleFor,
   rulesOf,
   rulesShape,
   sortRules,
-  splitPrizes,
-  splitStyles,
+  splitEvenly,
+  suggestPrizes,
   tidyPrize,
+  typicalGameTotal,
   unitOf,
+  upgradeFormat,
   validatePrizeNote,
   withRules,
   type FixedPreset,
-  type SplitStyle,
 } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
 import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
@@ -66,10 +73,14 @@ export function choiceOf(format: GameFormat): PrizeChoice {
   return hasAmounts(format) ? unitOf(format) : null;
 }
 
-/** The editor's starting point for a format (an older board's notes folded into its rules). */
+/**
+ * The editor's starting point for a format (an older board's notes folded
+ * into its rules, a legacy "conversion" amount read as the extra point's and
+ * the 2-point conversion's).
+ */
 export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string>): RulesDraft {
   return {
-    rules: sortRules(rulesOf(format, legacyPrizes)).map((r) => ({ ...r })),
+    rules: sortRules(rulesOf(upgradeFormat(format), legacyPrizes)).map((r) => ({ ...r })),
     choice: choiceOf(format),
     squarePrice: format.squarePrice ?? null,
     freshNumbers: format.freshNumbers,
@@ -79,7 +90,8 @@ export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string
 /**
  * The format a draft makes (canonical: periods/reverse derived, fresh numbers
  * dropped where they can't apply, amounts cleared when just for fun or not
- * chosen, amounts by score type kept only when some are typed).
+ * chosen, amounts by score type kept only when some are typed, the final's
+ * "rest" only with a square price).
  */
 export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
   const amounts = draft.choice === "$" || draft.choice === "pts";
@@ -111,16 +123,21 @@ export function allReverse(rules: readonly MomentRule[]): boolean {
  * A preset's moments, keeping what was typed for moments that remain: each
  * gets the square (its amount and note kept) and, with `reverse`, the reverse
  * square (kept too). `reverse` defaults to whether every moment has one now.
+ * Every score comes with the final score's square, which takes the rest of
+ * the board total once there's a square price (see suggestPrizes), and
+ * starts with amounts by score type on.
  */
 export function selectPreset(rules: readonly MomentRule[], preset: FixedPreset, reverse = allReverse(rules)): MomentRule[] {
   const moments: Moment[] =
-    preset === "quarters" ? ["q1", "q2", "q3", "final"] : preset === "halves" ? ["q2", "final"] : preset === "final" ? ["final"] : ["score"];
+    preset === "quarters" ? ["q1", "q2", "q3", "final"] : preset === "halves" ? ["q2", "final"] : preset === "final" ? ["final"] : ["score", "final"];
+  // A new every-score rule starts with amounts by score type on.
+  const fresh = (moment: Moment): Prize => (moment === "score" ? { ...emptyPrize(), byKind: {} } : emptyPrize());
   return moments.map((moment) => {
     const cur = rules.find((r) => r.moment === moment);
     return {
       moment,
-      square: cur?.square ?? emptyPrize(),
-      reverse: reverse ? (cur?.reverse ?? emptyPrize()) : null,
+      square: cur?.square ?? fresh(moment),
+      reverse: reverse ? (cur?.reverse ?? fresh(moment)) : null,
     };
   });
 }
@@ -183,40 +200,53 @@ export function setPrize(rules: readonly MomentRule[], moment: Moment, side: Sid
   return rules.map((r) => (r.moment === moment && r[side] ? { ...r, [side]: { ...r[side]!, ...patch } } : r));
 }
 
+/** The final's square takes the rest: it isn't a fixed amount to copy to or from (its reverse square still is). */
+const restFinal = (r: MomentRule) => r.moment === "final" && !!r.square?.rest;
+const withoutRestSquare = (r: MomentRule): MomentRule => (restFinal(r) ? { ...r, square: null } : r);
+
 /**
  * The other quarter-ends, made like this one: which squares win and their
  * amounts (notes stay). With `shapeLocked` (scoring has started) only the
- * amounts of squares that already win there are copied.
+ * amounts of squares that already win there are copied. A final taking the
+ * rest keeps it (only its reverse square follows), and copying from one
+ * copies its reverse amount only.
  */
 export function copyToFixed(rules: readonly MomentRule[], moment: Moment, shapeLocked = false): MomentRule[] {
-  const src = rules.find((r) => r.moment === moment);
-  if (!src || moment === "score") return [...rules];
+  const found = rules.find((r) => r.moment === moment);
+  if (!found || moment === "score") return [...rules];
+  const locked = shapeLocked || restFinal(found);
+  const src = withoutRestSquare(found);
   const amount = (from: Prize | null, to: Prize | null): Prize | null => (from ? { amount: from.amount, note: to?.note ?? "" } : null);
   return rules.map((r) => {
     if (r.moment === "score" || r.moment === moment) return r;
-    if (shapeLocked) {
-      return {
-        ...r,
-        square: r.square && src.square ? { ...r.square, amount: src.square.amount } : r.square,
-        reverse: r.reverse && src.reverse ? { ...r.reverse, amount: src.reverse.amount } : r.reverse,
-      };
-    }
-    return { ...r, square: amount(src.square, r.square), reverse: amount(src.reverse, r.reverse) };
+    const next: MomentRule = locked
+      ? {
+          ...r,
+          square: r.square && src.square ? { ...r.square, amount: src.square.amount } : r.square,
+          reverse: r.reverse && src.reverse ? { ...r.reverse, amount: src.reverse.amount } : r.reverse,
+        }
+      : { ...r, square: amount(src.square, r.square), reverse: amount(src.reverse, r.reverse) };
+    return restFinal(r) ? { ...next, square: r.square } : next;
   });
 }
 
 /**
  * True when "same for the other quarter-ends" would help: another one is set
  * up differently (which squares win; not once scoring has started), or is
- * missing an amount this one has. Amounts set on purpose aren't second-guessed.
+ * missing an amount this one has. Amounts set on purpose aren't second-guessed,
+ * and a final taking the rest only counts for its reverse square.
  */
 export function canCopyToFixed(rules: readonly MomentRule[], moment: Moment, shapeLocked = false): boolean {
-  const src = rules.find((r) => r.moment === moment);
-  if (!src || moment === "score") return false;
+  const found = rules.find((r) => r.moment === moment);
+  if (!found || moment === "score") return false;
+  const locked = shapeLocked || restFinal(found);
+  const src = withoutRestSquare(found);
   return rules.some((r) => {
     if (r.moment === "score" || r.moment === moment) return false;
-    if (!shapeLocked && sidesOf(r) !== sidesOf(src)) return true;
-    return SIDES.some((side) => !!src[side]?.amount && !!r[side] && !r[side]!.amount);
+    const to = withoutRestSquare(r);
+    if (!to.square && !to.reverse) return false;
+    if (!locked && (!!to.reverse !== !!src.reverse || (!restFinal(r) && !!to.square !== !!src.square))) return true;
+    return SIDES.some((side) => !!src[side]?.amount && !!to[side] && !to[side]!.amount);
   });
 }
 
@@ -241,77 +271,262 @@ export function boardTotalLabel(boardSize: BoardSize): string {
 export interface PrizeBudget {
   /** The board's total at its square price. */
   total: number;
-  /** What the fixed moments give out (each square's and reverse square's amount once). */
+  /** What the fixed moments give out (each square's and reverse square's amount once; the rest isn't one). */
   fixed: number;
   /** total - fixed: left to give when above 0, over when below. */
   left: number;
-  /** none: no fixed prize has an amount yet. */
-  status: "none" | "under" | "exact" | "over";
-  /** Every score change shows amounts too: on top, since its total depends on the game. */
+  /**
+   * none: no fixed prize has an amount yet; rest: the final takes the rest
+   * (what's left, when there is some); over: the fixed prizes come to more
+   * than the total.
+   */
+  status: "none" | "under" | "exact" | "over" | "rest";
+  /** Every score change wins: its prizes come out of the total during the game. */
   everyScore: boolean;
+  /** The final's square takes the rest of the board total. */
+  rest: boolean;
+  /** Every-score boards: what a typical game would give out (typicalGameTotal), else null. */
+  typical: number | null;
+  /** A typical game would use most of the total (over 80%), leaving little for the final. */
+  tight: boolean;
 }
 
-/** How the fixed prizes compare with the board's total ("Prizes: $800 of $1,000"). */
+/** Above this share of the board total, a typical game leaves little for the final. */
+export const TIGHT_SHARE = 0.8;
+
+/** How the prizes compare with the board's total ("Prizes: $800 of $1,000", or every score's typical game). */
 export function prizeBudget(rules: readonly MomentRule[], total: number): PrizeBudget {
   const fixed = fixedPrizeTotal(rules);
   const left = Math.round((total - fixed) * 100) / 100;
-  const score = ruleFor(rules, "score");
-  const everyScore = !!score && (prizeHasAmount(score.square) || prizeHasAmount(score.reverse));
-  const status = fixed === 0 ? "none" : left > 0 ? "under" : left < 0 ? "over" : "exact";
-  return { total, fixed, left, status, everyScore };
+  const everyScore = hasScoreMoment(rules);
+  const rest = hasRest(rules);
+  const typical = everyScore ? typicalGameTotal(rules) : null;
+  const status = left < 0 ? "over" : rest ? "rest" : fixed === 0 ? "none" : left > 0 ? "under" : "exact";
+  return { total, fixed, left, status, everyScore, rest, typical, tight: typical !== null && typical > total * TIGHT_SHARE };
 }
 
-/** The budget in words: "$800 of $1,000" and "$200 left" / "$200 over" / "Adds up" (null with no prizes yet). */
+/** The budget in words: "$800 of $1,000" and "$200 left" / "$200 over" / "Adds up" / "$400 to the final" (null with no prizes yet). */
 export function budgetText(b: PrizeBudget, unit: AmountUnit): { main: string; detail: string | null } {
-  if (b.status === "none") return { main: b.everyScore ? "Every score only" : "None yet", detail: null };
+  if (b.status === "none") return { main: "None yet", detail: null };
   const main = `${formatAmount(b.fixed, unit)} of ${formatAmount(b.total, unit)}`;
   if (b.status === "exact") return { main, detail: "Adds up" };
+  if (b.status === "rest") return { main, detail: b.left > 0 ? `The rest, ${formatAmount(b.left, unit)}, to the final` : "Nothing left for the final" };
   return { main, detail: `${formatAmount(Math.abs(b.left), unit)} ${b.left > 0 ? "left" : "over"}` };
 }
 
+/**
+ * Every-score boards, in plain words: where the score prizes come from, a
+ * typical game's estimate, and a warning when that would use most of the
+ * total. null on fixed-moment boards (budgetText says it there).
+ */
+export function everyScoreBudgetText(b: PrizeBudget, unit: AmountUnit): { lead: string; estimate: string | null; warning: string | null } | null {
+  if (!b.everyScore) return null;
+  const total = formatAmount(b.total, unit);
+  const lead = b.rest
+    ? `Score prizes come out of the ${total} board total during the game; the final gets the rest.`
+    : `Score prizes come out of the ${total} board total during the game.`;
+  if (!b.typical) return { lead, estimate: null, warning: null };
+  const about = formatAmount(Math.round(b.typical), unit);
+  if (b.tight) {
+    const warning = b.rest
+      ? `A typical game would use about ${about} of the ${total} board total, leaving little for the final.`
+      : `A typical game would use about ${about} of the ${total} board total.`;
+    return { lead, estimate: null, warning };
+  }
+  const left = b.rest ? `, leaving about ${formatAmount(Math.round(b.total - b.typical), unit)} for the final` : "";
+  return { lead, estimate: `A typical game uses about ${about}${left}.`, warning: null };
+}
+
+/** One prize's amounts as they read on a suggestion card: { label: "Q1", amount: "$170 + $40" }. */
+export interface PrizePart {
+  label: string;
+  amount: string;
+  /** An amount by score type (a suggestion card lays these out two by two). */
+  kind?: true;
+}
+
+/**
+ * The amounts in a rules list, as a key: who gets what (squares, reverse
+ * squares, amounts by score type, the rest), notes left out. A flat amount
+ * hidden behind amounts by score type doesn't count.
+ */
+export function amountsKey(rules: readonly MomentRule[]): string {
+  const prize = (p: Prize | null) => {
+    if (!p) return null;
+    if (p.rest) return "rest";
+    if (p.byKind !== undefined) return SCORE_KINDS.map((k) => kindAmount(p, k) ?? 0).join("/");
+    return p.amount ?? 0;
+  };
+  return JSON.stringify(sortRules(rules).map((r) => [r.moment, prize(r.square), prize(r.reverse)]));
+}
+
+/** What each prize gets in these rules, for a suggestion card. */
+export function prizeParts(rules: readonly MomentRule[], unit: AmountUnit): PrizePart[] {
+  const sorted = sortRules(rules);
+  const money = (n: number | null | undefined) => (n ? formatAmount(n, unit) : "–");
+  const parts: PrizePart[] = [];
+  const score = sorted.find((r) => r.moment === "score");
+  if (score?.square) {
+    if (score.square.byKind !== undefined) {
+      for (const k of SCORE_KINDS) parts.push({ label: SCORE_KIND_INFO[k].short, amount: money(kindAmount(score.square, k) ?? score.square.amount), kind: true });
+    } else parts.push({ label: "Every score", amount: money(score.square.amount) });
+    if (score.reverse) parts.push({ label: "Reverse", amount: amountsKey([{ ...score, reverse: score.square }]) === amountsKey([score]) ? "Same" : money(score.reverse.amount) });
+  }
+  const fixed = sorted.filter((r) => r.moment !== "score");
+  const revs = fixed.map((r) => r.reverse?.amount ?? null);
+  // Every quarter-end's reverse the same: one line for all four (beside every score, where they're extras).
+  const reverseEach = !!score && fixed.length === 4 && revs.every((a) => a !== null && a === revs[0]);
+  if (reverseEach) parts.push({ label: "Reverse each quarter", amount: money(revs[0]) });
+  for (const r of fixed) {
+    const label = MOMENT_INFO[r.moment].short;
+    const sq = r.square ? (r.square.rest ? "The rest" : money(r.square.amount)) : null;
+    const rev = r.reverse && !reverseEach ? money(r.reverse.amount) : null;
+    if (sq && rev) parts.push({ label, amount: `${sq} + ${rev}` });
+    else if (sq) parts.push({ label, amount: sq });
+    else if (rev) parts.push({ label: `${label} reverse`, amount: rev });
+  }
+  return parts;
+}
+
+export interface SuggestedPrizes {
+  /** The rules with the suggested amounts. */
+  rules: MomentRule[];
+  /** The amounts already are these. */
+  selected: boolean;
+  /** "From the $1,000 board total". */
+  basis: string;
+  parts: PrizePart[];
+}
+
+/**
+ * The suggested amounts for these rules at this square price, over `squares`
+ * squares (all of them in the create flow and before the draw, the claimed
+ * ones after; see suggestPrizes), or null without a price.
+ */
+export function suggestedPrizes(rules: readonly MomentRule[], price: number | null | undefined, squares: number, unit: AmountUnit): SuggestedPrizes | null {
+  if (!price || squares <= 0) return null;
+  const next = suggestPrizes(rules, price, squares, unit);
+  const total = Math.round(price * squares * 100) / 100;
+  return { rules: next, selected: amountsKey(next) === amountsKey(rules), basis: `From the ${formatAmount(total, unit)} board total`, parts: prizeParts(next, unit) };
+}
+
 export interface SplitOption {
-  style: SplitStyle;
-  /** "Even", "Bigger final", or "All of it" with one fixed moment. */
+  /** "Even". */
   label: string;
   /** Each moment's share: "Q1 $250 · Half $250 · Q3 $250 · Final $250". */
   preview: string;
   /** The same, one row per moment: { label: "Q1", amount: "$250" }. */
-  parts: { label: string; amount: string }[];
+  parts: PrizePart[];
   /** The rules with those amounts filled in. */
   rules: MomentRule[];
   /** The prizes already read this way. */
   selected: boolean;
 }
 
-const fixedAmounts = (rules: readonly MomentRule[]) =>
-  sortRules(rules)
-    .filter((r) => r.moment !== "score")
-    .map((r) => `${r.square?.amount ?? 0}/${r.reverse?.amount ?? 0}`)
-    .join(",");
+/**
+ * "Even", the suggestion's alternative on a board where only fixed moments
+ * win: the total shared evenly (see splitEvenly). null with every score
+ * change, without a total, or when it's the same as the suggestion.
+ */
+export function evenSplit(rules: readonly MomentRule[], total: number | null, unit: AmountUnit, suggested: MomentRule[] | null): SplitOption | null {
+  if (!total || total < 1 || hasScoreMoment(rules) || fixedMoments(rules).length === 0) return null;
+  const next = splitEvenly(rules, total);
+  if (suggested && amountsKey(next) === amountsKey(suggested)) return null;
+  const parts = sortRules(next).map((r) => ({ label: MOMENT_INFO[r.moment].short, amount: formatAmount((r.square?.amount ?? 0) + (r.reverse?.amount ?? 0), unit) }));
+  return {
+    label: "Even",
+    preview: parts.map((p) => `${p.label} ${p.amount}`).join(" · "),
+    parts,
+    rules: next,
+    selected: fixedPrizeTotal(rules) > 0 && amountsKey(next) === amountsKey(rules),
+  };
+}
+
+/** True when some fixed moment awards both squares (the even split shares it evenly between them). */
+export function splitSharesBoth(rules: readonly MomentRule[]): boolean {
+  return rules.some((r) => r.moment !== "score" && !!r.square && !!r.reverse);
+}
+
+// ---- The final: a fixed amount or the rest of the board total ----
+
+/** The final's square shows the rest of the board total. */
+export function finalRestOn(rules: readonly MomentRule[]): boolean {
+  return hasRest(rules);
+}
 
 /**
- * "Split the $1,000": the ways to fill the fixed moments' amounts from the
- * board's total (see splitPrizes), each with what every moment gets. Empty
- * without a total or a fixed moment.
+ * About what the rest would come to: the total less the fixed prizes and,
+ * with every score, a typical game's score prizes; "nice", rounded down. null
+ * when nothing would be left.
  */
-export function splitOptions(rules: readonly MomentRule[], total: number | null, unit: AmountUnit): SplitOption[] {
-  if (!total || total < 1) return [];
-  const styles = splitStyles(rules);
-  const current = fixedAmounts(rules);
-  return styles.map((style) => {
-    const next = splitPrizes(rules, total, style);
-    const parts = sortRules(next)
-      .filter((r) => r.moment !== "score")
-      .map((r) => ({ label: MOMENT_INFO[r.moment].short, amount: formatAmount((r.square?.amount ?? 0) + (r.reverse?.amount ?? 0), unit) }));
-    const preview = parts.map((p) => `${p.label} ${p.amount}`).join(" · ");
-    const label = styles.length === 1 && fixedMoments(rules).length === 1 ? "All of it" : style === "even" ? "Even" : "Bigger final";
-    return { style, label, preview, parts, rules: next, selected: fixedPrizeTotal(rules) > 0 && fixedAmounts(next) === current };
+export function restEstimate(rules: readonly MomentRule[], total: number): number | null {
+  const left = total - (typicalGameTotal(rules) ?? fixedPrizeTotal(rules));
+  return left >= 1 ? niceAmount(left, true) : null;
+}
+
+/**
+ * The final's square between "the rest of the board total" (`on`) and a
+ * fixed amount: switching to a fixed amount starts it at about what the rest
+ * would be (restEstimate, with the board's total), its note kept.
+ */
+export function setFinalRest(rules: readonly MomentRule[], on: boolean, total: number | null): MomentRule[] {
+  if (!restAllowed(rules)) return [...rules];
+  return rules.map((r) => {
+    if (r.moment !== "final" || !r.square) return r;
+    if (on) return { ...r, square: { amount: null, note: r.square.note, rest: true } };
+    if (!r.square.rest) return r;
+    const others = rules.map((x) => (x.moment === "final" ? { ...x, square: null } : x));
+    return { ...r, square: { amount: total ? restEstimate(others, total) : null, note: r.square.note } };
   });
 }
 
-/** True when some fixed moment awards both squares (the split shares it evenly between them). */
-export function splitSharesBoth(rules: readonly MomentRule[]): boolean {
-  return rules.some((r) => r.moment !== "score" && !!r.square && !!r.reverse);
+// ---- Auto-filling the suggested amounts (the create flow) ----
+
+/** What the create flow's prizes look like: the format (rules, price, size) and how prizes read. */
+export interface PrizeSetup {
+  format: GameFormat;
+  choice: PrizeChoice;
+}
+
+/** What the suggestion depends on: the square price, board size, who wins, amounts by score type on or off, the unit. */
+export function setupKey({ format, choice }: PrizeSetup): string {
+  const rules = rulesOf(format);
+  return JSON.stringify([format.squarePrice ?? null, format.boardSize, rulesShape(rules), byKindOn(rules), choice]);
+}
+
+/** The setup's rules with the suggested amounts (all the board's squares), or as they are without a price or amounts. */
+export function withSuggested({ format, choice }: PrizeSetup): GameFormat {
+  if (choice !== "$" && choice !== "pts") return format;
+  return withRules({ ...format, rules: suggestPrizes(rulesOf(format), format.squarePrice, totalSquares(format.boardSize), choice) });
+}
+
+/** Every amount taken off (notes kept, amounts by score type still on but empty). */
+export function clearAmounts(rules: readonly MomentRule[]): MomentRule[] {
+  const clear = (p: Prize | null): Prize | null => (p ? (p.byKind !== undefined ? { amount: null, note: p.note, byKind: {} } : { amount: null, note: p.note }) : null);
+  return rules.map((r) => ({ ...r, square: clear(r.square), reverse: clear(r.reverse) }));
+}
+
+/**
+ * The create flow's auto-fill: while `auto` (the host hasn't typed an
+ * amount), a change to the setup (setupKey: the square price, the game type,
+ * reverse, the every-score options, the board size or the unit) fills the
+ * suggested amounts in (withSuggested); with the price taken away, the
+ * suggested amounts go too. A change to the amounts alone is the host's own:
+ * auto stops, and nothing changes by itself after that, until the amounts
+ * match the suggestion again ("Use suggested amounts").
+ */
+export function autoFill(prev: PrizeSetup, next: PrizeSetup, auto: boolean): { format: GameFormat; auto: boolean } {
+  const amounts = next.choice === "$" || next.choice === "pts";
+  const suggested = amounts && next.format.squarePrice ? withSuggested(next) : null;
+  const matches = !!suggested && amountsKey(rulesOf(suggested)) === amountsKey(rulesOf(next.format));
+  if (!auto) return { format: next.format, auto: matches };
+  if (setupKey(prev) !== setupKey(next)) {
+    if (suggested) return { format: suggested, auto: true };
+    if (amounts && !next.format.squarePrice) return { format: withRules({ ...next.format, rules: clearAmounts(rulesOf(next.format)) }), auto: true };
+    return { format: next.format, auto: true };
+  }
+  if (amountsKey(rulesOf(prev.format)) !== amountsKey(rulesOf(next.format))) return { format: next.format, auto: matches };
+  return { format: next.format, auto: true };
 }
 
 // ---- Every score change: reverse at the quarters, amounts by score type ----
@@ -357,22 +572,35 @@ export function setReverseQuartersAmount(rules: readonly MomentRule[], amount: n
 
 /**
  * Every score change plus the reverse square at each quarter-end and the
- * final: still the Every score card (a variant of it), not "Custom".
+ * final (the final's square may win too: it takes the rest): still the
+ * Every score card (a variant of it), not "Custom".
  */
 export function isEveryScoreWithReverseQuarters(rules: readonly MomentRule[]): boolean {
   const score = ruleFor(rules, "score");
   if (!score?.square) return false;
   const fixed = rules.filter((r) => r.moment !== "score");
-  return fixed.length === FIXED_MOMENTS.length && fixed.every((r) => !r.square && !!r.reverse);
+  return fixed.length === FIXED_MOMENTS.length && fixed.every((r) => !!r.reverse && (r.moment === "final" || !r.square));
+}
+
+/**
+ * The Every score card's setups: every score change alone (older boards),
+ * with the final score's square (what the card makes: the final takes the
+ * rest), or with the reverse at each quarter-end and the final too.
+ */
+export function isEveryScoreSetup(rules: readonly MomentRule[]): boolean {
+  if (!ruleFor(rules, "score")?.square) return false;
+  const fixed = rules.filter((r) => r.moment !== "score");
+  if (fixed.length === 0) return true;
+  if (fixed.length === 1) return fixed[0].moment === "final" && !!fixed[0].square;
+  return isEveryScoreWithReverseQuarters(rules);
 }
 
 /**
  * The preset card (or chip) that reads as picked: the rules' exact preset,
- * or Every score for every score change plus the reverse square at each
- * quarter-end (its built-in setup). null: "Custom".
+ * or Every score for its setups (isEveryScoreSetup). null: "Custom".
  */
 export function presetChoice(rules: readonly MomentRule[]): FixedPreset | null {
-  return presetOf(rules) ?? (isEveryScoreWithReverseQuarters(rules) ? "every-score" : null);
+  return presetOf(rules) ?? (isEveryScoreSetup(rules) ? "every-score" : null);
 }
 
 /** "Amount by score type" is on: a side of the every-score rule carries amounts by kind (even before any is typed). */
@@ -393,17 +621,45 @@ export function setByKind(rules: readonly MomentRule[], on: boolean): MomentRule
   return rules.map((r) => (r.moment === "score" ? { ...r, square: toggle(r.square), reverse: toggle(r.reverse) } : r));
 }
 
-/** Sets one kind's amount on a side of the every-score rule (null = it uses the side's one amount). */
+/** Sets one kind's amount on a side of the every-score rule (null = empty). */
 export function setKindAmount(rules: readonly MomentRule[], side: Side, kind: ScoreKind, amount: number | null): MomentRule[] {
   return rules.map((r) => {
     const p = r[side];
     if (r.moment !== "score" || !p) return r;
     const next: Partial<Record<ScoreKind, number>> = {};
     for (const k of SCORE_KINDS) {
-      const v = k === kind ? amount : p.byKind?.[k];
+      const v = k === kind ? amount : kindAmount(p, k);
       if (v) next[k] = v;
     }
     return { ...r, [side]: { ...p, byKind: next } };
+  });
+}
+
+/**
+ * Sets the touchdown's amount on a side of the every-score rule, and the
+ * kinds the host hasn't set by hand follow it as clean multiples of one base
+ * unit (a quarter of the touchdown, rounded like kindUnit: TD $100 makes a
+ * field goal, 2-point conversion and safety $50, an extra point $25). A kind
+ * follows while it's empty or still the multiple of `from`, the touchdown it
+ * followed before (the last one the field had); one set to anything else
+ * stays as it is.
+ */
+export function setTouchdownAmount(rules: readonly MomentRule[], side: Side, amount: number | null, unit: AmountUnit, from: number | null): MomentRule[] {
+  const set = setKindAmount(rules, side, "touchdown", amount);
+  if (!amount) return set;
+  const before = from ? kindUnit(from / 4, unit) : null;
+  const base = kindUnit(amount / 4, unit);
+  const at = (b: number, k: ScoreKind) => Math.round(KIND_UNITS[k] * b * 100) / 100;
+  return set.map((r) => {
+    const p = r[side];
+    if (r.moment !== "score" || !p) return r;
+    const next: Partial<Record<ScoreKind, number>> = { ...p.byKind };
+    for (const k of SCORE_KINDS) {
+      if (k === "touchdown") continue;
+      const cur = kindAmount(p, k);
+      if (!cur || (before !== null && cur === at(before, k))) next[k] = at(base, k);
+    }
+    return { ...r, [side]: { ...p, byKind: Object.fromEntries(SCORE_KINDS.filter((k) => next[k]).map((k) => [k, next[k]])) } };
   });
 }
 
@@ -501,12 +757,14 @@ export function rulesPatch(game: Pick<Game, "format" | "prizes">, draft: RulesDr
 
 export interface SideLine {
   side: Side;
-  /** "$200", "50 pts", or null when no amount. */
+  /** "$200", "50 pts", or null when no amount (and for the rest). */
   amount: string | null;
+  /** The final's square takes the rest of the board total. */
+  rest: boolean;
   note: string | null;
   /**
    * Every score change with amounts by score type: each kind with what it
-   * shows ("Touchdown $50", "Conversion $10"), kinds with no amount left out.
+   * shows ("Touchdown $50", "Extra point $10"), kinds with no amount left out.
    * null otherwise.
    */
   kinds: { kind: ScoreKind; label: string; short: string; amount: string }[] | null;
@@ -534,7 +792,7 @@ const WHEN: Record<Moment, string> = {
 /** One line per moment that wins, in game order. */
 export function ruleLines(format: GameFormat, legacyPrizes?: Record<string, string>): RuleLine[] {
   const unit = unitOf(format);
-  return sortRules(rulesOf(format, legacyPrizes)).map((r) => ({
+  return sortRules(rulesOf(upgradeFormat(format), legacyPrizes)).map((r) => ({
     moment: r.moment,
     label: MOMENT_INFO[r.moment].label,
     short: MOMENT_INFO[r.moment].short,
@@ -546,7 +804,7 @@ export function ruleLines(format: GameFormat, legacyPrizes?: Record<string, stri
         r.moment === "score" && hasByKind(p)
           ? kindAmounts(p).map((k) => ({ kind: k.kind, label: SCORE_KIND_INFO[k.kind].label, short: SCORE_KIND_INFO[k.kind].short, amount: formatAmount(k.amount, unit) }))
           : null;
-      return [{ side, amount: p.amount ? formatAmount(p.amount, unit) : null, note: p.note || null, kinds }];
+      return [{ side, amount: !p.rest && p.amount ? formatAmount(p.amount, unit) : null, rest: !!p.rest, note: p.note || null, kinds }];
     }),
   }));
 }
@@ -556,14 +814,17 @@ export function priceLine(format: Pick<GameFormat, "squarePrice" | "unit">): str
   return format.squarePrice ? `${formatAmount(format.squarePrice, unitOf(format))} a square` : null;
 }
 
-/** "$50", "$10–$50" (by score type), "$200 reverse", "$100 + $50 reverse", or null when the moment has no amount. */
-function momentAmounts(r: MomentRule, unit: AmountUnit): string | null {
-  const range = (p: Prize | null) => {
-    const span = prizeRange(p);
-    return span ? formatRange(span, unit) : null;
-  };
-  const sq = range(r.square);
-  const rev = range(r.reverse);
+/** A prize's amounts in a few characters: "$50", "$10–$50" (by score type), "the rest"; null without any. */
+function prizeText(p: Prize | null, unit: AmountUnit): string | null {
+  if (p?.rest) return "the rest";
+  const span = prizeRange(p);
+  return span ? formatRange(span, unit) : null;
+}
+
+/** "$50", "$10–$50" (by score type), "$200 reverse", "$100 + $50 reverse", "the rest + $40 reverse", or null when the moment has no amount. */
+function momentAmounts(r: MomentRule, unit: AmountUnit, withReverse = true): string | null {
+  const sq = prizeText(r.square, unit);
+  const rev = withReverse ? prizeText(r.reverse, unit) : null;
   if (sq && rev) return `${sq} + ${rev} reverse`;
   return sq ?? (rev ? `${rev} reverse` : null);
 }
@@ -571,25 +832,36 @@ function momentAmounts(r: MomentRule, unit: AmountUnit): string | null {
 /**
  * What players see before they pick squares, in one compact line: the square
  * price, then each moment's amounts ("$10 a square · Q1 $100 · Half $200 ·
- * Q3 $100 · Final $400", "$50 every score", "$10–$50 every score" by score
- * type, "$200 reverse each quarter" when all four match). `fun` for a
- * just-for-fun board. null when the host set nothing (players see nothing).
- * In-app only: never in a push, a link preview or share text.
+ * Q3 $100 · Final $400", "$50 every score", "$5–$20 every score" by score
+ * type, "$200 each quarter" when all four match, "$40 reverse each quarter"
+ * when their reverse squares do, "Final: the rest" when the final takes the
+ * rest of the board total). `fun` for a just-for-fun board. null when the
+ * host set nothing (players see nothing). In-app only: never in a push, a
+ * link preview or share text.
  */
 export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[] } | null {
   if (format.justForFun) return { fun: true, parts: [] };
   const unit = unitOf(format);
-  const rules = sortRules(rulesOf(format));
+  const rules = sortRules(rulesOf(upgradeFormat(format)));
   const parts: string[] = [];
   const price = priceLine(format);
   if (price) parts.push(price);
   const score = rules.find((r) => r.moment === "score");
   const scoreAmounts = score ? momentAmounts(score, unit) : null;
   if (scoreAmounts) parts.push(`${scoreAmounts} every score`);
-  const fixed = rules.filter((r) => r.moment !== "score").map((r) => ({ r, a: momentAmounts(r, unit) }));
-  const quarters = fixed.length === 4 && fixed.every((f) => f.a && f.a === fixed[0].a);
-  if (quarters) parts.push(`${fixed[0].a} each quarter`);
-  else for (const f of fixed) if (f.a) parts.push(`${MOMENT_INFO[f.r.moment].short} ${f.a}`);
+  const fixed = rules.filter((r) => r.moment !== "score");
+  const all = fixed.map((r) => momentAmounts(r, unit));
+  if (fixed.length === 4 && all.every((a) => a && a === all[0]) && !hasRest(rules)) {
+    parts.push(`${all[0]} each quarter`);
+    return { fun: false, parts };
+  }
+  const revs = fixed.map((r) => prizeText(r.reverse, unit));
+  const reverseEach = fixed.length === 4 && revs.every((a) => a && a === revs[0]);
+  if (reverseEach) parts.push(`${revs[0]} reverse each quarter`);
+  for (const r of fixed) {
+    const a = momentAmounts(r, unit, !reverseEach);
+    if (a) parts.push(r.square?.rest ? `${MOMENT_INFO[r.moment].short}: ${a}` : `${MOMENT_INFO[r.moment].short} ${a}`);
+  }
   return parts.length > 0 ? { fun: false, parts } : null;
 }
 

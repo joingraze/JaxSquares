@@ -1,7 +1,9 @@
 // How squares win (the create flow's second step): four one-tap preset cards,
 // each with a tiny game timeline showing when a square wins and one plain
-// line about it; with Every score picked, its two setups sit right under the
-// cards (the reverse at each quarter and the final, amounts by score type).
+// line about it; with Every score picked (every score change plus the final
+// score, which takes the rest of the board total once there's a price), its
+// two setups sit right under the cards (the reverse at each quarter and the
+// final, amounts by score type, on by default).
 // Then the board size as two cards with a tiny grid, the reverse and fresh
 // numbers switches, each with a one-line explanation and a small picture,
 // and a live "how this board works" summary with a mini board. Card tags
@@ -32,11 +34,14 @@ import { useResolvedTheme } from "../../lib/theme";
 
 export interface FormatPickerProps {
   format: GameFormat;
-  onChange: (format: GameFormat) => void;
+  /**
+   * The new format, and how prizes read when this change chose it too
+   * ("Amount by score type" turned on before dollars or points were chosen
+   * picks dollars).
+   */
+  onChange: (format: GameFormat, choice?: PrizeChoice) => void;
   /** How prizes read (the amounts by score type use its unit; "fun" hides them). */
   prizeChoice?: PrizeChoice;
-  /** Amounts by score type turned on before dollars or points were chosen. */
-  onPrizeChoice?: (choice: PrizeChoice) => void;
   /** Team colors for the mini board (falls back to the board defaults). */
   teamX?: Team | null;
   teamY?: Team | null;
@@ -63,7 +68,7 @@ const SIZES: { size: BoardSize; label: string; line: string }[] = [
   { size: 25, label: "Quick 5×5", line: "25 squares · 2 numbers each way" },
 ];
 
-export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoice, teamX, teamY }: FormatPickerProps) {
+export function FormatPicker({ format, onChange, prizeChoice = null, teamX, teamY }: FormatPickerProps) {
   const rules = rulesOf(format);
   // Every score with the reverse at each quarter-end is still the Every score card.
   const current = presetChoice(rules);
@@ -111,10 +116,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoi
             onRules={setRules}
             unit={unit}
             fun={prizeChoice === "fun"}
-            onNeedAmounts={(next) => {
-              onPrizeChoice?.("$");
-              setRules(next);
-            }}
+            onNeedAmounts={(next) => onChange(withRules({ ...format, rules: next }), "$")}
             reverseAmount
           />
         </div>

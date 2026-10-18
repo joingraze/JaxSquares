@@ -32,6 +32,8 @@ import {
   playerTake,
   primaryAward,
   prizeTotals,
+  boardTotalOf,
+  restSoFar,
   type ResultsInput,
 } from "./squares";
 import { fixedPeriods, withRules } from "./formats";
@@ -459,13 +461,13 @@ describe("nextEveryScoreEntries", () => {
       ["s2", 3, 6],
       ["s3", 3, 8],
     ]);
-    // The kinds come out right: TD, then the conversion.
+    // The kinds come out right: TD, then the extra point or the 2-point conversion.
     const scores = poll(poll([], 7, 0), 7, 8);
-    expect([...entryPlays(scores).values()].map((p) => p && [p.kind, p.team, p.points])).toEqual([
+    expect([...entryPlays(scores).values()].map((p) => [p.kind, p.team, p.points])).toEqual([
       ["touchdown", "x", 6],
-      ["conversion", "x", 1],
+      ["extraPoint", "x", 1],
       ["touchdown", "y", 6],
-      ["conversion", "y", 2],
+      ["twoPoint", "y", 2],
     ]);
   });
 
@@ -500,49 +502,61 @@ describe("nextEveryScoreEntries", () => {
 });
 
 describe("kinds of score (every-score entries)", () => {
-  const kinds = (...points: [number, number][]) =>
-    [...entryPlays(points.map(([x, y], i) => score(`s${i + 1}`, x, y))).values()].map((p) => (p ? `${p.kind}:${p.points}` : null));
+  const kinds = (...points: [number, number][]) => [...entryPlays(points.map(([x, y], i) => score(`s${i + 1}`, x, y))).values()].map((p) => `${p.kind}:${p.points}`);
 
   it("reads one team's change against the entry before it (0-0 before the first)", () => {
     expect(kinds([6, 0], [7, 0], [7, 3], [7, 9], [7, 10], [10, 10])).toEqual([
       "touchdown:6",
-      "conversion:1",
+      "extraPoint:1",
       "fieldGoal:3",
       "touchdown:6",
-      "conversion:1",
+      "extraPoint:1",
       "fieldGoal:3",
     ]);
   });
 
-  it("2 is a conversion right after that team's touchdown, else a safety", () => {
-    expect(kinds([6, 0], [8, 0])).toEqual(["touchdown:6", "conversion:2"]);
+  it("2 is a 2-point conversion right after that team's touchdown, else a safety", () => {
+    expect(kinds([6, 0], [8, 0])).toEqual(["touchdown:6", "twoPoint:2"]);
     expect(kinds([2, 0])).toEqual(["safety:2"]);
     expect(kinds([3, 0], [5, 0])).toEqual(["fieldGoal:3", "safety:2"]);
     // The other team's touchdown just before: a safety for this one.
     expect(kinds([0, 6], [2, 6])).toEqual(["touchdown:6", "safety:2"]);
-    // After a touchdown that already took its conversion (7 or 8 at once): a safety.
+    // After a touchdown that already took its kick (7 or 8 at once): a safety.
     expect(kinds([7, 0], [9, 0])).toEqual(["touchdown:7", "safety:2"]);
     expect(kinds([0, 8], [0, 10])).toEqual(["touchdown:8", "safety:2"]);
   });
 
-  it("7 or 8 at once is a touchdown with its conversion", () => {
+  it("7 or 8 at once is a touchdown (the host typed it with its kick)", () => {
     expect(kinds([7, 0], [7, 8])).toEqual(["touchdown:7", "touchdown:8"]);
   });
 
-  it("gives no kind when both teams changed, a score went down, or an odd jump", () => {
-    expect(kinds([7, 3])).toEqual([null]);
-    expect(kinds([9, 0], [9, 4], [23, 4])).toEqual([null, null, null]);
-    expect(kinds([7, 0], [6, 0])).toEqual(["touchdown:7", null]);
-    expect(scorePlayBetween({ scoreX: 3, scoreY: 0 }, { scoreX: 3, scoreY: 0 })).toBeNull();
+  it("gives every entry a kind: both teams can't score at once, so the larger change counts", () => {
+    // A gap in the data shows both teams up: the bigger rise (X on a tie).
+    expect(scorePlayBetween(null, { scoreX: 7, scoreY: 3 })).toEqual({ kind: "touchdown", team: "x", points: 7 });
+    expect(scorePlayBetween({ scoreX: 7, scoreY: 0 }, { scoreX: 8, scoreY: 6 })).toEqual({ kind: "touchdown", team: "y", points: 6 });
+    expect(scorePlayBetween({ scoreX: 0, scoreY: 0 }, { scoreX: 3, scoreY: 3 })).toEqual({ kind: "fieldGoal", team: "x", points: 3 });
+    expect(scorePlayBetween({ scoreX: 6, scoreY: 0 }, { scoreX: 7, scoreY: 1 }, { kind: "touchdown", team: "x", points: 6 })).toMatchObject({
+      kind: "extraPoint",
+      team: "x",
+    });
+  });
+
+  it("reads any other jump as the nearest kind", () => {
+    // 4 and 5: a field goal; 9, 14, 21: a touchdown.
+    expect(kinds([4, 0], [9, 0], [23, 0], [23, 14], [23, 35])).toEqual(["fieldGoal:4", "fieldGoal:5", "touchdown:14", "touchdown:14", "touchdown:21"]);
+    // A host correction downward, or no change: by its size.
+    expect(kinds([7, 0], [6, 0])).toEqual(["touchdown:7", "extraPoint:1"]);
+    expect(kinds([10, 0], [3, 0])).toEqual(["touchdown:10", "touchdown:7"]);
+    expect(scorePlayBetween({ scoreX: 3, scoreY: 0 }, { scoreX: 3, scoreY: 0 })).toEqual({ kind: "extraPoint", team: "x", points: 0 });
   });
 
   it("follows entry order, not storage order, and re-derives after a correction", () => {
     const stored = [score("s3", 7, 3), score("s1", 6, 0), score("s2", 7, 0)];
-    expect(entryPlays(stored).get("s2")).toEqual({ kind: "conversion", team: "x", points: 1 });
+    expect(entryPlays(stored).get("s2")).toEqual({ kind: "extraPoint", team: "x", points: 1 });
     expect(entryPlays(stored).get("s3")).toEqual({ kind: "fieldGoal", team: "y", points: 3 });
-    // The host fixes Score 1 to a field goal: Score 2 is now an odd jump.
+    // The host fixes Score 1 to a field goal: Score 2 is now a 4-point jump, read as a field goal.
     const fixed = stored.map((s) => (s.periodKey === "s1" ? score("s1", 3, 0) : s));
-    expect(entryPlays(fixed).get("s2")).toBeNull();
+    expect(entryPlays(fixed).get("s2")).toEqual({ kind: "fieldGoal", team: "x", points: 4 });
     // Fixed periods aren't entries.
     expect(entryPlays([score("q1", 7, 0)]).size).toBe(0);
   });
@@ -551,7 +565,8 @@ describe("kinds of score (every-score entries)", () => {
     const scores = [score("s1", 6, 0), score("s2", 7, 0), score("q1", 7, 0)];
     expect(entryPlayFor(scores, "next", 7, 3)).toMatchObject({ kind: "fieldGoal", team: "y" });
     expect(entryPlayFor(scores, "next", 7, 6)).toMatchObject({ kind: "touchdown" });
-    expect(entryPlayFor(scores, "s2", 8, 0)).toMatchObject({ kind: "conversion", points: 2 });
+    expect(entryPlayFor(scores, "s2", 8, 0)).toMatchObject({ kind: "twoPoint", points: 2 });
+    expect(entryPlayFor(scores, "s2", 7, 0)).toMatchObject({ kind: "extraPoint", points: 1 });
     expect(entryPlayFor([], "next", 2, 0)).toMatchObject({ kind: "safety" });
   });
 });
@@ -796,40 +811,63 @@ describe("rules: amounts on a classic board", () => {
 });
 
 describe("rules: amounts by score type (every score change)", () => {
-  // The owner's example: TD $50, conversion $10 (FG and safety on the default $30); reverse each quarter $200.
-  const byKind = { touchdown: 50, conversion: 10 };
+  // TD $50, XP $10, 2-PT $20 (FG and safety on the flat $30); reverse each quarter $200.
+  const byKind = { touchdown: 50, extraPoint: 10, twoPoint: 20 };
   const rules: MomentRule[] = [
     { moment: "score", square: { amount: 30, note: "", byKind }, reverse: null },
     ...OWNER_RULES.slice(1),
   ];
   const game = rulesGame(rules);
-  const squares = [sq(0, 6, "ana"), sq(0, 7, "ben"), sq(3, 7, "cy"), sq(5, 7, "dee"), sq(7, 3, "eve")];
-  const scores = [score("s1", 6, 0), score("s2", 7, 0), score("s3", 7, 3), score("q1", 7, 3), score("s4", 7, 5), score("s5", 10, 7)];
+  const squares = [sq(0, 6, "ana"), sq(0, 7, "ben"), sq(3, 7, "cy"), sq(5, 7, "dee"), sq(7, 3, "eve"), sq(7, 0, "fay"), sq(5, 0, "gus")];
+  const scores = [
+    score("s1", 6, 0),
+    score("s2", 7, 0),
+    score("s3", 7, 3),
+    score("q1", 7, 3),
+    score("s4", 7, 5),
+    score("s5", 10, 7),
+    score("s6", 10, 13),
+    score("s7", 10, 15),
+  ];
   const results = resolveResults(input(game, squares, scores));
   const by = (k: string) => results.find((r) => r.periodKey === k)!;
 
   it("each entry carries its kind and the amount for it", () => {
-    expect(["s1", "s2", "s3", "s4", "s5"].map((k) => [k, by(k).scoreKind, by(k).scorePoints, by(k).amount])).toEqual([
+    expect(["s1", "s2", "s3", "s4", "s5", "s6", "s7"].map((k) => [k, by(k).scoreKind, by(k).scorePoints, by(k).amount])).toEqual([
       ["s1", "touchdown", 6, 50],
-      ["s2", "conversion", 1, 10],
+      ["s2", "extraPoint", 1, 10],
       ["s3", "fieldGoal", 3, 30],
       ["s4", "safety", 2, 30],
-      // Both teams changed: no kind, so the default amount.
-      ["s5", null, null, 30],
+      // Both teams changed (a gap in the data): the larger change, X's field goal.
+      ["s5", "fieldGoal", 3, 30],
+      ["s6", "touchdown", 6, 50],
+      ["s7", "twoPoint", 2, 20],
     ]);
     // Fixed periods have no kind and keep their own amounts.
     expect(by("q1")).toMatchObject({ scoreKind: null, scorePoints: null, reverseAmount: 200 });
   });
 
   it("totals each player's prizes from the amounts by kind", () => {
-    expect(prizeTotals(results)).toEqual({ ana: 50, ben: 10, cy: 30, dee: 30, eve: 200 });
+    expect(prizeTotals(results)).toEqual({ ana: 50, ben: 10, cy: 30, dee: 30, eve: 200, fay: 30, gus: 20 });
     expect(playerTake(by("s2"), "ben")).toEqual({ amount: 10, note: null, square: true, reverse: false });
   });
 
   it("a reverse square on every score uses its own amounts by kind", () => {
-    const both: MomentRule[] = [{ moment: "score", square: { amount: 40, note: "", byKind: { conversion: 5 } }, reverse: { amount: 20, note: "", byKind: { touchdown: 25 } } }];
+    const both: MomentRule[] = [{ moment: "score", square: { amount: 40, note: "", byKind: { extraPoint: 5 } }, reverse: { amount: 20, note: "", byKind: { touchdown: 25 } } }];
     const [s1, s2] = resolveResults(input(rulesGame(both), [], [score("s1", 6, 0), score("s2", 7, 0)]));
     expect([s1.amount, s1.reverseAmount, s2.amount, s2.reverseAmount]).toEqual([40, 25, 5, 20]);
+  });
+
+  it("a board saved with one conversion amount shows it for the extra point and the 2-point conversion", () => {
+    const legacy = [{ moment: "score", square: { amount: 30, note: "", byKind: { touchdown: 50, conversion: 10 } }, reverse: null }] as unknown as MomentRule[];
+    const old = makeGame({ ...defaultFormat(), periods: "every-score", rules: legacy }, { periods: [] });
+    const out = resolveResults(input(old, [], [score("s1", 6, 0), score("s2", 7, 0), score("s3", 7, 6), score("s4", 7, 8)]));
+    expect(out.map((r) => [r.scoreKind, r.amount])).toEqual([
+      ["touchdown", 50],
+      ["extraPoint", 10],
+      ["touchdown", 50],
+      ["twoPoint", 10],
+    ]);
   });
 
   it("rules without amounts by kind behave exactly as before (kinds still show)", () => {
@@ -840,5 +878,89 @@ describe("rules: amounts by score type (every score change)", () => {
   it("only football boards get kinds", () => {
     const [s1] = resolveResults(input(rulesGame(rules, { sport: "basketball" }), [], [score("s1", 3, 0)]));
     expect(s1).toMatchObject({ scoreKind: null, amount: 30 });
+  });
+});
+
+describe("the rest of the board total (the final)", () => {
+  // $10 squares. Every score: TD $20, XP $5, FG $10; the final takes the rest, plus a $40 reverse.
+  const kinds = { touchdown: 20, fieldGoal: 10, extraPoint: 5, twoPoint: 10, safety: 10 };
+  const rules: MomentRule[] = [
+    { moment: "score", square: { amount: 10, note: "", byKind: kinds }, reverse: null },
+    { moment: "final", square: { amount: null, note: "", rest: true }, reverse: { amount: 40, note: "" } },
+  ];
+  const restGame = (r: MomentRule[] = rules, price = 10, over: Partial<Game> = {}) =>
+    makeGame(withRules({ ...defaultFormat(), rules: r, squarePrice: price }), { periods: fixedPeriods(r), ...over });
+  // 50 claimed squares: rows 0-4, every column (IDENTITY: row = Y's digit, column = X's digit).
+  const half = Array.from({ length: 50 }, (_, i) => sq(Math.floor(i / 10), i % 10, `p${i}`));
+  const by = (out: ReturnType<typeof resolveResults>, k: string) => out.find((r) => r.periodKey === k)!;
+
+  it("is the claimed squares' total less every prize a claimed square won, the final's reverse included", () => {
+    // s1 6-0 TD $20 (0,6), s2 7-0 XP $5 (0,7), s3 7-3 FG $10 (3,7), final 7-3: square (3,7), reverse (7,3) unclaimed.
+    const scores = [score("s1", 6, 0), score("s2", 7, 0), score("s3", 7, 3), score("final", 7, 3)];
+    const out = resolveResults(input(restGame(), half, scores));
+    const final = by(out, "final");
+    expect(final.amountIsRest).toBe(true);
+    // $500 board total (50 claimed) - $35 won; the final's reverse square (row 7) is unclaimed, so its $40 stays in.
+    expect(final.amount).toBe(465);
+    expect(final.reverseAmount).toBe(40);
+    expect(prizeTotals(out).p37).toBe(10 + 465);
+    // Claimed reverse: subtracted.
+    const all = Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, `p${i}`));
+    const full = resolveResults(input(restGame(), all, scores));
+    expect(by(full, "final").amount).toBe(1000 - 35 - 40);
+    expect(by(full, "final").reverseWinnerPlayerId).toBe("p73");
+  });
+
+  it("rolls an unclaimed winning square's prize into the rest", () => {
+    // Score 1 lands on (6,0): row 6 is unclaimed, so its $20 stays in the total.
+    const scores = [score("s1", 0, 6), score("s2", 0, 7), score("final", 6, 7)];
+    const out = resolveResults(input(restGame(), half, scores));
+    expect(by(out, "s1")).toMatchObject({ winnerPlayerId: null, amount: 20 });
+    expect(by(out, "final").amount).toBe(500);
+    expect(by(out, "final").winnerPlayerId).toBeNull();
+    expect(prizeTotals(out)).toEqual({});
+  });
+
+  it("never goes below 0", () => {
+    const pricey: MomentRule[] = [
+      { moment: "score", square: { amount: 400, note: "" }, reverse: null },
+      { moment: "final", square: { amount: null, note: "", rest: true }, reverse: null },
+    ];
+    const scores = [score("s1", 0, 3), score("s2", 0, 4), score("final", 0, 4)];
+    const out = resolveResults(input(restGame(pricey, 10), half, scores));
+    expect(by(out, "final").amount).toBe(0);
+  });
+
+  it("counts fixed moments' squares and reverse squares too", () => {
+    const quarters: MomentRule[] = [
+      { moment: "q1", square: { amount: 100, note: "" }, reverse: { amount: 40, note: "" } },
+      { moment: "q2", square: { amount: 200, note: "" }, reverse: null },
+      { moment: "final", square: { amount: null, note: "", rest: true }, reverse: null },
+    ];
+    const all = Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, `p${i}`));
+    const out = resolveResults(input(restGame(quarters), all, [score("q1", 7, 3), score("q2", 14, 10), score("final", 21, 17)]));
+    expect(by(out, "final").amount).toBe(1000 - 100 - 40 - 200);
+  });
+
+  it("restSoFar: what the rest comes to as the game goes (every square before the draw, the claimed ones after)", () => {
+    const pre = restGame(rules, 10, { numbers: null, status: "open" });
+    expect(restSoFar(input(pre, half, []))).toBe(1000);
+    expect(boardTotalOf(input(pre, half, []))).toBe(1000);
+    const drawn = restGame();
+    expect(boardTotalOf(input(drawn, half, []))).toBe(500);
+    expect(restSoFar(input(drawn, half, []))).toBe(500);
+    const scores = [score("s1", 6, 0), score("s2", 7, 0)];
+    expect(restSoFar(input(drawn, half, scores))).toBe(475);
+    // Once the final is in, its result carries the same figure.
+    const done = [...scores, score("final", 7, 0)];
+    expect(by(resolveResults(input(drawn, half, done)), "final").amount).toBe(restSoFar(input(drawn, half, done)));
+    // No rest, no price: null.
+    expect(restSoFar(input(rulesGame(OWNER_RULES), half, scores))).toBeNull();
+    expect(boardTotalOf(input(rulesGame(OWNER_RULES), half, scores))).toBeNull();
+  });
+
+  it("on a 5x5 board, the total is price × 25 before the draw", () => {
+    const small = makeGame(withRules({ ...defaultFormat(), boardSize: 25, rules, squarePrice: 4 }), { periods: fixedPeriods(rules), numbers: null, status: "open" });
+    expect(restSoFar(input(small, [], []))).toBe(100);
   });
 });

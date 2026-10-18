@@ -62,7 +62,7 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
         const mine = winner?.id === me;
         const amount = money(award?.amount ?? null);
         // Every-score entries say what kind of score it was ("Touchdown", "Extra point").
-        const kind = r?.scoreKind ? scorePlayLabel(r.scoreKind, r.scorePoints, true) : null;
+        const kind = r?.scoreKind ? scorePlayLabel(r.scoreKind, true) : null;
         const scoreLine = row.score
           ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${kind ? ` · ${kind}` : ""}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
           : null;

@@ -28,6 +28,7 @@ import {
   momentInPlay,
   periodInPlay,
   prizeTotals,
+  restSoFar,
   reverseCell,
   squareAt,
   totalSquares,
@@ -478,8 +479,10 @@ export interface NowView {
   threat: { play: ScoringPlay; ownerId: string | null } | null;
   /** Only the reverse square wins this moment: `cell` is the reverse square (and `reverse` is null). */
   reverseOnly: boolean;
-  /** Display-only amount the square in play wins, and the board's unit. */
+  /** Display-only amount the square in play wins (the rest so far, with `rest`), and the board's unit. */
   amount: number | null;
+  /** The square in play is the final's, and it takes the rest of the board total. */
+  rest: boolean;
   /**
    * What it can show: one amount, or lowest and highest when every score
    * change shows amounts by score type (the next score's kind isn't known yet).
@@ -569,7 +572,8 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
     outcomes,
     mineCount: mineKeys.size,
     reverseOnly,
-    amount: (reverseOnly ? rule?.reverse?.amount : rule?.square?.amount) ?? null,
+    amount: !reverseOnly && rule?.square?.rest ? restSoFar(state) : ((reverseOnly ? rule?.reverse?.amount : rule?.square?.amount) ?? null),
+    rest: !reverseOnly && !!rule?.square?.rest,
     range: prizeRange(reverseOnly ? rule?.reverse : rule?.square),
     unit: unitOf(game.format),
   };
@@ -617,14 +621,19 @@ export interface PeriodCard {
    */
   range: { min: number; max: number } | null;
   reverseRange: { min: number; max: number } | null;
+  /** The square takes the rest of the board total (the final): decided, `amount` is that rest. */
+  rest: boolean;
+  /** Still to come and taking the rest: what it comes to so far (restSoFar), else null. */
+  restSoFar: number | null;
 }
 
 /** A card's prize facts, from its result or (still to come) its rule. */
-function cardPrizes(game: Pick<Game, "format" | "prizes">, key: string, result: PeriodResult | null) {
+function cardPrizes(game: Pick<Game, "format" | "prizes">, key: string, result: PeriodResult | null, restNow: number | null) {
   const one = (n: number | null) => (n ? { min: n, max: n } : null);
   if (result) {
     const { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount } = result;
-    return { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount, range: one(amount), reverseRange: one(reverseAmount) };
+    const rest = !!result.amountIsRest;
+    return { prize, reversePrize, awardsSquare, awardsReverse, amount, reverseAmount, range: one(amount), reverseRange: one(reverseAmount), rest, restSoFar: null };
   }
   const rule = ruleForPeriodKey(rulesOf(game.format), key);
   const legacy = !game.format.rules?.length;
@@ -637,19 +646,26 @@ function cardPrizes(game: Pick<Game, "format" | "prizes">, key: string, result: 
     reverseAmount: rule?.reverse?.amount ?? null,
     range: prizeRange(rule?.square),
     reverseRange: prizeRange(rule?.reverse),
+    rest: !!rule?.square?.rest,
+    restSoFar: rule?.square?.rest ? restNow : null,
   };
 }
 
-export function periodCards(state: Pick<GameState, "game" | "scores" | "manualWinners" | "live">, results: PeriodResult[]): PeriodCard[] {
+export function periodCards(
+  state: Pick<GameState, "game" | "scores" | "manualWinners" | "live"> & Partial<Pick<GameState, "squares">>,
+  results: PeriodResult[],
+): PeriodCard[] {
   const { game, live } = state;
   const byKey = new Map(results.map((r) => [r.periodKey, r]));
   const rules = rulesOf(game.format);
+  // The final's "rest", as it stands (only when it takes the rest).
+  const restNow = restSoFar({ ...state, squares: state.squares ?? [] });
   const card = (key: string, label: string, status: PeriodCardStatus, result: PeriodResult | null): PeriodCard => ({
     key,
     label,
     status,
     result,
-    ...cardPrizes(game, key, result),
+    ...cardPrizes(game, key, result, restNow),
   });
   const livePeriod = live?.state === "in" && game.status === "locked" ? periodInPlay(state, live.period) : null;
   const fixed = fixedPeriodsOf(game);

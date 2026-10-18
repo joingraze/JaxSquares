@@ -1,7 +1,7 @@
 // Score entry for the host: two big team tiles (real inputs, so a hardware
 // keyboard and test harnesses can type), a chunky on-screen keypad that never
 // summons the phone keyboard, football quick-adds for every-score boards
-// (+TD, +FG, +XP, +2-pt, Safety), and a live "who wins if you save this"
+// (+6 TD, +3 FG, +1 XP, +2 2-PT, +2 Safety), and a live "who wins if you save this"
 // preview that says what kind of score it is.
 
 import type { ReactNode } from "react";
@@ -302,8 +302,8 @@ export function ScorePreview({
   // What it wins (display-only), then the note: "$200 · Loser buys wings"; "(reverse)" when only the reverse square wins.
   let sub: string | null =
     [
-      p.play ? scorePlayLabel(p.play.kind, p.play.points, true) : null,
-      p.amount ? formatAmount(p.amount, p.unit) : null,
+      p.play ? scorePlayLabel(p.play.kind, true) : null,
+      p.amount ? `${formatAmount(p.amount, p.unit)}${p.rest ? " (the rest)" : ""}` : null,
       p.prize,
       p.reverseOnly ? "reverse square" : null,
     ]

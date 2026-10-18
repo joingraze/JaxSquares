@@ -117,13 +117,14 @@ describe("bootScript (the board's state embedded in the invite page)", () => {
       unit: "$" as const,
       squarePrice: 25,
       rules: [
-        { moment: "score" as const, square: { amount: 50, note: "", byKind: { touchdown: 70, conversion: 15 } }, reverse: null },
-        { moment: "final" as const, square: null, reverse: { amount: 400, note: "Loser buys wings" } },
+        { moment: "score" as const, square: { amount: 50, note: "", byKind: { touchdown: 70, extraPoint: 15, twoPoint: 30 } }, reverse: null },
+        // The final takes the rest of the board total: no figure, and no "rest" talk, in a preview either.
+        { moment: "final" as const, square: { amount: null, note: "", rest: true as const }, reverse: { amount: 400, note: "Loser buys wings" } },
       ],
     };
     for (const status of ["draft", "open", "locked", "final"] as const) {
       const m = inviteMeta(state({ format, status }, { scores: [{ periodKey: "final", scoreX: 27, scoreY: 24, source: "host", updatedAt: 0 }] }), "https://x");
-      expect(`${m.title} ${m.description}`).not.toMatch(/\$|\b(15|25|50|70|400)\b|pts?\b/);
+      expect(`${m.title} ${m.description}`).not.toMatch(/\$|\b(15|25|30|50|70|400|2,?500)\b|pts?\b|\brest\b|board total/i);
     }
   });
 

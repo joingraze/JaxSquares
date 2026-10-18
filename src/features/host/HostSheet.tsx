@@ -375,6 +375,8 @@ export function HostSheet(props: HostSheetProps) {
         lock={lock}
         violation={violation}
         boardSize={game.format.boardSize}
+        // The board's total, like "the rest": every square until the draw, the claimed ones after.
+        squares={game.numbers ? state.squares.length : undefined}
       />
     );
     footer = (
@@ -726,12 +728,15 @@ function RulesEditView({
   lock,
   violation,
   boardSize,
+  squares,
 }: {
   draft: RulesDraft;
   onChange: (draft: RulesDraft) => void;
   lock: ReturnType<typeof rulesLock>;
   violation: string | null;
   boardSize: BoardSize;
+  /** Squares the board's total counts (the claimed ones once drawn); every square when absent. */
+  squares?: number;
 }) {
   const preset = presetChoice(draft.rules);
   return (
@@ -754,7 +759,7 @@ function RulesEditView({
           {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
         </div>
       </section>
-      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} locked={lock.scoring} />
+      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} />
       {canUseFreshNumbers(draft.rules) && (
         <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
           <Switch

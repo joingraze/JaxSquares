@@ -760,7 +760,7 @@ export default function GameView() {
           .map((w) => {
             const r = results.find((x) => x.periodKey === w.periodKey);
             const amount = r ? (w.reverse ? r.reverseAmount : r.amount) : null;
-            const kind = r?.scoreKind ? ` · ${scorePlayLabel(r.scoreKind, r.scorePoints)}` : "";
+            const kind = r?.scoreKind ? ` · ${scorePlayLabel(r.scoreKind)}` : "";
             return `${periodPhrase(w.periodKey, w.label).short}${kind}${w.reverse ? " (reverse)" : ""}${amount ? ` · ${formatAmount(amount, unit)}` : ""}`;
           })
           .join(", ")}`

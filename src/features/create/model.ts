@@ -18,7 +18,7 @@ import {
 import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
 import { shortTeamName } from "../../lib/format";
 import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Team } from "../../../shared/types";
-import { capLine, firstNoteProblem, formatOf, isEveryScoreWithReverseQuarters, noteInputId, type PrizeChoice } from "../rules/rulesModel";
+import { capLine, firstNoteProblem, formatOf, isEveryScoreSetup, isEveryScoreWithReverseQuarters, noteInputId, type PrizeChoice } from "../rules/rulesModel";
 
 /**
  * Side colors for a team with no live color (the board's own fallbacks, see
@@ -277,7 +277,8 @@ export function rulesTitle(format: GameFormat): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
   if (exact) return PRESET_INFO[exact.preset].label;
-  return isEveryScoreWithReverseQuarters(rules) ? `${PRESET_INFO["every-score"].label} + reverse` : PRESET_INFO.custom.label;
+  if (isEveryScoreWithReverseQuarters(rules)) return `${PRESET_INFO["every-score"].label} + reverse`;
+  return isEveryScoreSetup(rules) ? PRESET_INFO["every-score"].label : PRESET_INFO.custom.label;
 }
 
 /** The details row's second line: "No max per player" or "Up to 5 squares each". */

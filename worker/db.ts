@@ -11,6 +11,7 @@
 // appends a version bump and the full state read to the same batch: one round
 // trip per mutation, and the state it returns is exactly what was written.
 
+import { upgradeFormat } from "../shared/formats";
 import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
@@ -141,7 +142,8 @@ export function rowToGame(r: GameRow, hostPlayerId: string): Game {
     league: r.league as League,
     teamX: json<Team>(r.team_x, { name: "Team X" }),
     teamY: json<Team>(r.team_y, { name: "Team Y" }),
-    format: json<GameFormat>(r.format, { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false }),
+    // A board saved with one "conversion" amount by score type reads it as the extra point's and the 2-point conversion's.
+    format: upgradeFormat(json<GameFormat>(r.format, { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false })),
     periods: json<Period[]>(r.periods, []),
     prizes: json<Record<string, string>>(r.prizes, {}),
     maxPerPlayer: r.max_per_player,

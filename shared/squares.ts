@@ -8,6 +8,7 @@ import {
   everyScoreIndex,
   everyScorePeriod,
   fixedPeriods,
+  hasRest,
   hasScoreMoment,
   prizeAmount,
   prizeFor,
@@ -217,9 +218,9 @@ export function boardPeriods(game: Pick<Game, "format" | "periods">, scores: Sco
 /** What one every-score entry was: the kind of score, which team scored, and how many points. */
 export interface ScorePlay {
   kind: ScoreKind;
-  /** The team whose score went up. */
+  /** The team whose score changed (the one that changed more, when a data gap shows both). */
   team: "x" | "y";
-  /** How many points it went up by (tells an extra point from a 2-point try). */
+  /** How many points it changed by. */
   points: number;
 }
 
@@ -227,34 +228,29 @@ type ScorePoint = Pick<Score, "scoreX" | "scoreY">;
 
 /**
  * The play that took the score from `prev` (0-0 before the first entry) to
- * `cur`, given the play that made `prev`. Only one team's score may go up:
- * 6 = touchdown; 3 = field goal; 1 = conversion; 2 = conversion right after
- * that team's touchdown (a 6-point entry), else a safety; 7 or 8 = a
- * touchdown and its conversion landing together. Anything else (both teams
- * changed, a score went down, an odd jump) is null: it shows the default amount.
+ * `cur`, given the play that made `prev`. Every entry gets a kind, from the
+ * change in one team's score: 6 = touchdown; 3 = field goal; 1 = extra point;
+ * 2 = 2-point conversion right after that team's touchdown (a 6-point
+ * entry), else a safety; 7 or 8 = touchdown (a host-typed touchdown and its
+ * kick together). Both teams can't score in one play, so when a gap in the
+ * data shows both went up, the larger rise counts (team X on a tie). Any
+ * other jump reads as the nearest kind: 6 or more a touchdown, 3 to 5 a field
+ * goal, 1 or less an extra point (an entry with no rise, a host correction
+ * downward, reads by the size of its change).
  */
-export function scorePlayBetween(prev: ScorePoint | null, cur: ScorePoint, prevPlay: ScorePlay | null = null): ScorePlay | null {
+export function scorePlayBetween(prev: ScorePoint | null, cur: ScorePoint, prevPlay: ScorePlay | null = null): ScorePlay {
   const dx = cur.scoreX - (prev?.scoreX ?? 0);
   const dy = cur.scoreY - (prev?.scoreY ?? 0);
-  if (dx < 0 || dy < 0 || (dx > 0) === (dy > 0)) return null;
-  const team = dx > 0 ? "x" : "y";
-  const points = dx > 0 ? dx : dy;
-  switch (points) {
-    case 6:
-    case 7:
-    case 8:
-      return { kind: "touchdown", team, points };
-    case 3:
-      return { kind: "fieldGoal", team, points };
-    case 1:
-      return { kind: "conversion", team, points };
-    case 2: {
-      const afterTouchdown = prevPlay?.kind === "touchdown" && prevPlay.points === 6 && prevPlay.team === team;
-      return { kind: afterTouchdown ? "conversion" : "safety", team, points };
-    }
-    default:
-      return null;
+  const rose = dx > 0 || dy > 0;
+  const team = rose ? (dy > dx ? "y" : "x") : Math.abs(dy) > Math.abs(dx) ? "y" : "x";
+  const points = Math.abs(team === "x" ? dx : dy);
+  if (points >= 6) return { kind: "touchdown", team, points };
+  if (points >= 3) return { kind: "fieldGoal", team, points };
+  if (points === 2) {
+    const afterTouchdown = prevPlay?.kind === "touchdown" && prevPlay.points === 6 && prevPlay.team === team;
+    return { kind: afterTouchdown ? "twoPoint" : "safety", team, points };
   }
+  return { kind: "extraPoint", team, points };
 }
 
 /** Every-score entries in order (by index), whatever order they're stored in. */
@@ -270,8 +266,8 @@ function orderedEntries<T extends Pick<Score, "periodKey">>(scores: readonly T[]
  * scorePlayBetween. Derived on read from the ordered entries, never stored,
  * so a host correction or an overturned score re-derives what follows.
  */
-export function entryPlays(scores: readonly Pick<Score, "periodKey" | "scoreX" | "scoreY">[]): Map<string, ScorePlay | null> {
-  const out = new Map<string, ScorePlay | null>();
+export function entryPlays(scores: readonly Pick<Score, "periodKey" | "scoreX" | "scoreY">[]): Map<string, ScorePlay> {
+  const out = new Map<string, ScorePlay>();
   let prev: ScorePoint | null = null;
   let prevPlay: ScorePlay | null = null;
   for (const e of orderedEntries(scores)) {
@@ -286,17 +282,17 @@ export function entryPlays(scores: readonly Pick<Score, "periodKey" | "scoreX" |
 /**
  * The play an entry would be if the host saved this score for it: `key` is
  * an entry ("s3", replacing what's there) or anything else for a new one
- * after the latest. null when it can't tell.
+ * after the latest.
  */
-export function entryPlayFor(scores: readonly Score[], key: string, scoreX: number, scoreY: number): ScorePlay | null {
+export function entryPlayFor(scores: readonly Score[], key: string, scoreX: number, scoreY: number): ScorePlay {
   const entries = orderedEntries(scores).filter((s) => s.periodKey !== key);
   const n = everyScoreIndex(key) ?? (everyScoreIndex(entries.at(-1)?.periodKey ?? "") ?? 0) + 1;
   const draft = { periodKey: `s${n}`, scoreX, scoreY };
-  return entryPlays([...entries, draft]).get(draft.periodKey) ?? null;
+  return entryPlays([...entries, draft]).get(draft.periodKey) ?? scorePlayBetween(null, draft);
 }
 
 /** Plays for a board's entries: football boards only (another sport's points mean other things). */
-function boardPlays(game: Pick<Game, "sport">, scores: readonly Score[]): Map<string, ScorePlay | null> {
+function boardPlays(game: Pick<Game, "sport">, scores: readonly Score[]): Map<string, ScorePlay> {
   return !game.sport || game.sport === "football" ? entryPlays(scores) : new Map();
 }
 
@@ -322,18 +318,25 @@ export interface PeriodResult {
   reversePrize: string | null;
   /**
    * Display-only amount for the square, in the board's unit (for a score
-   * entry with amounts by score type, the one for its kind).
+   * entry with amounts by score type, the one for its kind; for a final
+   * that takes the rest of the board total, that rest: see `amountIsRest`).
    */
   amount: number | null;
+  /**
+   * The square shows the rest of the board total: `amount` is the board's
+   * total (square price x claimed squares) minus every other prize won by a
+   * claimed square, never below 0.
+   */
+  amountIsRest?: true;
   /** Display-only amount for the reverse square (by kind too). */
   reverseAmount: number | null;
   /**
    * Every-score entries on a football board: the kind of score, from its
    * change versus the entry before it (see entryPlays); null for fixed
-   * periods and when it can't tell.
+   * periods (and another sport's entries).
    */
   scoreKind: ScoreKind | null;
-  /** The points behind `scoreKind` (1 = extra point, 2 = 2-point try); null without a kind. */
+  /** The points behind `scoreKind`; null without a kind. */
   scorePoints: number | null;
   /** "host" when the winner comes from a ManualWinner override. */
   source: "auto" | "host";
@@ -362,7 +365,7 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
   // A host pick may exist for an entry whose score was removed; keep it.
   const entries = hasScoreMoment(rules) ? entryPeriods([...scoreBy.keys(), ...manualBy.keys()], scoreBy) : [];
   const periods = mergePeriods(fixedPeriodsOf(game), entries, scoreBy);
-  const plays = entries.length > 0 ? boardPlays(game, scores) : new Map<string, ScorePlay | null>();
+  const plays = entries.length > 0 ? boardPlays(game, scores) : new Map<string, ScorePlay>();
 
   const out: PeriodResult[] = [];
   for (const p of periods) {
@@ -390,12 +393,57 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
       reversePrize: rule.reverse?.note || null,
       amount: prizeAmount(rule.square, play?.kind),
       reverseAmount: prizeAmount(rule.reverse, play?.kind),
+      ...(rule.square?.rest ? { amountIsRest: true as const } : {}),
       scoreKind: play?.kind ?? null,
       scorePoints: play?.points ?? null,
       source: manual ? "host" : "auto",
     });
   }
+  // The final's "rest": the board's total less every other prize a claimed square won.
+  const total = boardTotalOf(state);
+  for (const r of out) if (r.amountIsRest) r.amount = restAfter(total, out);
   return out;
+}
+
+// ---- The board's total and "the rest" ----
+
+/**
+ * What the board's squares add up to at its square price (display-only), or
+ * null without a price: every square (100 or 25) until the numbers are
+ * drawn, the claimed ones after.
+ */
+export function boardTotalOf(state: Pick<GameState, "game" | "squares">): number | null {
+  const price = state.game.format.squarePrice;
+  if (!price || state.game.format.justForFun) return null;
+  const squares = state.game.numbers ? state.squares.length : totalSquares(state.game.format.boardSize);
+  return Math.round(price * squares * 100) / 100;
+}
+
+/** What these results gave out to claimed squares, not counting the rest itself. */
+function wonSoFar(results: readonly PeriodResult[]): number {
+  let sum = 0;
+  for (const r of results) {
+    if (r.winnerPlayerId && !r.amountIsRest) sum += r.amount ?? 0;
+    if (r.reverseWinnerPlayerId) sum += r.reverseAmount ?? 0;
+  }
+  return sum;
+}
+
+const restAfter = (total: number | null, results: readonly PeriodResult[]) =>
+  total === null ? null : Math.max(0, Math.round((total - wonSoFar(results)) * 100) / 100);
+
+/**
+ * "The rest" as it stands: the board's total (boardTotalOf) less every prize
+ * a claimed square has won so far (score entries by kind, quarter and half
+ * squares and reverse squares, the final's reverse square), never below 0.
+ * An unclaimed winning square's prize stays in it. null unless the final's
+ * square takes the rest (and the board has a square price). What the board
+ * shows live ("Final · the rest ($640 so far)"); once the final is in, its
+ * result carries the same figure as its amount.
+ */
+export function restSoFar(state: ResultsInput): number | null {
+  if (!hasRest(rulesOf(state.game.format))) return null;
+  return restAfter(boardTotalOf(state), resolveResults(state));
 }
 
 /**
