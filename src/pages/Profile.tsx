@@ -2,7 +2,7 @@
 // preview square), my notifications (one card for every state), what each
 // board will ping about next (with per-board mutes), host links and About.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LockIcon, MoonIcon, PawIcon, PencilIcon, PhoneIcon, SunIcon, TrophyIcon } from "../components/icons";
 import { Button, Card, ListGroup, ListRow, SegmentedControl, TopBar, cx, useToast, type SegmentOption } from "../components/ui";
@@ -17,13 +17,15 @@ import { pushIsOn, usePushStatus } from "../features/notifications/usePushStatus
 import { api } from "../lib/api";
 import { pluralize } from "../lib/format";
 import { getProfile, useProfile, type Profile as Look } from "../lib/identity";
-import { useMyGames } from "../lib/live";
+import { isMyBoard, useMyGames } from "../lib/live";
 import { setThemePreference, useResolvedTheme, useThemePreference, type ThemePreference } from "../lib/theme";
 
 export default function Profile() {
   const profile = useProfile();
   const toast = useToast();
-  const { games } = useMyGames();
+  // Only boards I'm on: an invite I only opened isn't mine to sync a look to, mute or count.
+  const { games: all } = useMyGames();
+  const games = useMemo(() => all?.filter(isMyBoard) ?? null, [all]);
   const push = usePushStatus();
   const [lookOpen, setLookOpen] = useState(false);
   const [hostOpen, setHostOpen] = useState(false);

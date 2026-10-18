@@ -6,7 +6,8 @@ import type { GameSummary, JoinInput } from "../../../../shared/types";
 import { PLAYER_COLORS, type Profile } from "../../../lib/identity";
 
 export function boardsToSync(games: readonly GameSummary[]): string[] {
-  return games.filter((g) => g.status === "open" || g.status === "locked").map((g) => g.id);
+  // Never a board I only opened: re-sending my look there would join me to it.
+  return games.filter((g) => (g.isHost || g.joined) && (g.status === "open" || g.status === "locked")).map((g) => g.id);
 }
 
 export function lookChanged(a: Profile, b: Profile): boolean {

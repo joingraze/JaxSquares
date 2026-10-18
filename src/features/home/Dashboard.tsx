@@ -1,20 +1,22 @@
 // The dashboard for someone with boards: one headline sentence that sums up
-// the day, then boards grouped by what they need — Live now, Needs you,
-// Up next, Final.
+// the day, then boards grouped by what they need — Live now, Invites (boards
+// waiting on my picks), Needs you (host to-dos), Up next, Final.
 //
 // Everything on it is live: Home follows every board you're in that's still
 // moving (useHomeFeed), lays each board's live state over its summary, and
 // re-renders the moment a friend grabs a square, numbers drop or a score
 // lands. The summary list itself still refreshes in the background (new
-// boards, boards past the follow cap).
+// boards, boards past the follow cap, and invites you only opened, which
+// aren't followed live).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GameState, GameSummary } from "../../../shared/types";
-import { ArrowRightIcon, ShareIcon, WifiOffIcon } from "../../components/icons";
+import { ArrowRightIcon, MailIcon, ShareIcon, WifiOffIcon } from "../../components/icons";
 import { Button, buttonStyles, celebrate, cx, Jax, JaxCheer, LiveDot, useToast } from "../../components/ui";
 import { inviteUrl, type ApiError } from "../../lib/api";
-import { getPlayerId, useProfile } from "../../lib/identity";
+import { forgetSeen, getPlayerId, rememberSeen, useProfile } from "../../lib/identity";
+import { isMyBoard } from "../../lib/live";
 import { haptic, shareLink } from "../../lib/native";
 import { celebratedWins, markCelebrated } from "../board/storage";
 import { ActivityBell } from "./ActivityInbox";
@@ -24,6 +26,7 @@ import { FINALS_COLLAPSED, FinalList } from "./FinalList";
 import { HomeHeader } from "./HomeHeader";
 import { HowItWorks } from "./HowItWorks";
 import { buildInbox } from "./inbox";
+import { InviteCard } from "./InviteCard";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { LiveCard } from "./LiveCard";
 import { LiveCarousel } from "./LiveCarousel";
@@ -33,6 +36,7 @@ import {
   cardModel,
   groupBoards,
   headlineFor,
+  inviteModel,
   liveHits,
   liveSnapshot,
   phraseOf,
@@ -51,14 +55,21 @@ export interface DashboardProps {
   refresh: () => Promise<void>;
 }
 
-/** Follow boards in play first, then your own boards, then the most recently active. */
+/**
+ * Follow boards in play first, then your own boards, then the most recently
+ * active. Only boards you're on: an invite you only opened refreshes with the
+ * summary list (on focus, every 30 s, pull to refresh).
+ */
 function followOrder(boards: GameSummary[]): string[] {
   const rank = (g: GameSummary) => (g.status === "locked" || g.live?.state === "in" ? 2 : 0) + (g.isHost ? 1 : 0);
   return boards
-    .filter((g) => g.status === "open" || g.status === "locked")
+    .filter((g) => isMyBoard(g) && (g.status === "open" || g.status === "locked"))
     .sort((a, b) => rank(b) - rank(a) || b.lastActivityAt - a.lastActivityAt)
     .map((g) => g.id);
 }
+
+/** "id@version" for a board fetched once (again when its summary moves past the state held). */
+const onceKeyOf = (g: GameSummary) => (g.version === undefined ? g.id : `${g.id}@${g.version}`);
 
 export function Dashboard({ games, error, refresh }: DashboardProps) {
   const me = getPlayerId();
@@ -92,11 +103,9 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   }, [grouped, details, me]);
 
   const liveKey = followOrder(boards).join(",");
-  // "id@version": a finished board is fetched again when its summary moves past the state held.
-  const onceKey = sections.final
-    .slice(0, finalsShown)
-    .map((g) => (g.version === undefined ? g.id : `${g.id}@${g.version}`))
-    .join(",");
+  // Fetched once: the finals on screen, and games in play I'm only watching (not followed live),
+  // each again when its summary moves past the state held.
+  const onceKey = [...sections.live.filter((g) => !isMyBoard(g)), ...sections.final.slice(0, finalsShown)].map(onceKeyOf).join(",");
   useEffect(() => {
     const versions: Record<string, number> = {};
     const once = (onceKey ? onceKey.split(",") : []).map((key) => {
@@ -123,10 +132,12 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
     return !!snap?.meWinning && snap.leader?.kind === "now";
   });
   const headline = headlineFor(sections, { winningNow, hits: liveHits(sections), now });
-  const focus = sections.live[0] ?? sections.needs[0] ?? sections.next[0] ?? null;
+  const focus = sections.live[0] ?? sections.invites[0] ?? sections.needs[0] ?? sections.next[0] ?? null;
   const primaryId = primaryActionId(sections);
-  const inbox = useMemo(() => buildInbox(boards, details, me, now), [boards, details, me, now]);
+  // The inbox is news from boards I'm on; a board I'm only watching isn't.
+  const inbox = useMemo(() => buildInbox(boards.filter(isMyBoard), details, me, now), [boards, details, me, now]);
   const actionFor = useCardAction();
+  const hideInvite = useHideInvite(refresh);
 
   let delay = 0;
   const enter = () => ({ animationDelay: `${(delay++ * 45).toString()}ms` });
@@ -148,6 +159,18 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
       </div>
     );
   };
+
+  const inviteCard = (g: GameSummary) => (
+    <div key={g.id} className="home-enter" style={enter()}>
+      <InviteCard
+        game={g}
+        model={inviteModel(g, now)}
+        primary={g.id === primaryId}
+        onPick={actionFor(g, "pick", "Pick squares", false).onClick}
+        onHide={() => hideInvite(g)}
+      />
+    </div>
+  );
 
   return (
     <>
@@ -195,6 +218,19 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           </section>
         )}
 
+        {sections.invites.length > 0 && (
+          <section aria-labelledby="home-invites" data-testid="home-invites">
+            <SectionHeader
+              id="home-invites"
+              icon={<MailIcon size={14} strokeWidth={2.4} className="text-ink-accent" />}
+              title="Invites"
+              tone="accent"
+              count={sections.invites.length}
+            />
+            <div className="flex flex-col gap-3">{sections.invites.map(inviteCard)}</div>
+          </section>
+        )}
+
         {sections.needs.length > 0 && (
           <section aria-labelledby="home-needs">
             <SectionHeader id="home-needs" title="Needs you" tone="brand" count={sections.needs.length} />
@@ -209,7 +245,7 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           </section>
         )}
 
-        {sections.live.length + sections.needs.length + sections.next.length === 0 && (
+        {sections.live.length + sections.invites.length + sections.needs.length + sections.next.length === 0 && (
           <section aria-labelledby="home-quiet" className="home-enter flex items-center gap-3 rounded-card bg-surface-2 py-3 pl-2 pr-4 ring-1 ring-inset ring-line" style={enter()}>
             <Jax pose="sleep" size={116} />
             <div className="min-w-0 flex-1">
@@ -293,6 +329,36 @@ function useCardAction() {
       }
     },
     [navigate, toast],
+  );
+}
+
+/**
+ * "Not for me" on an invite I only opened: it leaves the seen list (so Home
+ * stops showing it at once, see homeBoards) with an Undo that puts it back.
+ * The invite link itself still works.
+ */
+function useHideInvite(refresh: () => Promise<void>) {
+  const toast = useToast();
+  return useCallback(
+    (game: GameSummary) => {
+      forgetSeen(game.id);
+      toast.show({
+        id: `hide-invite-${game.id}`,
+        title: "Invite hidden",
+        description: `${game.name} is off your Home. The link still works.`,
+        haptic: false,
+        duration: 6000,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            rememberSeen(game.id);
+            // In case a refresh since then left the board out.
+            void refresh();
+          },
+        },
+      });
+    },
+    [toast, refresh],
   );
 }
 

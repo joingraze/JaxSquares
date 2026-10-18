@@ -22,6 +22,8 @@ function summary(over: Partial<GameSummary> = {}): GameSummary {
     status: "open",
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
     isHost: true,
+    joined: true,
+    host: null,
     mySquares: 0,
     claimed: 0,
     totalSquares: 100,

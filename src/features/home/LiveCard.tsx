@@ -1,18 +1,19 @@
 // "Live now" hero card: scoreboard, clock, and who holds the square that's
 // winning right now (gold when it's you). It carries the specifics of a win
 // ("Your square hit · Halftime · Loser buys wings"); the page headline only
-// summarizes the day.
+// summarizes the day. A board I hold no squares on (an invite that locked
+// before I picked) is tagged "Watching".
 
 import { Link } from "react-router-dom";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, Badge, cx, Skeleton, TeamMark } from "../../components/ui";
-import { pluralize, teamVars } from "../../lib/format";
+import { teamVars } from "../../lib/format";
 import { useProfile } from "../../lib/identity";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
-import { RoleLabel, TickNumber } from "./BoardBits";
-import { capitalize, liveSnapshot, phraseOf, withTeamColors, type LiveSnapshot } from "./sections";
+import { MySquaresTag, RoleLabel, TickNumber } from "./BoardBits";
+import { capitalize, liveSnapshot, phraseOf, relationOf, withTeamColors, type LiveSnapshot } from "./sections";
 import { useResolvedTheme } from "../../lib/theme";
 
 export interface LiveCardProps {
@@ -35,6 +36,8 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
   // The banner already says it when your square hit the latest period; the footer counts the rest.
   const bannerIsMyWin = !!snap?.meWinning && snap.leader?.kind === "last";
   const firstWin = game.myWins[0];
+  // No squares (an invite I never picked on, or joined without picking): tagged "Watching".
+  const relation = relationOf(game);
 
   return (
     <Link
@@ -66,7 +69,7 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
               <Badge tone="neutral">Numbers in</Badge>
             )}
             <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{game.name}</p>
-            <RoleLabel isHost={game.isHost} />
+            <RoleLabel relation={relation} />
           </div>
 
           <Scoreboard game={game} teams={[teamX, teamY]} snap={snap} fallback={fallback} compact={compact} />
@@ -80,7 +83,11 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
           )}
 
           <div className="mt-2.5 flex items-center gap-2 text-footnote text-ink-muted">
-            <span className="font-semibold">{game.mySquares > 0 ? `${pluralize(game.mySquares, "square")} yours` : "Watching"}</span>
+            {game.mySquares > 0 ? (
+              <MySquaresTag count={game.mySquares} className="!text-footnote" />
+            ) : (
+              <span className="font-semibold text-ink-subtle">{game.isHost ? "You're hosting" : "No squares on this one"}</span>
+            )}
             {wins.size > 0 && !(bannerIsMyWin && wins.size === 1) && (
               <span className="inline-flex min-w-0 items-center gap-1 font-bold text-ink-gold">
                 <TrophyIcon size={13} strokeWidth={2.4} className="shrink-0" />

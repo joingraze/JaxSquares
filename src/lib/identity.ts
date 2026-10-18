@@ -9,6 +9,8 @@
 // - profile: the name/color/emoji used when joining a board.
 // - admin tokens: one per hosted game, sent as `x-admin-token`.
 // - known games: ids this device created or joined (for hydration + dashboard).
+// - seen games: boards this device opened without joining (an invite it hasn't
+//   acted on yet), so Home can offer them back (`GET /api/me/games?seen=`).
 //
 // Reads are synchronous (localStorage). The native app also mirrors every value
 // into Capacitor Preferences because iOS may evict a WebView's localStorage;
@@ -23,12 +25,17 @@ export const STORAGE_KEYS = {
   clientId: "jaxsquares.clientId",
   profile: "jaxsquares.profile",
   games: "jaxsquares.games",
+  seen: "jaxsquares.seen",
   admin: (gameId: string) => `jaxsquares.admin.${gameId}`,
 } as const;
 
 /** Server limit for player names (worker cleanProfile). */
 export const NAME_MAX_LENGTH = 24;
 const KNOWN_GAMES_MAX = 100;
+/** Board codes, as the worker accepts them (GameView lowercases a typed one). */
+const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
+/** Boards opened without joining, kept for Home (the server reads at most 50). */
+export const SEEN_GAMES_MAX = 50;
 
 export interface Profile {
   name: string;
@@ -228,13 +235,18 @@ export function useProfile(): Profile {
 
 // ---- Known games ----
 
-export function getKnownGames(): string[] {
+/** A stored list of board ids ([] when missing or corrupt). */
+function readIds(key: string): string[] {
   try {
-    const v = JSON.parse(readLocal(STORAGE_KEYS.games) ?? "[]") as unknown;
+    const v = JSON.parse(readLocal(key) ?? "[]") as unknown;
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
   } catch {
     return [];
   }
+}
+
+export function getKnownGames(): string[] {
+  return readIds(STORAGE_KEYS.games);
 }
 
 /** Most recent first, de-duplicated. */
@@ -247,6 +259,53 @@ export function forgetGame(gameId: string): void {
   persist(STORAGE_KEYS.games, JSON.stringify(getKnownGames().filter((id) => id !== gameId)));
   unpersist(STORAGE_KEYS.admin(gameId));
   linkTokens.delete(gameId);
+}
+
+// ---- Seen games (opened from an invite, not joined) ----
+
+const seenListeners = new Set<() => void>();
+let seenCache: { raw: string | null; ids: readonly string[] } | null = null;
+
+/** Boards this device opened without joining or hosting, most recent first. */
+export function getSeenGames(): string[] {
+  return readIds(STORAGE_KEYS.seen).filter((id) => GAME_ID_RE.test(id));
+}
+
+function writeSeen(list: string[]): void {
+  persist(STORAGE_KEYS.seen, JSON.stringify(list));
+  for (const l of seenListeners) l();
+}
+
+/** Most recent first, de-duplicated, capped at SEEN_GAMES_MAX (the oldest fall off). */
+export function rememberSeen(gameId: string): void {
+  if (!GAME_ID_RE.test(gameId)) return;
+  const current = getSeenGames();
+  if (current[0] === gameId) return;
+  writeSeen([gameId, ...current.filter((id) => id !== gameId)].slice(0, SEEN_GAMES_MAX));
+}
+
+/** Drops boards from the seen list (hidden from Home, joined, finished or gone). */
+export function forgetSeen(gameIds: string | readonly string[]): void {
+  const drop = new Set(typeof gameIds === "string" ? [gameIds] : gameIds);
+  const current = getSeenGames();
+  const list = current.filter((id) => !drop.has(id));
+  if (list.length !== current.length) writeSeen(list);
+}
+
+function seenSnapshot(): readonly string[] {
+  const raw = readLocal(STORAGE_KEYS.seen);
+  if (seenCache?.raw !== raw) seenCache = { raw, ids: getSeenGames() };
+  return seenCache.ids;
+}
+
+function subscribeSeen(listener: () => void): () => void {
+  seenListeners.add(listener);
+  return () => seenListeners.delete(listener);
+}
+
+/** React binding: the seen list, re-rendering when a board is remembered or forgotten here. */
+export function useSeenGames(): readonly string[] {
+  return useSyncExternalStore(subscribeSeen, seenSnapshot, seenSnapshot);
 }
 
 // ---- Host (admin) tokens ----
@@ -266,8 +325,6 @@ export function isHostOf(gameId: string): boolean {
 
 const HOST_PARAM = "host";
 const GAME_PATH_RE = /^\/g\/([^/?#]+)\/?/;
-/** Board codes, as the worker accepts them (GameView lowercases a typed one). */
-const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
 
 /** `host` from a `?a=b` search or `#a=b` fragment. */
 function hostParam(part: string): string | null {
@@ -403,8 +460,9 @@ export interface PersistentStore {
 /**
  * Startup step (await before the first render): mirrors identity between
  * localStorage and the native store. `getStored` adopts whichever side has the
- * value (native wins on conflict); the known-games list is merged so neither
- * side loses boards, then each known game's admin token is restored. Finally
+ * value (native wins on conflict); the known-games and seen-games lists are
+ * merged so neither side loses boards, then each known game's admin token is
+ * restored. Finally
  * the public player id is computed (WebCrypto) so getPlayerId() is ready.
  * On the web this only touches localStorage and finishes immediately.
  *
@@ -428,8 +486,28 @@ function clearHydrating(p: Promise<void>): void {
   if (hydrating === p) hydrating = null;
 }
 
+/**
+ * Merges an id list kept on both sides (native first, so its order wins), writes
+ * the result locally and back to the native store if it changed, and returns it.
+ */
+async function mergeIds(store: PersistentStore, key: string, local: string[], max: number): Promise<string[]> {
+  let stored: string[] = [];
+  try {
+    const raw = JSON.parse((await store.getStored(key)) ?? "[]") as unknown;
+    if (Array.isArray(raw)) stored = raw.filter((x): x is string => typeof x === "string");
+  } catch {
+    // corrupt value: rebuild from the local list
+  }
+  const merged = [...new Set([...stored, ...local])].slice(0, max);
+  const json = JSON.stringify(merged);
+  writeLocal(key, json);
+  if (json !== JSON.stringify(stored)) await store.setStored(key, json);
+  return merged;
+}
+
 async function hydrateFrom(store: PersistentStore): Promise<void> {
   const localGames = getKnownGames();
+  const localSeen = getSeenGames();
 
   const clientId = await store.getStored(STORAGE_KEYS.clientId);
   if (clientId) {
@@ -444,17 +522,8 @@ async function hydrateFrom(store: PersistentStore): Promise<void> {
   const profile = await store.getStored(STORAGE_KEYS.profile);
   if (profile) writeLocal(STORAGE_KEYS.profile, profile);
 
-  let storedGames: string[] = [];
-  try {
-    const raw = JSON.parse((await store.getStored(STORAGE_KEYS.games)) ?? "[]") as unknown;
-    if (Array.isArray(raw)) storedGames = raw.filter((x): x is string => typeof x === "string");
-  } catch {
-    // corrupt value: rebuild from the local list
-  }
-  const merged = [...new Set([...storedGames, ...localGames])].slice(0, KNOWN_GAMES_MAX);
-  const mergedJson = JSON.stringify(merged);
-  writeLocal(STORAGE_KEYS.games, mergedJson);
-  if (mergedJson !== JSON.stringify(storedGames)) await store.setStored(STORAGE_KEYS.games, mergedJson);
+  const merged = await mergeIds(store, STORAGE_KEYS.games, localGames, KNOWN_GAMES_MAX);
+  await mergeIds(store, STORAGE_KEYS.seen, localSeen, SEEN_GAMES_MAX);
 
   await Promise.all(
     merged.map(async (id) => {
@@ -466,4 +535,5 @@ async function hydrateFrom(store: PersistentStore): Promise<void> {
 
   await primePlayerId();
   emit();
+  for (const l of seenListeners) l();
 }

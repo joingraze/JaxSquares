@@ -17,7 +17,8 @@
 // useGame starts that board from it, once, and skips the first GET; the socket
 // then takes over as usual.
 //
-// useMyGames(): the dashboard list, refetched on focus and every 30s.
+// useMyGames(): the dashboard list (with the boards this device only opened,
+// `?seen=`), refetched on focus and every 30s.
 //
 // The connection logic lives in LiveGame (no React) so it can be tested with a
 // fake socket and fake timers; the hooks are thin bindings.
@@ -28,7 +29,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { BOOT_STATE_ID, type Activity, type GameState, type GameSummary, type LiveMessage, type Square } from "../../shared/types";
 import { API_BASE, ApiError, api } from "./api";
-import { getPlayerId } from "./identity";
+import { forgetSeen, getPlayerId, getSeenGames } from "./identity";
 import { onAppResume } from "./native";
 
 export type ConnectionState =
@@ -811,6 +812,25 @@ export function useGame(id: string | undefined, options: UseGameOptions = {}): U
 
 let myGamesCache: GameSummary[] | null = null;
 
+/** A board this device hosts or has joined (not one it only opened from an invite). */
+export function isMyBoard(g: Pick<GameSummary, "isHost" | "joined">): boolean {
+  return g.isHost || g.joined;
+}
+
+/**
+ * Seen boards (opened, never joined) to drop from the device's list after a
+ * summary refresh: ones the server no longer has (deleted), and ones that are
+ * over, which never come back to Home. A board joined since is dropped too
+ * (it's on the dashboard as one of mine).
+ */
+export function staleSeen(sent: readonly string[], games: readonly GameSummary[]): string[] {
+  const byId = new Map(games.map((g) => [g.id, g]));
+  return sent.filter((id) => {
+    const g = byId.get(id);
+    return !g || isMyBoard(g) || g.status === "final";
+  });
+}
+
 export interface UseMyGamesResult {
   games: GameSummary[] | null;
   loading: boolean;
@@ -826,9 +846,12 @@ export function useMyGames(): UseMyGamesResult {
 
   const refresh = useCallback((): Promise<void> => {
     if (inflight.current) return inflight.current;
+    const seen = getSeenGames();
     const p = api
-      .myGames()
+      .myGames(undefined, seen)
       .then(({ games: next }) => {
+        const stale = staleSeen(seen, next);
+        if (stale.length > 0) forgetSeen(stale);
         myGamesCache = next;
         if (!mounted.current) return;
         setGames(next);

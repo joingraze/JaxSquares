@@ -10,11 +10,14 @@ import {
   finalSummary,
   groupBoards,
   headlineFor,
+  homeBoards,
   hostAction,
+  inviteModel,
   liveHits,
   liveSnapshot,
   phraseOf,
   primaryActionId,
+  relationOf,
   sectionOf,
   withState,
 } from "./sections";
@@ -32,6 +35,8 @@ function summary(over: Partial<GameSummary> = {}): GameSummary {
     status: "open",
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
     isHost: false,
+    joined: true,
+    host: null,
     mySquares: 0,
     claimed: 0,
     totalSquares: 100,
@@ -98,17 +103,20 @@ function state(over: Omit<Partial<GameState>, "game"> & { game?: Partial<Game> }
 }
 
 describe("sectionOf / hostAction / actionFor", () => {
-  it("puts everything you must act on under Needs you", () => {
+  it("puts host to-dos under Needs you and boards waiting on my picks under Invites", () => {
     expect(sectionOf(summary({ status: "final" }))).toBe("final");
     expect(sectionOf(summary({ status: "locked" }))).toBe("live");
     expect(sectionOf(summary({ status: "open", isHost: true }))).toBe("needs");
     expect(sectionOf(summary({ status: "draft", isHost: true }))).toBe("needs");
-    // A friend's board with open squares and none of them yours: you need to pick.
-    expect(sectionOf(summary({ status: "open" }))).toBe("needs");
+    // A friend's board with open squares and none of them mine: an invite, joined or only opened.
+    expect(sectionOf(summary({ status: "open" }))).toBe("invites");
+    expect(sectionOf(summary({ status: "open", joined: false }))).toBe("invites");
     expect(actionFor(summary({ status: "open" }))).toBe("pick");
-    // Already in, or nothing left to pick: just waiting.
+    // Already playing, or nothing left to pick: just waiting.
     expect(sectionOf(summary({ status: "open", mySquares: 3 }))).toBe("next");
     expect(sectionOf(summary({ status: "open", claimed: 100 }))).toBe("next");
+    // My own board is never an invite, even before I pick.
+    expect(sectionOf(summary({ status: "open", isHost: true, claimed: 3 }))).toBe("needs");
     const live = { state: "in" as const, period: 1, clock: "9:00", detail: "Q1 9:00", scoreX: 0, scoreY: 0, updatedAt: 1 };
     expect(sectionOf(summary({ status: "open", isHost: true, live }))).toBe("live");
     expect(actionFor(summary({ status: "open", isHost: true, live }))).toBeNull();
@@ -127,19 +135,22 @@ describe("sectionOf / hostAction / actionFor", () => {
 });
 
 describe("groupBoards", () => {
-  it("orders to-dos by urgency and upcoming boards by kickoff", () => {
+  it("orders to-dos by urgency, invites and upcoming boards by kickoff", () => {
     const s = groupBoards([
       summary({ id: "draft", isHost: true, status: "draft" }),
       summary({ id: "fill", isHost: true, claimed: 40 }),
       summary({ id: "full", isHost: true, claimed: 100 }),
       summary({ id: "pick", claimed: 10 }),
+      summary({ id: "opened", joined: false, claimed: 10, startsAt: 2500 }),
       summary({ id: "later", mySquares: 2, startsAt: 3000 }),
       summary({ id: "tbd", mySquares: 2, startsAt: null }),
       summary({ id: "soon", mySquares: 2, startsAt: 2000 }),
       summary({ id: "old-final", status: "final", lastActivityAt: 1 }),
       summary({ id: "new-final", status: "final", lastActivityAt: 9 }),
     ]);
-    expect(s.needs.map((g) => g.id)).toEqual(["full", "pick", "fill", "draft"]);
+    // Picking moved out of Needs you: it's for host to-dos only.
+    expect(s.needs.map((g) => g.id)).toEqual(["full", "fill", "draft"]);
+    expect(s.invites.map((g) => g.id)).toEqual(["opened", "pick"]);
     expect(s.next.map((g) => g.id)).toEqual(["soon", "later", "tbd"]);
     expect(s.final.map((g) => g.id)).toEqual(["new-final", "old-final"]);
     expect(s.live).toEqual([]);
@@ -148,8 +159,79 @@ describe("groupBoards", () => {
   it("gives the filled button to the single most urgent action, whatever it is", () => {
     expect(primaryActionId(groupBoards([summary({ id: "fill", isHost: true, claimed: 3 }), summary({ id: "full", isHost: true, claimed: 100 })]))).toBe("full");
     expect(primaryActionId(groupBoards([summary({ id: "mine", mySquares: 4 }), summary({ id: "pick" })]))).toBe("pick");
+    // A full board waiting on my draw beats an invite; an invite beats inviting more to mine.
+    expect(primaryActionId(groupBoards([summary({ id: "pick" }), summary({ id: "full", isHost: true, claimed: 100 })]))).toBe("full");
+    expect(primaryActionId(groupBoards([summary({ id: "fill", isHost: true, claimed: 3 }), summary({ id: "pick", joined: false })]))).toBe("pick");
     expect(primaryActionId(groupBoards([summary({ id: "draft", isHost: true, status: "draft" })]))).toBe("draft");
     expect(primaryActionId(groupBoards([summary({ id: "full", claimed: 100 })]))).toBeNull();
+  });
+});
+
+describe("invites vs boards I'm playing", () => {
+  const live = { state: "in" as const, period: 2, clock: "4:12", detail: "Q2 4:12", scoreX: 7, scoreY: 3, updatedAt: 1 };
+
+  it("tells host, playing, invited and watching apart", () => {
+    expect(relationOf(summary({ isHost: true }))).toBe("host");
+    expect(relationOf(summary({ mySquares: 15 }))).toBe("playing");
+    expect(relationOf(summary({ joined: false }))).toBe("invited");
+    expect(relationOf(summary({ joined: true }))).toBe("invited");
+    expect(relationOf(summary({ claimed: 100 }))).toBe("watching");
+    expect(relationOf(summary({ status: "locked" }))).toBe("watching");
+  });
+
+  it("lists every open, not-full board where I have no squares under Invites, opened or joined", () => {
+    const s = groupBoards([
+      summary({ id: "opened", joined: false, claimed: 58 }),
+      summary({ id: "joined", joined: true, claimed: 12 }),
+      summary({ id: "playing", mySquares: 15, claimed: 40 }),
+      summary({ id: "full", joined: false, claimed: 100 }),
+    ]);
+    expect(s.invites.map((g) => g.id).sort()).toEqual(["joined", "opened"]);
+    expect(s.next.map((g) => g.id).sort()).toEqual(["full", "playing"]);
+    expect(s.needs).toEqual([]);
+  });
+
+  it("moves an invite I never picked on to Live once numbers are drawn or the game is on, tagged Watching", () => {
+    const s = groupBoards([summary({ id: "drawn", status: "locked", joined: false }), summary({ id: "kicked", status: "open", live, claimed: 30 })]);
+    expect(s.invites).toEqual([]);
+    expect(s.live.map((g) => g.id).sort()).toEqual(["drawn", "kicked"]);
+    expect(relationOf(s.live.find((g) => g.id === "drawn")!)).toBe("watching");
+    expect(cardModel(summary({ claimed: 100 }), 0)).toMatchObject({ relation: "watching", role: "Watching", action: null });
+  });
+
+  it("keeps boards I'm on, and only the seen invites still open, on Home", () => {
+    const games = [
+      summary({ id: "mine", isHost: true, status: "draft" }),
+      summary({ id: "joined-final", joined: true, status: "final" }),
+      summary({ id: "seen-open", joined: false }),
+      summary({ id: "seen-locked", joined: false, status: "locked" }),
+      summary({ id: "seen-final", joined: false, status: "final" }),
+      summary({ id: "seen-draft", joined: false, status: "draft" }),
+      summary({ id: "hidden", joined: false }),
+    ];
+    const shown = homeBoards(games, ["seen-open", "seen-locked", "seen-final", "seen-draft"]).map((g) => g.id);
+    // A never-joined board drops off once it's final; one I hid ("Not for me") is out of the seen list.
+    expect(shown).toEqual(["mine", "joined-final", "seen-open", "seen-locked"]);
+    // A joined board stays in Final (as "Watched" when I never picked).
+    expect(groupBoards(homeBoards(games, [])).final.map((g) => g.id)).toEqual(["joined-final"]);
+  });
+
+  it("says who invited me, what's left and what a square goes for, and only offers to hide what I only opened", () => {
+    const now = 1_000_000;
+    const host = { id: MAYA, name: "Maya", color: "#ff6b35", emoji: "🦊" };
+    const format = { periods: "quarters" as const, reverse: false, boardSize: 100 as const, freshNumbers: false, unit: "$" as const, squarePrice: 10 };
+    const m = inviteModel(summary({ joined: false, host, claimed: 58, format, startsAt: now + 2 * 3600_000 }), now);
+    expect(m).toMatchObject({ inviter: host, from: "Maya invited you", left: 42, matchup: "Chiefs vs Bills", canHide: true });
+    expect(m.kickoff).toMatch(/^kicks off in 2h/);
+    expect(m.lineup).toEqual({ fun: false, parts: ["$10 a square"] });
+    const joined = inviteModel(summary({ joined: true, host: null }), now);
+    expect(joined).toMatchObject({ from: "You're invited", canHide: false, kickoff: null, lineup: null });
+    expect(inviteModel(summary({ format: { ...format, squarePrice: null, justForFun: true } }), now).lineup).toEqual({ fun: true, parts: [] });
+  });
+
+  it("shows my squares count on a board I'm playing instead of a quiet role", () => {
+    expect(cardModel(summary({ mySquares: 15, claimed: 40 }), 0)).toMatchObject({ relation: "playing", role: "15 squares yours", meta: null });
+    expect(cardModel(summary({ mySquares: 1, claimed: 40 }), 0).role).toBe("1 square yours");
   });
 });
 
@@ -166,12 +248,12 @@ describe("cardModel", () => {
       buzz: true,
     });
     const kickoff = cardModel(summary({ mySquares: 9, claimed: 37, startsAt: now + 3 * 24 * 3600_000 }), now);
-    expect(kickoff).toMatchObject({ role: "You're in", statusTone: "muted", meta: "9 yours", action: null, buzz: false });
+    expect(kickoff).toMatchObject({ relation: "playing", role: "9 squares yours", statusTone: "muted", meta: null, action: null, buzz: false });
     expect(kickoff.status).toMatch(/^Kickoff /);
   });
 
   it("asks for the right thing on each kind of board", () => {
-    expect(cardModel(summary({ claimed: 84 }), now)).toMatchObject({ status: "16 left", action: { kind: "pick", label: "Pick squares" }, meta: "none yours yet" });
+    expect(cardModel(summary({ claimed: 84 }), now)).toMatchObject({ status: "16 left", action: { kind: "pick", label: "Pick squares" } });
     expect(cardModel(summary({ isHost: true, claimed: 100 }), now)).toMatchObject({ status: "Board's full", statusTone: "gold", action: { label: "Draw numbers" }, buzz: false });
     expect(cardModel(summary({ isHost: true, claimed: 92 }), now)).toMatchObject({ status: "8 left", statusIsLeft: true, statusTone: "gold", action: { label: "Draw numbers" } });
     expect(cardModel(summary({ isHost: true, status: "draft" }), now)).toMatchObject({ status: "Not open yet", action: { label: "Finish setup" }, meter: false });
@@ -307,11 +389,11 @@ describe("finalSummary", () => {
 describe("headlineFor", () => {
   const now = 0;
   it("sums up the day: live games and your hits first, then to-dos, then kickoff", () => {
-    const live = groupBoards([summary({ id: "a", status: "locked" }), summary({ id: "b", status: "locked" })]);
+    const live = groupBoards([summary({ id: "a", status: "locked", mySquares: 4 }), summary({ id: "b", status: "locked", isHost: true })]);
     expect(headlineFor(live, { winningNow: true, hits: 0, now })).toMatchObject({ lead: "2 games live.", hot: "You're winning right now.", tone: "win" });
     expect(headlineFor(live, { winningNow: false, hits: 2, now })).toMatchObject({ lead: "2 games live.", hot: "You've hit twice.", tone: "win" });
     expect(headlineFor(live, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "2 games", hot: "live right now.", tone: "live" });
-    const one = groupBoards([summary({ status: "locked" })]);
+    const one = groupBoards([summary({ status: "locked", mySquares: 4 })]);
     expect(headlineFor(one, { winningNow: false, hits: 1, now })).toMatchObject({ lead: "Your game is live.", hot: "You've hit once." });
     const full = groupBoards([summary({ isHost: true, claimed: 100 })]);
     expect(headlineFor(full, { winningNow: false, hits: 0, now }).hot).toBe("Draw the numbers.");
@@ -319,6 +401,24 @@ describe("headlineFor", () => {
     expect(headlineFor(nearly, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Almost full.", hot: "Draw the numbers." });
     expect(headlineFor(groupBoards([summary({ isHost: true, claimed: 3 })]), { winningNow: false, hits: 0, now }).hot).toBe("Invite the crew.");
     expect(headlineFor(groupBoards([summary({})]), { winningNow: false, hits: 0, now }).hot).toBe("Grab yours.");
+    // The invite's host by name, or a count of boards waiting on my picks.
+    const maya = { id: MAYA, name: "Maya", color: "#ff6b35", emoji: "🦊" };
+    expect(headlineFor(groupBoards([summary({ joined: false, host: maya })]), { winningNow: false, hits: 0, now })).toMatchObject({
+      lead: "Maya invited you.",
+      hot: "Grab your squares.",
+    });
+    const two = groupBoards([summary({ id: "a", joined: false, host: maya }), summary({ id: "b" }), summary({ id: "mine", isHost: true, claimed: 3 })]);
+    expect(headlineFor(two, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "2 boards", hot: "waiting on your picks." });
+    // A full board of mine waiting on the draw still comes first.
+    const draw = groupBoards([summary({ id: "a" }), summary({ id: "full", isHost: true, claimed: 100 })]);
+    expect(headlineFor(draw, { winningNow: false, hits: 0, now }).hot).toBe("Draw the numbers.");
+    // A game I'm only watching isn't "my game", and doesn't beat my to-dos.
+    const watching = groupBoards([summary({ id: "w", status: "locked", joined: false })]);
+    expect(headlineFor(watching, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Game on.", hot: "You're watching live." });
+    const watchingAndInvite = groupBoards([summary({ id: "w", status: "locked", joined: false }), summary({ id: "i", joined: false })]);
+    expect(headlineFor(watchingAndInvite, { winningNow: false, hits: 0, now }).hot).toBe("Grab yours.");
+    const mineAndWatching = groupBoards([summary({ id: "w", status: "locked", joined: false }), summary({ id: "m", status: "locked", mySquares: 2 })]);
+    expect(headlineFor(mineAndWatching, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Your game is", hot: "live." });
     const kickoff = groupBoards([summary({ mySquares: 4, startsAt: now + 3 * 3600_000 })]);
     expect(headlineFor(kickoff, { winningNow: false, hits: 0, now })).toMatchObject({ lead: "Kickoff in", hot: "3h 0m." });
     expect(headlineFor(groupBoards([summary({ mySquares: 4 })]), { winningNow: false, hits: 0, now }).hot).toBe("Now we wait.");

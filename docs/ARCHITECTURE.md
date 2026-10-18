@@ -64,7 +64,7 @@ the same value synchronously.) It is stable per device and one-way.
 | `Activity` | `actor` (null for system events), winner `data.playerIds` |
 | `PeriodResult` (`resolveResults`) | `winnerPlayerId`, `reverseWinnerPlayerId`; `winnersOf`, `myWins`, `winCounts`, `countClaimedBy`, `liveCell().playerId` all take/return public ids |
 | Live socket | `?player=<public id>` |
-| `GameSummary` | none (computed per device: `isHost`, `mySquares`, `myWins`) |
+| `GameSummary` | `host.id`, `leaderPlayerId` (the rest is computed per device: `isHost`, `joined`, `mySquares`, `myWins`) |
 
 - Server: D1 stores clientIds (`players.client_id`, `squares.client_id`,
   `games.host_client_id`); `worker/db.ts` derives public ids on read (memoized in
@@ -129,7 +129,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
-| GET | `/api/me/games` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined; see "Dashboard summaries") |
+| GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; activates draft) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board; show and itemize its amount) |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, activates). A verified purchase that can't open the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already open (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
@@ -258,10 +258,40 @@ types never break an older app build.
 
 `GET /api/me/games` returns a `GameSummary` per board this device hosts or has
 joined (most recently active first): board-level counts plus per-device fields
-(`isHost`, `mySquares`, `myWins`) computed server-side from the caller's
-`x-client-id`, which never appears in the response. Two fields let
-Home render a board in play without fetching its full state (both always sent;
-optional in the type only so older fixtures type-check):
+(`isHost`, `joined`, `mySquares`, `myWins`) computed server-side from the
+caller's `x-client-id`, which never appears in the response.
+
+`?seen=<id>,<id>` adds the boards this device only opened (an invite link it
+hasn't joined; the client keeps them in `jaxsquares.seen`, most recent first,
+about 50, mirrored to the native store like the known games). Ids that aren't
+board codes (`[a-z0-9]{4,16}`, lowercased) are ignored, duplicates count once,
+at most 50 are read, and a board that no longer exists is simply absent. A seen
+board's summary is the same public data as any other (`joined: false`,
+`mySquares: 0`); after each refresh the client drops seen ids that came back
+missing, final, or now joined.
+
+- `joined: boolean`: this device has a player row on the board.
+- `host: { id, name, color, emoji } | null`: the host's public player profile
+  ("Maya invited you"), `id` being the public player id (= `Game.hostPlayerId`);
+  null when the host has no player row.
+- `format` carries what an invite shows before anyone picks: the display-only
+  `squarePrice` (in `unit`) or `justForFun`, and the prize lineup. In-app only,
+  like every amount.
+
+Home sorts each summary by how this device stands with the board
+(`relationOf` in `src/features/home/sections.ts`): host; playing (has squares);
+invited (open, squares left, none mine: opened or joined without picking),
+shown under **Invites**; watching (no squares and nothing left to pick). A board
+in play I hold no squares on is in **Live now** tagged "Watching"; once final, a
+never-joined board leaves Home (and the seen list) while a joined one stays in
+**Final** as "Watched". **Needs you** is for the host's to-dos only. A board
+I'm playing shows my sticker and "15 squares yours"; an invite gets its own
+card (who invited me, the matchup, squares left, the square price line, "Pick
+squares", and "Not for me" on one I only opened, which drops it from the seen
+list with an Undo).
+
+Two fields let Home render a board in play without fetching its full state
+(both always sent; optional in the type only so older fixtures type-check):
 
 - `latestScore: { scoreX, scoreY, label } | null`: the live feed's score while a
   linked game is on or over (`label` is the provider's clock, e.g. "Q3 4:12",
@@ -284,7 +314,9 @@ the network (not the cache), and never when it is older than the summary's
 `version`: a board Home stopped following, or a final the host corrected (score
 edits, manual winners and deleting the Final score all still work on a final
 board). Finished boards on screen are fetched once per Home visit, and again
-when their summary's `version` moves past the state held.
+when their summary's `version` moves past the state held. Boards this device
+only opened aren't followed live: they refresh with the summary list, and one in
+play is fetched once the same way (again when its `version` moves on).
 
 ## Activity
 

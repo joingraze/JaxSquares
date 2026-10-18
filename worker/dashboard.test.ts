@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../shared/playerId";
 import type { CreateGameResponse, Game, GameState, GameSummary, LiveStatus } from "../shared/types";
-import { latestScoreOf } from "./db";
+import { latestScoreOf, listGamesForClient } from "./db";
 import type { Env } from "./env";
 import worker from "./index";
 import { createTestD1, type TestD1 } from "./payments/testD1";
@@ -172,6 +172,103 @@ describe("dashboard summary: latest score and leader", () => {
     expect(s.version).toBe(fixed.version);
     expect(s.version).toBeGreaterThan(wrong.version);
     expect(s.myWins).toEqual([]);
+  });
+});
+
+describe("seen boards (invites opened without joining)", () => {
+  const CARL = "carl-client-dash-0004";
+  const SECRETS = [HOST, ANA, BEN, CARL];
+
+  async function games(client: string, seen?: string): Promise<{ status: number; games: GameSummary[]; text: string }> {
+    const res = await call<{ games: GameSummary[] }>("GET", seen === undefined ? "/me/games" : `/me/games?seen=${seen}`, { client });
+    return { status: res.status, games: res.body.games ?? [], text: res.text };
+  }
+
+  /** A board with a square price that Carl only opened from an invite. */
+  async function invite(): Promise<{ id: string; admin: string }> {
+    const { id, admin } = await board();
+    const res = await call("PATCH", `/games/${id}`, {
+      admin,
+      body: { format: { periods: "quarters", reverse: false, boardSize: 25, freshNumbers: false, unit: "$", squarePrice: 10 } },
+    });
+    expect(res.status).toBe(200);
+    return { id, admin };
+  }
+
+  it("summarizes a board I only opened, with the host's public profile and the square price", async () => {
+    const { id } = await invite();
+    expect((await games(CARL)).games).toEqual([]);
+
+    const { status, games: list, text } = await games(CARL, id);
+    expect(status).toBe(200);
+    expect(list).toHaveLength(1);
+    const s = list[0];
+    expect(s).toMatchObject({ id, status: "open", isHost: false, joined: false, mySquares: 0, claimed: 2, totalSquares: 25, playerCount: 3 });
+    expect(s.host).toEqual({ id: pid(HOST), name: "Jordan", color: "#ff6b35", emoji: "🦊" });
+    expect(s.format).toMatchObject({ unit: "$", squarePrice: 10 });
+    for (const secret of SECRETS) expect(text).not.toContain(secret);
+  });
+
+  it("marks the boards I'm on as joined and never lists one twice", async () => {
+    const { id } = await board();
+    const ana = await games(ANA, `${id},${id.toUpperCase()}`);
+    expect(ana.games.map((g) => g.id)).toEqual([id]);
+    expect(ana.games[0]).toMatchObject({ joined: true, isHost: false, mySquares: 1 });
+    const host = await games(HOST, id);
+    expect(host.games).toHaveLength(1);
+    expect(host.games[0]).toMatchObject({ joined: true, isHost: true, host: { id: pid(HOST), name: "Jordan" } });
+  });
+
+  it("ignores junk ids and leaves out boards that don't exist", async () => {
+    const { id } = await invite();
+    const junk = ["", "NOPE!!", "..%2Fx", "a b", "x".repeat(40), "abc", "zzzz9999", encodeURIComponent("<script>")].join(",");
+    const { status, games: list } = await games(CARL, `${junk},${id},,`);
+    expect(status).toBe(200);
+    expect(list.map((g) => g.id)).toEqual([id]);
+    // A deleted board simply drops out.
+    const { id: gone, admin } = await board();
+    expect((await call("DELETE", `/games/${gone}`, { admin })).status).toBe(200);
+    expect((await games(CARL, `${gone},${id}`)).games.map((g) => g.id)).toEqual([id]);
+  });
+
+  it("never puts a clientId or a host token in the response", async () => {
+    const { id, admin } = await invite();
+    await call("POST", `/games/${id}/join`, { client: CARL, body: { name: "Carl", color: "#69db7c", emoji: "🦖" } });
+    for (const client of SECRETS) {
+      const { text } = await games(client, id);
+      for (const secret of [...SECRETS, admin]) expect(text).not.toContain(secret);
+      expect(text).not.toMatch(/client_?id|admin_?token/i);
+    }
+  });
+
+  it("keeps every seen board that exists, whatever the cap on my own boards leaves out", async () => {
+    const older = await board();
+    const newer = await board();
+    const { id: opened } = await invite();
+    t.query(`UPDATE games SET updated_at = CASE id WHEN ? THEN 3 WHEN ? THEN 2 ELSE 1 END`, newer.id, older.id);
+    const list = await listGamesForClient(t.d1, ANA, [opened], 1);
+    expect(list.map((g) => g.id).sort()).toEqual([newer.id, opened].sort());
+    expect(list.map((g) => g.id)).not.toContain(older.id);
+  });
+
+  it("summarizes at most 50 seen boards", async () => {
+    const ids = Array.from({ length: 55 }, (_, i) => `seen${String(i).padStart(2, "0")}`);
+    for (const [i, id] of ids.entries()) {
+      t.query(
+        `INSERT INTO games (id, name, team_x, team_y, format, periods, status, host_client_id, admin_token, created_at, updated_at)
+         VALUES (?, ?, '{"name":"Chiefs"}', '{"name":"Eagles"}', '{"periods":"quarters","reverse":false,"boardSize":100,"freshNumbers":false}', '[]', 'open', ?, 'tok', 1, ?)`,
+        id,
+        `Board ${i}`,
+        HOST,
+        1000 + i,
+      );
+    }
+    const { status, games: list } = await games(CARL, ids.join(","));
+    expect(status).toBe(200);
+    // The first 50 asked about (most recent first on the device), not the 5 after them.
+    expect(list).toHaveLength(50);
+    expect(new Set(list.map((g) => g.id))).toEqual(new Set(ids.slice(0, 50)));
+    expect(list.every((g) => !g.joined && !g.isHost && g.host === null)).toBe(true);
   });
 });
 

@@ -17,7 +17,16 @@ import type {
   ScoreInput,
   UpdateGameInput,
 } from "../../shared/types";
-import { forgetGame, getAdminToken, getClientId, linkAdminToken, rememberGame, saveAdminToken, settleLinkAdminToken } from "./identity";
+import {
+  forgetGame,
+  forgetSeen,
+  getAdminToken,
+  getClientId,
+  linkAdminToken,
+  rememberGame,
+  saveAdminToken,
+  settleLinkAdminToken,
+} from "./identity";
 
 /** "" on the web (same origin); "https://jaxsquares.com" in the native app. */
 export const API_BASE: string = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
@@ -182,13 +191,19 @@ export const api = {
     forgetGame(id);
     return res;
   },
-  myGames: (signal?: AbortSignal) => request<{ games: GameSummary[] }>("GET", "/me/games", { signal }),
+  /**
+   * Boards this device hosts or has joined, plus summaries of the `seen` ones
+   * (opened from an invite, not joined; public board ids, never the clientId).
+   */
+  myGames: (signal?: AbortSignal, seen: readonly string[] = []) =>
+    request<{ games: GameSummary[] }>("GET", seen.length > 0 ? `/me/games?seen=${seen.map(encodeURIComponent).join(",")}` : "/me/games", { signal }),
 
   // ---- Players ----
-  /** Join (or rename) on a board; remembers the board on this device. */
+  /** Join (or rename) on a board; remembers the board on this device (it's no longer just "seen"). */
   async join(id: string, input: JoinInput): Promise<StateResponse> {
     const res = await request<StateResponse>("POST", g(id, "/join"), { body: input });
     rememberGame(id);
+    forgetSeen(id);
     return res;
   },
   claim: (id: string, cells: CellsInput["cells"]) =>

@@ -1,23 +1,52 @@
-// Pure dashboard logic for Home: which section a board belongs in, what the
-// card says and asks for, the glanceable "live" snapshot of a board in play,
-// friend activity grouped by person, and the headline. No React or IO, so it
-// is unit-tested in sections.test.ts.
+// Pure dashboard logic for Home: which boards show at all, which section a
+// board belongs in, what the card says and asks for, the glanceable "live"
+// snapshot of a board in play, friend activity grouped by person, and the
+// headline. No React or IO, so it is unit-tested in sections.test.ts.
 
-import type { GameState, GameSummary, Player, Team } from "../../../shared/types";
+import type { GameState, GameSummary, HostProfile, Player, Team } from "../../../shared/types";
 import { periodNote, periodPhrase } from "../../../shared/formats";
-import { countdown, isHexColor, kickoffLabel } from "../../lib/format";
+import { countdown, isHexColor, kickoffLabel, pluralize } from "../../lib/format";
 import { lockIsTheMove } from "../host/hostModel";
+import { prizeLineup } from "../rules/rulesModel";
 import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
 
-export type SectionKey = "live" | "needs" | "next" | "final";
+export type SectionKey = "live" | "invites" | "needs" | "next" | "final";
 
-export const SECTION_ORDER: readonly SectionKey[] = ["live", "needs", "next", "final"];
+export const SECTION_ORDER: readonly SectionKey[] = ["live", "invites", "needs", "next", "final"];
 
 /** Host to-dos on a board that isn't in play yet. */
 export type HostAction = "finish-setup" | "lock" | "invite";
 
-/** Anything the user has to do on a board: a host to-do, or picking squares on a friend's board. */
+/** Anything the user has to do on a board: a host to-do, or picking squares on a board they were invited to. */
 export type BoardAction = HostAction | "pick";
+
+/**
+ * How this device stands with a board:
+ * - host: it's my board;
+ * - playing: I hold squares on it;
+ * - invited: it's open with squares left and I have none yet (whether I only
+ *   opened the invite or joined without picking);
+ * - watching: no squares, and none to pick any more (full, drawn, in play or over).
+ */
+export type Relation = "host" | "playing" | "invited" | "watching";
+
+export function relationOf(g: Pick<GameSummary, "isHost" | "mySquares" | "status" | "claimed" | "totalSquares">): Relation {
+  if (g.isHost) return "host";
+  if (g.mySquares > 0) return "playing";
+  if (g.status === "open" && g.claimed < g.totalSquares) return "invited";
+  return "watching";
+}
+
+/**
+ * The boards Home shows: every board I host or joined, and the ones I only
+ * opened that are still in my seen list (not hidden) and not over. A board I
+ * never joined drops off once it's final (useMyGames prunes it from the seen
+ * list), and one that isn't open yet waits until it is.
+ */
+export function homeBoards(games: readonly GameSummary[], seen: Iterable<string>): GameSummary[] {
+  const kept = new Set(seen);
+  return games.filter((g) => g.isHost || g.joined || (kept.has(g.id) && g.status !== "final" && g.status !== "draft"));
+}
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -30,39 +59,46 @@ export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSqu
 
 const inPlay = (g: GameSummary) => g.status === "locked" || g.live?.state === "in";
 
-/** What this board needs from you before kickoff, if anything. */
+/** What this board needs from you before kickoff, if anything: a host to-do, or picking squares on an invite. */
 export function actionFor(g: GameSummary): BoardAction | null {
   if (g.status === "final" || inPlay(g)) return null;
   if (g.isHost) return hostAction(g);
-  if (g.status === "open" && g.mySquares === 0 && g.claimed < g.totalSquares) return "pick";
+  if (relationOf(g) === "invited") return "pick";
   return null;
 }
 
-/** Where a board sits on the dashboard: anything you must act on is under "Needs you". */
+/**
+ * Where a board sits on the dashboard: boards in play under "Live now" (the
+ * ones I'm only watching too), boards waiting on my picks under "Invites",
+ * host to-dos under "Needs you", the rest under "Up next" and "Final".
+ */
 export function sectionOf(g: GameSummary): SectionKey {
   if (g.status === "final") return "final";
   // A linked game that kicked off before the host drew numbers is still "live" news.
   if (inPlay(g)) return "live";
+  if (relationOf(g) === "invited") return "invites";
   if (actionFor(g)) return "needs";
   return "next";
 }
 
-/** Most urgent first: a (nearly) full board holds up the game; a board you're not on yet beats inviting more. */
+/** Most urgent first: a (nearly) full board holds up the game; picks on an invite beat inviting more. */
 const ACTION_RANK: Record<BoardAction, number> = { lock: 0, pick: 1, invite: 2, "finish-setup": 3 };
 
 export type Sections = Record<SectionKey, GameSummary[]>;
 
 /**
  * Boards grouped by what they need, each group in its most useful order:
- * live by latest activity, to-dos by urgency (full boards first),
- * upcoming by kickoff (unscheduled last), finals newest first.
+ * live by latest activity, invites by kickoff (soonest first, unscheduled
+ * last), host to-dos by urgency (full boards first), upcoming by kickoff,
+ * finals newest first. Pass the boards Home shows (homeBoards).
  */
 export function groupBoards(games: readonly GameSummary[]): Sections {
-  const out: Sections = { live: [], needs: [], next: [], final: [] };
+  const out: Sections = { live: [], invites: [], needs: [], next: [], final: [] };
   for (const g of games) out[sectionOf(g)].push(g);
   const recent = (a: GameSummary, b: GameSummary) => b.lastActivityAt - a.lastActivityAt;
   out.live.sort(recent);
   out.final.sort(recent);
+  out.invites.sort((a, b) => kickoffOrder(a, b) || recent(a, b));
   out.needs.sort((a, b) => ACTION_RANK[actionFor(a)!] - ACTION_RANK[actionFor(b)!] || kickoffOrder(a, b) || recent(a, b));
   out.next.sort((a, b) => kickoffOrder(a, b) || recent(a, b));
   return out;
@@ -77,16 +113,21 @@ function kickoffOrder(a: GameSummary, b: GameSummary): number {
 
 /**
  * The one card whose action gets the filled button: the most urgent to-do on
- * the page. Every other action is outlined, whatever it is.
+ * the page (a full board waiting on the host's draw, else the first invite,
+ * else the first host to-do). Every other action is outlined, whatever it is.
  */
 export function primaryActionId(sections: Sections): string | null {
-  return sections.needs[0]?.id ?? null;
+  const todo = sections.needs[0];
+  if (todo && actionFor(todo) === "lock") return todo.id;
+  return sections.invites[0]?.id ?? todo?.id ?? null;
 }
 
 // ---- Card copy ----
 
 export interface CardModel {
-  /** Quiet role label: your board, or one you're playing on. */
+  /** How I stand with the board (a card on a board I'm playing shows my avatar by the role). */
+  relation: Relation;
+  /** Role label: "Your board", "15 squares yours", or "Watching". */
   role: string;
   /** Game state, e.g. "42 left", "Board's full", "Kickoff Sun 8:56 PM". */
   status: string;
@@ -116,14 +157,21 @@ export function kickoffText(startsAt: number, now: number, short = false): strin
   return short ? kickoffLabel(startsAt, now) : `Kickoff ${kickoffLabel(startsAt, now)}`;
 }
 
+/** "15 squares yours": what a card on a board I'm playing says first. */
+export function squaresYours(n: number): string {
+  return `${pluralize(n, "square")} yours`;
+}
+
 /** What a board card says and asks for, for a board that isn't in play or final. */
 export function cardModel(g: GameSummary, now: number): CardModel {
   const left = Math.max(0, g.totalSquares - g.claimed);
   const action = actionFor(g);
-  const role = g.isHost ? "Your board" : "You're in";
-  const mine = g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
+  const relation = relationOf(g);
+  const role = relation === "host" ? "Your board" : relation === "playing" ? squaresYours(g.mySquares) : "Watching";
+  // A playing card's role already says how many are mine; a host's card says it here.
+  const mine = relation !== "host" ? null : g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
   const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null;
-  const base = { role, action: action ? { kind: action, label: ACTION_LABEL[action] } : null };
+  const base = { relation, role, action: action ? { kind: action, label: ACTION_LABEL[action] } : null };
 
   switch (action) {
     case "finish-setup":
@@ -137,7 +185,9 @@ export function cardModel(g: GameSummary, now: number): CardModel {
       return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
     default: {
       if (left === 0) {
-        return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta: "numbers drawn at kickoff", meter: true, buzz: false };
+        // A playing card shows my squares there instead.
+        const meta = relation === "playing" ? null : "numbers drawn at kickoff";
+        return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta, meter: true, buzz: false };
       }
       const soon = g.startsAt !== null && g.startsAt - now < DAY;
       return g.startsAt !== null
@@ -145,6 +195,42 @@ export function cardModel(g: GameSummary, now: number): CardModel {
         : { ...base, status: `${left} left`, statusTone: "muted", statusIsLeft: true, meta: mine, meter: true, buzz: false };
     }
   }
+}
+
+// ---- Invite card copy ----
+
+export interface InviteModel {
+  /** Who asked you in: the host's public profile (null when the host has none). */
+  inviter: HostProfile | null;
+  /** "Maya invited you", or "You're invited" when the host has no name. */
+  from: string;
+  /** Open squares (the card's count, "42 squares left"). */
+  left: number;
+  /** "Chiefs vs Bills". */
+  matchup: string;
+  /** "kicks off in 2h 10m", "kicks off Sun 8:25 PM", or null for an unscheduled matchup. */
+  kickoff: string | null;
+  /**
+   * What the host shows before anyone picks, in the board's own words (the
+   * same lineup the board shows: "$10 a square · Q1 $100 · Final $400"), or
+   * "Just for fun". null when the host set neither. In-app only.
+   */
+  lineup: { fun: boolean; parts: string[] } | null;
+  /** I only opened the invite (no player row): "Not for me" hides it from Home. */
+  canHide: boolean;
+}
+
+export function inviteModel(g: GameSummary, now: number): InviteModel {
+  const name = g.host?.name.trim() ?? "";
+  return {
+    inviter: g.host,
+    from: name ? `${name} invited you` : "You're invited",
+    left: Math.max(0, g.totalSquares - g.claimed),
+    matchup: `${g.teamX.name} vs ${g.teamY.name}`,
+    kickoff: g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null,
+    lineup: prizeLineup(g.format),
+    canHide: !g.joined && !g.isHost,
+  };
 }
 
 // ---- Live board state on top of a summary ----
@@ -413,11 +499,14 @@ export interface Headline {
 
 /**
  * The one sentence at the top of Home: a summary of your day across boards
- * (the cards carry the details). Live games and your hits there first, then
- * the most urgent to-do, then the next kickoff.
+ * (the cards carry the details). Your live games and your hits there first,
+ * then the most urgent to-do (a full board to draw, invites waiting on your
+ * picks, then the host's other to-dos), a game you're only watching, then the
+ * next kickoff.
  */
 export function headlineFor(sections: Sections, opts: { winningNow: boolean; hits: number; now: number }): Headline {
-  const live = sections.live.length;
+  // A board you're only watching doesn't make it "your game".
+  const live = sections.live.filter((g) => relationOf(g) !== "watching").length;
   if (live > 0) {
     const lead = live === 1 ? "Your game is live." : `${live} games live.`;
     if (opts.winningNow) return { lead, hot: "You're winning right now.", tone: "win" };
@@ -425,18 +514,25 @@ export function headlineFor(sections: Sections, opts: { winningNow: boolean; hit
     return live === 1 ? { lead: "Your game is", hot: "live.", tone: "live" } : { lead: `${live} games`, hot: "live right now.", tone: "live" };
   }
   const todo = sections.needs[0];
+  const drawNow = !!todo && actionFor(todo) === "lock";
+  if (drawNow) {
+    return { lead: todo.claimed >= todo.totalSquares ? "Your board is full." : "Almost full.", hot: "Draw the numbers.", tone: "brand" };
+  }
+  const invites = sections.invites.length;
+  if (invites > 1) return { lead: `${invites} boards`, hot: "waiting on your picks.", tone: "brand" };
+  if (invites === 1) {
+    const host = sections.invites[0].host?.name.trim();
+    return host ? { lead: `${host} invited you.`, hot: "Grab your squares.", tone: "brand" } : { lead: "Squares are open.", hot: "Grab yours.", tone: "brand" };
+  }
   if (todo) {
     switch (actionFor(todo)) {
-      case "lock":
-        return { lead: todo.claimed >= todo.totalSquares ? "Your board is full." : "Almost full.", hot: "Draw the numbers.", tone: "brand" };
-      case "pick":
-        return { lead: "Squares are open.", hot: "Grab yours.", tone: "brand" };
       case "invite":
         return { lead: "Board's open.", hot: "Invite the crew.", tone: "brand" };
       default:
         return { lead: "Almost there.", hot: "Finish your board.", tone: "brand" };
     }
   }
+  if (sections.live.length > 0) return { lead: "Game on.", hot: "You're watching live.", tone: "live" };
   if (sections.next.length > 0) {
     const kickoff = sections.next.find((g) => g.startsAt !== null && g.startsAt > opts.now)?.startsAt;
     return kickoff

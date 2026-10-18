@@ -314,7 +314,19 @@ export interface GameState {
   version: number;
 }
 
-/** One row on the dashboard. */
+/** The host's public player profile on a dashboard summary ("Maya invited you"). */
+export interface HostProfile {
+  /** Public player id (= Game.hostPlayerId), never the clientId. */
+  id: string;
+  name: string;
+  color: string;
+  emoji: string;
+}
+
+/**
+ * One row on the dashboard: a board this device hosts or has joined, or one it
+ * only opened (an invite it hasn't acted on; `GET /api/me/games?seen=`).
+ */
 export interface GameSummary {
   id: string;
   name: string;
@@ -322,8 +334,16 @@ export interface GameSummary {
   teamX: Team;
   teamY: Team;
   status: GameStatus;
+  /**
+   * Carries what an invite shows before anyone picks: the display-only square
+   * price (`squarePrice` in `unit`) or `justForFun`, and the prize lineup.
+   */
   format: GameFormat;
   isHost: boolean;
+  /** This device has a player row on the board (false for a board it only opened). */
+  joined: boolean;
+  /** The host's public profile, or null when the host has no player row. */
+  host: HostProfile | null;
   mySquares: number;
   claimed: number;
   totalSquares: number;

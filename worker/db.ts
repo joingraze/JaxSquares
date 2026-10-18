@@ -694,23 +694,47 @@ interface DashboardRow extends GameRow {
   claimed: number;
   my_squares: number;
   player_count: number;
+  joined: number;
+  /** The host's player row (null when there is none). */
+  host_name: string | null;
+  host_color: string | null;
+  host_emoji: string | null;
 }
 
-/** Boards this device hosts or has joined, most recently active first. */
-export async function listGamesForClient(db: D1Database, clientId: string, limit = 100): Promise<GameSummary[]> {
+/**
+ * Boards this device hosts or has joined, plus the boards it only opened
+ * (`seen`: invite links it hasn't acted on, already validated by the route),
+ * most recently active first. Seen ids that no longer exist are simply absent.
+ * Everything returned is public: the caller's clientId only selects rows.
+ */
+export async function listGamesForClient(
+  db: D1Database,
+  clientId: string,
+  seen: readonly string[] = [],
+  limit = 100,
+): Promise<GameSummary[]> {
   const { results: rows } = await db
     .prepare(
       `SELECT g.*,
          (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id) AS claimed,
          (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id AND s.client_id = ?1) AS my_squares,
-         (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) AS player_count
+         (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) AS player_count,
+         EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.client_id = ?1) AS joined,
+         hp.name AS host_name, hp.color AS host_color, hp.emoji AS host_emoji
        FROM games g
-       WHERE g.host_client_id = ?1
-          OR EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.client_id = ?1)
-       ORDER BY g.updated_at DESC
-       LIMIT ?2`,
+       LEFT JOIN players hp ON hp.game_id = g.id AND hp.client_id = g.host_client_id
+       WHERE g.id IN (
+               SELECT m.id FROM games m
+               WHERE m.host_client_id = ?1
+                  OR EXISTS (SELECT 1 FROM players p WHERE p.game_id = m.id AND p.client_id = ?1)
+               ORDER BY m.updated_at DESC
+               LIMIT ?2
+             )
+          -- Every seen board that exists, whatever the cap did to mine (a missing one reads as deleted).
+          OR g.id IN (SELECT value FROM json_each(?3))
+       ORDER BY g.updated_at DESC`,
     )
-    .bind(clientId, limit)
+    .bind(clientId, limit, JSON.stringify(seen))
     .all<DashboardRow>();
   if (rows.length === 0) return [];
   const me = await playerIdOf(clientId);
@@ -757,6 +781,9 @@ export async function listGamesForClient(db: D1Database, clientId: string, limit
       status: game.status,
       format: game.format,
       isHost: r.host_client_id === clientId,
+      joined: !!r.joined,
+      // Public profile only: the host's public id, never their clientId.
+      host: r.host_name !== null ? { id: game.hostPlayerId, name: r.host_name, color: r.host_color ?? "", emoji: r.host_emoji ?? "" } : null,
       mySquares: r.my_squares,
       claimed: r.claimed,
       totalSquares: totalSquares(game.format.boardSize),

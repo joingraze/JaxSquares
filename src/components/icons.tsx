@@ -235,6 +235,14 @@ export const GiftIcon = make(
     <path d="M12 7.5S10.8 3.5 8.3 3.5a2 2 0 0 0 0 4M12 7.5s1.2-4 3.7-4a2 2 0 0 1 0 4" />
   </>,
 );
+/** An envelope: an invite to someone else's board. */
+export const MailIcon = make(
+  "Mail",
+  <>
+    <rect x="3" y="5.5" width="18" height="13" rx="2.2" />
+    <path d="m3.8 7 8.2 6.2L20.2 7" />
+  </>,
+);
 export const MoreIcon = make(
   "More",
   <>

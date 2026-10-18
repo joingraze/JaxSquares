@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Activity, GameState } from "../../shared/types";
+import type { Activity, GameState, GameSummary } from "../../shared/types";
 import { ApiError } from "../lib/api";
 import {
   GameStore,
@@ -9,6 +9,7 @@ import {
   backoffDelay,
   browserLiveDeps,
   claimPatch,
+  isMyBoard,
   liveSocketUrl,
   parseBootState,
   parseLiveMessage,
@@ -16,6 +17,7 @@ import {
   releasePatch,
   resetBootState,
   shouldAccept,
+  staleSeen,
   takeBootState,
   useGame,
   type LiveDeps,
@@ -70,6 +72,50 @@ describe("shouldAccept", () => {
 
   it("rejects stale states", () => {
     expect(shouldAccept(makeState(5), makeState(4))).toBe(false);
+  });
+});
+
+describe("staleSeen / isMyBoard", () => {
+  const summary = (id: string, over: Partial<GameSummary> = {}): GameSummary => ({
+    id,
+    name: id,
+    sport: "football",
+    teamX: { name: "X" },
+    teamY: { name: "Y" },
+    status: "open",
+    format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
+    isHost: false,
+    joined: false,
+    host: null,
+    mySquares: 0,
+    claimed: 0,
+    totalSquares: 100,
+    playerCount: 1,
+    live: null,
+    startsAt: null,
+    myWins: [],
+    lastActivityAt: 1,
+    createdAt: 1,
+    ...over,
+  });
+
+  it("drops seen boards that are gone, over, or now mine; keeps open, locked and not-yet-open ones", () => {
+    const games = [
+      summary("open"),
+      summary("locked", { status: "locked" }),
+      summary("draft", { status: "draft" }),
+      summary("over", { status: "final" }),
+      summary("joined", { joined: true }),
+    ];
+    expect(staleSeen(["open", "locked", "draft", "over", "joined", "gone"], games)).toEqual(["over", "joined", "gone"]);
+    // Only what was asked about: a board the device didn't send is never touched.
+    expect(staleSeen([], games)).toEqual([]);
+  });
+
+  it("counts a board as mine when I host or joined it", () => {
+    expect(isMyBoard(summary("a", { joined: true }))).toBe(true);
+    expect(isMyBoard(summary("b", { isHost: true }))).toBe(true);
+    expect(isMyBoard(summary("c"))).toBe(false);
   });
 });
 

@@ -12,6 +12,8 @@ function summary(id: string, over: Partial<GameSummary> = {}): GameSummary {
     status: "open",
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
     isHost: false,
+    joined: true,
+    host: null,
     mySquares: 0,
     claimed: 0,
     totalSquares: 100,
@@ -31,6 +33,11 @@ describe("profile sync", () => {
   it("only touches boards still in play", () => {
     const games = [summary("a"), summary("b", { status: "locked" }), summary("c", { status: "final" }), summary("d", { status: "draft" })];
     expect(boardsToSync(games)).toEqual(["a", "b"]);
+  });
+
+  it("never re-sends my look to a board I only opened (that would join me)", () => {
+    const games = [summary("mine"), summary("opened", { joined: false }), summary("hosted", { joined: false, isHost: true })];
+    expect(boardsToSync(games)).toEqual(["mine", "hosted"]);
   });
 
   it("notices real changes only", () => {

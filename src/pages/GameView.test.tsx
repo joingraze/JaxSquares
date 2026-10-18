@@ -330,6 +330,32 @@ describe("GameView opened from an invite link", () => {
     expect(screen.getAllByTestId("cell")).toHaveLength(100);
     expect(screen.queryByLabelText("Loading board")).toBeNull();
   });
+
+  it("remembers the board as seen, so Home can offer it back", async () => {
+    board.state = openBoard([player(HOST, "Jordan")]);
+    board.fromPage = true;
+    await renderBoard();
+    expect(identity.getSeenGames()).toEqual(["brd123"]);
+    expect(identity.getKnownGames()).toEqual([]);
+  });
+
+  it("doesn't remember a board I'm on, host, or that's over", async () => {
+    board.state = openBoard([player(HOST, "Jordan"), player(identity.getPlayerId(), "Me")]);
+    await renderBoard();
+    expect(identity.getSeenGames()).toEqual([]);
+
+    localStorage.clear();
+    const final = openBoard([player(HOST, "Jordan")]);
+    board.state = { ...final, game: { ...final.game, status: "final" } };
+    await renderBoard();
+    expect(identity.getSeenGames()).toEqual([]);
+
+    localStorage.clear();
+    board.state = openBoard([player(HOST, "Jordan")]);
+    identity.saveAdminToken("brd123", "admin-token");
+    await renderBoard();
+    expect(identity.getSeenGames()).toEqual([]);
+  });
 });
 
 

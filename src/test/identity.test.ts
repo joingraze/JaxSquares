@@ -121,6 +121,55 @@ describe("host tokens and known games", () => {
   });
 });
 
+describe("seen games (opened from an invite, not joined)", () => {
+  it("keeps them most-recent-first without duplicates, under jaxsquares.seen", () => {
+    id.rememberSeen("abcd");
+    id.rememberSeen("efgh");
+    id.rememberSeen("abcd");
+    expect(id.getSeenGames()).toEqual(["abcd", "efgh"]);
+    expect(JSON.parse(localStorage.getItem("jaxsquares.seen")!)).toEqual(["abcd", "efgh"]);
+    // Separate from the boards I created or joined.
+    expect(id.getKnownGames()).toEqual([]);
+  });
+
+  it("caps the list, dropping the oldest", () => {
+    for (let i = 0; i < id.SEEN_GAMES_MAX + 5; i++) id.rememberSeen(`board${i}`);
+    const seen = id.getSeenGames();
+    expect(seen).toHaveLength(id.SEEN_GAMES_MAX);
+    expect(seen[0]).toBe(`board${id.SEEN_GAMES_MAX + 4}`);
+    expect(seen).not.toContain("board0");
+  });
+
+  it("forgets one or several, and ignores ids that aren't board codes", () => {
+    for (const g of ["aaaa", "bbbb", "cccc"]) id.rememberSeen(g);
+    id.rememberSeen("NOT A BOARD");
+    id.forgetSeen("bbbb");
+    expect(id.getSeenGames()).toEqual(["cccc", "aaaa"]);
+    id.forgetSeen(["aaaa", "cccc", "zzzz"]);
+    expect(id.getSeenGames()).toEqual([]);
+    localStorage.setItem("jaxsquares.seen", JSON.stringify(["dddd", 7, "../x"]));
+    expect(id.getSeenGames()).toEqual(["dddd"]);
+    localStorage.setItem("jaxsquares.seen", "{corrupt");
+    expect(id.getSeenGames()).toEqual([]);
+  });
+
+  it("is mirrored to the native store", async () => {
+    vi.resetModules();
+    const setStored = vi.fn(async () => {});
+    vi.doMock("../lib/native", () => ({ getStored: vi.fn(async () => null), setStored, removeStored: vi.fn(async () => {}) }));
+    try {
+      const fresh = await import("../lib/identity");
+      fresh.rememberSeen("abcd");
+      fresh.rememberSeen("efgh");
+      fresh.forgetSeen("abcd");
+      expect(setStored).toHaveBeenCalledWith("jaxsquares.seen", JSON.stringify(["abcd"]));
+      expect(setStored).toHaveBeenLastCalledWith("jaxsquares.seen", JSON.stringify(["efgh"]));
+    } finally {
+      vi.doUnmock("../lib/native");
+    }
+  });
+});
+
 describe("host links", () => {
   const none = { search: "", hash: "" };
 
@@ -288,6 +337,22 @@ describe("hydrateIdentity (native store mirror)", () => {
     await id.hydrateIdentity(store);
     expect(id.getKnownGames()).toEqual(["native-only", "both", "local-only"]);
     expect(JSON.parse(store.data.get("jaxsquares.games")!)).toEqual(["native-only", "both", "local-only"]);
+  });
+
+  it("merges the seen list from both sides, native order first", async () => {
+    localStorage.setItem("jaxsquares.seen", JSON.stringify(["local1", "both"]));
+    const store = memoryStore({ "jaxsquares.seen": JSON.stringify(["native1", "both"]) });
+    await id.hydrateIdentity(store);
+    expect(id.getSeenGames()).toEqual(["native1", "both", "local1"]);
+    expect(JSON.parse(store.data.get("jaxsquares.seen")!)).toEqual(["native1", "both", "local1"]);
+  });
+
+  it("restores the seen list when localStorage was wiped", async () => {
+    const store = memoryStore({ "jaxsquares.seen": JSON.stringify(["abcd"]) });
+    await id.hydrateIdentity(store);
+    expect(id.getSeenGames()).toEqual(["abcd"]);
+    // Nothing changed on the native side: no write back.
+    expect(store.setStored.mock.calls.some(([k]) => k === "jaxsquares.seen")).toBe(false);
   });
 
   it("notifies profile subscribers after hydrating", async () => {

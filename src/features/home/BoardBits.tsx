@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Team } from "../../../shared/types";
-import { cx, prefersReducedMotion, TeamMark } from "../../components/ui";
-import { withTeamColors } from "./sections";
+import { EyeIcon } from "../../components/icons";
+import { Avatar, Badge, cx, prefersReducedMotion, TeamMark } from "../../components/ui";
+import { useProfile } from "../../lib/identity";
+import { squaresYours, withTeamColors, type Relation } from "./sections";
 
 /** Both teams' marks on a diagonal, corners touching, so neither abbreviation is covered. */
 export function Matchup({ teamX, teamY }: { teamX: Team; teamY: Team }) {
@@ -16,9 +18,30 @@ export function Matchup({ teamX, teamY }: { teamX: Team; teamY: Team }) {
   );
 }
 
-/** Quiet role label: "Your board" or "You're in". Game state lives elsewhere on the card. */
-export function RoleLabel({ isHost, className }: { isHost: boolean; className?: string }) {
-  return <span className={cx("shrink-0 text-caption font-semibold text-ink-subtle", className)}>{isHost ? "Your board" : "You're in"}</span>;
+/**
+ * Quiet role label: "Your board", "You're in", or a "Watching" tag on a board
+ * I hold no squares on. Game state lives elsewhere on the card.
+ */
+export function RoleLabel({ relation, className }: { relation: Relation; className?: string }) {
+  if (relation === "watching" || relation === "invited") {
+    return (
+      <Badge tone="outline" icon={<EyeIcon strokeWidth={2.4} />} className={className}>
+        Watching
+      </Badge>
+    );
+  }
+  return <span className={cx("shrink-0 text-caption font-semibold text-ink-subtle", className)}>{relation === "host" ? "Your board" : "You're in"}</span>;
+}
+
+/** My sticker with how many squares are mine ("15 squares yours"): a board I'm playing, at a glance. */
+export function MySquaresTag({ count, className }: { count: number; className?: string }) {
+  const profile = useProfile();
+  return (
+    <span className={cx("inline-flex min-w-0 items-center gap-1.5 text-caption font-semibold text-ink-muted", className)}>
+      <Avatar name={profile.name || "You"} color={profile.color} emoji={profile.emoji} size="xs" decorative className="!h-4.5 !w-4.5 !text-[0.6rem]" />
+      <span className="truncate tabular-nums">{squaresYours(count)}</span>
+    </span>
+  );
 }
 
 /** Section heading: tracked caps, optional live dot / count, optional trailing control. */
@@ -34,10 +57,10 @@ export function SectionHeader({
   icon?: ReactNode;
   title: string;
   count?: number;
-  tone?: "muted" | "live" | "brand" | "gold";
+  tone?: "muted" | "live" | "brand" | "gold" | "accent";
   trailing?: ReactNode;
 }) {
-  const color = { muted: "text-ink-subtle", live: "text-ink-live", brand: "text-ink-brand", gold: "text-ink-gold" }[tone];
+  const color = { muted: "text-ink-subtle", live: "text-ink-live", brand: "text-ink-brand", gold: "text-ink-gold", accent: "text-ink-accent" }[tone];
   return (
     <div className="mb-2.5 flex items-center gap-2 px-1">
       {icon}

@@ -65,7 +65,7 @@ import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
 import { api, errorMessage, inviteUrl } from "../lib/api";
 import { pluralize, teamVars } from "../lib/format";
-import { getAdminToken, getPlayerId, isHostOf, useAdminToken } from "../lib/identity";
+import { getAdminToken, getPlayerId, isHostOf, rememberSeen, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -219,6 +219,12 @@ export default function GameView() {
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
   const isHost = !!game && (isHostOf(game.id) || game.hostPlayerId === me);
   const wantHostTools = hostDevice || isHost;
+  // A board I'm neither on nor hosting (an invite link, including one whose state came with the
+  // page) is remembered as "seen", so Home can offer it back until I pick squares or hide it.
+  const seenGameId = game && !joined && !isHost && !hostDevice && game.status !== "final" ? game.id : null;
+  useEffect(() => {
+    if (seenGameId) rememberSeen(seenGameId);
+  }, [seenGameId]);
   useEffect(() => {
     if (!wantHostTools || HostControls) return;
     let alive = true;

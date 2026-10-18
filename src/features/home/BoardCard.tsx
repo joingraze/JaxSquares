@@ -1,8 +1,11 @@
 // Dashboard card for a board that hasn't kicked off, kept dense so a host
 // with a handful of boards sees most of them at once: matchup, name, a quiet
-// role label, then one count ("42 left") with a slim fill meter under it and
-// the one thing to do next beside them, and what a friend just did. The whole
-// card opens the board; the action button sits above that layer.
+// role label ("Your board", "Watching"), then one count ("42 left") with a
+// slim fill meter under it and the one thing to do next beside them, and what
+// a friend just did. On a board I'm playing, my sticker and "15 squares yours"
+// sit next to the count, so it never reads like an invite (those have their
+// own card, InviteCard). The whole card opens the board; the action button
+// sits above that layer.
 
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -11,7 +14,7 @@ import { Avatar, Button, cx } from "../../components/ui";
 import { relativeTime } from "../../lib/format";
 import { prefetchGame } from "../../lib/live";
 import { haptic } from "../../lib/native";
-import { CountUp, FillMeter, Matchup, RoleLabel } from "./BoardBits";
+import { CountUp, FillMeter, Matchup, MySquaresTag, RoleLabel } from "./BoardBits";
 import type { Buzz, CardModel } from "./sections";
 
 export interface CardAction {
@@ -63,23 +66,26 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
-            <RoleLabel isHost={game.isHost} />
+            {/* On a board I'm playing, my squares say it (next to the count) instead of a role. */}
+            {model.relation !== "playing" && <RoleLabel relation={model.relation} className="self-center" />}
           </div>
           {/* One count ("42 left") with the fill meter right under it, and the action beside them. */}
           <div className="flex min-h-7 items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-footnote">
-                <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>
-                  {model.statusIsLeft ? (
-                    <>
-                      <CountUp value={left} /> left
-                    </>
-                  ) : (
-                    model.status
-                  )}
-                </span>
-                {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
-              </p>
+              {model.relation === "playing" ? (
+                <div className="flex min-w-0 items-center gap-1.5 text-footnote">
+                  <span className={cx("shrink-0 font-semibold", STATUS_TONE[model.statusTone])}>{status(model, left)}</span>
+                  <span aria-hidden className="text-ink-subtle">
+                    ·
+                  </span>
+                  <MySquaresTag count={game.mySquares} className="!text-footnote" />
+                </div>
+              ) : (
+                <p className="truncate text-footnote">
+                  <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>{status(model, left)}</span>
+                  {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
+                </p>
+              )}
               {model.meter && <FillMeter value={game.claimed} max={game.totalSquares} gold={gold} className="mt-1.5" />}
             </div>
             {action && (
@@ -102,6 +108,17 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
         </div>
       </div>
     </article>
+  );
+}
+
+/** The card's count: "42 left" (rolling when it changes), or the status in words ("Board's full"). */
+function status(model: CardModel, left: number): ReactNode {
+  return model.statusIsLeft ? (
+    <>
+      <CountUp value={left} /> left
+    </>
+  ) : (
+    model.status
   );
 }
 

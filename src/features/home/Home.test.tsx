@@ -20,6 +20,8 @@ function summary(over: Partial<GameSummary>): GameSummary {
     status: "open",
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
     isHost: false,
+    joined: true,
+    host: null,
     mySquares: 0,
     claimed: 0,
     totalSquares: 100,
@@ -101,7 +103,7 @@ function serve(games: GameSummary[], states: Record<string, GameState> = {}) {
   fetchMock.mockImplementation((url: string) => {
     const json = (body: unknown, status = 200) =>
       Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
-    if (url.endsWith("/api/me/games")) return json({ games });
+    if (/\/api\/me\/games(\?|$)/.test(url)) return json({ games });
     const id = /\/api\/games\/([^/?]+)$/.exec(url)?.[1];
     if (id && states[id]) return json(states[id]);
     return json({ error: "We couldn't find that board." }, 404);
@@ -157,16 +159,22 @@ describe("Home", () => {
     ]);
     renderHome();
     expect(await screen.findByText("Live now")).toBeInTheDocument();
+    expect(screen.getByText("Invites")).toBeInTheDocument();
     expect(screen.getByText("Needs you")).toBeInTheDocument();
     expect(screen.getByText("Up next")).toBeInTheDocument();
     expect(screen.getByText("Final")).toBeInTheDocument();
     expect(screen.getByText("Thanksgiving Showdown")).toBeInTheDocument();
-    // Picking squares on a friend's board is something you must do: it's under Needs you, with the host's draw.
+    // Needs you is for the host's to-dos; a friend's board I haven't picked on is an invite.
     const needs = screen.getByRole("region", { name: "Needs you" });
     expect(within(needs).getByRole("button", { name: "Draw numbers" })).toBeInTheDocument();
-    expect(within(needs).getByRole("button", { name: "Pick squares" })).toBeInTheDocument();
-    // Roles are quiet labels, not chips that read like game state.
-    expect(screen.getAllByText("You're in").length).toBeGreaterThan(0);
+    expect(within(needs).queryByRole("button", { name: "Pick squares" })).toBeNull();
+    const invites = screen.getByRole("region", { name: "Invites" });
+    expect(within(invites).getByTestId("invite-card")).toHaveTextContent("Group Chat Squares");
+    expect(within(invites).getByTestId("invite-pick")).toHaveTextContent("Pick squares");
+    // Joined without picking: no "Not for me" (that only hides an invite I just opened).
+    expect(within(invites).queryByTestId("invite-hide")).toBeNull();
+    // A board I'm playing shows my squares; my own board keeps its quiet role label.
+    expect(screen.getByText("3 squares yours")).toBeInTheDocument();
     expect(screen.getByText("Your board")).toBeInTheDocument();
     expect(screen.getByText(/You hit at the final whistle/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open Sunday Funday" })).toHaveAttribute("href", "/g/next");
@@ -287,5 +295,63 @@ describe("Home", () => {
     expect(within(sheet).getByText("New")).toBeInTheDocument();
     // Opening it marks everything read.
     expect(screen.getByRole("button", { name: "Activity" })).toBeInTheDocument();
+  });
+
+  it("offers back an invite I only opened, distinct from my boards, and hides it with an undo", async () => {
+    localStorage.setItem("jaxsquares.games", JSON.stringify(["mine"]));
+    localStorage.setItem("jaxsquares.seen", JSON.stringify(["inv1"]));
+    const maya = { id: MAYA, name: "Maya", color: "#ff6b6b", emoji: "🦊" };
+    serve([
+      summary({
+        id: "inv1",
+        name: "Maya's Squares",
+        joined: false,
+        host: maya,
+        claimed: 58,
+        playerCount: 6,
+        format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false, unit: "$", squarePrice: 10 },
+      }),
+      summary({ id: "mine", name: "Sunday Funday", mySquares: 15, claimed: 40 }),
+    ]);
+    renderHome();
+    // (The first paint may be an earlier test's cached list: wait for this one.)
+    await screen.findByText("Maya's Squares");
+    const card = screen.getByTestId("invite-card");
+    // Home asked for the seen board by its public id (never the clientId).
+    const meGames = fetchMock.mock.calls.map(([url]) => String(url)).find((url) => url.includes("/api/me/games"));
+    expect(meGames).toMatch(/\/api\/me\/games\?seen=inv1$/);
+    expect(within(screen.getByTestId("home-invites")).getAllByTestId("invite-card")).toHaveLength(1);
+    expect(card).toHaveTextContent("Maya invited you");
+    expect(card).toHaveTextContent("Maya's Squares");
+    expect(card).toHaveTextContent("Chiefs vs Bills");
+    expect(card).toHaveTextContent("$10 a square");
+    expect(within(card).getByText(wholeText("42 squares left"))).toBeInTheDocument();
+    expect(within(card).getByRole("progressbar", { name: "58 of 100 squares claimed" })).toBeInTheDocument();
+    expect(within(card).getByTestId("invite-pick")).toHaveTextContent("Pick squares");
+    expect(screen.getByText("Maya invited you.")).toBeInTheDocument();
+    // The board I'm playing reads differently: my squares, no invite.
+    expect(screen.getByText("15 squares yours")).toBeInTheDocument();
+    // Home follows boards I'm on live, not an invite I only opened.
+    await waitFor(() => expect(sockets.get("mine")).toBeDefined());
+    expect(sockets.has("inv1")).toBe(false);
+
+    fireEvent.click(within(card).getByTestId("invite-hide"));
+    await waitFor(() => expect(screen.queryByTestId("invite-card")).toBeNull());
+    expect(JSON.parse(localStorage.getItem("jaxsquares.seen") ?? "[]")).toEqual([]);
+    expect(screen.getByText("Sunday Funday")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    expect(await screen.findByTestId("invite-card")).toHaveTextContent("Maya's Squares");
+    expect(JSON.parse(localStorage.getItem("jaxsquares.seen") ?? "[]")).toEqual(["inv1"]);
+  });
+
+  it("drops a finished board I never joined, and forgets it", async () => {
+    localStorage.setItem("jaxsquares.games", JSON.stringify(["mine"]));
+    localStorage.setItem("jaxsquares.seen", JSON.stringify(["over", "gone"]));
+    serve([summary({ id: "over", name: "Old Invite", joined: false, status: "final" }), summary({ id: "mine", name: "Sunday Funday", mySquares: 2, claimed: 30 })]);
+    renderHome();
+    expect(await screen.findByText("Sunday Funday")).toBeInTheDocument();
+    expect(screen.queryByText("Old Invite")).toBeNull();
+    // Over, or deleted (the server left it out): neither comes back.
+    await waitFor(() => expect(JSON.parse(localStorage.getItem("jaxsquares.seen") ?? "[]")).toEqual([]));
   });
 });

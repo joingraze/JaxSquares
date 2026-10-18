@@ -61,6 +61,8 @@ const SPORTS: readonly Sport[] = ["football", "basketball", "baseball", "hockey"
 const LEAGUES: readonly League[] = ["nfl", "ncaaf", "custom"];
 const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused characters
 const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
+/** Most boards a device may ask about with `GET /api/me/games?seen=` (it keeps about this many). */
+const SEEN_MAX = 50;
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_SCORE = 999;
 const DEFAULT_COLOR = "#38bdf8";
@@ -769,8 +771,24 @@ api.get("/games/:id/live", async (c) => {
   return roomStub(c.env, id).fetch(target.toString(), { headers });
 });
 
+/**
+ * `?seen=<id>,<id>`: boards this device opened without joining (most recent
+ * first). Anything that isn't a board id is ignored, duplicates count once,
+ * and only the first SEEN_MAX are kept.
+ */
+function parseSeen(raw: string | undefined): string[] {
+  if (!raw) return [];
+  const ids = new Set<string>();
+  for (const part of raw.split(",", SEEN_MAX * 4)) {
+    const id = part.trim().toLowerCase();
+    if (GAME_ID_RE.test(id)) ids.add(id);
+    if (ids.size >= SEEN_MAX) break;
+  }
+  return [...ids];
+}
+
 api.get("/me/games", requireClient, async (c) => {
-  const games = await db.listGamesForClient(c.env.DB, c.get("clientId"));
+  const games = await db.listGamesForClient(c.env.DB, c.get("clientId"), parseSeen(c.req.query("seen")));
   return c.json({ games }, 200, { "cache-control": "no-store" });
 });
 

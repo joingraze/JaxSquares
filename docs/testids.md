@@ -49,6 +49,10 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `result-label` | a result card's label: "Score 3 · TD · $50" (its kind part has `data-kind`) |
 | `prize-totals` | the host sheet's prize totals under Winners (boards with amounts) |
 | `player-squares-value` | what a player's squares come to at the square price, on the players list while squares are picked |
+| `home-invites` | Home's "Invites" section: open boards with squares left where I have none (an invite link I only opened, or a board I joined without picking) |
+| `invite-card` | each card in it (`data-game=<board id>`); the whole card opens the board |
+| `invite-pick` | "Pick squares" on an invite card: opens the board |
+| `invite-hide` | "Not for me" on an invite I only opened (not joined): hides it from Home (drops it from the seen list) with an Undo toast |
 | `create-submit` | the button that creates the board / opens checkout |
 | `pay-confirm` | the confirm button in the checkout sheet (live web checkout, and host controls opening an unpaid draft). Test mode and the App Store skip it: `create-submit` creates and opens the board in one tap |
 | `invite-share` | the share-invite button in the invite sheet |
