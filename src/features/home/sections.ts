@@ -15,8 +15,8 @@ export type SectionKey = "live" | "invites" | "needs" | "next" | "final";
 
 export const SECTION_ORDER: readonly SectionKey[] = ["live", "invites", "needs", "next", "final"];
 
-/** Host to-dos on a board that isn't in play yet. */
-export type HostAction = "finish-setup" | "lock" | "invite";
+/** Host to-dos on a board whose numbers aren't drawn yet. */
+export type HostAction = "lock" | "invite";
 
 /** Anything the user has to do on a board: a host to-do, or picking squares on a board they were invited to. */
 export type BoardAction = HostAction | "pick";
@@ -51,18 +51,26 @@ export function homeBoards(games: readonly GameSummary[], seen: Iterable<string>
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** Same rule as the host bar: invite until the board is (nearly) full, then draw. */
-export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSquares">): HostAction {
-  if (g.status === "draft") return "finish-setup";
+/**
+ * Same rule as the host bar: invite until the board is (nearly) full, then
+ * draw; a linked game on without its numbers (the host fee wasn't paid by
+ * kickoff) is time to draw too.
+ */
+export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSquares" | "live">): HostAction {
   if (lockIsTheMove(g.claimed, g.totalSquares)) return "lock";
+  if (undrawnInPlay(g) && g.claimed > 0) return "lock";
   return "invite";
 }
 
-const inPlay = (g: GameSummary) => g.status === "locked" || g.live?.state === "in";
+const inPlay = (g: Pick<GameSummary, "status" | "live">) => g.status === "locked" || g.live?.state === "in";
+/** A linked game kicked off before its numbers were drawn (squares still open). */
+const undrawnInPlay = (g: Pick<GameSummary, "status" | "live">) => (g.status === "open" || g.status === "draft") && g.live?.state === "in";
 
 /** What this board needs from you before kickoff, if anything: a host to-do, or picking squares on an invite. */
 export function actionFor(g: GameSummary): BoardAction | null {
-  if (g.status === "final" || inPlay(g)) return null;
+  if (g.status === "final") return null;
+  // The host's undrawn board in play still needs their draw.
+  if (inPlay(g) && !(g.isHost && undrawnInPlay(g))) return null;
   if (g.isHost) return hostAction(g);
   if (relationOf(g) === "invited") return "pick";
   return null;
@@ -75,15 +83,16 @@ export function actionFor(g: GameSummary): BoardAction | null {
  */
 export function sectionOf(g: GameSummary): SectionKey {
   if (g.status === "final") return "final";
-  // A linked game that kicked off before the host drew numbers is still "live" news.
-  if (inPlay(g)) return "live";
+  // A linked game that kicked off before the host drew numbers is still "live" news,
+  // except to its host, who has the draw to do.
+  if (inPlay(g) && !(g.isHost && undrawnInPlay(g))) return "live";
   if (relationOf(g) === "invited") return "invites";
   if (actionFor(g)) return "needs";
   return "next";
 }
 
 /** Most urgent first: a (nearly) full board holds up the game; picks on an invite beat inviting more. */
-const ACTION_RANK: Record<BoardAction, number> = { lock: 0, pick: 1, invite: 2, "finish-setup": 3 };
+const ACTION_RANK: Record<BoardAction, number> = { lock: 0, pick: 1, invite: 2 };
 
 export type Sections = Record<SectionKey, GameSummary[]>;
 
@@ -138,7 +147,7 @@ export interface CardModel {
   /** Trailing detail on the status line, e.g. "10 yours". */
   meta: string | null;
   action: { kind: BoardAction; label: string } | null;
-  /** Show the fill meter (not on drafts). */
+  /** Show the fill meter. */
   meter: boolean;
   /** Friend activity is news here (boards still filling that you host or haven't picked on). */
   buzz: boolean;
@@ -148,7 +157,6 @@ export const ACTION_LABEL: Record<BoardAction, string> = {
   lock: "Draw numbers",
   invite: "Invite",
   pick: "Pick squares",
-  "finish-setup": "Finish setup",
 };
 
 export function kickoffText(startsAt: number, now: number, short = false): string {
@@ -175,8 +183,6 @@ export function cardModel(g: GameSummary, now: number): CardModel {
   const base = { relation, role, action: action ? { kind: action, label: ACTION_LABEL[action] } : null };
 
   switch (action) {
-    case "finish-setup":
-      return { ...base, status: "Not open yet", statusTone: "brand", statusIsLeft: false, meta: "friends can join once it's open", meter: false, buzz: false };
     case "lock":
       return left === 0
         ? { ...base, status: "Board's full", statusTone: "gold", statusIsLeft: false, meta: kickoff ?? mine, meter: true, buzz: false }
@@ -186,8 +192,8 @@ export function cardModel(g: GameSummary, now: number): CardModel {
       return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
     default: {
       if (left === 0) {
-        // A playing card shows my squares there instead. Only a linked board draws on its own.
-        const meta = relation === "playing" ? null : g.linked ? "numbers drawn at kickoff" : "waiting on the host's draw";
+        // A playing card shows my squares there instead. Only a linked board whose host fee is paid draws on its own.
+        const meta = relation === "playing" ? null : g.linked && g.paid !== false ? "numbers drawn at kickoff" : "waiting on the host's draw";
         return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta, meter: true, buzz: false };
       }
       const soon = g.startsAt !== null && g.startsAt - now < DAY;

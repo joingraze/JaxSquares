@@ -8,9 +8,9 @@ import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR, REST_MOMENT_ERROR,
 import { KICKOFF_ERRORS } from "../shared/kickoff";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { MAX_PLAYERS, resolveResults } from "../shared/squares";
-import type { CreateGameResponse, GameState, GameSummary, LiveUpdate } from "../shared/types";
+import { PAYMENT_REQUIRED_CODE, type CreateGameResponse, type GameState, type GameSummary, type LiveUpdate } from "../shared/types";
 import type { Env } from "./env";
-import { ACTIVITY_KEEP, DRAFT_TTL_MS, HOUSEKEEPING_MINUTE, housekeeping, isHousekeepingTick } from "./housekeeping";
+import { ACTIVITY_KEEP, HOUSEKEEPING_MINUTE, housekeeping, isHousekeepingTick } from "./housekeeping";
 import worker from "./index";
 import { boardAccountToken } from "./payments/boardToken";
 import { createTestD1, type TestD1 } from "./payments/testD1";
@@ -37,6 +37,7 @@ const MIGRATIONS = [
   "migrations/0006_purchases_unused.sql",
   "migrations/0007_board_full_announced.sql",
   "migrations/0008_custom_kickoff.sql",
+  "migrations/0009_pay_at_draw.sql",
 ];
 
 let t: TestD1;
@@ -110,7 +111,7 @@ const createInput = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-/** Created, paid (test checkout), with Ana and Ben joined and holding squares. */
+/** Created, host fee paid (test checkout), with Ana and Ben joined and holding squares. */
 async function openBoard(over: Record<string, unknown> = {}): Promise<{ id: string; admin: string }> {
   const created = await call<CreateGameResponse>("POST", "/games", { body: createInput(over) });
   expect(created.status).toBe(201);
@@ -263,40 +264,15 @@ describe("deleting a board", () => {
     expect((await call("GET", `/games/${id}`, { client: null })).status).toBe(404);
   });
 
-  it("housekeeping closes the rooms of the stale drafts it deletes", async () => {
-    const stale = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
-    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, stale);
+  it("housekeeping opens a draft left from the pay-to-open flow and pushes its new state", async () => {
+    const id = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    // A draft the previous Worker made between migration 0009 and the deploy.
+    t.query(`UPDATE games SET status = 'draft' WHERE id = ?`, id);
     const tick = Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE);
     await worker.scheduled({ scheduledTime: tick, cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
-    expect(roomCalls.filter((r) => r.url === "https://room/close")).toHaveLength(1);
-    expect(t.query(`SELECT 1 FROM games WHERE id = ?`, stale)).toEqual([]);
-  });
-
-  it("housekeeping leaves alone (and doesn't close) a stale draft paid for mid-sweep", async () => {
-    const stale = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
-    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, stale);
-    // The payment lands right after the sweep has picked its stale drafts.
-    const real = t.d1;
-    env.DB = {
-      prepare(sql: string) {
-        const stmt = real.prepare(sql);
-        if (!/status = 'draft' AND created_at/.test(sql)) return stmt;
-        return {
-          bind: (...args: unknown[]) => ({
-            all: async () => {
-              const out = await stmt.bind(...args).all();
-              t.query(`UPDATE games SET status = 'open' WHERE id = ? AND status = 'draft'`, stale);
-              return out;
-            },
-          }),
-        };
-      },
-      batch: (statements: D1PreparedStatement[]) => real.batch(statements),
-    } as unknown as D1Database;
-    const tick = Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE);
-    await worker.scheduled({ scheduledTime: tick, cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
-    expect(t.query(`SELECT status FROM games WHERE id = ?`, stale)).toEqual([{ status: "open" }]);
-    expect(roomCalls.filter((r) => r.url === "https://room/close")).toEqual([]);
+    expect(t.query(`SELECT status, paid_at FROM games WHERE id = ?`, id)).toEqual([{ status: "open", paid_at: null }]);
+    expect(roomCalls.filter((r) => r.url === "https://room/broadcast").map((r) => r.game)).toEqual([id]);
+    expect(roomCalls.some((r) => r.url === "https://room/close")).toBe(false);
   });
 });
 
@@ -1130,22 +1106,26 @@ describe("housekeeping", () => {
     expect(isHousekeepingTick(Date.UTC(2026, 9, 16, 3, HOUSEKEEPING_MINUTE + 1))).toBe(false);
   });
 
-  it("deletes unpaid drafts after 7 days and keeps the newest activity per game", async () => {
+  it("keeps the newest activity per game and settles boards left from the pay-to-open flow", async () => {
     const now = Date.now();
     const { id: open } = await openBoard();
-    const fresh = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
-    const stale = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
-    t.query(`UPDATE games SET created_at = ? WHERE id IN (?, ?)`, now - DRAFT_TTL_MS - 1000, stale, open);
+    const draft = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    const opened = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    const unpaid = (await call<CreateGameResponse>("POST", "/games", { body: createInput() })).body.game.id;
+    // The previous Worker, between migration 0009 and the deploy: one draft made, one opened by its payment.
+    t.query(`UPDATE games SET status = 'draft' WHERE id = ?`, draft);
+    t.query(`UPDATE games SET activated_at = 5, payment_provider = 'test', payment_reference = ? WHERE id = ?`, `test:${opened}`, opened);
     for (let i = 0; i < ACTIVITY_KEEP + 30; i++) {
       t.query(`INSERT INTO activity (id, game_id, type, at, actor, data) VALUES (?, ?, 'score', ?, NULL, '{}')`, `bulk-${i}`, open, now + i);
     }
     t.query(`INSERT INTO rate_limits (key, window_start, count) VALUES ('old', 0, 1)`);
 
     const out = await housekeeping(env, now);
-    expect(out.drafts).toEqual([stale]);
-    const games = t.query<{ id: string }>(`SELECT id FROM games ORDER BY id`).map((r) => r.id);
-    expect(games).toEqual([open, fresh].sort());
-    expect(t.query(`SELECT 1 FROM players WHERE game_id = ?`, stale)).toEqual([]);
+    expect(out.opened).toEqual([draft]);
+    const rows = t.query<{ id: string; status: string; paid: number }>(`SELECT id, status, paid_at IS NOT NULL AS paid FROM games`);
+    const byId = Object.fromEntries(rows.map((r) => [r.id, [r.status, r.paid]]));
+    expect(byId).toEqual({ [open]: ["open", 1], [draft]: ["open", 0], [opened]: ["open", 1], [unpaid]: ["open", 0] });
+    expect(t.query(`SELECT paid_at FROM games WHERE id = ?`, opened)).toEqual([{ paid_at: 5 }]);
     expect(t.query<{ n: number }>(`SELECT COUNT(*) AS n FROM activity WHERE game_id = ?`, open)[0].n).toBe(ACTIVITY_KEEP);
     // The newest rows survive.
     expect(t.query(`SELECT 1 FROM activity WHERE id = ?`, `bulk-${ACTIVITY_KEEP + 29}`)).toHaveLength(1);
@@ -1153,7 +1133,7 @@ describe("housekeeping", () => {
   });
 });
 
-describe("a charged App Store purchase for a draft housekeeping deleted", () => {
+describe("a charged App Store purchase for a board deleted before it was confirmed", () => {
   const TX = "2000000123456789";
 
   async function testPem(): Promise<string> {
@@ -1174,8 +1154,8 @@ describe("a charged App Store purchase for a draft housekeeping deleted", () => 
     });
     const created = await call<CreateGameResponse>("POST", "/games", { body: createInput() });
     const { game, adminToken } = created.body;
-    t.query(`UPDATE games SET created_at = ? WHERE id = ?`, Date.now() - DRAFT_TTL_MS - 1000, game.id);
-    expect((await housekeeping(env)).drafts).toEqual([game.id]);
+    // The host deleted the board while the App Store was still confirming its draw's purchase.
+    expect((await call("DELETE", `/games/${game.id}`, { admin: adminToken })).status).toBe(200);
 
     const part = (v: unknown) => btoa(JSON.stringify(v)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
     const tx = {
@@ -1199,6 +1179,212 @@ describe("a charged App Store purchase for a draft housekeeping deleted", () => 
       { reference: TX, game_id: game.id, status: "unused", amount_cents: 499 },
     ]);
     expect(t.query(`SELECT 1 FROM games WHERE id = ?`, game.id)).toEqual([]);
+  });
+});
+
+describe("the host fee is due at the draw", () => {
+  const MIN = 60_000;
+  const linkedEvent = (startsAt: number) => ({ provider: "espn", league: "nfl", eventId: "401", startsAt, xIsHome: false });
+  const profile = (name: string) => ({ name, color: "#38b6ff", emoji: "🐐" });
+  const feed = (state: "in" | "post"): LiveUpdate =>
+    state === "in"
+      ? {
+          live: { state, period: 1, clock: "12:00", detail: "Q1 12:00", scoreX: 0, scoreY: 0, updatedAt: 1 },
+          linescoresX: [0],
+          linescoresY: [0],
+          completedPeriods: 0,
+          isFinal: false,
+        }
+      : {
+          live: { state, period: 4, clock: "", detail: "Final", scoreX: 17, scoreY: 13, updatedAt: 2 },
+          linescoresX: [7, 0, 7, 3],
+          linescoresY: [3, 10, 0, 0],
+          completedPeriods: 4,
+          isFinal: true,
+        };
+
+  async function create(over: Record<string, unknown> = {}): Promise<{ id: string; admin: string; res: CreateGameResponse }> {
+    const created = await call<CreateGameResponse>("POST", "/games", { body: createInput(over) });
+    expect(created.status).toBe(201);
+    return { id: created.body.game.id, admin: created.body.adminToken, res: created.body };
+  }
+  const stateOf = async (id: string) => (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+  const notified = (id: string, kind: string) => vi.mocked(notify).mock.calls.filter(([, g, e]) => g === id && e.kind === kind);
+  const everySquare = Array.from({ length: 25 }, (_, i) => ({ row: Math.floor(i / 5), col: i % 5 }));
+
+  it("opens a new board right away: friends join and pick squares before anything is paid", async () => {
+    const { id, res } = await create();
+    expect(res.paymentRequired).toBe(false);
+    expect(res.game).toMatchObject({ status: "open", paid: false });
+    expect((await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") })).status).toBe(200);
+    const claim = await call<{ claimed: number }>("POST", `/games/${id}/claim`, { client: ANA, body: { cells: [{ row: 0, col: 0 }] } });
+    expect(claim.body.claimed).toBe(1);
+    expect((await stateOf(id)).game).toMatchObject({ status: "open", paid: false, numbers: null });
+    const { games } = (await call<{ games: GameSummary[] }>("GET", "/me/games")).body;
+    expect(games.find((g) => g.id === id)).toMatchObject({ status: "open", paid: false });
+    expect(t.query(`SELECT COUNT(*) AS n FROM purchases`)).toEqual([{ n: 0 }]);
+  });
+
+  it("refuses to draw an unpaid board with a 402 the app recognizes", async () => {
+    const { id, admin } = await create();
+    const res = await call<{ error: string; code: string }>("POST", `/games/${id}/lock`, { admin });
+    expect(res.status).toBe(402);
+    expect(res.body).toEqual({ error: "Draw the numbers once the board's paid for.", code: PAYMENT_REQUIRED_CODE });
+    expect((await stateOf(id)).game).toMatchObject({ status: "open", numbers: null, lockedAt: null });
+    expect(notified(id, "numbers-drawn")).toEqual([]);
+  });
+
+  it("draws once the test checkout has paid for the board", async () => {
+    const { id, admin } = await create();
+    const paid = await call<{ state: GameState }>("POST", `/games/${id}/pay/test`, { admin });
+    expect(paid.status).toBe(200);
+    // Paying doesn't draw by itself: the host draws (a linked board can wait for kickoff).
+    expect(paid.body.state.game).toMatchObject({ status: "open", paid: true, numbers: null });
+    expect(t.query(`SELECT reference, game_id, provider, status FROM purchases`)).toEqual([
+      { reference: `test:${id}`, game_id: id, provider: "test", status: "paid" },
+    ]);
+    const drawn = await call<{ state: GameState }>("POST", `/games/${id}/lock`, { admin });
+    expect(drawn.status).toBe(200);
+    expect(drawn.body.state.game.status).toBe("locked");
+    expect(drawn.body.state.game.numbers).not.toBeNull();
+    expect(vi.mocked(notify)).toHaveBeenCalledWith(env, id, { kind: "numbers-drawn", actor: pid(HOST) });
+    // Paying again is a no-op, and a drawn board says so.
+    expect((await call<{ state: GameState }>("POST", `/games/${id}/pay/test`, { admin })).body.state.game.status).toBe("locked");
+    expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(409);
+  });
+
+  it("only the host can pay for the board or draw it", async () => {
+    const { id, admin } = await create();
+    await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") });
+    expect((await call("POST", `/games/${id}/pay/test`, { client: ANA })).status).toBe(403);
+    expect((await call("POST", `/games/${id}/pay/test`, { client: ANA, admin: "not-the-token" })).status).toBe(403);
+    expect((await call("POST", `/games/${id}/lock`, { client: ANA })).status).toBe(403);
+    expect((await call("POST", `/games/${id}/lock`, { client: ANA, admin: "not-the-token" })).status).toBe(403);
+    expect((await stateOf(id)).game.paid).toBe(false);
+    expect((await call("POST", `/games/${id}/pay/test`, { admin })).status).toBe(200);
+    expect((await call("POST", `/games/${id}/lock`, { client: ANA })).status).toBe(403);
+    expect((await stateOf(id)).game.status).toBe("open");
+  });
+
+  it("migration 0009 counts every board past draft as paid, and opens drafts that never paid", async () => {
+    const legacy = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0009")));
+    const row = (id: string, status: string, createdAt: number, activatedAt: number | null) =>
+      legacy.query(
+        `INSERT INTO games (id, name, team_x, team_y, format, periods, status, host_client_id, admin_token, created_at, activated_at, updated_at)
+         VALUES (?, 'B', '{}', '{}', '{"boardSize":25}', '[]', ?, 'h', 't', ?, ?, ?)`,
+        id,
+        status,
+        createdAt,
+        activatedAt,
+        createdAt,
+      );
+    row("opened", "open", 10, 40);
+    row("drawn", "locked", 3, null);
+    row("done", "final", 4, 44);
+    row("draft1", "draft", 20, null);
+    row("draft2", "draft", 30, null);
+    row("draft3", "draft", 50, null);
+    // draft2 was charged but the old opening step never ran; draft3 reuses a deleted board's id (its purchase is older).
+    legacy.query(`INSERT INTO purchases (reference, game_id, provider, status, created_at, paid_at) VALUES ('pi_2', 'draft2', 'stripe', 'paid', 31, 32)`);
+    legacy.query(`INSERT INTO purchases (reference, game_id, provider, status, created_at, paid_at) VALUES ('pi_3', 'draft3', 'stripe', 'paid', 49, 49)`);
+    legacy.migrate("migrations/0009_pay_at_draw.sql");
+    expect(legacy.query(`SELECT id, status, paid_at FROM games ORDER BY id`)).toEqual([
+      { id: "done", status: "final", paid_at: 44 },
+      { id: "draft1", status: "open", paid_at: null },
+      { id: "draft2", status: "open", paid_at: 32 },
+      { id: "draft3", status: "open", paid_at: null },
+      { id: "drawn", status: "locked", paid_at: 3 },
+      { id: "opened", status: "open", paid_at: 40 },
+    ]);
+  });
+
+  it("draws a grandfathered board without asking for a payment", async () => {
+    const legacy = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0009")));
+    legacy.query(
+      `INSERT INTO games (id, name, team_x, team_y, format, periods, status, host_client_id, admin_token, created_at,
+                          activated_at, payment_provider, payment_reference, payment_amount_cents, updated_at)
+       VALUES ('old1', 'Old board', '{"name":"Chiefs"}', '{"name":"Eagles"}',
+               '{"periods":"quarters","reverse":false,"boardSize":25,"freshNumbers":false}', '[]', 'open', ?, 'adm-old', 1,
+               2, 'stripe', 'pi_old', 499, 2)`,
+      HOST,
+    );
+    legacy.migrate("migrations/0009_pay_at_draw.sql");
+    env.DB = legacy.d1;
+    expect((await stateOf("old1")).game.paid).toBe(true);
+    const drawn = await call<{ state: GameState }>("POST", "/games/old1/lock", { admin: "adm-old" });
+    expect(drawn.status).toBe(200);
+    expect(drawn.body.state.game.status).toBe("locked");
+    expect(legacy.query(`SELECT COUNT(*) AS n FROM purchases`)).toEqual([{ n: 0 }]);
+  });
+
+  it("a linked board left unpaid doesn't draw itself at kickoff; the host can pay and draw any time", async () => {
+    const { id, admin } = await create({ league: "nfl", linkedEvent: linkedEvent(Date.now() + 5 * MIN) });
+    await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") });
+    await applyLiveUpdate(env, id, feed("in"), async () => {});
+    const kicked = await stateOf(id);
+    expect(kicked.game).toMatchObject({ status: "open", numbers: null, paid: false });
+    expect(kicked.live?.state).toBe("in");
+    expect(kicked.activity.some((a) => a.type === "locked")).toBe(false);
+    expect(notified(id, "game-starting")).toHaveLength(1);
+    expect(notified(id, "numbers-drawn")).toEqual([]);
+    // Squares stay open meanwhile.
+    expect((await call<{ claimed: number }>("POST", `/games/${id}/claim`, { client: ANA, body: { cells: [{ row: 2, col: 2 }] } })).body.claimed).toBe(1);
+    expect((await call("POST", `/games/${id}/pay/test`, { admin })).status).toBe(200);
+    const drawn = await call<{ state: GameState }>("POST", `/games/${id}/lock`, { admin });
+    expect(drawn.body.state.game.status).toBe("locked");
+  });
+
+  it("a linked board paid ahead draws itself at kickoff", async () => {
+    const { id, admin } = await create({ league: "nfl", linkedEvent: linkedEvent(Date.now() + 5 * MIN) });
+    expect((await call("POST", `/games/${id}/pay/test`, { admin })).status).toBe(200);
+    expect((await stateOf(id)).game.status).toBe("open");
+    await applyLiveUpdate(env, id, feed("in"), async () => {});
+    const kicked = await stateOf(id);
+    expect(kicked.game.status).toBe("locked");
+    expect(kicked.game.numbers).not.toBeNull();
+    expect(kicked.activity.find((a) => a.type === "locked")).toMatchObject({ actor: null, data: { auto: true } });
+    expect(notified(id, "numbers-drawn")).toHaveLength(1);
+  });
+
+  it("drawing after the linked game ended ends the board too, with the scores the feed recorded", async () => {
+    const { id, admin } = await create({ league: "nfl", linkedEvent: linkedEvent(Date.now() + 5 * MIN) });
+    await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") });
+    await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: everySquare } });
+    await applyLiveUpdate(env, id, feed("in"), async () => {});
+    await applyLiveUpdate(env, id, feed("post"), async () => {});
+    const over = await stateOf(id);
+    expect(over.game.status).toBe("open");
+    expect(over.scores.map((s) => s.periodKey).sort()).toEqual(["final", "q1", "q2", "q3"]);
+    vi.mocked(notify).mockClear();
+    await call("POST", `/games/${id}/pay/test`, { admin });
+    const drawn = await call<{ state: GameState }>("POST", `/games/${id}/lock`, { admin });
+    expect(drawn.status).toBe(200);
+    expect(drawn.body.state.game.status).toBe("final");
+    expect(drawn.body.state.game.numbers).not.toBeNull();
+    // Ana holds every square, so she takes all four.
+    expect(resolveResults(drawn.body.state).map((r) => r.winnerPlayerId)).toEqual([pid(ANA), pid(ANA), pid(ANA), pid(ANA)]);
+    // One wrap-up push instead of "numbers are in" and "that's a wrap" back to back.
+    expect(vi.mocked(notify).mock.calls.map(([, , e]) => e)).toEqual([{ kind: "final", actor: pid(HOST) }]);
+  });
+
+  it("reminds the host of an unpaid linked board within the hour before kickoff, once", async () => {
+    const now = Date.now();
+    const soon = now + 50 * MIN;
+    const due = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    const paid = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    await call("POST", `/games/${paid.id}/pay/test`, { admin: paid.admin });
+    await create({ league: "nfl", linkedEvent: linkedEvent(now + 3 * 60 * MIN) }); // kicks off later
+    await create({ startsAt: soon }); // custom: draws when the host says, no reminder
+    const fresh = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    // All but `fresh` were made a while ago (a host setting up right now doesn't need a nudge).
+    t.query(`UPDATE games SET created_at = ? WHERE id <> ?`, now - 30 * MIN, fresh.id);
+    const tick = () => worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 16, 3, 1), cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
+    const reminders = () => vi.mocked(notify).mock.calls.filter(([, , e]) => e.kind === "draw-reminder").map(([, g]) => g);
+    await tick();
+    expect(reminders()).toEqual([due.id]);
+    await tick();
+    expect(reminders()).toEqual([due.id]);
+    expect(t.query<{ id: string }>(`SELECT id FROM games WHERE draw_reminder_at IS NOT NULL`).map((r) => r.id)).toEqual([due.id]);
   });
 });
 

@@ -415,32 +415,100 @@ describe("HostControls", () => {
     expect(screen.queryByRole("button", { name: /End game/ })).not.toBeInTheDocument();
   });
 
-  it("opens an unpaid board from the bar, then goes straight to the invite", async () => {
-    identity.saveAdminToken("hst123", "tok");
-    const opened = makeState({ status: "open" });
-    vi.stubGlobal(
-      "fetch",
+  describe("the host fee, due at the draw", () => {
+    const unpaidFull = () => makeState({ paid: false }, { squares: fillSquares(100) });
+    const paidFull = () => makeState({ paid: true }, { squares: fillSquares(100), version: 2 });
+    const lockedState = () => makeState({ status: "locked", paid: true, numbers: { "*": DRAW } }, { squares: fillSquares(100), version: 3 });
+    const server = () =>
       vi.fn(async (url: string) => {
         if (url.endsWith("/api/config")) return new Response(JSON.stringify(CONFIG), { status: 200 });
-        if (url.endsWith("/api/games/hst123/pay/test")) return new Response(JSON.stringify({ state: opened }), { status: 200 });
+        if (url.endsWith("/api/games/hst123/pay/test")) return new Response(JSON.stringify({ state: paidFull() }), { status: 200 });
         return new Response("{}", { status: 404 });
-      }),
-    );
-    const { apply, onInvite } = renderHost(makeState({ status: "draft" }));
-    const action = screen.getByTestId("host-bar-action");
-    expect(action).toHaveTextContent("Open board");
-    fireEvent.click(action);
-    fireEvent.click(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 }));
-    await waitFor(() => expect(apply).toHaveBeenCalledWith(opened), { timeout: 3000 });
-    await waitFor(() => expect(onInvite).toHaveBeenCalled(), { timeout: 3000 });
-  });
+      });
 
-  it("opens checkout from ?checkout=1 and clears the link", async () => {
-    identity.saveAdminToken("hst123", "tok");
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(CONFIG), { status: 200 })));
-    renderHost(makeState({ status: "draft" }), {}, "/g/hst123?checkout=1");
-    expect(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+    it("puts the price on the draw, takes the fee in the checkout sheet, then draws with the reveal", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      const fetchMock = server();
+      vi.stubGlobal("fetch", fetchMock);
+      lock.mockResolvedValue({ state: lockedState() });
+      const { apply } = renderHost(unpaidFull());
+      const action = screen.getByTestId("host-bar-action");
+      await waitFor(() => expect(action).toHaveTextContent("Draw the numbers · $4.99"));
+      fireEvent.click(action);
+      const confirm = await screen.findByTestId("host-lock-confirm");
+      expect(confirm).toHaveTextContent("Draw the numbers · $4.99");
+      expect(screen.getByText(/\$4\.99 host fee, once for this board\./)).toBeInTheDocument();
+      fireEvent.click(confirm);
+      // The checkout first: nothing is drawn until the fee is paid.
+      const pay = await screen.findByTestId("pay-confirm", {}, { timeout: 3000 });
+      expect(lock).not.toHaveBeenCalled();
+      expect(screen.getByText("No charge while checkout is in test mode.")).toBeInTheDocument();
+      fireEvent.click(pay);
+      await waitFor(() => expect(apply).toHaveBeenCalledWith(paidFull()), { timeout: 3000 });
+      await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"), { timeout: 3000 });
+      await waitFor(() => expect(apply).toHaveBeenCalledWith(lockedState()));
+      expect(await screen.findByRole("button", { name: "See the board" })).toBeInTheDocument();
+      const payCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/pay/test")) as unknown as [string, RequestInit] | undefined;
+      expect(payCall?.[1]?.headers).toMatchObject({ "x-admin-token": "tok" });
+    });
+
+    it("draws straight away on a board that's paid for (or was made before the fee moved to the draw)", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      lock.mockResolvedValue({ state: lockedState() });
+      renderHost(makeState({ paid: true }, { squares: fillSquares(100) }));
+      expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Lock & draw");
+      fireEvent.click(screen.getByTestId("host-bar-action"));
+      const confirm = await screen.findByTestId("host-lock-confirm");
+      expect(confirm).toHaveTextContent(/^Draw the numbers$/);
+      expect(screen.queryByText(/host fee/)).toBeNull();
+      fireEvent.click(confirm);
+      await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"));
+      expect(screen.queryByTestId("pay-confirm")).toBeNull();
+    });
+
+    it("opens the checkout instead of an error when the server says the fee is due", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      vi.stubGlobal("fetch", server());
+      lock.mockRejectedValue(new ApiError("Draw the numbers once the board's paid for.", 402, { error: "Draw the numbers once the board's paid for.", code: "payment_required" }));
+      // An older copy of the board, from before `paid` was sent.
+      renderHost(makeState({}, { squares: fillSquares(100) }));
+      fireEvent.click(screen.getByTestId("host-bar-action"));
+      fireEvent.click(await screen.findByTestId("host-lock-confirm"));
+      await waitFor(() => expect(lock).toHaveBeenCalled());
+      expect(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 })).toHaveTextContent("Draw the numbers");
+      expect(screen.queryByText("Draw the numbers once the board's paid for.")).toBeNull();
+    });
+
+    it("offers paying ahead on a linked board, so Jax draws at kickoff", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      vi.stubGlobal("fetch", server());
+      const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
+      const { apply } = renderHost(makeState({ paid: false, linkedEvent }, { squares: fillSquares(30) }));
+      fireEvent.click(screen.getByTestId("host-open"));
+      const ahead = await screen.findByTestId("host-pay-ahead");
+      expect(ahead).toHaveTextContent("Pay now and Jax draws the numbers at kickoff");
+      await waitFor(() => expect(ahead).toHaveTextContent("$4.99"));
+      fireEvent.click(ahead);
+      fireEvent.click(await screen.findByRole("button", { name: "Pay ahead" }, { timeout: 3000 }));
+      await waitFor(() => expect(apply).toHaveBeenCalledWith(paidFull()), { timeout: 3000 });
+      expect(await screen.findByText("You're all set", {}, { timeout: 3000 })).toBeInTheDocument();
+      expect(lock).not.toHaveBeenCalled();
+    });
+
+    it("doesn't offer paying ahead on a custom board, or once the fee is paid", async () => {
+      identity.saveAdminToken("hst123", "tok");
+      vi.stubGlobal("fetch", server());
+      const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
+      const { unmount } = renderHost(makeState({ paid: false }, { squares: fillSquares(30) }));
+      fireEvent.click(screen.getByTestId("host-open"));
+      expect(await screen.findByTestId("host-lock")).toHaveTextContent("Draw the numbers");
+      expect(screen.queryByTestId("host-pay-ahead")).toBeNull();
+      unmount();
+      renderHost(makeState({ paid: true, linkedEvent }, { squares: fillSquares(30) }));
+      fireEvent.click(screen.getByTestId("host-open"));
+      expect(await screen.findByText(/Jax draws the numbers at kickoff/)).toBeInTheDocument();
+      expect(screen.queryByTestId("host-pay-ahead")).toBeNull();
+    });
   });
 
   describe("removing a player", () => {

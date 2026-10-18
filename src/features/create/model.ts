@@ -424,8 +424,3 @@ export function firstBlocker(d: BlockerInput): CreateBlocker | null {
   return blockersOf(d)[0] ?? null;
 }
 
-/** Stable key for a request body, so re-tapping Create reuses the same unpaid draft. */
-export function inputSignature(input: CreateGameInput): string {
-  const sortObj = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b)));
-  return JSON.stringify({ ...input, prizes: sortObj(input.prizes) });
-}

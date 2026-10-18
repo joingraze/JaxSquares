@@ -1,13 +1,17 @@
 // Everything the board's host can do, behind one compact bar on the board.
 // Renders nothing unless this device holds the board's admin token.
 //
-// The bar says where the board stands and offers the next move (open the
-// board, invite, lock & draw, enter the score); with nothing to do it folds to
-// one slim row. Tapping it opens the host sheet. Locking plays the number-draw
-// reveal for the host; everyone else sees their board update live.
+// The bar says where the board stands and offers the next move (invite, lock
+// & draw, enter the score); with nothing to do it folds to one slim row.
+// Tapping it opens the host sheet. Locking plays the number-draw reveal for the
+// host; everyone else sees their board update live.
 //
-// Deep links (from Home): ?checkout=1 opens the checkout for an unpaid board,
-// ?draw=1 opens the lock & draw confirm. Both are cleared once handled.
+// The host fee is due when the numbers are drawn: on a board whose fee isn't
+// paid the draw reads "Draw the numbers · $4.99" and opens the checkout sheet
+// first, then draws. A linked board can be paid ahead ("Pay now and Jax draws
+// the numbers at kickoff"). Setting up, inviting and picking squares are free.
+//
+// Deep link (from Home): ?draw=1 opens the lock & draw confirm. Cleared once handled.
 //
 // Rules & prizes: the board's rules sheet asks through `rulesRequest` (its
 // "Edit" button); the sheet opens on the rules editor.
@@ -18,19 +22,20 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { periodPhrase } from "../../../shared/formats";
-import type { GameState, NumberDraw, PaymentConfig } from "../../../shared/types";
-import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, SparklesIcon, TrophyIcon, UsersIcon } from "../../components/icons";
+import type { GameState, NumberDraw } from "../../../shared/types";
+import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, ShuffleIcon, TrophyIcon, UsersIcon } from "../../components/icons";
 import { celebrate, cx, useToast } from "../../components/ui";
 import { api, inviteUrl } from "../../lib/api";
-import { fetchAppConfig } from "../../lib/checkout";
 import { readableTeamColor } from "../../lib/format";
 import { getAdminToken, getPlayerId } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
+import { useHostFee } from "../../lib/useHostFee";
+import type { CheckoutPurpose } from "../create/CheckoutSheet";
 import "./host.css";
-import { claimedOf, hostSummary, revealDraw, type HostSummary, type RemoveCopy } from "./hostModel";
+import { claimedOf, hostSummary, isPicking, needsHostFee, revealDraw, type HostSummary, type RemoveCopy } from "./hostModel";
 import { HostSheet, type HostView, type RemoveTarget } from "./HostSheet";
 import { NumberReveal } from "./NumberReveal";
-import { useHostActions } from "./useHostActions";
+import { PAY_FIRST, useHostActions } from "./useHostActions";
 
 export interface HostControlsProps {
   state: GameState;
@@ -57,7 +62,7 @@ export function HostControls(props: HostControlsProps) {
 /** Time for the sheet to slide away before the board takes over (pick mode, the reveal). */
 const SHEET_EXIT_MS = 320;
 
-// The checkout sheet lives with the create flow; only unpaid boards need it, so it loads on demand.
+// The checkout sheet only matters while a board's host fee is due, so it loads on demand.
 const CheckoutSheet = lazy(() => import("../create/CheckoutSheet").then((m) => ({ default: m.CheckoutSheet })));
 
 interface Reveal {
@@ -80,28 +85,19 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   const revealClosed = useRef(false);
   const [picking, setPicking] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
-  const [payments, setPayments] = useState<PaymentConfig | null>(null);
+  // Kept after the sheet closes so its copy doesn't flip while it slides away.
+  const [purpose, setPurpose] = useState<CheckoutPurpose>("draw");
   const [removing, setRemoving] = useState<RemoveTarget | null>(null);
   const [params, setParams] = useSearchParams();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms));
 
-  const summary = hostSummary(state);
   const adminToken = getAdminToken(game.id);
-  const draft = game.status === "draft";
-
-  // Unpaid board: have the payment config ready so "Open board" opens checkout instantly.
-  useEffect(() => {
-    if (!draft) return;
-    let live = true;
-    fetchAppConfig()
-      .then((c) => live && setPayments(c.payments))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [draft]);
+  // The host fee is due at the draw: have the price (and the checkout config) ready while it is.
+  const fee = needsHostFee(game);
+  const { price, payments } = useHostFee(fee);
+  const summary = hostSummary(state, price);
 
   // No confetti over the host's own controls: bursts (a win on the board, a
   // claim) are hidden while the host sheet is up.
@@ -116,9 +112,9 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
 
   // The board moved on under an open confirm (auto-lock at kickoff, ended on another phone): back to home.
   const status = game.status;
-  const squaresOpen = status === "draft" || status === "open";
+  const squaresOpen = isPicking(game);
   useEffect(() => {
-    if ((view === "lock" && status !== "open") || (view === "end" && status !== "locked") || ((view === "players" || view === "remove") && !squaresOpen)) {
+    if ((view === "lock" && !squaresOpen) || (view === "end" && status !== "locked") || ((view === "players" || view === "remove") && !squaresOpen)) {
       setView("home");
     }
   }, [view, status, squaresOpen]);
@@ -163,44 +159,67 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
     else setView("players");
   };
 
-  // ---- open an unpaid board ----
-  const openCheckout = useCallback(() => {
+  // ---- the host fee (due at the draw) ----
+  const openCheckout = useCallback((why: CheckoutPurpose) => {
     void haptic("light");
     setOpen(false);
+    setPurpose(why);
     setPayOpen(true);
   }, []);
 
   const paid = async (_gameId: string, next: GameState | null) => {
     setPayOpen(false);
     let fresh = next;
-    if (!fresh) fresh = await api.getGame(game.id).catch(() => null);
+    // A web payment can still be landing (the webhook): look again for a few seconds.
+    for (const wait of [0, 1500, 3000, 5000]) {
+      if (fresh?.game.paid) break;
+      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+      fresh = (await api.getGame(game.id).catch(() => null)) ?? fresh;
+    }
     if (fresh) apply(fresh);
-    // Straight to the invite: getting friends in is the next move.
-    later(onInvite, SHEET_EXIT_MS);
+    if (!fresh?.game.paid) {
+      toast.show({ id: "host-saved", tone: "neutral", title: "Payment received", description: "It's still confirming. Draw the numbers again in a moment." });
+      return;
+    }
+    if (purpose === "ahead") {
+      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: "Jax draws the numbers at kickoff. Squares stay open till then." });
+      return;
+    }
+    // The host tapped "Draw the numbers": draw right away, with the reveal.
+    later(() => void draw(fresh ?? state), SHEET_EXIT_MS);
   };
 
-  // Deep links from Home: ?checkout=1 ("Finish setup") and ?draw=1 ("Draw numbers").
-  const wantsCheckout = params.get("checkout") === "1";
+  // Deep link from Home: ?draw=1 ("Draw numbers").
   const wantsDraw = params.get("draw") === "1";
   const claimed = claimedOf(state).claimed;
   useEffect(() => {
-    if (!wantsCheckout && !wantsDraw) return;
+    if (!wantsDraw) return;
     const next = new URLSearchParams(params);
-    next.delete("checkout");
     next.delete("draw");
     setParams(next, { replace: true });
     // A beat so the board paints before the sheet slides up.
-    if (wantsCheckout && status === "draft") later(() => setPayOpen(true), 250);
-    else if (wantsDraw && status === "open") later(() => openSheet(claimed > 0 ? "lock" : "home"), 250);
+    if (squaresOpen) later(() => openSheet(claimed > 0 ? "lock" : "home"), 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once per deep link
-  }, [wantsCheckout, wantsDraw]);
+  }, [wantsDraw]);
 
   // ---- lock + reveal ----
-  const lock = async () => {
+  /** The confirm's "Draw the numbers": pay the host fee first when it's due. */
+  const lock = () => {
+    if (fee) openCheckout("draw");
+    else void draw(state);
+  };
+
+  const draw = async (from: GameState) => {
     setOpen(false);
     revealClosed.current = false;
-    setReveal({ draw: null, label: null, state });
+    setReveal({ draw: null, label: null, state: from });
     const next = await actions.lock();
+    if (next === PAY_FIRST) {
+      // The fee turned out to be due (an older copy of the board said paid): pay, then draw.
+      setReveal(null);
+      openCheckout("draw");
+      return;
+    }
     // Closed while the draw was on its way: the board already has the numbers; don't pop back up.
     if (next && revealClosed.current) return;
     if (!next) {
@@ -269,9 +288,6 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
 
   const barAction = () => {
     switch (summary.action.kind) {
-      case "checkout":
-        openCheckout();
-        return;
       case "invite":
         void haptic("light");
         onInvite();
@@ -300,8 +316,10 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
           closeSheet();
           later(onInvite, SHEET_EXIT_MS);
         }}
-        onOpenBoard={openCheckout}
-        onLock={() => void lock()}
+        fee={fee}
+        price={price}
+        onPayAhead={() => openCheckout("ahead")}
+        onLock={lock}
         onPickWinner={pickWinner}
         onEnded={ended}
         onDeleted={deleted}
@@ -309,11 +327,12 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
         onAskRemove={(playerId) => askRemove(playerId, "sheet")}
         onRemoved={removed}
       />
-      {(draft || payOpen) && adminToken && (
+      {(fee || payOpen) && adminToken && (
         <Suspense fallback={null}>
           <CheckoutSheet
             open={payOpen}
-            draft={{ game, adminToken }}
+            board={{ game, adminToken }}
+            purpose={purpose}
             payments={payments}
             onPaid={(id, next) => void paid(id, next)}
             onClose={() => setPayOpen(false)}
@@ -342,7 +361,6 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
 // ---- The bar on the board ----
 
 const ACTION_ICON = {
-  checkout: <SparklesIcon size={17} strokeWidth={2.3} />,
   invite: <UsersIcon size={17} strokeWidth={2.4} />,
   lock: <LockIcon size={17} strokeWidth={2.4} />,
   score: <PencilIcon size={17} strokeWidth={2.4} />,
@@ -366,22 +384,25 @@ function Crown({ size }: { size: "sm" | "md" }) {
 function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: () => void; onAction: () => void }) {
   const kind = summary.action.kind;
 
-  // Unpaid: the one thing to do, said plainly, with the button right there.
-  if (kind === "checkout") {
+  // Time to draw and the host fee is due: the draw (with its price) gets the full width.
+  if (kind === "lock" && summary.fee) {
     return (
-      <div className="hx-bar hx-bar-draft flex flex-col gap-3 rounded-card p-3">
+      <div className="hx-bar hx-bar-fee flex flex-col gap-2.5 rounded-card p-3">
         <button
           type="button"
           data-testid="host-open"
           onClick={onOpen}
           aria-haspopup="dialog"
-          aria-label="Host tools"
           className="pressable flex min-h-11 items-center gap-3 rounded-2xl text-left"
         >
           <Crown size="md" />
-          {/* The board's own hint already says friends pick once it's open. */}
-          <span className="min-w-0 flex-1 text-headline font-extrabold leading-tight text-ink">Your board isn't open yet</span>
-          <ChevronRightIcon size={16} strokeWidth={2.6} className="shrink-0 text-ink-subtle" />
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-0.5 text-subhead font-extrabold leading-tight text-ink">
+              Host tools
+              <ChevronRightIcon size={14} strokeWidth={2.8} className="text-ink-subtle" />
+            </span>
+            <span className="block truncate text-footnote leading-snug text-ink-muted">{summary.status}</span>
+          </span>
         </button>
         <button
           type="button"
@@ -389,7 +410,7 @@ function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: 
           onClick={onAction}
           className="keycap hx-nudge flex h-12 w-full items-center justify-center gap-2 rounded-btn bg-brand-400 text-callout font-extrabold text-ink-inverse [--keycap-edge:var(--color-brand-700)]"
         >
-          {ACTION_ICON.checkout}
+          <ShuffleIcon size={18} strokeWidth={2.4} />
           {summary.action.label}
         </button>
       </div>

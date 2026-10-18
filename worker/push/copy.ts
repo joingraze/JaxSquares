@@ -82,9 +82,18 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       );
 
     case "game-starting": {
+      const kickoff = KICKOFF[game.sport] ?? KICKOFF.other;
+      const push = (body: string) => base(game, event.kind, { body, tag: `${id}:kickoff`, urgency: "high", ttlSeconds: HOUR / 2 });
+      if (game.status === "open") {
+        // Not drawn at kickoff (the host fee isn't paid): the host draws when they pay.
+        const host = new Set(hostOnly);
+        return [
+          ...to(hostOnly, push(`${kickoff} Draw the numbers to get your board going.`)),
+          ...to(everyone.filter((c) => !host.has(c)), push(`${kickoff} Waiting on the host to draw the numbers.`)),
+        ];
+      }
       const justDrawn = game.lockedAt !== null && now - game.lockedAt < JUST_DRAWN_MS;
-      const body = `${KICKOFF[game.sport] ?? KICKOFF.other} ${justDrawn ? "Numbers are in. Find your squares." : "The board is live."}`;
-      return to(everyone, base(game, event.kind, { body, tag: `${id}:kickoff`, urgency: "high", ttlSeconds: HOUR / 2 }));
+      return to(everyone, push(`${kickoff} ${justDrawn ? "Numbers are in. Find your squares." : "The board is live."}`));
     }
 
     case "winner": {
@@ -113,11 +122,23 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
     }
 
     case "board-full": {
-      const autoDraw = game.linkedEvent !== null && game.status === "open";
-      const body = autoDraw
-        ? "🔥 Your board is full. Draw numbers now, or they'll draw at kickoff."
-        : "🔥 Your board is full. Time to draw numbers.";
+      // A linked board draws at kickoff on its own only once its host fee is paid.
+      const linkedOpen = game.linkedEvent !== null && game.status === "open";
+      const body = !linkedOpen
+        ? "🔥 Your board is full. Time to draw numbers."
+        : game.paid === false
+          ? "🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."
+          : "🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.";
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:full` }));
+    }
+
+    case "draw-reminder": {
+      // Paid or drawn since the reminder was due: nothing to remind.
+      if (game.status !== "open" || game.paid !== false || game.linkedEvent === null) return [];
+      const mins = Math.round((game.linkedEvent.startsAt - now) / 60_000);
+      const when = mins >= 45 ? "Kickoff in about an hour." : mins >= 2 ? `Kickoff in ${mins} minutes.` : "Kickoff's here.";
+      const body = `⏰ ${when} Draw the numbers now, or pay ahead and Jax draws them at kickoff.`;
+      return to(hostOnly, base(game, event.kind, { body, tag: `${id}:draw-reminder`, urgency: "high", ttlSeconds: HOUR }));
     }
 
     case "player-joined": {

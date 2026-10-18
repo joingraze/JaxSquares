@@ -5,7 +5,7 @@
 // transaction; any other verified charge for the board is kept as 'unused'.
 
 export type PurchaseProvider = "test" | "stripe" | "iap";
-/** "unused": charged, but it opened nothing (board already open, or deleted first); for refund follow-up. */
+/** "unused": charged, but it paid for nothing (board already paid for, or deleted first); for refund follow-up. */
 export type PurchaseStatus = "pending" | "paid" | "canceled" | "unused";
 
 export interface Purchase {
@@ -80,7 +80,7 @@ export async function recordPending(db: D1Database, p: NewPurchase, now = Date.n
 }
 
 /**
- * A verified purchase that opened nothing becomes 'unused': inserted, or a
+ * A verified purchase that paid for nothing becomes 'unused': inserted, or a
  * pending (or canceled) row of the same board moved to it. A paid reference is
  * never downgraded and another board's reference is never touched.
  */
@@ -106,8 +106,8 @@ function unusedStatement(db: D1Database, p: NewPurchase, now: number): D1Prepare
  * one transaction. It becomes the board's one 'paid' purchase unless another
  * reference already paid for this board: two App Store transactions, or a
  * Stripe webhook and an App Store purchase, confirmed at the same instant can't
- * both pay for it. The loser is kept as 'unused' (charged, opened nothing; for
- * refund follow-up), like a purchase for a board that was already open.
+ * both pay for it. The loser is kept as 'unused' (charged, paid for nothing;
+ * for refund follow-up), like a purchase for a board that was already paid for.
  *
  * `board.createdAt` scopes "this board": ledger rows outlive deleted boards,
  * and a new board could be given a deleted one's id; only purchases made since
@@ -143,7 +143,7 @@ export async function recordPaid(db: D1Database, p: NewPurchase, board: { create
 }
 
 /**
- * Records a verified purchase that can't open its board (already open, or
+ * Records a verified purchase that can't pay for its board (already paid, or
  * deleted) so it isn't lost, and returns the stored row. A paid reference is
  * never downgraded and another board's reference is never taken (that row is
  * returned as it is).

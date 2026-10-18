@@ -1,11 +1,17 @@
 // Terms of use (https://jaxsquares.com/terms). Plain language on purpose; have it
 // reviewed before launch. The product rule it encodes: no money between players.
+// The only charge is the host fee, due when the host draws a board's numbers.
+// The fee shows as this device shows it (useHostFee): inside the iOS app only
+// the App Store's price and Apple's billing, never the web price or Stripe
+// (App Store guideline 3.1.1).
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CheckIcon, GiftIcon, UsersIcon, XIcon } from "../components/icons";
 import { Card, ListGroup, TopBar } from "../components/ui";
+import { platform } from "../lib/native";
+import { useHostFee } from "../lib/useHostFee";
 
-const UPDATED = "October 16, 2026";
+const UPDATED = "October 18, 2026";
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
 function Section({ n, title, children }: { n: number; title: string; children: ReactNode }) {
@@ -43,6 +49,8 @@ function Point({ children, no }: { children: ReactNode; no?: boolean }) {
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
 export default function Terms() {
+  const { price } = useHostFee();
+  const inApp = platform() === "ios";
   return (
     <>
       <TopBar title="Terms" subtitle={`Last updated ${UPDATED}`} back />
@@ -51,10 +59,10 @@ export default function Terms() {
           <p className="eyebrow text-ink-brand">In plain words</p>
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">JaxSquares is a free-to-play game board for friends.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
-            <Point>Joining a board and claiming squares is always free.</Point>
+            <Point>Setting up a board, inviting friends and picking squares are free.</Point>
             <Point no>No wagering, ever.</Point>
             <Point no>No money handled between players.</Point>
-            <Point>Prizes are informal notes between friends.</Point>
+            <Point>A square price or prize a host shows is just information.</Point>
           </ul>
         </Card>
 
@@ -72,8 +80,12 @@ export default function Terms() {
 
         <Section n={2} title="No wagering, no money between players">
           <p>
-            JaxSquares is not a gambling service. Players never pay to join, squares are never sold, and the app doesn't collect, hold, track or pay
-            out money or anything of value between players.
+            JaxSquares never sells squares, and it never collects, holds, sends or tracks money or anything of value between players. Players never
+            pay to join.
+          </p>
+          <p>
+            A host can show a square price or prize amounts on their board. That's display-only information the host sets. Players settle nothing
+            through JaxSquares.
           </p>
           <p className="font-semibold text-ink">You agree not to use JaxSquares to organize wagers or to collect money from other players.</p>
         </Section>
@@ -94,25 +106,36 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section n={4} title="Creating a board">
+        <Section n={4} title="The host fee">
           <p>
-            The person who creates a board pays JaxSquares a one-time fee, through Apple In-App Purchase in the iPhone app or Stripe on the web.
-            It's the only charge in JaxSquares, and it unlocks that one board for everyone you invite.
+            The only charge in JaxSquares is the host fee for creating and managing a board: {price ? `${price} per board` : "once per board"},
+            charged when the host draws the numbers. Setting up a board, inviting friends and picking squares are free.
           </p>
           <p>
-            The board creation fee is non-refundable, except where the law or the platform's rules require a refund. App Store purchases are
-            refunded by Apple at{" "}
+            {inApp ? "In the iPhone app, the fee is an In-App Purchase billed by Apple." : "In the iPhone app, the fee is an In-App Purchase billed by Apple. On the web, it's charged through Stripe."}{" "}
+            Except where the law or the platform's rules require a refund, the host fee isn't refundable. App Store purchases are refunded by Apple
+            at{" "}
             <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
               reportaproblem.apple.com
             </a>
             .
+            {!inApp && (
+              <>
+                {" "}
+                To ask about a refund for a web payment, contact{" "}
+                <Link to="/support" className={link}>
+                  Support
+                </Link>
+                .
+              </>
+            )}
           </p>
         </Section>
 
         <Section n={5} title="Hosts">
           <p>
-            The host runs the board: they lock it, enter or correct scores, pick a winning square when a result needs fixing, and can delete the
-            board at any time. Host controls live on the device that created the board, so keep your host link somewhere safe.
+            The host runs the board: they draw the numbers, enter or correct scores, pick a winning square when a result needs fixing, and can
+            delete the board at any time. Host controls live on the device that created the board, so keep your host link somewhere safe.
           </p>
         </Section>
 

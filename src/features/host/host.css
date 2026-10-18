@@ -17,8 +17,8 @@
     var(--elevation-card);
 }
 
-/* Unpaid board: the bar is the call to action. */
-.hx-bar-draft {
+/* Time to draw with the host fee due: the bar is the call to action. */
+.hx-bar-fee {
   background:
     radial-gradient(120% 140% at 0% 0%, rgb(198 249 31 / 0.12), transparent 55%),
     radial-gradient(120% 140% at 100% 100%, rgb(255 194 51 / 0.1), transparent 60%),

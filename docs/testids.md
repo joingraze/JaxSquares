@@ -74,8 +74,9 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `invite-card` | each card in it (`data-game=<board id>`); the whole card opens the board |
 | `invite-pick` | "Pick squares" on an invite card: opens the board |
 | `invite-hide` | "Not for me" on an invite I only opened (not joined): hides it from Home (drops it from the seen list) with an Undo toast |
-| `create-submit` | Review's "Create board": creates the board / opens checkout |
-| `pay-confirm` | the confirm button in the checkout sheet (live web checkout, and host controls opening an unpaid draft). Test mode and the App Store skip it: `create-submit` creates and opens the board in one tap |
+| `create-submit` | Review's "Create board": creates the board and opens it (free; no checkout) |
+| `create-fee` | the line under it: "Free to set up and invite. $4.99 when you draw the numbers." (the App Store's price in the iOS app) |
+| `pay-confirm` | the confirm button in the checkout sheet for the host fee, opened by the host tools when the host draws (or pays ahead on a linked board); every method: test, wallet, card, App Store |
 | `invite-share` | the share-invite button in the invite sheet |
 | `invite-copy` | the link preview card in the invite sheet (tap to copy) |
 | `invite-code-toggle` | "Same room? Show code" toggle in the invite sheet |
@@ -86,13 +87,15 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `jax-pick` | "Let Jax pick" on an open board (next to the hint above the grid). Asks how many (`jax-count-sheet`) when more than one square is allowed, then claims that many random open squares for me (joined), or picks them and opens the join sheet (newcomer). Hidden while squares are picked by hand, at my max, or when the board is full |
 | `jax-count-sheet`, `jax-count-chip`, `jax-count-confirm` | "How many squares?" for Let Jax pick: the sheet, its quick counts (`data-count`), and "Pick N squares" |
 | `jax-cheer` | not a control: the Jax cheer overlay while it plays after one of my squares wins (board and Home), for screenshot harnesses |
-| `host-lock` | lock board + draw numbers |
+| `host-lock` | lock board + draw numbers ("Draw the numbers · $4.99" while the host fee is due) |
+| `host-pay-ahead` | linked boards whose host fee is due, before kickoff: "Pay now and Jax draws the numbers at kickoff" (opens the checkout sheet) |
+| `board-waiting` | the board hint for players on an open board that's full, or a linked game on without its numbers: "Waiting on the host to draw the numbers." |
 | `score-x`, `score-y`, `score-save` | host score entry |
 | `score-quick-adds`, `score-quick-add` | the every-score pad's one-tap points (`data-play=TD\|FG\|XP\|2-PT\|Safety`: +6, +3, +1, +2, +2) for the team being typed |
 | `host-open` | the host bar button that opens the host sheet |
-| `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step |
+| `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step ("Draw the numbers · $4.99" while the host fee is due: opens the checkout sheet, then draws) |
 | `reveal-close`, `reveal-done` | the number reveal (host, after the draw): the X at the top (closes it any time, even mid-shuffle) and "See the board" (pinned at the bottom once the numbers land) |
-| `host-bar-action` | the host bar's next-action pill |
+| `host-bar-action` | the host bar's next-action pill (full width, "Draw the numbers · $4.99", when it's time to draw and the host fee is due) |
 | `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
 | `score-saved` | footer confirmation after a host saves a score |

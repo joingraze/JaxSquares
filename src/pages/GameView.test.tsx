@@ -409,3 +409,40 @@ describe("?invite=1 after creating a board", () => {
     expect(screen.queryByTestId("invite-share")).toBeNull();
   });
 });
+
+describe("waiting on the host's draw", () => {
+  const fullBoard = (owner: string): GameState["squares"] =>
+    Array.from({ length: 100 }, (_, i) => ({ row: Math.floor(i / 10), col: i % 10, playerId: i < 3 ? owner : HOST, claimedAt: 0 }));
+
+  it("tells players on a full board who they're waiting on", async () => {
+    const me = identity.getPlayerId();
+    board.state = { ...openBoard([player(HOST, "Jordan"), player(me, "Sam")]), squares: fullBoard(me) };
+    await renderBoard();
+    expect(screen.getByTestId("board-waiting")).toHaveTextContent("You have 3 · Waiting on the host to draw the numbers.");
+  });
+
+  it("says it on a linked board whose game kicked off without its numbers (its host fee wasn't paid)", async () => {
+    const me = identity.getPlayerId();
+    const state = openBoard([player(HOST, "Jordan"), player(me, "Sam")]);
+    board.state = {
+      ...state,
+      game: { ...state.game, paid: false, linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: Date.now() - 600_000, xIsHome: true } },
+      live: { state: "in", period: 1, clock: "5:00", detail: "Q1 5:00", scoreX: 7, scoreY: 0, updatedAt: 1 },
+    };
+    await renderBoard();
+    expect(screen.getByTestId("board-waiting")).toHaveTextContent(/^Waiting on the host to draw the numbers\.$/);
+  });
+
+  it("isn't shown to the host (their tools say what to do) or while there's still picking to do", async () => {
+    board.state = { ...openBoard([player(HOST, "Jordan")]), squares: fullBoard(HOST) };
+    identity.saveAdminToken("brd123", "admin-token");
+    await renderBoard();
+    expect(screen.queryByTestId("board-waiting")).toBeNull();
+    cleanup();
+    localStorage.clear();
+    const me = identity.getPlayerId();
+    board.state = openBoard([player(HOST, "Jordan"), player(me, "Sam")]);
+    await renderBoard();
+    expect(screen.queryByTestId("board-waiting")).toBeNull();
+  });
+});

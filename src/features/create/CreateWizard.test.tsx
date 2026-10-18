@@ -63,9 +63,9 @@ beforeEach(() => {
       if (method === "POST" && url.endsWith("/api/games")) {
         const body = JSON.parse(String(init.body)) as CreateGameInput;
         posted.push(body);
-        return json({ game: { id: "g1", ...body, status: "draft" }, adminToken: "admin-g1", paymentRequired: true }, 201);
+        // Open right away: the host fee is due at the draw, not now.
+        return json({ game: { id: "g1", ...body, status: "open", paid: false }, adminToken: "admin-g1", paymentRequired: false }, 201);
       }
-      if (url.endsWith("/pay/test")) return json({ state: { game: { id: "g1", status: "open" } } });
       return json({ error: "not found" }, 404);
     }),
   );

@@ -297,8 +297,8 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
 }
 
 /**
- * Each card's one action. Deep links take the host straight to the step:
- * the draw confirm (?draw=1) or checkout (?checkout=1).
+ * Each card's one action. A deep link takes the host straight to the draw
+ * confirm (?draw=1), which pays the host fee first when it's due.
  */
 function useCardAction() {
   const navigate = useNavigate();
@@ -322,8 +322,6 @@ function useCardAction() {
           };
         case "lock":
           return { label, primary, onClick: () => navigate(`/g/${game.id}?draw=1`) };
-        case "finish-setup":
-          return { label, primary, onClick: () => navigate(`/g/${game.id}?checkout=1`) };
         default:
           return { label, primary, onClick: () => navigate(`/g/${game.id}`) };
       }

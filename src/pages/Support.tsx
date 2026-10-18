@@ -1,11 +1,15 @@
 // Support page (App Store "Support URL": https://jaxsquares.com/support).
-// The contact address is a placeholder until the mailbox exists.
+// The contact address is a placeholder until the mailbox exists. The host fee
+// shows as this device shows it (useHostFee): inside the iOS app only the App
+// Store's price and Apple's billing, never the web price or Stripe.
 import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import jaxJpg from "../assets/jax-portrait-512.jpg";
 import jaxWebp from "../assets/jax-portrait-512.webp";
 import { ChevronDownIcon, PawIcon } from "../components/icons";
 import { buttonStyles, Card, Jax, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
+import { platform } from "../lib/native";
+import { useHostFee } from "../lib/useHostFee";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
@@ -16,73 +20,84 @@ interface Faq {
 
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
-const FAQS: Faq[] = [
-  {
-    q: "How do my friends join a board?",
-    a: (
-      <>
-        <p>Tap Share on your board and send the link to the group chat. Friends open it, pick a name and a color, and tap squares to claim them.</p>
-        <p>Nobody needs to sign up or download anything. If they have the app, the link opens right in it.</p>
-      </>
-    ),
-  },
-  {
-    q: "Does it cost anything to play?",
-    a: (
-      <>
-        <p>
-          Joining a board and claiming squares is free. The only charge is a one-time fee the host pays JaxSquares to create a board, and it
-          unlocks that board for everyone.
-        </p>
-        <p>No money moves between players in JaxSquares, and squares are never sold. Prize notes like “Loser buys wings” are just for fun.</p>
-      </>
-    ),
-  },
-  {
-    q: "I lost host access to my board.",
-    a: (
-      <>
-        <p>
-          Host controls live on the device that created the board. If you saved your private host link, open it on the new device and your host
-          controls come right back.
-        </p>
-        <p>
-          No host link? Email us the board link from any device and we'll help you get back in.
-        </p>
-      </>
-    ),
-  },
-  {
-    q: "I paid, but my board isn't open yet.",
-    a: (
-      <>
-        <p>
-          Open JaxSquares again while you're online. Purchases that went through but weren't confirmed (say the app closed mid-checkout) are
-          finished automatically when the app starts, and your board opens.
-        </p>
-        <p>
-          Still stuck? Email us the board link. Refunds for App Store purchases are handled by Apple at{" "}
-          <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
-            reportaproblem.apple.com
-          </a>
-          .
-        </p>
-      </>
-    ),
-  },
-  {
-    q: "How do I turn notifications on or off?",
-    a: (
-      <>
-        <p>
-          Manage them from your Profile in JaxSquares. On iPhone you can also go to Settings → Notifications → JaxSquares; in a browser, use the
-          site settings next to the address bar.
-        </p>
-        <p>We only send what matters: numbers drawn, kickoff, and when your square hits.</p>
-      </>
-    ),
-  },
-];
+/** `price`: the host fee as this device shows it (null while loading); `inApp`: inside the iOS app. */
+function faqs(price: string | null, inApp: boolean): Faq[] {
+  return [
+    {
+      q: "How do my friends join a board?",
+      a: (
+        <>
+          <p>Tap Share on your board and send the link to the group chat. Friends open it, pick a name and a color, and tap squares to claim them.</p>
+          <p>Nobody needs to sign up or download anything. If they have the app, the link opens right in it.</p>
+        </>
+      ),
+    },
+    {
+      q: "Does it cost anything to play?",
+      a: (
+        <>
+          <p>
+            Setting up a board, inviting friends and picking squares are free. The only charge is the host fee for creating and managing a board:{" "}
+            {price ? `${price} per board` : "once per board"}, charged when the host draws the numbers.
+          </p>
+          <p>
+            {inApp
+              ? "In the iPhone app it's an In-App Purchase billed by Apple."
+              : "In the iPhone app it's an In-App Purchase billed by Apple. On the web it's charged through Stripe."}
+          </p>
+          <p>
+            JaxSquares never sells squares, and it never collects, holds, sends or tracks money between players. A square price or prize amount a
+            host shows is just information, and players settle nothing through JaxSquares. Prize notes like “Loser buys wings” are just for fun.
+          </p>
+        </>
+      ),
+    },
+    {
+      q: "I lost host access to my board.",
+      a: (
+        <>
+          <p>
+            Host controls live on the device that created the board. If you saved your private host link, open it on the new device and your host
+            controls come right back.
+          </p>
+          <p>
+            No host link? Email us the board link from any device and we'll help you get back in.
+          </p>
+        </>
+      ),
+    },
+    {
+      q: "I paid, but I can't draw the numbers yet.",
+      a: (
+        <>
+          <p>
+            Open JaxSquares again while you're online. Purchases that went through but weren't confirmed (say the app closed mid-checkout) are
+            finished automatically when the app starts, and then you can draw the numbers.
+          </p>
+          <p>
+            Still stuck? Email us the board link. Refunds for App Store purchases are handled by Apple at{" "}
+            <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
+              reportaproblem.apple.com
+            </a>
+            .{inApp ? "" : " To ask about a refund for a web payment, email us."}
+          </p>
+        </>
+      ),
+    },
+    {
+      q: "How do I turn notifications on or off?",
+      a: (
+        <>
+          <p>
+            Manage them from your Profile in JaxSquares. On iPhone you can also go to Settings → Notifications → JaxSquares; in a browser, use the
+            site settings next to the address bar.
+          </p>
+          <p>We only send what matters: numbers drawn, kickoff, and when your square hits.</p>
+        </>
+      ),
+    },
+  ];
+}
 
 function FaqItem({ faq, defaultOpen }: { faq: Faq; defaultOpen?: boolean }) {
   return (
@@ -138,6 +153,7 @@ function MeetJax() {
 }
 
 export default function Support() {
+  const { price } = useHostFee();
   // Profile links here as /support#meet-jax.
   const { hash } = useLocation();
   const scrolled = useRef(false);
@@ -173,7 +189,7 @@ export default function Support() {
         <section>
           <h2 className="mb-3 px-1 font-display text-title-3 font-extrabold text-ink">Common questions</h2>
           <ListGroup>
-            {FAQS.map((faq, i) => (
+            {faqs(price, platform() === "ios").map((faq, i) => (
               <FaqItem key={faq.q} faq={faq} defaultOpen={i === 0} />
             ))}
           </ListGroup>

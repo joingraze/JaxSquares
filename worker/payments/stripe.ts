@@ -1,5 +1,5 @@
-// Stripe over plain fetch (no SDK in the Worker): PaymentIntents for board
-// creation and webhook signature verification.
+// Stripe over plain fetch (no SDK in the Worker): PaymentIntents for a board's
+// host fee and webhook signature verification.
 // Docs: https://docs.stripe.com/api/payment_intents
 //       https://docs.stripe.com/webhooks#verify-manually
 
@@ -110,7 +110,7 @@ export function createBoardPaymentIntent(secretKey: string, input: BoardIntentIn
       currency: input.currency,
       // Wallets and cards only: everything completes in the sheet, never via a redirect.
       automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-      description: "JaxSquares board",
+      description: "JaxSquares host fee (one board)",
       metadata: { game_id: input.gameId, product: BOARD_PRODUCT },
     },
     input.idempotencyKey,

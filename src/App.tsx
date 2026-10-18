@@ -104,13 +104,18 @@ function LaunchHooks() {
         watchIAPPurchases({
           adminTokenFor: (gameId) => getAdminToken(gameId),
           onResume: onAppResume,
-          onOpened: ({ game }) =>
+          // A host fee confirmed later (the app closed mid-purchase, or Ask to Buy was approved).
+          onPaid: ({ game }) => {
+            const drawing = game.status === "open";
             toast.show({
               tone: "success",
-              title: "Your board is open",
-              description: `${game.name} is ready for squares. Send the link to your crew.`,
-              action: { label: "Open", onClick: () => void navigateRef.current(`/g/${game.id}`) },
-            }),
+              title: "Payment confirmed",
+              description: drawing
+                ? `${game.name} is paid for. Draw the numbers whenever you're ready.`
+                : `${game.name} is paid for.`,
+              action: { label: drawing ? "Draw" : "Open", onClick: () => void navigateRef.current(`/g/${game.id}${drawing ? "?draw=1" : ""}`) },
+            });
+          },
           onUnused: (message) => toast.show({ title: "That purchase wasn't needed", description: message, duration: 0 }),
         }),
       )

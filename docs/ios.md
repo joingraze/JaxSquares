@@ -165,7 +165,8 @@ Connect:
    under Settings → Developer → Sandbox Apple Account.
 4. Submit the IAP product together with the first app version.
 
-The IAP is the only payment in the app. It pays JaxSquares to create a board.
+The IAP is the only payment in the app: the host fee for a board, paid when
+the host draws its numbers (creating a board and picking squares are free).
 Players never pay each other or pay to join.
 
 ## Universal links (`/g/*` opens the app)

@@ -7,8 +7,8 @@
 // final's Prize.rest: "the rest of the board total") as display-only,
 // structured fields in "$" or points, plus a free-text note per prize ("Loser
 // buys wings"). Amounts stay in the app: never in push notifications, link
-// previews or share text. The only money the product touches is the creator
-// paying JaxSquares to open a board.
+// previews or share text. The only money the product touches is the host
+// paying JaxSquares a fee for a board, due when they draw its numbers.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
@@ -16,9 +16,12 @@ export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer"
 export type League = "nfl" | "ncaaf" | "custom";
 
 /**
- * draft  – created, waiting for the creator's payment (not joinable yet)
- * open   – friends are claiming squares
- * locked – numbers drawn, no more claiming; scores/winners being recorded
+ * draft  – legacy: a board waiting on its creator's payment before it opened,
+ *          from before the host fee moved to the draw. Migration 0009 opened
+ *          them all and new boards never start here; kept for old data.
+ * open   – friends are claiming squares (a new board starts here, free)
+ * locked – numbers drawn (the host fee is paid), no more claiming;
+ *          scores/winners being recorded
  * final  – every period resolved (or the host ended it)
  */
 export type GameStatus = "draft" | "open" | "locked" | "final";
@@ -192,6 +195,14 @@ export interface Game {
   hostPlayerId: string;
   createdAt: number;
   lockedAt: number | null;
+  /**
+   * The host fee for this board is paid: the host can draw the numbers
+   * (POST /lock answers 402 with PAYMENT_REQUIRED_CODE until then), and a
+   * linked board draws its own at kickoff. Boards made before the fee moved
+   * to the draw count as paid. Always sent by the API; optional only so
+   * older fixtures type-check (absent reads as paid).
+   */
+  paid?: boolean;
 }
 
 /**
@@ -369,10 +380,13 @@ export interface GameSummary {
   /** Kickoff (Game.startsAt): the linked event's, or a custom board's host-set time; null = no set time. */
   startsAt: number | null;
   /**
-   * Linked to a real game (live scores; locks itself at kickoff). A custom board
-   * waits for its host to draw. Always sent by `GET /api/me/games`.
+   * Linked to a real game (live scores; locks itself at kickoff once the host
+   * fee is paid). A custom board waits for its host to draw. Always sent by
+   * `GET /api/me/games`.
    */
   linked?: boolean;
+  /** Game.paid: the host fee is paid. Always sent by `GET /api/me/games`; absent reads as paid. */
+  paid?: boolean;
   /** Periods this device's squares have won so far. */
   myWins: { periodKey: string; label: string }[];
   lastActivityAt: number;
@@ -448,9 +462,20 @@ export interface CreateGameInput {
 export interface CreateGameResponse {
   game: Game;
   adminToken: string;
-  /** True when the board stays in "draft" until the creator pays. */
+  /**
+   * Always false: a new board opens right away, and the host fee is due when
+   * the host draws the numbers (POST /lock answers 402 until it's paid).
+   * Kept for app builds from when a board stayed in "draft" until paid.
+   */
   paymentRequired: boolean;
 }
+
+/**
+ * `code` of the 402 that POST /api/games/:id/lock answers on a board whose
+ * host fee isn't paid yet (`{ error, code }`): the app opens the checkout,
+ * then draws.
+ */
+export const PAYMENT_REQUIRED_CODE = "payment_required";
 
 export interface JoinInput {
   name: string;
@@ -544,6 +569,10 @@ export interface ScheduleResponse {
   weeks?: ScheduleWeek[];
 }
 
+/**
+ * The host fee checkout: what a board costs its host (due when they draw the
+ * numbers) and how this deployment takes it.
+ */
 export interface PaymentConfig {
   /** "test" simulates checkout with no charge; "live" uses Stripe / Apple IAP. */
   mode: "test" | "live";

@@ -28,6 +28,7 @@ import {
   boardPhase,
   buildCells,
   cellsOf,
+  claimedCount,
   decideTap,
   defaultDrawKey,
   drawKeyOf,
@@ -157,10 +158,8 @@ export default function GameView() {
   selectionRef.current = selection;
   const [joinOpen, setJoinOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  // True when the invite sheet was opened by the create flow right after checkout.
+  // True when the invite sheet was opened by the create flow right after the board was made.
   const [justCreated, setJustCreated] = useState(false);
-  // Landed here from checkout (stays true after the invite sheet closes).
-  const [fromCheckout, setFromCheckout] = useState(false);
   const [notifyOpen, setNotifyOpen] = useState(false);
   // The "get notified" ask for a board I just created (after its invite sheet closes).
   const [createdAsk, setCreatedAsk] = useState(false);
@@ -286,33 +285,18 @@ export default function GameView() {
     setSelection(nextSel);
   }, [state, me, ticker]);
 
-  // ?invite=1 (the create flow lands here after checkout): open the invite sheet once,
-  // even while the board is still "draft" because the payment webhook hasn't landed yet.
+  // ?invite=1 (the create flow lands here once the board is made): open the invite sheet once.
   // Only for the host: a friend sent that exact URL just gets the board.
   useEffect(() => {
     if (params.get("invite") !== "1") return;
     if (id && getAdminToken(id)) {
       setJustCreated(true);
-      setFromCheckout(true);
       setInviteOpen(true);
     }
     const nextParams = new URLSearchParams(params);
     nextParams.delete("invite");
     setParams(nextParams, { replace: true });
   }, [params, setParams, id]);
-
-  // Fresh from checkout but still "draft": check back every couple of seconds until the payment lands.
-  const draftAfterCheckout = fromCheckout && game?.status === "draft";
-  useEffect(() => {
-    if (!draftAfterCheckout) return;
-    let tries = 0;
-    const t = setInterval(() => {
-      tries += 1;
-      void refresh();
-      if (tries >= 20) clearInterval(t);
-    }, 2500);
-    return () => clearInterval(t);
-  }, [draftAfterCheckout, refresh]);
 
   // My square won: a buzz and the gold banner, once per win per device; a short burst on it when
   // the win just happened. A win first seen later (opened mid-game) gets the same banner, quietly:
@@ -866,6 +850,11 @@ export default function GameView() {
   const claimN = selection.claim.size;
   const releaseN = selection.release.size;
   const left = squaresLeftFor(game.maxPerPlayer, mineCount);
+  // Squares are still open but there's nothing more to do before the draw: the board is full, or a
+  // linked game kicked off without its numbers (the host draws once the board's paid for).
+  const boardFull = claimedCount(state).claimed >= claimedCount(state).total;
+  const kickedOff = !!game.linkedEvent && (state.live?.state === "in" || state.live?.state === "post" || game.linkedEvent.startsAt <= now);
+  const waitingOnHost = phase === "open" && !isHost && (boardFull || kickedOff);
   // What's left once this selection goes through (a give-back frees a spot).
   const leftAfter = squaresLeftFor(game.maxPerPlayer, mineAfter(mineCount, selection));
   const showBar = !pick && !joinOpen && open && claimN + releaseN > 0;
@@ -994,13 +983,6 @@ export default function GameView() {
           </div>
         )}
 
-        {/* Host tools say "Open board" for an unpaid board; right after checkout the payment is just landing. */}
-        {game.status === "draft" && isHost && fromCheckout && (
-          <p className="rounded-2xl bg-surface-2 px-3.5 py-2.5 text-footnote text-ink-muted ring-1 ring-inset ring-line">
-            Confirming your payment. This usually takes a few seconds.
-          </p>
-        )}
-
         {welcome && joined && <JoinedCard state={state} onDismiss={dismissWelcome} />}
 
         {/* ---- the grid ---- */}
@@ -1029,7 +1011,7 @@ export default function GameView() {
                   {newcomer ? (
                     <b className="font-bold text-ink">Tap any open square, or let Jax choose.</b>
                   ) : (
-                    <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} />
+                    <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} waitingOnHost={waitingOnHost} />
                   )}
                 </span>
                 {canJaxPick && <JaxPickButton onClick={letJaxPick} busy={jaxBusy} />}
@@ -1364,15 +1346,26 @@ function BoardHint({
   mineCount,
   left,
   isHost,
+  waitingOnHost,
 }: {
   phase: ReturnType<typeof boardPhase>;
   joined: boolean;
   mineCount: number;
   left: number | null;
   isHost: boolean;
+  /** Full, or a linked game on without its numbers: everyone's waiting on the host's draw. */
+  waitingOnHost: boolean;
 }) {
-  if (phase === "draft") return <span>{isHost ? "Open the board so friends can pick squares." : "The host is still setting this board up."}</span>;
+  if (phase === "draft") return <span>{isHost ? "Your board opens shortly." : "The host is still setting this board up."}</span>;
   if (phase === "open") {
+    if (waitingOnHost) {
+      return (
+        <span data-testid="board-waiting">
+          {mineCount > 0 && <b className="font-bold text-ink-brand">You have {mineCount} · </b>}
+          <b className="font-bold text-ink">Waiting on the host to draw the numbers.</b>
+        </span>
+      );
+    }
     if (!joined) return <b className="font-bold text-ink">Tap any open square to jump in.</b>;
     if (mineCount === 0) return <b className="font-bold text-ink">Tap open squares to pick yours.</b>;
     return (

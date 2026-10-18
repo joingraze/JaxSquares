@@ -1,4 +1,5 @@
-// Client checkout for creating a board. No UI here: the checkout sheet calls these.
+// Client checkout for a board's host fee, due when the host draws the numbers
+// (POST /lock answers 402 until it's paid). No UI here: the checkout sheet calls these.
 //   test   – no-charge test checkout while payments aren't live
 //   iap    – Apple In-App Purchase inside the iOS app (App Store guideline 3.1.1)
 //   wallet – Apple Pay / Google Pay one tap on the web (Stripe Express Checkout)
@@ -17,14 +18,14 @@ export type CheckoutMethod = "test" | "iap" | "wallet" | "card";
 export type CheckoutResult = "paid" | "cancelled" | "failed";
 export type Platform = "ios" | "android" | "web";
 
-/** How an App Store purchase ended. "pending" = Ask to Buy; the board opens once a parent approves. */
+/** How an App Store purchase ended. "pending" = Ask to Buy; the board is paid for once a parent approves. */
 export type PurchaseOutcome = { status: "paid"; state: GameState } | { status: "cancelled" } | { status: "pending" };
 
 const API_BASE = String(import.meta.env.VITE_API_BASE ?? "").replace(/\/+$/, "");
 
 /**
- * A failed checkout call. `status` 0 = never reached the server. `state` is set when the board is already open.
- * `unused`: the server kept this App Store purchase but it opened nothing (board already open, or deleted);
+ * A failed checkout call. `status` 0 = never reached the server. `state` is set when the board is already paid for.
+ * `unused`: the server kept this App Store purchase but it paid for nothing (board already paid for, or deleted);
  * the message tells the host how to get a refund.
  */
 export class CheckoutError extends Error {
@@ -123,15 +124,14 @@ export function formatPrice(cents: number, currency = "usd", locale?: string): s
 }
 
 /**
- * The price to show for opening a board on this device, or null when there's
- * nothing to pay (test mode). Web: the server's price. iOS: the App Store's own
- * localized string (App Store guideline 3.1.1: the in-app price is Apple's),
- * null when StoreKit can't say.
+ * The host fee to show on this device ("Draw the numbers · $4.99"), or null
+ * when it can't be said. Web: the server's price, test mode included (the
+ * checkout itself says it charges nothing then). iOS: only the App Store's own
+ * localized string (App Store guideline 3.1.1: the in-app price is Apple's;
+ * never the web price), null when StoreKit can't say.
  */
-export async function checkoutPrice(config: PaymentConfig, platform: Platform): Promise<string | null> {
-  const method = checkoutMethod(config, platform);
-  if (method === "test") return null;
-  if (method === "iap") return appStorePrice(platform, config.iapProductId);
+export async function hostFeePrice(config: PaymentConfig, platform: Platform): Promise<string | null> {
+  if (platform === "ios") return appStorePrice(platform, config.iapProductId);
   return formatPrice(config.priceCents, config.currency);
 }
 
@@ -192,10 +192,10 @@ function boardOf(tx: Pick<Transaction, "productIdentifier" | "appAccountToken">,
 }
 
 /**
- * Buys one board in the App Store sheet, has the server verify it with Apple, then finishes the transaction.
- * A purchase for this board that was charged but never confirmed (offline, an App Store outage) or that a
- * parent just approved is confirmed instead of buying again, and nothing is bought for a board that's
- * already open (paid on another device) or gone.
+ * Buys one board's host fee in the App Store sheet, has the server verify it with Apple, then finishes the
+ * transaction. A purchase for this board that was charged but never confirmed (offline, an App Store outage)
+ * or that a parent just approved is confirmed instead of buying again, and nothing is bought for a board
+ * that's already paid for (on another device, or before the fee moved to the draw) or gone.
  */
 export async function payWithIAP(gameId: string, adminToken: string, productId?: string): Promise<PurchaseOutcome> {
   const [store, productIdentifier] = await Promise.all([
@@ -213,7 +213,8 @@ export async function payWithIAP(gameId: string, adminToken: string, productId?:
   if (earlier) return { status: "paid", state: await redeemTransaction(store, gameId, adminToken, earlier.transactionId) };
 
   const current = await request<GameState>("GET", gamePath(gameId, ""));
-  if (current.game.status !== "draft") throw new CheckoutError("This board is already active", 409, current);
+  // Absent `paid` (an older server) reads as paid: never charge for a board that may be paid for already.
+  if (current.game.paid !== false) throw new CheckoutError("This board is already paid for", 409, current);
 
   let transactionId: string;
   try {
@@ -292,7 +293,7 @@ async function confirmTransaction(
   throw new UnconfirmedPurchaseError(UNCONFIRMED, last?.status ?? 0);
 }
 
-/** Confirms the board purchases among `transactions` that nothing else is handling. Returns the boards it opened. */
+/** Confirms the board purchases among `transactions` that nothing else is handling. Returns the boards they paid for. */
 async function redeemBoardPurchases(
   store: NativePurchasesPlugin,
   transactions: Transaction[],
@@ -301,27 +302,27 @@ async function redeemBoardPurchases(
 ): Promise<GameState[]> {
   if (transactions.length === 0) return [];
   const { payments } = await fetchAppConfig();
-  const opened: GameState[] = [];
+  const paid: GameState[] = [];
   for (const tx of transactions) {
     const gameId = boardOf(tx, payments.iapProductId);
     if (!gameId || redeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
     try {
       // Sent even without this device's admin token (the board was deleted here): if
       // it's gone on the server too, the purchase is kept there for a refund.
-      opened.push(await redeemTransaction(store, gameId, adminTokenFor(gameId) ?? "", tx.transactionId));
+      paid.push(await redeemTransaction(store, gameId, adminTokenFor(gameId) ?? "", tx.transactionId));
     } catch (err) {
-      // Still unfinished (tried again next time), or settled; tell the host about a charge that opened nothing.
+      // Still unfinished (tried again next time), or settled; tell the host about a charge that paid for nothing.
       if (err instanceof CheckoutError && err.unused) onUnused?.(err.message);
     }
   }
-  return opened;
+  return paid;
 }
 
 /**
  * Completes App Store purchases that were charged but never confirmed (app killed,
  * offline). Call at launch in the iOS app with a lookup for this device's admin
- * tokens (watchIAPPurchases does, and again on every resume). Returns the boards it
- * opened; `onUnused` hears about purchases kept without opening anything.
+ * tokens (watchIAPPurchases does, and again on every resume). Returns the boards they
+ * paid for; `onUnused` hears about purchases kept without paying for anything.
  */
 export async function recoverIAPPurchases(
   adminTokenFor: (gameId: string) => string | null,
@@ -336,9 +337,9 @@ export async function recoverIAPPurchases(
 
 export interface IAPWatchOptions {
   adminTokenFor: (gameId: string) => string | null;
-  /** A board this device paid for just opened. */
-  onOpened: (state: GameState) => void;
-  /** A purchase was kept but opened nothing (board already open, or deleted); the message says what to do. */
+  /** A board's host fee this device bought is now confirmed: its host can draw the numbers. */
+  onPaid: (state: GameState) => void;
+  /** A purchase was kept but paid for nothing (board already paid for, or deleted); the message says what to do. */
   onUnused?: (message: string) => void;
   /** Subscribes to the app returning to the foreground (onAppResume in lib/native). */
   onResume?: (cb: () => void) => () => void;
@@ -355,7 +356,7 @@ export function watchIAPPurchases(opts: IAPWatchOptions): () => void {
   let listener: PluginListenerHandle | null = null;
   let stopResume: (() => void) | null = null;
   const onUnused = (message: string) => !stopped && opts.onUnused?.(message);
-  const report = (opened: GameState[]) => !stopped && opened.forEach((state) => opts.onOpened(state));
+  const report = (paid: GameState[]) => !stopped && paid.forEach((state) => opts.onPaid(state));
   const recover = () =>
     recoverIAPPurchases(opts.adminTokenFor, onUnused).then(report, (err: unknown) => console.warn("App Store purchase recovery failed", err));
 
@@ -365,7 +366,7 @@ export function watchIAPPurchases(opts: IAPWatchOptions): () => void {
     const store = await nativePurchases();
     // Listening first, so nothing delivered during the launch pass is missed (duplicates are skipped).
     const handle = await store.addListener("transactionUpdated", (tx) => {
-      // A refund arrives this way too; it opens nothing (an unfinished one is settled by recovery).
+      // A refund arrives this way too; it pays for nothing (an unfinished one is settled by recovery).
       if (tx.revocationDate) return;
       redeemBoardPurchases(store, [tx], opts.adminTokenFor, onUnused).then(report, () => {});
     });
@@ -393,16 +394,16 @@ export interface StripeIntent {
 
 /**
  * The board's PaymentIntent (created once, then reused). Throws a CheckoutError
- * with status 409 and `state` set when the board is already open.
+ * with status 409 and `state` set when the board is already paid for.
  */
 export function createStripeIntent(gameId: string, adminToken: string): Promise<StripeIntent> {
   return request<StripeIntent>("POST", gamePath(gameId, "/pay/stripe"), { adminToken });
 }
 
 /**
- * Call after onPaid: resolves with the open board. The webhook usually gets there
- * first; if not, the server checks the intent with Stripe directly. Null if it's
- * still settling after a few seconds (the live board will flip when it lands).
+ * Call after onPaid: resolves with the paid-for board. The webhook usually gets
+ * there first; if not, the server checks the intent with Stripe directly. Null if
+ * it's still settling after a few seconds (the live board flips when it lands).
  */
 export async function confirmStripePaid(gameId: string, adminToken: string): Promise<GameState | null> {
   for (const delay of [0, 800, 1600, 3200]) {

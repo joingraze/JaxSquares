@@ -17,6 +17,7 @@ import type {
   ScoreInput,
   UpdateGameInput,
 } from "../../shared/types";
+import { PAYMENT_REQUIRED_CODE } from "../../shared/types";
 import {
   forgetGame,
   forgetSeen,
@@ -126,6 +127,11 @@ export async function request<T>(method: Method, path: string, opts: RequestOpti
 
 const g = (id: string, rest = "") => `/games/${encodeURIComponent(id)}${rest}`;
 
+/** The 402 POST /lock answers while the board's host fee isn't paid: pay (the checkout sheet), then draw. */
+export function isPaymentRequired(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 402 && (err.body as { code?: unknown } | undefined)?.code === PAYMENT_REQUIRED_CODE;
+}
+
 /**
  * Whether `token` is `gameId`'s host token (a host link's token, before a device
  * trusts it): true or false once the server has answered, null when it couldn't
@@ -212,6 +218,7 @@ export const api = {
     request<StateResponse>("POST", g(id, "/release"), { body: { cells } satisfies CellsInput }),
 
   // ---- Host ----
+  /** Draws the numbers. 402 (isPaymentRequired) while the host fee isn't paid. */
   lock: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/lock", adminToken),
   setScore: (id: string, input: ScoreInput, adminToken?: string | null) =>
     asHost<StateResponse>("POST", id, "/scores", adminToken, input),

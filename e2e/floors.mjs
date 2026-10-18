@@ -174,8 +174,8 @@ async function createToInvite(browser, { linked }) {
   await shot(page, `${p}-03-review`);
   await tap(page, t, page.getByTestId("create-submit"), "create board");
 
-  // Live web checkout shows a confirm sheet; test mode and the App Store
-  // create and open the board in one tap.
+  // Creating is free and opens the board in one tap (the host fee comes at the
+  // draw); a confirm sheet here would be an older build's pay-to-open step.
   const pay = page.getByTestId("pay-confirm");
   const invite = page.getByTestId("invite-share");
   const first = await Promise.race([

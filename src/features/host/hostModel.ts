@@ -55,7 +55,7 @@ export function entriesOnly(game: Pick<Game, "format" | "periods">): boolean {
 
 // ---- What the host should do next ----
 
-export type HostActionKind = "checkout" | "invite" | "lock" | "score" | "auto" | "final";
+export type HostActionKind = "invite" | "lock" | "score" | "auto" | "final";
 
 export interface HostAction {
   kind: HostActionKind;
@@ -71,6 +71,8 @@ export interface HostSummary {
   action: HostAction;
   /** Nothing for the host to do right now: the bar folds to one slim row. */
   slim: boolean;
+  /** Drawing needs the host fee first: the draw action opens the checkout, then draws. */
+  fee?: boolean;
 }
 
 export function claimedOf(state: Pick<GameState, "game" | "squares">): { claimed: number; total: number } {
@@ -82,23 +84,56 @@ export function isLinked(game: Pick<Game, "linkedEvent">): boolean {
   return game.linkedEvent !== null;
 }
 
-export function hostSummary(state: GameState): HostSummary {
+/** Squares are still being picked (a legacy draft counts: paying opens it). */
+export function isPicking(game: Pick<Game, "status">): boolean {
+  return game.status === "open" || game.status === "draft";
+}
+
+/**
+ * Drawing the numbers needs the host fee first: a board still being picked
+ * whose fee isn't paid. `paid` absent (an older cached state) reads as paid;
+ * the server's 402 still sends the host to the checkout.
+ */
+export function needsHostFee(game: Pick<Game, "status" | "paid">): boolean {
+  return isPicking(game) && game.paid === false;
+}
+
+/** The draw action on a board whose fee is due: "Draw the numbers · $4.99" (no price when it can't be said). */
+export function payToDrawLabel(price: string | null | undefined): string {
+  return price ? `Draw the numbers · ${price}` : "Draw the numbers";
+}
+
+/**
+ * A linked board can be paid ahead so Jax draws the numbers at kickoff: its
+ * fee is due and kickoff hasn't come yet.
+ */
+export function canPayAhead(game: Pick<Game, "status" | "paid" | "linkedEvent">, now = Date.now()): boolean {
+  return needsHostFee(game) && game.linkedEvent !== null && game.linkedEvent.startsAt > now;
+}
+
+/** `price`: the host fee as this device shows it, for the draw action on a board whose fee is due. */
+export function hostSummary(state: GameState, price?: string | null, now = Date.now()): HostSummary {
   const { game } = state;
   const { claimed, total } = claimedOf(state);
 
-  if (game.status === "draft") {
-    return { status: "Not open yet · friends can't pick squares", progress: 0, action: { kind: "checkout", label: "Open board" }, slim: false };
-  }
-  if (game.status === "open") {
+  if (isPicking(game)) {
     const left = Math.max(0, total - claimed);
     const full = left === 0;
+    const fee = needsHostFee(game);
+    // A linked game under way that wasn't drawn at kickoff (its fee wasn't paid): drawing is the move.
+    const late = claimed > 0 && isLinked(game) && gameStarted(state, now);
     // Getting people in stays the move until the board is (nearly) full; then it's locking.
-    if (lockIsTheMove(claimed, total)) {
+    if (late || lockIsTheMove(claimed, total)) {
       return {
-        status: full ? "Board's full. Draw time!" : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
+        status: late
+          ? "Kicked off · numbers not drawn yet"
+          : full
+            ? "Board's full. Draw time!"
+            : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
         progress: claimed / total,
-        action: { kind: "lock", label: "Lock & draw" },
+        action: { kind: "lock", label: fee ? payToDrawLabel(price) : "Lock & draw" },
         slim: false,
+        fee,
       };
     }
     return {
@@ -191,9 +226,9 @@ export function gameStarted(state: Pick<GameState, "game" | "scores" | "manualWi
 /** One line under the host sheet's title saying where the board stands. */
 export function hostStatusLine(state: GameState, now = Date.now()): string {
   const { game } = state;
-  if (game.status === "draft") return "Not open yet. Friends can't pick squares.";
-  if (game.status === "open") {
+  if (isPicking(game)) {
     const { claimed, total } = claimedOf(state);
+    if (isLinked(game) && gameStarted(state, now)) return "Kicked off · draw the numbers to start the board";
     return claimed >= total ? "Board's full. Time to draw the numbers." : `Filling up · ${claimed} of ${total} squares taken`;
   }
   if (game.status === "final") {
@@ -627,7 +662,7 @@ export function editErrors(draft: EditDraft, game?: Pick<Game, "startsAt">, now 
 
 /** True when max squares per person can still change (the API refuses once locked). */
 export function canEditMax(game: Pick<Game, "status">): boolean {
-  return game.status === "draft" || game.status === "open";
+  return isPicking(game);
 }
 
 /** The PATCH body for what changed, or null when nothing did. */

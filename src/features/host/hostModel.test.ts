@@ -22,6 +22,8 @@ import {
   lockFacts,
   lockIsTheMove,
   lockReadiness,
+  canPayAhead,
+  needsHostFee,
   numbersFor,
   parseScore,
   pressKey,
@@ -169,11 +171,43 @@ describe("hostSummary", () => {
     expect(hostSummary(locked({ game: { status: "final" } })).action.kind).toBe("final");
   });
 
-  it("gives an unpaid board a way to open, in plain words", () => {
-    const s = hostSummary(makeState({ game: { status: "draft" } }));
-    expect(s.action).toEqual({ kind: "checkout", label: "Open board" });
-    expect(s.slim).toBe(false);
-    expect(s.status).not.toMatch(/checkout/i);
+  it("puts the host fee on the draw while it's due, and only then", () => {
+    const full = Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, MAYA));
+    const unpaid = hostSummary(makeState({ game: { paid: false }, squares: full }), "$4.99");
+    expect(unpaid.action).toEqual({ kind: "lock", label: "Draw the numbers · $4.99" });
+    expect(unpaid.fee).toBe(true);
+    expect(unpaid.slim).toBe(false);
+    // No price to show (StoreKit can't say): still plain about what the button does.
+    expect(hostSummary(makeState({ game: { paid: false }, squares: full })).action.label).toBe("Draw the numbers");
+    const paid = hostSummary(makeState({ game: { paid: true }, squares: full }), "$4.99");
+    expect(paid.action).toEqual({ kind: "lock", label: "Lock & draw" });
+    expect(paid.fee).toBe(false);
+    // Still filling: inviting stays the move, fee or not.
+    expect(hostSummary(makeState({ game: { paid: false } }), "$4.99").action.kind).toBe("invite");
+    // A draft left from the pay-to-open flow reads like any open board (paying opens it).
+    expect(hostSummary(makeState({ game: { status: "draft", paid: false }, squares: full }), "$4.99").action.label).toBe("Draw the numbers · $4.99");
+  });
+
+  it("makes drawing the move once a linked game kicked off without its numbers", () => {
+    const linkedAt = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: 1_000, xIsHome: true };
+    const s = hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: [sq(0, 0, MAYA)] }), "$4.99", 2_000);
+    expect(s).toMatchObject({ status: "Kicked off · numbers not drawn yet", action: { kind: "lock", label: "Draw the numbers · $4.99" }, fee: true });
+    // Before kickoff it's still about filling the board.
+    expect(hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: [sq(0, 0, MAYA)] }), "$4.99", 500).action.kind).toBe("invite");
+  });
+
+  it("knows when the fee is due, and when a linked board can be paid ahead", () => {
+    expect(needsHostFee({ status: "open", paid: false })).toBe(true);
+    expect(needsHostFee({ status: "draft", paid: false })).toBe(true);
+    expect(needsHostFee({ status: "open", paid: true })).toBe(false);
+    // An older copy of the board without `paid`: the server's 402 decides.
+    expect(needsHostFee({ status: "open" })).toBe(false);
+    expect(needsHostFee({ status: "locked", paid: false })).toBe(false);
+    const linked = (startsAt: number) => ({ provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt, xIsHome: true });
+    expect(canPayAhead({ status: "open", paid: false, linkedEvent: linked(5_000) }, 1_000)).toBe(true);
+    expect(canPayAhead({ status: "open", paid: false, linkedEvent: linked(500) }, 1_000)).toBe(false);
+    expect(canPayAhead({ status: "open", paid: false, linkedEvent: null }, 1_000)).toBe(false);
+    expect(canPayAhead({ status: "open", paid: true, linkedEvent: linked(5_000) }, 1_000)).toBe(false);
   });
 
   it("folds to a slim bar only when there's nothing to do", () => {
@@ -211,8 +245,11 @@ describe("gameStarted", () => {
 
 describe("hostStatusLine", () => {
   it("names the state the same way the sheet's title never changes", () => {
-    expect(hostStatusLine(makeState({ game: { status: "draft" } }))).toMatch(/Not open yet/);
     expect(hostStatusLine(makeState({ squares: [sq(0, 0, ME)] }))).toBe("Filling up · 1 of 100 squares taken");
+    expect(hostStatusLine(makeState({ game: { status: "draft" }, squares: [sq(0, 0, ME)] }))).toBe("Filling up · 1 of 100 squares taken");
+    expect(
+      hostStatusLine(makeState({ game: { paid: false, linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: 1_000, xIsHome: true } } }), 2_000),
+    ).toBe("Kicked off · draw the numbers to start the board");
     expect(hostStatusLine(locked({ scores: [score("q1", 7, 3)] }))).toBe("Numbers drawn · Half is up next");
     expect(hostStatusLine(locked({ game: { linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: Date.now() + 60_000, xIsHome: true } } }))).toBe(
       "Numbers drawn · waiting for kickoff",

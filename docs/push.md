@@ -19,10 +19,13 @@ Tapping one opens `/g/<id>`.
 |---|---|---|
 | Numbers drawn | everyone on the board | 🔢 Numbers are in. Find your squares. |
 | Kickoff (linked boards) | everyone | 🏈 Kickoff! The board is live. *(or "Numbers are in…" when kickoff drew them; only one push goes out)* |
+| Kickoff, numbers not drawn (the host fee wasn't paid) | host | 🏈 Kickoff! Draw the numbers to get your board going. |
+| | everyone else | 🏈 Kickoff! Waiting on the host to draw the numbers. |
 | A square hits | the winner | 🎉 Your square hit at Half! 🏆 *host's prize note, if any* |
 | | everyone else | Jax's square hit at Half. |
 | Last period | everyone else | 🏁 Jax's square hit at the Final. See who won each quarter. *(this replaces the separate "final" push)* |
-| Board full | host | 🔥 Your board is full. Time to draw numbers. *(once per board: giving a square back and taking one again doesn't send it again)* |
+| Board full | host | 🔥 Your board is full. Time to draw numbers. *(once per board: giving a square back and taking one again doesn't send it again)*; on a linked board: "Draw numbers now, or they'll draw at kickoff.", or with the host fee unpaid "Draw the numbers now, or pay ahead and Jax draws them at kickoff." |
+| Kickoff soon, fee unpaid (`draw-reminder`, linked boards) | host | ⏰ Kickoff in about an hour. Draw the numbers now, or pay ahead and Jax draws them at kickoff. *(once per board, from the cron; a board made in the last 15 minutes isn't reminded; never an amount)* |
 | Someone joins | host | 🦊 Sam joined your board. 8 players in. *(silent, and replaces the previous join notification)* |
 | Game over | everyone | 🏁 That's a wrap. See who won each quarter. |
 

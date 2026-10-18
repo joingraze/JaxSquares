@@ -6,7 +6,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { GameState, UpdateGameInput } from "../../../shared/types";
 import { useToast } from "../../components/ui";
-import { ApiError, api, errorMessage } from "../../lib/api";
+import { ApiError, api, errorMessage, isPaymentRequired } from "../../lib/api";
 
 export type HostBusy =
   | "lock"
@@ -20,9 +20,13 @@ export type HostBusy =
   | "remove-player"
   | null;
 
+/** What `lock` resolves to when the board's host fee isn't paid yet (the server's 402): open the checkout, then draw. */
+export const PAY_FIRST = "pay-first" as const;
+
 export interface HostActions {
   busy: HostBusy;
-  lock: () => Promise<GameState | null>;
+  /** Draws the numbers: the new state, PAY_FIRST while the host fee is due, or null after a failure (toasted). */
+  lock: () => Promise<GameState | typeof PAY_FIRST | null>;
   saveScore: (input: { periodKey: string; scoreX: number; scoreY: number }) => Promise<GameState | null>;
   removeScore: (periodKey: string) => Promise<GameState | null>;
   setWinner: (periodKey: string, cell: { row: number; col: number }) => Promise<GameState | null>;
@@ -74,7 +78,7 @@ export function useHostActions(gameId: string, apply: (state: GameState) => void
   );
 
   const withState = useCallback(
-    async (name: Exclude<HostBusy, null>, request: () => Promise<{ state: GameState }>): Promise<GameState | null> => {
+    async (name: Exclude<HostBusy, null>, request: () => Promise<{ state: GameState } | null>): Promise<GameState | null> => {
       const res = await run(name, request);
       if (!res) return null;
       applyRef.current(res.state);
@@ -85,7 +89,18 @@ export function useHostActions(gameId: string, apply: (state: GameState) => void
 
   return {
     busy,
-    lock: useCallback(() => withState("lock", () => api.lock(gameId)), [withState, gameId]),
+    lock: useCallback(async () => {
+      let payFirst = false;
+      const next = await withState("lock", () =>
+        api.lock(gameId).catch((err: unknown) => {
+          // Not a failure to toast: the host pays, then draws.
+          if (!isPaymentRequired(err)) throw err;
+          payFirst = true;
+          return null;
+        }),
+      );
+      return payFirst ? PAY_FIRST : next;
+    }, [withState, gameId]),
     saveScore: useCallback((input) => withState("score", () => api.setScore(gameId, input)), [withState, gameId]),
     removeScore: useCallback((key: string) => withState("remove-score", () => api.deleteScore(gameId, key)), [withState, gameId]),
     setWinner: useCallback(

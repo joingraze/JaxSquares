@@ -7,6 +7,8 @@ export type NotifyEvent = (
   | { kind: "winner"; periodKey: string; label: string; playerIds: string[] }
   | { kind: "game-starting" }
   | { kind: "board-full" }
+  /** Host only: a linked board kicks off within the hour and its host fee is unpaid, so it won't draw on its own. */
+  | { kind: "draw-reminder" }
   | { kind: "player-joined"; name: string }
   | { kind: "final" }
 ) & {

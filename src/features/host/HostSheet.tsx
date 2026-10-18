@@ -1,6 +1,7 @@
 // The host sheet. Always titled "Host tools" with one line saying where the
-// board stands, and always in the same order: Now (open the board, fill + lock,
-// type the score, or watch the live feed), Winners, Board. Sub views (lock
+// board stands, and always in the same order: Now (fill + lock, type the
+// score, or watch the live feed), Winners, Board. While the host fee is due
+// the draw says its price, and a linked board offers paying ahead. Sub views (lock
 // confirm, rules & prizes, edit, end, delete) slide in inside the same sheet.
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
@@ -11,6 +12,7 @@ import type { BoardSize, GameState } from "../../../shared/types";
 import {
   CheckIcon,
   ChevronLeftIcon,
+  ChevronRightIcon,
   ClockIcon,
   CrownIcon,
   FlagIcon,
@@ -64,6 +66,7 @@ import { EditBoard } from "./EditBoard";
 import "./host.css";
 import {
   NEXT_ENTRY,
+  canPayAhead,
   defaultTargetKey,
   canEditKickoff,
   editDraftOf,
@@ -76,10 +79,12 @@ import {
   initialDraft,
   invitedAnyone,
   isLinked,
+  isPicking,
   lockFacts,
   lockIsTheMove,
   lockReadiness,
   parseScore,
+  payToDrawLabel,
   removeCopy,
   resolvedKey,
   saveEndsGame,
@@ -115,9 +120,13 @@ export interface HostSheetProps {
   /** This device's public player id. */
   me: string;
   onInvite: () => void;
-  /** Draft boards: open the checkout sheet that opens the board. */
-  onOpenBoard: () => void;
-  /** The host confirmed the lock: the parent closes the sheet and runs the reveal. */
+  /** The host fee is due before the numbers can be drawn (needsHostFee). */
+  fee: boolean;
+  /** The fee as this device shows it ("$4.99", or the App Store's price), null when it can't be said. */
+  price: string | null;
+  /** Linked boards whose fee is due: pay now so Jax draws the numbers at kickoff. */
+  onPayAhead: () => void;
+  /** The host confirmed the lock: the parent pays the fee first when it's due, closes the sheet and runs the reveal. */
   onLock: () => void;
   onPickWinner: (periodKey: string, label: string) => void;
   /** The game just ended (final score saved or "End game"). */
@@ -302,7 +311,7 @@ export function HostSheet(props: HostSheetProps) {
   };
 
   // ---- removing a player (from the players view, or a row on the board) ----
-  const picking = game.status === "draft" || game.status === "open";
+  const picking = isPicking(game);
   const removeTarget = props.removing;
   const targetPlayer = removeTarget ? state.players.find((p) => p.id === removeTarget.id) ?? null : null;
   const targetCopy = removeTarget
@@ -342,7 +351,7 @@ export function HostSheet(props: HostSheetProps) {
     const f = lockFacts(state);
     const low = lockReadiness(f) === "low";
     title = <>{back()}{low ? `Lock with only ${f.claimed} in?` : "Lock & draw numbers?"}</>;
-    body = <LockConfirm state={state} />;
+    body = <LockConfirm state={state} fee={props.fee} price={props.price} />;
     footer = (
       <div className="flex flex-col gap-1">
         <Button
@@ -354,7 +363,7 @@ export function HostSheet(props: HostSheetProps) {
           onClick={props.onLock}
           loading={actions.busy === "lock"}
         >
-          {low ? "Lock & draw anyway" : "Draw the numbers"}
+          {props.fee ? (low ? `Lock & draw anyway${props.price ? ` · ${props.price}` : ""}` : payToDrawLabel(props.price)) : low ? "Lock & draw anyway" : "Draw the numbers"}
         </Button>
         <Button variant="ghost" block onClick={low ? props.onInvite : () => onView("home")}>
           {low ? "Keep inviting" : "Not yet"}
@@ -481,8 +490,9 @@ export function HostSheet(props: HostSheetProps) {
     body = (
       <div className="flex flex-col gap-6 pb-2">
         <Section title="Now">
-          {game.status === "draft" && <DraftHero onOpenBoard={props.onOpenBoard} />}
-          {game.status === "open" && <OpenHero state={state} onInvite={props.onInvite} onLock={() => onView("lock")} />}
+          {picking && (
+            <OpenHero state={state} onInvite={props.onInvite} onLock={() => onView("lock")} fee={props.fee} price={props.price} onPayAhead={props.onPayAhead} />
+          )}
           {game.status === "locked" && linked && !fixing && <AutoHero state={state} started={started} onFix={() => setFixing(true)} />}
           {game.status === "final" && !fixing && <FinalHero state={state} onFix={() => setFixing(true)} />}
 
@@ -601,7 +611,7 @@ export function HostSheet(props: HostSheetProps) {
           <ListRow
             leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
             title="Edit board"
-            subtitle={["Name", canEditKickoff(game) && "kickoff", (game.status === "open" || game.status === "draft") && "max squares per player"].filter(Boolean).join(", ")}
+            subtitle={["Name", canEditKickoff(game) && "kickoff", picking && "max squares per player"].filter(Boolean).join(", ")}
             chevron
             onClick={() => onView("edit")}
           />
@@ -806,35 +816,66 @@ function PrizeTotals({ state, me }: { state: GameState; me: string }) {
 
 // ---- Heroes ----
 
-function DraftHero({ onOpenBoard }: { onOpenBoard: () => void }) {
-  return (
-    <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-brand-line/35">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-30"
-        style={{ background: "radial-gradient(80% 120% at 0% 0%, var(--team-x), transparent 60%), radial-gradient(80% 120% at 100% 100%, var(--team-y), transparent 60%)" }}
-      />
-      <div className="relative">
-        <p className="font-display text-title-3 font-extrabold text-ink">Open your board</p>
-        <p className="mt-1 text-subhead text-ink-muted">Open it so friends can pick squares. Then send the invite.</p>
-        <Button size="lg" block className="mt-4" haptic="medium" leading={<SparklesIcon size={20} />} onClick={onOpenBoard}>
-          Open board
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () => void; onLock: () => void }) {
+function OpenHero({
+  state,
+  onInvite,
+  onLock,
+  fee,
+  price,
+  onPayAhead,
+}: {
+  state: GameState;
+  onInvite: () => void;
+  onLock: () => void;
+  fee: boolean;
+  price: string | null;
+  onPayAhead: () => void;
+}) {
   const { game } = state;
+  const now = Date.now();
   const f = lockFacts(state);
   const full = f.empty === 0;
-  // Same rule as the host bar: Invite leads until the board is (nearly) full.
-  const ready = lockIsTheMove(f.claimed, f.total);
-  const nobody = lockReadiness(f) === "empty";
   const kickoff = game.linkedEvent?.startsAt ?? null;
+  // A linked game under way that wasn't drawn at kickoff (its fee wasn't paid).
+  const late = kickoff !== null && gameStarted(state, now);
+  // Same rule as the host bar: Invite leads until the board is (nearly) full, or the game is on.
+  const ready = lockIsTheMove(f.claimed, f.total) || (late && f.claimed > 0);
+  const nobody = lockReadiness(f) === "empty";
   // A custom board's kickoff is only a plan: it never locks itself.
-  const planned = !game.linkedEvent && game.startsAt && game.startsAt > Date.now() ? game.startsAt : null;
+  const planned = !game.linkedEvent && game.startsAt && game.startsAt > now ? game.startsAt : null;
+  const inviteButton = (
+    <Button key="invite" variant={ready ? "secondary" : "primary"} leading={<UsersIcon size={18} />} onClick={onInvite}>
+      {invitedAnyone(state) ? "Invite more" : "Invite friends"}
+    </Button>
+  );
+  const drawButton = (
+    <Button
+      key="draw"
+      data-testid="host-lock"
+      variant={ready ? "primary" : "secondary"}
+      leading={fee ? <ShuffleIcon size={18} strokeWidth={2.4} /> : <LockIcon size={18} />}
+      onClick={onLock}
+      disabled={nobody}
+      haptic="medium"
+    >
+      {fee ? payToDrawLabel(price) : "Lock & draw"}
+    </Button>
+  );
+  const hint = nobody
+    ? fee
+      ? "Drawing turns on once someone picks a square."
+      : "Lock & draw turns on once someone picks a square."
+    : fee
+      ? late
+        ? "Kickoff's passed, so the numbers weren't drawn. Draw them whenever you're ready."
+        : planned
+          ? `${kicksOffLabel(planned)}. Setting up and inviting are free; you pay when you draw.`
+          : "Setting up and inviting are free. You pay when you draw the numbers."
+      : kickoff
+        ? `Jax draws the numbers at kickoff (${kickoffLabel(kickoff)}) if you don't.`
+        : planned
+          ? `${kicksOffLabel(planned)}. Lock when everyone's in.`
+          : "Lock when everyone's in. The numbers get drawn live.";
   return (
     <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
       <div
@@ -858,30 +899,33 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
           )}
         </div>
       </div>
-      <div className="relative mt-4 grid grid-cols-2 gap-2.5">
-        <Button variant={ready ? "secondary" : "primary"} leading={<UsersIcon size={18} />} onClick={onInvite}>
-          {invitedAnyone(state) ? "Invite more" : "Invite friends"}
-        </Button>
-        <Button
-          data-testid="host-lock"
-          variant={ready ? "primary" : "secondary"}
-          leading={<LockIcon size={18} />}
-          onClick={onLock}
-          disabled={nobody}
-          haptic="medium"
+      {fee ? (
+        // The draw carries its price, so each button gets the full width; the move to make goes first.
+        <div className="relative mt-4 flex flex-col gap-2.5">{ready ? [drawButton, inviteButton] : [inviteButton, drawButton]}</div>
+      ) : (
+        <div className="relative mt-4 grid grid-cols-2 gap-2.5">
+          {inviteButton}
+          {drawButton}
+        </div>
+      )}
+      {canPayAhead(game, now) && kickoff !== null && (
+        <button
+          type="button"
+          data-testid="host-pay-ahead"
+          onClick={onPayAhead}
+          className="pressable relative mt-2.5 flex w-full items-center gap-3 rounded-2xl bg-surface-4/70 px-3.5 py-2.5 text-left ring-1 ring-inset ring-line"
         >
-          Lock & draw
-        </Button>
-      </div>
-      <p className="relative mt-3 text-footnote text-ink-subtle">
-        {nobody
-          ? "Lock & draw turns on once someone picks a square."
-          : kickoff
-            ? `Locks itself at kickoff (${kickoffLabel(kickoff)}) if you don't.`
-            : planned
-              ? `${kicksOffLabel(planned)}. Lock when everyone's in.`
-              : "Lock when everyone's in. The numbers get drawn live."}
-      </p>
+          <ClockIcon size={20} className="shrink-0 text-ink-brand" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-subhead font-extrabold leading-snug text-ink">Pay now and Jax draws the numbers at kickoff</span>
+            <span className="block text-footnote text-ink-muted">
+              {price ? `${price} · ` : ""}squares stay open till {kickoffLabel(kickoff)}
+            </span>
+          </span>
+          <ChevronRightIcon size={16} strokeWidth={2.6} className="shrink-0 text-ink-subtle" />
+        </button>
+      )}
+      <p className="relative mt-3 text-footnote text-ink-subtle">{hint}</p>
     </div>
   );
 }
@@ -996,12 +1040,17 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
   );
 }
 
-function LockConfirm({ state }: { state: GameState }) {
+function LockConfirm({ state, fee, price }: { state: GameState; fee: boolean; price: string | null }) {
   const f = lockFacts(state);
   const low = lockReadiness(f) === "low";
   const fresh = drawKeys(state.game.format).length > 1;
   return (
     <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      {fee && (
+        <Fact icon={<SparklesIcon size={16} />}>
+          <b className="font-bold text-ink">{price ? `${price} host fee` : "The host fee"}, once for this board.</b> It's the only charge in JaxSquares. Setting up, inviting and picking squares are free.
+        </Fact>
+      )}
       {low && (
         <Fact icon={<UsersIcon size={16} />} tone="warn">
           <b className="font-bold text-ink">Only {f.claimed} of {f.total} squares are taken.</b> Most scores will land on an empty square. Inviting a few more friends first makes it more fun.

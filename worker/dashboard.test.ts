@@ -29,6 +29,7 @@ const MIGRATIONS = [
   "migrations/0006_purchases_unused.sql",
   "migrations/0007_board_full_announced.sql",
   "migrations/0008_custom_kickoff.sql",
+  "migrations/0009_pay_at_draw.sql",
 ];
 
 let t: TestD1;

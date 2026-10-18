@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { BellIcon, CheckIcon, GridIcon, InfoIcon, LockIcon, PencilIcon, RefreshIcon, TrashIcon, UserIcon, UsersIcon, XIcon } from "../components/icons";
 import { buttonStyles, Card, ListGroup, ListRow, TopBar } from "../components/ui";
 
-const UPDATED = "October 16, 2026";
+const UPDATED = "October 18, 2026";
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -88,7 +88,7 @@ export default function Privacy() {
               Only if you turn notifications on: the push token your device or browser gives us, used to tell you about your boards. Turn it off any time.
             </Fact>
             <Fact icon={<LockIcon />} title="Purchase records">
-              When a host pays to create a board, we keep the transaction reference, amount and the board it unlocked. Card and Apple Pay details go straight to Apple or Stripe.
+              When a host pays the host fee for a board (when they draw its numbers), we keep the transaction reference, amount and the board it paid for. Card and Apple Pay details go straight to Apple or Stripe.
             </Fact>
             <Fact icon={<InfoIcon />} title="Basic server logs">
               Our hosting provider records technical details like IP address and request time to keep the service running and secure. We don't use them to work out where you are.
@@ -103,7 +103,7 @@ export default function Privacy() {
               <Check>Showing boards and drawing numbers</Check>
               <Check>Recording scores and winning squares</Check>
               <Check>Sending the notifications you asked for</Check>
-              <Check>Unlocking boards that were paid for</Check>
+              <Check>Letting hosts draw the numbers once a board is paid for</Check>
               <Check>Preventing abuse</Check>
             </ul>
             <ul className="mt-1 flex flex-col gap-2">
@@ -119,7 +119,7 @@ export default function Privacy() {
             <ListRow title="Cloudflare" subtitle="Hosting and database" />
             <ListRow title="Apple" subtitle="In-App Purchase and push delivery" />
             <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
-            <ListRow title="Stripe" subtitle="Web payments for creating a board" />
+            <ListRow title="Stripe" subtitle="Web payments for the host fee" />
           </ListGroup>
         </Section>
 

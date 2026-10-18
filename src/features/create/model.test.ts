@@ -16,7 +16,6 @@ import {
   firstBlocker,
   firstPrizeProblem,
   formatLine,
-  inputSignature,
   matchNflTeam,
   orientEvent,
   resolveCustomTeam,
@@ -303,10 +302,4 @@ describe("buildCreateInput", () => {
     expect(createFormat(owner, "fun").rules?.every((r) => !r.square?.amount && !r.reverse?.amount)).toBe(true);
   });
 
-  it("gives the same signature for the same board", () => {
-    const a = buildCreateInput({ ...base, format: noted({ q1: "Wings", final: "Bragging rights" }) })!;
-    const b = buildCreateInput({ ...base, format: noted({ final: "Bragging rights", q1: "Wings" }) })!;
-    expect(inputSignature(a)).toBe(inputSignature(b));
-    expect(inputSignature(a)).not.toBe(inputSignature({ ...a, maxPerPlayer: 3 }));
-  });
 });

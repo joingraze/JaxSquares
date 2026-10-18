@@ -1,5 +1,7 @@
-// Board checkout endpoints (mounted under /api by worker/index.ts). Three rails,
-// one outcome: activateGame() flips the board from draft to open.
+// Host fee checkout endpoints (mounted under /api by worker/index.ts). The fee
+// is due when the host draws the numbers (POST /lock answers 402 until it's
+// paid); the purchase is tied to the board then. Three rails, one outcome:
+// markPaid() stamps the board as paid, and the host can draw.
 //   test   – no-charge checkout while PAYMENTS_MODE isn't live
 //   stripe – Apple Pay / Google Pay / card on the web, confirmed by webhook
 //   iap    – Apple In-App Purchase in the iOS app (App Store guideline 3.1.1)
@@ -8,7 +10,7 @@ import { Hono, type Context } from "hono";
 import type { Game } from "../../shared/types";
 import { getGame } from "../db";
 import type { Env } from "../env";
-import { activateGame, isHost, loadState } from "../service";
+import { isHost, loadState, markPaid } from "../service";
 import { fetchAppStoreTransaction, transactionProblem, type AppStoreCredentials, type AppStoreTransaction } from "./apple";
 import { gameIdFromAccountToken } from "./boardToken";
 import { CURRENCY, boardPriceCents, getPaymentConfig, iapProductId } from "./config";
@@ -41,21 +43,23 @@ async function hostedGame(c: Ctx, gameId: string): Promise<Game | Response> {
   return game;
 }
 
-function activatePurchase(env: Env, purchase: store.Purchase) {
-  return activateGame(env, purchase.gameId, {
+function payWith(env: Env, purchase: store.Purchase) {
+  return markPaid(env, purchase.gameId, {
     provider: purchase.provider,
     reference: purchase.reference,
     amountCents: purchase.amountCents,
   });
 }
 
-async function activate(c: Ctx, purchase: store.Purchase): Promise<Response> {
-  const state = await activatePurchase(c.env, purchase);
+async function paid(c: Ctx, purchase: store.Purchase): Promise<Response> {
+  const state = await payWith(c.env, purchase);
   return state ? c.json({ state }) : c.json({ error: "Game not found" }, 404);
 }
 
-async function alreadyActive(c: Ctx, gameId: string): Promise<Response> {
-  return c.json({ error: "This board is already active", state: await loadState(c.env, gameId) }, 409);
+const ALREADY_PAID = "This board is already paid for";
+
+async function alreadyPaid(c: Ctx, gameId: string): Promise<Response> {
+  return c.json({ error: ALREADY_PAID, state: await loadState(c.env, gameId) }, 409);
 }
 
 // ---- Test checkout ----
@@ -65,16 +69,16 @@ paymentsRoutes.post("/games/:id/pay/test", async (c) => {
   const gameId = c.req.param("id");
   const game = await hostedGame(c, gameId);
   if (game instanceof Response) return game;
-  if (game.status !== "draft") return c.json({ state: await loadState(c.env, gameId) });
+  if (game.paid) return c.json({ state: await loadState(c.env, gameId) });
 
   const purchase = await store.recordPaid(
     c.env.DB,
     { reference: `test:${gameId}`, gameId, provider: "test", amountCents: 0, currency: CURRENCY, livemode: false },
     game,
   );
-  // Another purchase paid for the board at the same moment: it's open (or opening) already.
+  // Another purchase paid for the board at the same moment: it's paid (or being marked) already.
   if (purchase.status !== "paid") return c.json({ state: await loadState(c.env, gameId) });
-  return activate(c, purchase);
+  return paid(c, purchase);
 });
 
 // ---- Stripe (web: Apple Pay / Google Pay, card fallback) ----
@@ -119,7 +123,7 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
   if (game instanceof Response) return game;
   const secretKey = c.env.STRIPE_SECRET_KEY?.trim();
   if (!secretKey) return c.json({ error: "Checkout isn't set up yet" }, 503);
-  if (game.status !== "draft") return alreadyActive(c, gameId);
+  if (game.paid) return alreadyPaid(c, gameId);
 
   const amountCents = boardPriceCents(c.env);
   try {
@@ -160,12 +164,12 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
         livemode: intent.livemode,
       });
     }
-    // Paid but the webhook hasn't landed yet: activate now instead of making the host wait.
+    // Paid but the webhook hasn't landed yet: mark it paid now instead of making the host wait.
     if (intent.status === "succeeded") {
       const purchase = await recordStripePaid(c.env.DB, game, intent);
       const won = purchase.gameId === gameId && purchase.status === "paid";
-      const state = won ? await activatePurchase(c.env, purchase) : await loadState(c.env, gameId);
-      return c.json({ error: "This board is already active", state }, 409);
+      const state = won ? await payWith(c.env, purchase) : await loadState(c.env, gameId);
+      return c.json({ error: ALREADY_PAID, state }, 409);
     }
     // The intent's own amount, so the page shows (and the wallet sheet itemizes) what it charges.
     return c.json({ clientSecret: intent.client_secret, amountCents: intent.amount, currency: intent.currency });
@@ -194,16 +198,16 @@ paymentsRoutes.post("/stripe/webhook", async (c) => {
   if (!intent || !gameId) return c.json({ received: true });
 
   if (event.type === "payment_intent.succeeded") {
-    // Errors propagate as a 500 so Stripe retries; activation is idempotent.
+    // Errors propagate as a 500 so Stripe retries; marking a board paid is idempotent.
     const game = await getGame(c.env.DB, gameId);
     if (!game) {
-      // Deleted before the payment landed: kept as unused (charged, opened nothing) for a refund.
+      // Deleted before the payment landed: kept as unused (charged, paid for nothing) for a refund.
       await store.recordUnused(c.env.DB, stripeEntry(gameId, intent as PaymentIntent));
       return c.json({ received: true });
     }
     const purchase = await recordStripePaid(c.env.DB, game, intent as PaymentIntent);
-    // Only the purchase that paid for the board opens it; one that lost the race stays unused.
-    if (purchase.gameId === gameId && purchase.status === "paid") await activatePurchase(c.env, purchase);
+    // Only the purchase that paid for the board marks it; one that lost the race stays unused.
+    if (purchase.gameId === gameId && purchase.status === "paid") await payWith(c.env, purchase);
   } else if (event.type === "payment_intent.canceled" && intent.id) {
     await store.markCanceled(c.env.DB, intent.id);
   }
@@ -220,23 +224,23 @@ function appStoreCredentials(env: Env): AppStoreCredentials | null {
   return keyId && issuerId && privateKeyPem && bundleId ? { keyId, issuerId, privateKeyPem, bundleId } : null;
 }
 
-const usedElsewhere = (c: Ctx) => c.json({ error: "That purchase already opened another board" }, 409);
+const usedElsewhere = (c: Ctx) => c.json({ error: "That purchase already paid for another board" }, 409);
 const boardDeleted = (c: Ctx) => c.json({ error: "This board was deleted" }, 410);
 
 const ASK_APPLE = "Ask Apple for a refund at reportaproblem.apple.com.";
 
 /**
- * A verified purchase that couldn't open its board, now in the ledger as
+ * A verified purchase that couldn't pay for its board, now in the ledger as
  * 'unused'. `unused: true` tells the app it's recorded (so the transaction can be
  * finished) and the message tells the host what to do: 409 with the board's state
- * when it was already open, 410 when it was deleted first.
+ * when it was already paid for, 410 when it was deleted first.
  */
 async function unusedPurchase(c: Ctx, gameId: string, boardExists: boolean): Promise<Response> {
   if (!boardExists) {
     return c.json({ error: `This board was deleted before your purchase went through. ${ASK_APPLE}`, unused: true }, 410);
   }
   const state = await loadState(c.env, gameId);
-  return c.json({ error: `This board was already open, so this purchase wasn't used. ${ASK_APPLE}`, unused: true, state }, 409);
+  return c.json({ error: `This board was already paid for, so this purchase wasn't used. ${ASK_APPLE}`, unused: true, state }, 409);
 }
 
 paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
@@ -259,7 +263,7 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   // A retry after a dropped response: already verified, skip Apple.
   const known = await store.getPurchase(c.env.DB, transactionId);
   if (known && known.gameId !== gameId) return usedElsewhere(c);
-  if (known?.status === "paid") return game ? activate(c, known) : boardDeleted(c);
+  if (known?.status === "paid") return game ? paid(c, known) : boardDeleted(c);
   if (known?.status === "unused") return unusedPurchase(c, gameId, game !== null);
 
   let tx: AppStoreTransaction | null;
@@ -284,17 +288,17 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     currency,
     livemode: tx.environment === "Production",
   };
-  if (!game || game.status !== "draft") {
-    // Already open (paid another way, or by another purchase) or gone: this
+  if (!game || game.paid) {
+    // Already paid for (another way, or by another purchase) or gone: this
     // purchase must not count as paying for the board. Keep it for a refund.
     const row = await store.recordUnused(c.env.DB, entry);
     if (row.gameId !== gameId) return usedElsewhere(c);
-    if (row.status === "paid") return game ? activate(c, row) : boardDeleted(c);
+    if (row.status === "paid") return game ? paid(c, row) : boardDeleted(c);
     return unusedPurchase(c, gameId, game !== null);
   }
   const purchase = await store.recordPaid(c.env.DB, entry, game);
   if (purchase.gameId !== gameId) return usedElsewhere(c);
   // Another purchase paid for this board at the same moment: this one is kept as unused.
   if (purchase.status !== "paid") return unusedPurchase(c, gameId, true);
-  return activate(c, purchase);
+  return paid(c, purchase);
 });

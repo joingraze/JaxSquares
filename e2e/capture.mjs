@@ -55,7 +55,8 @@ const FRIENDS = [
   { name: "Kim", color: "#63e6be", emoji: "🍩" },
 ];
 
-async function createBoard(host, { name, teamX, teamY, format, prizes = {} }) {
+/** `paid: false` leaves the host fee due (it's paid at the draw); boards that get drawn here are paid first. */
+async function createBoard(host, { name, teamX, teamY, format, prizes = {} }, { paid = true } = {}) {
   const created = await call("POST", "/games", {
     client: host.client,
     body: {
@@ -73,7 +74,7 @@ async function createBoard(host, { name, teamX, teamY, format, prizes = {} }) {
   });
   const id = created.game.id;
   const admin = created.adminToken;
-  await call("POST", `/games/${id}/pay/test`, { client: host.client, admin });
+  if (paid) await call("POST", `/games/${id}/pay/test`, { client: host.client, admin });
   return { id, admin };
 }
 
@@ -103,13 +104,17 @@ async function seed() {
   const friends = FRIENDS.map((profile) => ({ client: uuid(), profile }));
   const hostFriend = friends[1];
 
-  // 1. A board I host that's filling up.
-  const open = await createBoard(me, {
-    name: "Sunday Night Squares",
-    teamX: { name: "Chiefs", abbr: "KC", color: "#e31837" },
-    teamY: { name: "Bills", abbr: "BUF", color: "#00338d" },
-    prizes: { q1: "Loser buys wings", final: "Bragging rights till next season" },
-  });
+  // 1. A board I host that's filling up (its host fee is due when I draw).
+  const open = await createBoard(
+    me,
+    {
+      name: "Sunday Night Squares",
+      teamX: { name: "Chiefs", abbr: "KC", color: "#e31837" },
+      teamY: { name: "Bills", abbr: "BUF", color: "#00338d" },
+      prizes: { q1: "Loser buys wings", final: "Bragging rights till next season" },
+    },
+    { paid: false },
+  );
   await fill(open.id, [me, ...friends.slice(0, 5)], 58);
 
   // 2. A friend's board I'm in, numbers drawn, mid-game with winners.
@@ -189,7 +194,7 @@ try {
     await page.goto(BASE + "/");
     await snap(page, "home");
   }
-  if (want("create") || want("create-format") || want("checkout")) {
+  if (want("create") || want("create-format")) {
     await page.goto(BASE + "/new");
     await snap(page, "create");
     const custom = page.getByTestId("custom-matchup");
@@ -202,21 +207,15 @@ try {
     await page.getByTestId("wizard-next").first().tap();
     await page.locator('[data-testid="wizard-step"][data-step="format"]').waitFor();
     await snap(page, "create-format");
-    if (want("checkout")) {
-      // Defaults the rest of the way: prizes, final touches, review.
-      for (const step of ["prizes", "details", "review"]) {
-        await page.getByTestId("wizard-next").first().tap();
-        await page.locator(`[data-testid="wizard-step"][data-step="${step}"]`).waitFor();
-      }
-      // Test mode creates the board in one tap (no checkout sheet); capture
-      // whichever comes first: the checkout sheet or the new board's invite sheet.
-      await page.getByTestId("create-submit").first().tap();
-      await Promise.race([
-        page.getByTestId("pay-confirm").first().waitFor({ timeout: 20000 }),
-        page.getByTestId("invite-share").first().waitFor({ timeout: 20000 }),
-      ]).catch(() => {});
-      await snap(page, "checkout");
-    }
+  }
+  if (want("checkout")) {
+    // The host fee is due at the draw: drawing my filling-up board opens the checkout sheet.
+    await page.goto(BASE + `/g/${s.open.id}`);
+    await page.getByTestId("host-open").first().tap();
+    await page.getByTestId("host-lock").first().tap();
+    await page.getByTestId("host-lock-confirm").first().tap();
+    await page.getByTestId("pay-confirm").first().waitFor({ timeout: 20000 }).catch(() => {});
+    await snap(page, "checkout");
   }
   if (want("invite")) {
     await page.goto(BASE + `/g/${s.open.id}?invite=1`);

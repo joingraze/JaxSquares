@@ -38,7 +38,7 @@ interface Client {
   recoverIAPPurchases(adminTokenFor: (gameId: string) => string | null, onUnused?: (message: string) => void): Promise<GameState[]>;
   watchIAPPurchases(opts: {
     adminTokenFor: (gameId: string) => string | null;
-    onOpened: (state: GameState) => void;
+    onPaid: (state: GameState) => void;
     onUnused?: (message: string) => void;
     onResume?: (cb: () => void) => () => void;
   }): () => void;
@@ -62,7 +62,8 @@ const div = () => dom.document.createElement("div");
 const PRODUCT = "com.jaxsquares.app.board";
 const live: PaymentConfig = { mode: "live", priceCents: 499, currency: "usd", stripePublishableKey: "pk_test_1", iapProductId: PRODUCT };
 const test: PaymentConfig = { ...live, mode: "test", stripePublishableKey: null };
-const openState = { game: { id: "g1", status: "open" } } as unknown as GameState;
+/** A board whose host fee is paid (the server's answer once a purchase lands). */
+const openState = { game: { id: "g1", status: "open", paid: true } } as unknown as GameState;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
@@ -182,7 +183,7 @@ describe("API calls", () => {
 
   it("reports an already-open board with its state", async () => {
     const c = await load();
-    route(() => json({ error: "This board is already active", state: openState }, 409));
+    route(() => json({ error: "This board is already paid for", state: openState }, 409));
     const err = (await c.createStripeIntent("g1", "tok").catch((e) => e)) as CheckoutError;
     expect(err).toMatchObject({ name: "CheckoutError", status: 409, state: openState });
   });
@@ -197,7 +198,7 @@ describe("API calls", () => {
     vi.useFakeTimers();
     const c = await load();
     let n = 0;
-    route(() => (++n < 3 ? json({ clientSecret: "pi_secret" }) : json({ error: "This board is already active", state: openState }, 409)));
+    route(() => (++n < 3 ? json({ clientSecret: "pi_secret" }) : json({ error: "This board is already paid for", state: openState }, 409)));
     const p = c.confirmStripePaid("g1", "tok");
     await vi.runAllTimersAsync();
     expect(await p).toEqual(openState);
@@ -207,11 +208,11 @@ describe("API calls", () => {
 
 describe("payWithIAP", () => {
   const TX = "2000000812345678";
-  const draftState = { game: { id: "g1", status: "draft" } } as unknown as GameState;
+  const unpaidState = { game: { id: "g1", status: "open", paid: false } } as unknown as GameState;
   const unfinished = (transactionId: string, gameId = "g1") => ({ transactionId, productIdentifier: PRODUCT, appAccountToken: server.boardAccountToken(gameId) });
 
-  /** Config, the board itself (GET, a draft unless given), and whatever POST /pay/iap should answer. */
-  function iapServer(payIap: (body: { transactionId: string }) => Response, board: GameState = draftState) {
+  /** Config, the board itself (GET, its host fee unpaid unless given), and whatever POST /pay/iap should answer. */
+  function iapServer(payIap: (body: { transactionId: string }) => Response, board: GameState = unpaidState) {
     route((url, method) => {
       if (url.endsWith("/config")) return json({ payments: live, vapidPublicKey: null });
       if (method === "GET" && url.endsWith("/games/g1")) return json(board);
@@ -322,7 +323,7 @@ describe("payWithIAP", () => {
     ]);
   });
 
-  it("doesn't buy for a board that's already open (paid on another device)", async () => {
+  it("doesn't buy for a board that's already paid for (on another device, or before the fee moved to the draw)", async () => {
     const c = await load();
     iapServer(() => json({ error: "unexpected" }, 500), openState);
     const err = (await c.payWithIAP("g1", "tok").catch((e) => e)) as CheckoutError;
@@ -356,7 +357,7 @@ describe("payWithIAP", () => {
 });
 
 describe("watchIAPPurchases", () => {
-  it("opens a board the moment Ask to Buy is approved, and re-checks unfinished purchases on resume", async () => {
+  it("confirms a host fee the moment Ask to Buy is approved, and re-checks unfinished purchases on resume", async () => {
     const c = await load();
     const listeners: ((tx: Record<string, unknown>) => void)[] = [];
     const remove = vi.fn(async () => {});
@@ -366,10 +367,10 @@ describe("watchIAPPurchases", () => {
     });
     route((url) => (url.endsWith("/config") ? json({ payments: live, vapidPublicKey: null }) : json({ state: openState })));
     let resume: (() => void) | null = null;
-    const onOpened = vi.fn();
+    const onPaid = vi.fn();
     const stop = c.watchIAPPurchases({
       adminTokenFor: (id) => (id === "g1" ? "tok" : null),
-      onOpened,
+      onPaid,
       onResume: (cb) => {
         resume = cb;
         return () => {};
@@ -380,10 +381,10 @@ describe("watchIAPPurchases", () => {
 
     // The parent approves while the app is still running: StoreKit emits the transaction.
     listeners[0]({ transactionId: "55", productIdentifier: PRODUCT, appAccountToken: server.boardAccountToken("g1"), needsFinish: true });
-    await vi.waitFor(() => expect(onOpened).toHaveBeenCalledWith(openState));
+    await vi.waitFor(() => expect(onPaid).toHaveBeenCalledWith(openState));
     expect(calls.filter((x) => x.url.includes("/pay/iap")).map((x) => x.body)).toEqual([{ transactionId: "55" }]);
     expect(native.finishTransaction).toHaveBeenCalledWith({ transactionId: "55" });
-    // Another product's update, and a refund, open nothing.
+    // Another product's update, and a refund, pay for nothing.
     listeners[0]({ transactionId: "56", productIdentifier: "other.product", appAccountToken: server.boardAccountToken("g1") });
     listeners[0]({ transactionId: "58", productIdentifier: PRODUCT, appAccountToken: server.boardAccountToken("g1"), revocationDate: "2026-10-16T00:00:00Z" });
 
@@ -392,7 +393,7 @@ describe("watchIAPPurchases", () => {
       transactions: [{ transactionId: "57", productIdentifier: PRODUCT, appAccountToken: server.boardAccountToken("g1") }],
     });
     resume!();
-    await vi.waitFor(() => expect(onOpened).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(onPaid).toHaveBeenCalledTimes(2));
     expect(calls.filter((x) => x.url.includes("/pay/iap")).map((x) => x.body)).toEqual([{ transactionId: "55" }, { transactionId: "57" }]);
 
     stop();

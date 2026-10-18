@@ -26,8 +26,9 @@ tracking.
 - **Notification tokens.** If you turn on notifications, we store the push
   token your device or browser gives us. We use it to tell you about the boards
   you're in, and you can turn notifications off at any time.
-- **Purchase records.** When a host pays to create a board, we keep the
-  transaction reference, amount and board it unlocked. Card and Apple Pay
+- **Purchase records.** When a host pays the host fee for a board (when they
+  draw its numbers), we keep the transaction reference, amount and the board it
+  paid for. Card and Apple Pay
   details go straight to Apple or Stripe. We never see them.
 - **Basic server logs.** When your device talks to our servers, our hosting
   provider records technical details like IP address and request time. We use
@@ -45,7 +46,7 @@ We use it only to run JaxSquares:
 - drawing numbers
 - recording scores and winners
 - sending the notifications you asked for
-- unlocking boards that were paid for
+- letting hosts draw the numbers once a board is paid for
 - preventing abuse
 
 We don't sell your information, share it for advertising, or track you across
@@ -58,7 +59,7 @@ other apps or websites.
 | Cloudflare | Hosting and database |
 | Apple | In-App Purchase and push notification delivery |
 | Google Firebase Cloud Messaging | Delivering push notifications to the app |
-| Stripe | Web payments for board creation |
+| Stripe | Web payments for the host fee |
 
 Each provider handles data under its own privacy terms, and only for these
 purposes.

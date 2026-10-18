@@ -1,8 +1,9 @@
 # Payments
 
-The only money in JaxSquares is a host paying once to create a board. Nothing
-moves between players. A new board starts as a `draft`, and paying switches it
-to `open`.
+The only money in JaxSquares is the **host fee**: the host pays JaxSquares once
+per board, when they draw its numbers. Setting up a board, inviting friends and
+picking squares are free, and nothing ever moves between players. JaxSquares
+never sells squares; the fee is for creating and managing the board.
 
 | Where the host is | How they pay | Server check |
 |---|---|---|
@@ -12,9 +13,65 @@ to `open`.
 
 **Why there are two payment methods:** App Store Review Guideline 3.1.1 says that
 anything unlocked inside an iOS app, including digital content and features, has
-to be bought with In-App Purchase. Creating a board counts as a digital unlock,
-so the iOS app uses IAP and never shows Stripe. Don't show the web price or link
-to the web checkout from inside the iOS app.
+to be bought with In-App Purchase. Drawing a board's numbers counts as a digital
+unlock, so the iOS app uses IAP and never shows Stripe. Don't show the web price
+or link to the web checkout from inside the iOS app: the app shows the App
+Store's localized price (`hostFeePrice` / `useHostFee`), and the Terms and
+Support pages leave out Stripe and the web price there too.
+
+## How it works
+
+1. **Create (free).** `POST /api/games` makes the board `open` right away
+   (`paymentRequired` is always `false`), with `Game.paid` = `false`. Friends
+   join and pick squares; nothing is charged.
+2. **Draw = pay.** `POST /api/games/:id/lock` on a board whose fee isn't paid
+   answers **402** `{ error: "Draw the numbers once the board's paid for.",
+   code: "payment_required" }` (`PAYMENT_REQUIRED_CODE` in `shared/types.ts`).
+   The host's "Draw the numbers · $4.99" opens the checkout sheet first; once a
+   `/pay/*` call (or the Stripe webhook) records the fee, the app calls `/lock`
+   again and plays the number reveal. Only the host (the board's admin token)
+   can pay or draw.
+3. **Paid.** A purchase is tied to its board when the host pays (not when the
+   board was made). The ledger (`purchases`, below) decides which purchase pays
+   for a board, and `markPaid` (`worker/service.ts` → `worker/db.ts`) stamps
+   `games.paid_at` with it, together with `payment_provider`,
+   `payment_reference` and `payment_amount_cents`. Paying never draws by
+   itself. `db.lockGame` also refuses an unpaid board in SQL, so a race can't
+   draw one.
+
+**Grandfathered boards.** Migration `0009_pay_at_draw.sql` adds `games.paid_at`
+and stamps every board past `draft` as paid (they were paid for under the old
+pay-to-open flow, or opened before payments existed). Drafts that never paid
+are opened and pay at the draw like a new board; a draft the ledger shows as
+already paid (charged, but the old opening step never ran) counts as paid.
+Hourly housekeeping (`settleLegacyBoards`) catches boards the previous Worker
+made or opened between the migration and the deploy (CI applies migrations just
+before it deploys): a payment-opened board counts as paid, a draft opens.
+`draft` stays in the status type and the CHECK constraint for that old data
+only.
+
+**Linked boards** (tied to an ESPN game) draw their own numbers at kickoff only
+once the fee is paid (`applyLiveUpdate`, `worker/service.ts`). The host can pay
+ahead ("Pay now and Jax draws the numbers at kickoff", `purpose="ahead"` on the
+checkout sheet), and then Jax draws at kickoff unless the host draws first. An
+unpaid linked board stays `open` at kickoff: the feed keeps recording the live
+score and period scores, squares stay open, players see "Waiting on the host
+to draw the numbers", and the host can pay and draw any time. If the game is
+already over when they do, the draw also ends the board (`final`), with one
+"that's a wrap" push.
+
+**Reminders** (host-only pushes, never an amount; `worker/push/copy.ts`):
+
+- *Board full* (once per board): on an unpaid linked board, "Draw the numbers
+  now, or pay ahead and Jax draws them at kickoff."
+- *Kickoff soon* (`draw-reminder`): the cron (every minute) claims linked boards
+  that kick off within the hour, are still `open` with the fee unpaid, were
+  made at least 15 minutes ago and weren't reminded yet
+  (`games.draw_reminder_at`, `db.claimDrawReminders`), and tells their host
+  "Kickoff in about an hour. Draw the numbers now, or pay ahead and Jax draws
+  them at kickoff."
+- *Kickoff* on an undrawn board: the host hears "Draw the numbers to get your
+  board going", everyone else "Waiting on the host to draw the numbers".
 
 ## Setup checklist
 
@@ -85,8 +142,8 @@ Do these steps in order. Payments stay in test mode until step 4.
    - Product ID: `com.jaxsquares.app.board`. This must equal `IAP_PRODUCT_ID`
      in `wrangler.jsonc`.
    - Price: the tier matching `BOARD_PRICE_CENTS`, i.e. $4.99.
-   - Display name "Squares board". Description "Create one squares board to
-     play with your friends."
+   - Display name "Squares board". Description "The host fee for one squares
+     board: draw the numbers and run the game with your friends."
    - Add the review screenshot.
    - The first IAP has to be submitted together with an app version.
 3. **In-App Purchase key**, which lets the server ask Apple about transactions.
@@ -108,17 +165,18 @@ Do these steps in order. Payments stay in test mode until step 4.
    - Set `plugins.NativePurchases.autoFinishTransactions = false` in
      `capacitor.config.ts`. Then StoreKit only finishes a transaction after the
      server has verified it.
-   - Call `watchIAPPurchases({ adminTokenFor, onOpened, onUnused, onResume })`
+   - Call `watchIAPPurchases({ adminTokenFor, onPaid, onUnused, onResume })`
      from `src/lib/checkout.ts` once at app launch (`src/App.tsx` does). It
      confirms unfinished purchases at launch and on every resume, and redeems
      what StoreKit delivers while the app runs (`transactionUpdated`: an Ask to
      Buy approval). If the app is killed between Apple charging and the server
-     confirming, the board opens on the next launch or resume. Each purchase
+     confirming, the board is marked paid on the next launch or resume (the
+     host gets a "Payment confirmed" toast that opens the draw). Each purchase
      carries the board id in StoreKit's `appAccountToken`, so it can't be used
      for a different board.
    - `payWithIAP` never charges twice for one board: it first confirms an
      unfinished purchase already bound to the board, and it buys nothing for a
-     board that's already open or gone. A purchase is only finished once the
+     board that's already paid for or gone. A purchase is only finished once the
      server has recorded or rejected it for good (400, 409, 410); a bare 404 or
      a failure leaves it unfinished for the next try.
 
@@ -127,7 +185,7 @@ The server verifies each purchase by calling
 `appstoreconnect-v1`, `bid` = bundle id) signed with the `.p8` key. It then
 checks the bundle id, the product id, that the purchase wasn't refunded, and
 that it's bound to this board. A unique ledger entry stops one transaction from
-opening two boards.
+paying for two boards.
 
 ### 4. Secrets, then go live
 
@@ -168,7 +226,8 @@ curl -s https://jaxsquares.com/api/config | jq .payments
 # { "mode": "live", "priceCents": 499, "currency": "usd", "stripePublishableKey": "pk_live_…", "iapProductId": "com.jaxsquares.app.board" }
 ```
 
-Then create a board in Safari, pay with Apple Pay, and look at the ledger:
+Then create a board in Safari, claim a square, tap "Draw the numbers · $4.99",
+pay with Apple Pay, and look at the ledger:
 
 ```bash
 npx wrangler d1 execute jaxsquares --remote --command \
@@ -201,9 +260,9 @@ The table has no foreign key to `games`, on purpose. Deleting a board doesn't
 erase its payment, and doesn't free its Apple transaction to be used again.
 
 `status` is `pending` (a Stripe intent not paid yet), `paid`, `canceled`, or
-`unused`: a charge (App Store or Stripe) that opened nothing, because the
-board was already open (a second purchase) or was deleted before the purchase
-was confirmed. The host is told to ask Apple for a refund
+`unused`: a charge (App Store or Stripe) that paid for nothing, because the
+board was already paid for (a second purchase, or a board made before the fee
+moved to the draw) or was deleted before the purchase was confirmed. The host is told to ask Apple for a refund
 (reportaproblem.apple.com); support can find these with
 `SELECT * FROM purchases WHERE status = 'unused'` (a Stripe one is refunded
 from the Stripe dashboard).
@@ -212,10 +271,10 @@ A board has at most one `paid` purchase. `recordPaid` (`worker/payments/store.ts
 decides it inside one transaction: the reference becomes `paid` only if no
 other reference made since the board was created is already `paid` for it,
 otherwise it's kept as `unused`. So two App Store transactions, or a Stripe
-webhook and an App Store purchase, confirmed at the same instant for one draft
-can't both pay for it; only the winner opens the board, and the loser's
+webhook and an App Store purchase, confirmed at the same instant for one board
+can't both pay for it; only the winner marks the board paid, and the loser's
 `/pay/iap` gets the same `409 { unused: true, state }` as a purchase for a board
-that was already open. "Since the board was created" matters because ledger
+that was already paid for. "Since the board was created" matters because ledger
 rows outlive deleted boards and a new board could get a deleted one's id. (That
 is also why this isn't a unique index on `game_id`.)
 
@@ -229,20 +288,23 @@ FROM purchases WHERE status = 'paid' AND livemode = 1 GROUP BY provider;
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/games/:id/pay/test` | Host only. Only works in test mode. Returns `{ state }`. |
-| POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already open it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and opens it on the spot. |
-| POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already opened another board; or, with `unused: true` and `state`, the board was already open so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
+| POST | `/api/games/:id/lock` (core) | Host only. Draws the numbers. **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
+| POST | `/api/games/:id/pay/test` | Host only. Only works in test mode. Returns `{ state }` (the board paid, not drawn; a no-op on a board already paid for). |
+| POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already paid for it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and marks it paid on the spot. |
+| POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already paid for another board; or, with `unused: true` and `state`, the board was already paid for so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
 | POST | `/api/stripe/webhook` | Called by Stripe. Returns `{ received: true }`. |
 
 ## Client (`src/lib/checkout.ts`)
 
-The module has no UI. The checkout sheet uses it like this:
+The module has no UI. The checkout sheet (`src/features/create/CheckoutSheet.tsx`,
+opened by the host tools with `purpose` `"draw"` or `"ahead"`) uses it like this:
 
 ```ts
 const { payments } = await fetchAppConfig();
 const method = checkoutMethod(payments, platform()); // "test" | "iap" | "wallet" | "card"
 preloadCheckout(payments, platform());               // warm Stripe.js / StoreKit as the sheet opens
-const label = `Create board · ${formatPrice(payments.priceCents, payments.currency)}`;
+const price = await hostFeePrice(payments, platform()); // "$4.99"; iOS: only the App Store's string (or null)
+const label = `Draw the numbers · ${price}`;          // useHostFee() does this for components
 
 // test:   state = await payTest(gameId, adminToken)
 // iap:    const r = await payWithIAP(gameId, adminToken)  // { status: "paid", state } | { status: "cancelled" } | { status: "pending" }
@@ -256,13 +318,18 @@ const label = `Create board · ${formatPrice(payments.priceCents, payments.curre
 
 Every failure is a `CheckoutError` with a message the host can read. `status`
 is 0 when the request never reached the server, and `state` is set when the
-board is already open.
+board is already paid for. After paying, the host tools call `POST /lock`
+(`api.lock`); `isPaymentRequired(err)` (`src/lib/api.ts`) recognizes the 402, so
+a board an older copy said was paid opens the checkout instead of an error.
 
 ## Not covered yet
 
-- **Refunds don't close a board.** Refunding in Stripe or Apple leaves the board
-  open. Handle `charge.refunded` and Apple's App Store Server Notifications V2 if
-  that matters.
+- **Refunds don't undo a draw.** Refunding in Stripe or Apple leaves the board
+  paid (and drawn). Handle `charge.refunded` and Apple's App Store Server
+  Notifications V2 if that matters.
+- **Older app builds.** An app build from the pay-to-open flow creates boards
+  that open right away (it reads `paymentRequired: false`), but it can't pay at
+  the draw: its "Draw the numbers" shows the 402's message until it updates.
 - **Android app.** Google Play's payments policy will require Play Billing
   before an Android build ships on the Play Store. Until then, Android uses
   the Stripe web flow, which is fine for the web or PWA but not for a Play

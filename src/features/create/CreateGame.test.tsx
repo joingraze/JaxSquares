@@ -1,25 +1,25 @@
-// The create flow's checkout decisions, end to end through the real lib/checkout
-// with the server and StoreKit faked: a draft with an App Store purchase in
-// flight is never thrown away, and a page that loaded while checkout was in
-// test mode still opens the board after the switch to live. The board is set
-// up through the guided steps (custom teams, then Next to Review), and a
-// change goes through Review's cards (Done comes back to Review).
+// Creating a board is free: Create makes the board and opens it in one tap, with
+// no checkout (the host fee is due when the host draws the numbers). Review's
+// line says so with the price this device shows: the server's on the web, only
+// the App Store's own string in the iOS app. End to end through the real
+// lib/checkout with the server and StoreKit faked; the board is set up through
+// the guided steps (custom teams, then Next to Review).
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GameState, PaymentConfig } from "../../../shared/types";
+import type { PaymentConfig } from "../../../shared/types";
 
 const native = {
   configure: vi.fn(async () => {}),
   purchaseProduct: vi.fn(),
   finishTransaction: vi.fn(async () => {}),
   getUnfinishedTransactions: vi.fn(async () => ({ transactions: [] as unknown[] })),
-  getProduct: vi.fn(async () => ({ product: { priceString: "$4.99" } })),
+  getProduct: vi.fn(async () => ({ product: { priceString: "4,99 €" } })),
   addListener: vi.fn(async () => ({ remove: async () => {} })),
 };
 vi.mock("@capgo/native-purchases", () => ({ NativePurchases: native }));
-const device = { platform: "ios" as "ios" | "web" };
+const device = { platform: "web" as "ios" | "web" };
 vi.mock("../../lib/native", async (orig) => {
   const real = await orig<typeof import("../../lib/native")>();
   return { ...real, haptic: vi.fn(async () => {}), platform: () => device.platform };
@@ -31,12 +31,11 @@ const { fetchAppConfig } = await import("../../lib/checkout");
 const { setProfile } = await import("../../lib/identity");
 const { default: CreateGame } = await import("../../pages/CreateGame");
 
-const TEST: PaymentConfig = { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.app.board" };
-const LIVE: PaymentConfig = { ...TEST, mode: "live", stripePublishableKey: "pk_test_1" };
+const LIVE: PaymentConfig = { mode: "live", priceCents: 499, currency: "usd", stripePublishableKey: "pk_test_1", iapProductId: "com.jaxsquares.app.board" };
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-function draftOf(id: string, status = "draft") {
+function boardOf(id: string) {
   return {
     id,
     name: "KC vs PHI",
@@ -45,35 +44,30 @@ function draftOf(id: string, status = "draft") {
     teamX: { name: "Chiefs", abbr: "KC", color: null },
     teamY: { name: "Eagles", abbr: "PHI", color: null },
     format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
-    status,
+    status: "open",
+    paid: false,
   };
 }
 
-let server: { payments: PaymentConfig; payTest: () => Response; created: number };
-let requests: { method: string; url: string; body: unknown }[];
+let server: { payments: PaymentConfig; created: number };
+let requests: { method: string; url: string }[];
 
 beforeEach(async () => {
   for (const fn of Object.values(native)) fn.mockClear();
-  native.getUnfinishedTransactions.mockResolvedValue({ transactions: [] });
   requests = [];
-  server = { payments: LIVE, payTest: () => json({ error: "Test checkout is off" }, 403), created: 0 };
+  server = { payments: LIVE, created: 0 };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init: RequestInit = {}) => {
       const url = String(input);
       const method = init.method ?? "GET";
-      requests.push({ method, url, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
+      requests.push({ method, url });
       if (url.includes("/api/schedule")) return json({ events: [], unavailable: true });
       if (url.endsWith("/api/config")) return json({ payments: server.payments, vapidPublicKey: null });
       if (method === "POST" && url.endsWith("/api/games")) {
         const id = `g${++server.created}`;
-        return json({ game: draftOf(id), adminToken: `admin-${id}`, paymentRequired: true }, 201);
+        return json({ game: boardOf(id), adminToken: `admin-${id}`, paymentRequired: false }, 201);
       }
-      const id = /\/api\/games\/([^/]+)/.exec(url)?.[1] ?? "";
-      if (method === "DELETE") return json({ ok: true });
-      if (url.endsWith("/pay/test")) return server.payTest();
-      if (url.endsWith("/pay/iap")) return json({ state: { game: draftOf(id, "open") } as unknown as GameState });
-      if (method === "GET") return json({ game: draftOf(id) });
       return json({ error: "not found" }, 404);
     }),
   );
@@ -105,57 +99,37 @@ async function renderPage(payments: PaymentConfig) {
   }
 }
 
-/** From Review, change the away team (the game card, then Done back to Review). */
-async function renameTeam(name: string) {
-  fireEvent.click(screen.getAllByTestId("review-edit").find((el) => el.getAttribute("data-step") === "game")!);
-  fireEvent.change(await screen.findByTestId("team-x-input"), { target: { value: name } });
-  expect(screen.getByTestId("wizard-next")).toHaveTextContent("Done");
-  fireEvent.click(screen.getByTestId("wizard-next"));
-  await waitFor(() => expect(screen.getByTestId("wizard-step")).toHaveAttribute("data-step", "review"));
-}
-
 const create = () => act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
 
-describe("CreateGame checkout", () => {
-  it("keeps a draft whose App Store purchase is waiting on approval when the settings change", async () => {
-    device.platform = "ios";
-    native.purchaseProduct.mockRejectedValue(new Error("Transaction pending"));
+describe("creating a board", () => {
+  it("makes and opens the board in one tap, with no checkout", async () => {
+    device.platform = "web";
     await renderPage(LIVE);
-
+    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. $4.99 when you draw the numbers."));
     await create();
-    expect(await screen.findByText(/Waiting on approval/)).toBeInTheDocument();
-    expect(native.purchaseProduct).toHaveBeenCalledWith(expect.objectContaining({ appAccountToken: expect.any(String) }));
-
-    // The host renames a team and taps Create again: that makes a new draft...
-    await renameTeam("Raiders");
-    await create();
-    await waitFor(() => expect(server.created).toBe(2));
-    await waitFor(() => expect(native.purchaseProduct).toHaveBeenCalledTimes(2));
-    // ...but the first one, which a parent may still approve (and pay for), stays.
-    expect(requests.filter((r) => r.method === "DELETE")).toEqual([]);
-  });
-
-  it("still drops a stale draft nobody paid for", async () => {
-    device.platform = "ios";
-    native.purchaseProduct.mockRejectedValue(new Error("User cancelled"));
-    await renderPage(LIVE);
-    await create();
-    expect(await screen.findByText(/No charge/)).toBeInTheDocument();
-    await renameTeam("Raiders");
-    await create();
-    await waitFor(() => expect(requests.filter((r) => r.method === "DELETE").map((r) => r.url)).toEqual(["/api/games/g1"]));
-  });
-
-  it("opens the board with the real checkout when test mode was switched off after the page loaded", async () => {
-    device.platform = "ios";
-    native.purchaseProduct.mockResolvedValue({ transactionId: "2000000000000042", productIdentifier: TEST.iapProductId });
-    await renderPage(TEST);
-    server.payments = LIVE; // the operator flips PAYMENTS_MODE=live
-
-    await create();
-    await waitFor(() => expect(native.purchaseProduct).toHaveBeenCalledTimes(1));
     expect(await screen.findByText("Board page", undefined, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.queryByText(/Test checkout is off/)).toBeNull();
-    expect(requests.some((r) => r.url.endsWith("/pay/iap"))).toBe(true);
+    expect(requests.filter((r) => r.method === "POST").map((r) => r.url)).toEqual(["/api/games"]);
+    expect(requests.some((r) => r.url.includes("/pay/"))).toBe(false);
+    expect(native.purchaseProduct).not.toHaveBeenCalled();
+  });
+
+  it("shows only the App Store's price in the iOS app, and buys nothing to create", async () => {
+    device.platform = "ios";
+    await renderPage(LIVE);
+    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. 4,99 € when you draw the numbers."));
+    expect(screen.queryByText(/\$4\.99/)).toBeNull();
+    await create();
+    expect(await screen.findByText("Board page", undefined, { timeout: 3000 })).toBeInTheDocument();
+    expect(native.purchaseProduct).not.toHaveBeenCalled();
+  });
+
+  it("still says when the fee is due when the App Store can't give its price (never the web price)", async () => {
+    device.platform = "ios";
+    native.getProduct.mockRejectedValueOnce(new Error("StoreKit isn't ready"));
+    await renderPage({ ...LIVE, iapProductId: "com.jaxsquares.app.board.unlisted" });
+    const line = screen.getByTestId("create-fee");
+    await waitFor(() => expect(native.getProduct).toHaveBeenCalled());
+    expect(line).toHaveTextContent("Free to set up and invite. The host fee is due when you draw the numbers.");
+    expect(line.textContent).not.toMatch(/\$/);
   });
 });

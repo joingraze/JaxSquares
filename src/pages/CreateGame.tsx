@@ -20,17 +20,18 @@
 // iOS swipe-back move between steps, and the draft lives in sessionStorage
 // so a reload keeps it (cleared once the board is made).
 //
-// Create works as before: one tap creates the board and, in test mode or the
-// iOS app, opens it too ("Setting up your board" to "You're live!" with
-// confetti, then /g/<id>?invite=1 with its invite sheet up). Only a real web
-// checkout adds a step: the Apple Pay / Google Pay sheet. Opening the board
+// Creating is free: one tap makes the board and opens it ("Setting up your
+// board" to "You're live!" with confetti, then /g/<id>?invite=1 with its
+// invite sheet up). Setting up, inviting and picking squares cost nothing; the
+// host fee is due when the host draws the numbers (Review says so, with the
+// price this device shows: the App Store's in the iOS app). Opening the board
 // first rewinds the flow's steps, so Back from the board goes where the host
 // started, not into a finished flow.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
-import type { Game, GameFormat, PaymentConfig, ScheduleEvent } from "../../shared/types";
+import type { Game, GameFormat, ScheduleEvent } from "../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -48,22 +49,11 @@ import {
   useToast,
 } from "../components/ui";
 import { ApiError, api } from "../lib/api";
-import {
-  CheckoutError,
-  checkoutMethod,
-  checkoutPrice,
-  fetchAppConfig,
-  payTest,
-  payWithIAP,
-  preloadCheckout,
-  UnconfirmedPurchaseError,
-  type PurchaseOutcome,
-} from "../lib/checkout";
 import { readableTeamColor } from "../lib/format";
 import { NAME_MAX_LENGTH, setProfile, useProfile } from "../lib/identity";
-import { haptic, platform } from "../lib/native";
+import { haptic } from "../lib/native";
+import { useHostFee } from "../lib/useHostFee";
 import { useNow } from "../features/board/useNow";
-import { CheckoutSheet, type CheckoutDraft } from "../features/create/CheckoutSheet";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, TEAM_INPUT_ID } from "../features/create/CustomMatchup";
 import { BOARD_NAME_INPUT_ID, DetailsPanel } from "../features/create/DetailsSection";
 import { FormatPicker } from "../features/create/FormatPicker";
@@ -74,7 +64,6 @@ import {
   boardNameFor,
   buildCreateInput,
   createFormat,
-  inputSignature,
   matchupShortNames,
   matchupTeams,
   teamColorsFrom,
@@ -103,16 +92,6 @@ import {
 import { WizardProgress } from "../features/create/WizardProgress";
 import { RulesEditor } from "../features/rules/RulesEditor";
 import { autoFill, type PrizeChoice, type RulesDraft } from "../features/rules/rulesModel";
-
-interface Draft extends CheckoutDraft {
-  /** inputSignature of the body that created it, so an unchanged re-tap reuses it. */
-  sig: string;
-  /**
-   * An App Store purchase for it may still land (Ask to Buy, or charged but not
-   * confirmed yet), so it's never deleted: it opens when the purchase does.
-   */
-  paying?: boolean;
-}
 
 type Phase = "idle" | "working" | "live";
 
@@ -154,14 +133,10 @@ export default function CreateGame() {
   const [hostName, setHostName] = useState(restored?.hostName || profile.name);
   const [shake, setShake] = useState(0);
 
-  // ---- create + checkout ----
-  const [payments, setPayments] = useState<PaymentConfig | null>(null);
-  const [price, setPrice] = useState<string | null>(null);
+  // ---- create ----
+  // The host fee, for Review's line (due at the draw, not now).
+  const { price } = useHostFee();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  /** Quiet line under the button after a checkout ended without paying. */
-  const [notice, setNotice] = useState<string | null>(null);
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** False once the host has left the page: a create still in flight then doesn't pull them back. */
   const mounted = useRef(true);
@@ -171,14 +146,6 @@ export default function CreateGame() {
 
   useEffect(() => {
     mounted.current = true;
-    fetchAppConfig()
-      .then((c) => {
-        if (!mounted.current) return;
-        setPayments(c.payments);
-        preloadCheckout(c.payments, platform());
-        return checkoutPrice(c.payments, platform()).then((p) => mounted.current && setPrice(p));
-      })
-      .catch(() => {});
     return () => {
       mounted.current = false;
       if (liveTimer.current) clearTimeout(liveTimer.current);
@@ -336,17 +303,6 @@ export default function CreateGame() {
     }
   };
 
-  /** The payment config for this tap (lib/checkout reuses it for a minute); the last one known if it can't load. */
-  const loadPayments = async (refresh = false): Promise<PaymentConfig | null> => {
-    const c = await fetchAppConfig({ refresh }).catch(() => null);
-    if (!c) return payments;
-    if (mounted.current && c.payments !== payments) {
-      setPayments(c.payments);
-      void checkoutPrice(c.payments, platform()).then((p) => mounted.current && setPrice(p));
-    }
-    return c.payments;
-  };
-
   /** The payoff: the button says you're live, confetti in the team colors, then the board + invite sheet. */
   const goLive = (game: Game) => {
     if (!mounted.current) return;
@@ -378,65 +334,13 @@ export default function CreateGame() {
     if (!input) return;
     if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
 
-    setNotice(null);
     setPhase("working");
     void haptic("medium");
-    let current = draft;
     try {
-      const sig = inputSignature(input);
-      if (!current || current.sig !== sig) {
-        const res = await api.createGame(input);
-        // The settings changed after a checkout that didn't finish: drop the stale unpaid
-        // draft, unless an App Store purchase for it may still land (it stays on Home).
-        if (current && !current.paying) void api.deleteGame(current.game.id, current.adminToken).catch(() => {});
-        current = { game: res.game, adminToken: res.adminToken, sig };
-        setDraft(current);
-        if (!res.paymentRequired) return goLive(current.game);
-      }
-      // Read per tap, so a page left open across the switch to live checkout pays the right way.
-      let config = await loadPayments();
-      let method = config ? checkoutMethod(config, platform()) : null;
-      if (method === "test") {
-        try {
-          await payTest(current.game.id, current.adminToken);
-          return goLive(current.game);
-        } catch (err) {
-          // Test checkout was switched off after this config was read: use the real one.
-          if (!(err instanceof CheckoutError && err.status === 403)) throw err;
-          config = await loadPayments(true);
-          method = config ? checkoutMethod(config, platform()) : null;
-          if (!method || method === "test") throw err;
-        }
-      }
-      if (method === "iap") {
-        // The App Store's own sheet is the confirm step.
-        let r: PurchaseOutcome;
-        try {
-          r = await payWithIAP(current.game.id, current.adminToken, config?.iapProductId);
-        } catch (err) {
-          // Maybe charged and not confirmed yet: this draft must not be deleted.
-          current = { ...current, paying: true };
-          setDraft(current);
-          throw err;
-        }
-        if (r.status === "paid") return goLive(current.game);
-        if (r.status === "pending") {
-          current = { ...current, paying: true };
-          setDraft(current);
-        }
-        setPhase("idle");
-        setNotice(r.status === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : "No charge. Your draft is saved on Home.");
-        return;
-      }
-      // A web checkout needs its own tap (Apple Pay / Google Pay must start from a press on their button).
-      setPhase("idle");
-      setSheetOpen(true);
+      // Free to create: the board opens right away (the host fee is due when they draw the numbers).
+      const res = await api.createGame(input);
+      goLive(res.game);
     } catch (err) {
-      // Already open (paid elsewhere, or a retried test checkout): that's the happy path.
-      if (err instanceof CheckoutError && err.status === 409 && err.state && current) {
-        if (err.unused) toast.show({ title: "That purchase wasn't needed", description: err.message, duration: 0 });
-        return goLive(current.game);
-      }
       setPhase("idle");
       createFailed(err);
     }
@@ -445,10 +349,6 @@ export default function CreateGame() {
   const createFailed = (err: unknown) => {
     void haptic("error");
     const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
-    if (err instanceof UnconfirmedPurchaseError) {
-      toast.show({ title: "Payment received", description: message });
-      return;
-    }
     if (err instanceof ApiError && err.status === 400 && isPrizeNoteError(message)) {
       go("prizes", { fromReview: true });
       toast.error("Keep prizes fun", message);
@@ -459,17 +359,6 @@ export default function CreateGame() {
       return;
     }
     toast.error("Couldn't make the board", message);
-  };
-
-  // The sheet celebrates on its own; the board fetches its own state.
-  const onPaid = (id: string) => {
-    setSheetOpen(false);
-    openBoard(id);
-  };
-
-  const onCheckoutClose = () => {
-    setSheetOpen(false);
-    setNotice("No charge. Your draft is saved on Home.");
   };
 
   const rules = rulesOf(format);
@@ -665,13 +554,11 @@ export default function CreateGame() {
           )}
         </div>
         {step === "review" && (
-          <p aria-live="polite" className="mt-2 text-center text-caption text-ink-subtle">
-            {notice ?? (price ? `${price} to open, one time · Friends join with just the link` : "Friends join with just the link. No app or account.")}
+          <p data-testid="create-fee" className="mt-2 text-center text-caption text-ink-subtle">
+            {price ? `Free to set up and invite. ${price} when you draw the numbers.` : "Free to set up and invite. The host fee is due when you draw the numbers."}
           </p>
         )}
       </ActionBar>
-
-      <CheckoutSheet open={sheetOpen} draft={draft} payments={payments} onPaid={onPaid} onClose={onCheckoutClose} />
     </>
   );
 }

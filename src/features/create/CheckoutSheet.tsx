@@ -1,8 +1,9 @@
-// Opens an unpaid board (the only payment in JaxSquares). The create page only
-// shows this when a real web checkout needs its own tap (Apple Pay / Google Pay
-// button, card form); test mode and the App Store open straight from Create.
-// It is self-contained, so host controls can open it for an existing draft
-// (GET /api/games/:id + the saved admin token) with no create-page state:
+// Pays a board's host fee: the only payment in JaxSquares, due when the host
+// draws the numbers (setting up, inviting and picking squares are free). The
+// host tools open it from "Draw the numbers · $4.99" (then draw and play the
+// reveal), or, on a linked board, to pay ahead so Jax draws at kickoff. It is
+// self-contained: the board (GET /api/games/:id) and the saved admin token
+// are all it needs.
 //   test   – no-charge test checkout, one tap
 //   wallet – Apple Pay / Google Pay (Stripe Express Checkout), card form fallback
 //   card   – Stripe Payment Element
@@ -37,18 +38,23 @@ import { formatLine } from "./model";
 import { VsBadge } from "./VsBadge";
 import { useResolvedTheme } from "../../lib/theme";
 
-export interface CheckoutDraft {
+export interface CheckoutBoard {
   game: Game;
   adminToken: string;
 }
 
+/** Why the host is paying: to draw the numbers now, or ahead of kickoff so Jax draws them (linked boards). */
+export type CheckoutPurpose = "draw" | "ahead";
+
 export interface CheckoutSheetProps {
   open: boolean;
-  draft: CheckoutDraft | null;
+  board: CheckoutBoard | null;
+  purpose?: CheckoutPurpose;
   /** The payment config if the caller already has it; null/omitted and the sheet loads /api/config itself. */
   payments?: PaymentConfig | null;
+  /** The fee is paid (`state` is the paid board, or null while a web payment is still landing). */
   onPaid: (gameId: string, state: GameState | null) => void;
-  /** Closed without paying: the board stays a draft. */
+  /** Closed without paying: nothing changes, and squares stay open. */
   onClose: () => void;
   /** Also told when the sheet re-reads /api/config after a failure (optional). */
   onRetryConfig?: () => void;
@@ -56,10 +62,29 @@ export interface CheckoutSheetProps {
 
 type Phase = "ready" | "paying" | "paid" | "pending";
 
-/** How long the "you're live" moment shows before the board opens. */
+/** How long the "paid" moment shows before the host tools take over (the draw, or the board). */
 const PAID_BEAT_MS = 520;
 
-export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
+const COPY: Record<CheckoutPurpose, { title: string; description: string; pending: string; test: string; paid: string; walletCancel: string }> = {
+  draw: {
+    title: "Draw the numbers",
+    description: "The host fee for this board. Squares lock and the numbers get drawn right after.",
+    pending: "Waiting on approval. You can draw the numbers once it's approved.",
+    test: "Draw the numbers",
+    paid: "Paid! Drawing now",
+    walletCancel: "No charge. Draw the numbers whenever you're ready.",
+  },
+  ahead: {
+    title: "Pay ahead for kickoff",
+    description: "The host fee for this board. Jax draws the numbers at kickoff, and squares stay open till then.",
+    pending: "Waiting on approval. Jax draws the numbers at kickoff once it's approved.",
+    test: "Pay ahead",
+    paid: "All set!",
+    walletCancel: "No charge. You can pay any time before kickoff.",
+  },
+};
+
+export function CheckoutSheet({ open, board, purpose = "draw", payments: given, onPaid, onClose, onRetryConfig }: CheckoutSheetProps) {
   const [loaded, setLoaded] = useState<PaymentConfig | null>(null);
   const [configFailed, setConfigFailed] = useState(false);
   // What the sheet re-read itself (after a failure, or checkout going live) beats the caller's copy.
@@ -80,8 +105,9 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
   const cardRef = useRef<HTMLDivElement>(null);
   const cardForm = useRef<CardForm | null>(null);
   const paidTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gameId = draft?.game.id ?? null;
-  const adminToken = draft?.adminToken ?? null;
+  const gameId = board?.game.id ?? null;
+  const adminToken = board?.adminToken ?? null;
+  const copy = COPY[purpose];
 
   const loadConfig = useCallback((refresh: boolean) => {
     setConfigFailed(false);
@@ -95,7 +121,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
     if (open && !given && !loaded) loadConfig(false);
   }, [open, given, loaded, loadConfig]);
 
-  // Fresh state for every opening / draft.
+  // Fresh state for every opening / board.
   useEffect(() => {
     if (!open) return;
     setPhase("ready");
@@ -124,8 +150,8 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
 
   // Latest props for callbacks that must stay stable (they're effect deps; a new
   // identity would remount the Stripe button on every parent render).
-  const latest = useRef({ onPaid, draft });
-  latest.current = { onPaid, draft };
+  const latest = useRef({ onPaid, board });
+  latest.current = { onPaid, board };
 
   const succeed = useCallback(
     (state: GameState | null) => {
@@ -133,7 +159,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
       setPhase("paid");
       setError(null);
       void haptic("success");
-      const game = latest.current.draft?.game;
+      const game = latest.current.board?.game;
       const colors = game
         ? [readableTeamColor(game.teamX.color, CUSTOM_X_COLOR), readableTeamColor(game.teamY.color, CUSTOM_Y_COLOR), ...CELEBRATION_COLORS.slice(0, 2)]
         : undefined;
@@ -145,7 +171,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
 
   const fail = useCallback(
     (err: unknown) => {
-      // Already open (e.g. the webhook won the race): that's a success.
+      // Already paid for (e.g. the webhook won the race): that's a success.
       if (err instanceof CheckoutError && err.status === 409 && err.state) return succeed(err.state);
       setPhase("ready");
       setError(err instanceof Error && err.message ? err.message : "That didn't go through. Try again.");
@@ -187,7 +213,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
         confirmStripePaid(gameId, adminToken).then(succeed, fail);
       },
       onUnavailable: () => !disposed && setMethod("card"),
-      onCancel: () => setNotice("No charge. Your board is saved whenever you're ready."),
+      onCancel: () => setNotice(COPY[purpose].walletCancel),
       onError: (message) => {
         setError(message);
         void haptic("error");
@@ -200,7 +226,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
       disposed = true;
       handle?.destroy();
     };
-  }, [open, method, clientSecret, charge, payments, gameId, adminToken, succeed, fail]);
+  }, [open, method, clientSecret, charge, payments, gameId, adminToken, succeed, fail, purpose]);
 
   // Card form fallback.
   useEffect(() => {
@@ -287,7 +313,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
   } else if (phase === "paid") {
     action = (
       <Button data-testid="pay-confirm" size="lg" block leading={<CheckIcon size={20} strokeWidth={3} />} haptic={false} className="animate-pop">
-        You're live!
+        {copy.paid}
       </Button>
     );
   } else if (phase === "pending") {
@@ -339,21 +365,21 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
   } else {
     action = (
       <Button data-testid="pay-confirm" size="lg" block loading={busy} onClick={() => void confirm()} haptic="medium">
-        Open my board
+        {copy.test}
       </Button>
     );
   }
 
-  // One quiet line about cost, never a pitch: the host already chose to make this board.
+  // One quiet line about cost, never a pitch: the host already chose to draw.
   const costLine =
     method === "test"
       ? "No charge while checkout is in test mode."
       : method === "iap"
         ? price
-          ? `${price}, one time. You'll confirm with the App Store.`
-          : "You'll confirm with the App Store."
+          ? `${price} host fee, once for this board. You'll confirm with the App Store.`
+          : "Once for this board. You'll confirm with the App Store."
         : price
-          ? `${price}, one time.`
+          ? `${price} host fee, once for this board.`
           : null;
 
   return (
@@ -361,8 +387,8 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
       open={open}
       onClose={onClose}
       dismissible={!busy}
-      title="Open your board"
-      description={phase === "pending" ? "Waiting on approval. Your board opens the moment it's approved." : undefined}
+      title={copy.title}
+      description={phase === "pending" ? copy.pending : copy.description}
       footer={
         <div className="flex flex-col gap-3">
           {error && (
@@ -377,7 +403,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
         </div>
       }
     >
-      {draft && <Ticket game={draft.game} />}
+      {board && <Ticket game={board.game} />}
       {method === "card" && !(error && !cardReady) && (
         <div className="relative mt-4 min-h-40">
           <div ref={cardRef} />
@@ -388,7 +414,7 @@ export function CheckoutSheet({ open, draft, payments: given, onPaid, onClose, o
   );
 }
 
-/** The board being opened, as an admission ticket in the two team colors. */
+/** The board being paid for, as an admission ticket in the two team colors. */
 function Ticket({ game }: { game: Game }) {
   const theme = useResolvedTheme();
   const x = { ...game.teamX, color: game.teamX.color ?? CUSTOM_X_COLOR };

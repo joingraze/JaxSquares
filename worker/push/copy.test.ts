@@ -153,6 +153,13 @@ describe("buildDeliveries", () => {
       const ds = buildDeliveries(makeGame({ sport: "basketball" }), players, { kind: "game-starting" }, NOW);
       expect(ds[0].content.body).toBe("🏀 Tip-off! The board is live.");
     });
+
+    it("on a board not drawn at kickoff (host fee unpaid), asks the host to draw and tells everyone else who they're waiting on", () => {
+      const ds = buildDeliveries(makeGame({ status: "open", paid: false }), players, { kind: "game-starting" }, NOW);
+      expect(bodyFor(ds, HOST)).toBe("🏈 Kickoff! Draw the numbers to get your board going.");
+      expect(bodyFor(ds, "client-jax-001")).toBe("🏈 Kickoff! Waiting on the host to draw the numbers.");
+      expect(recipients(ds)).toEqual([HOST, "client-jax-001", "client-sam-002"].sort());
+    });
   });
 
   describe("host-only events", () => {
@@ -170,6 +177,34 @@ describe("buildDeliveries", () => {
       expect(buildDeliveries(game, players, { kind: "board-full" }, NOW)[0].content.body).toBe(
         "🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.",
       );
+    });
+
+    it("board-full on an unpaid linked board offers paying ahead (it won't draw at kickoff by itself)", () => {
+      const game = makeGame({
+        status: "open",
+        paid: false,
+        linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: NOW + 3_600_000, xIsHome: true },
+      });
+      const ds = buildDeliveries(game, players, { kind: "board-full" }, NOW);
+      expect(recipients(ds)).toEqual([HOST]);
+      expect(ds[0].content.body).toBe("🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff.");
+    });
+
+    it("draw-reminder tells the host of an unpaid linked board how soon kickoff is", () => {
+      const linked = (startsAt: number) => ({ provider: "espn" as const, league: "nfl" as const, eventId: "401", startsAt, xIsHome: true });
+      const unpaid = (startsAt: number) => makeGame({ status: "open", paid: false, linkedEvent: linked(startsAt) });
+      const ds = buildDeliveries(unpaid(NOW + 58 * 60_000), players, { kind: "draw-reminder" }, NOW);
+      expect(recipients(ds)).toEqual([HOST]);
+      expect(ds[0].content).toMatchObject({
+        body: "⏰ Kickoff in about an hour. Draw the numbers now, or pay ahead and Jax draws them at kickoff.",
+        tag: "abc234:draw-reminder",
+        kind: "draw-reminder",
+      });
+      expect(buildDeliveries(unpaid(NOW + 20 * 60_000), players, { kind: "draw-reminder" }, NOW)[0].content.body).toMatch(/^⏰ Kickoff in 20 minutes\. /);
+      // Paid, drawn, or a custom board in the meantime: nothing to remind.
+      expect(buildDeliveries(makeGame({ status: "open", paid: true, linkedEvent: linked(NOW + 3_000_000) }), players, { kind: "draw-reminder" }, NOW)).toEqual([]);
+      expect(buildDeliveries(makeGame({ status: "locked", paid: true, linkedEvent: linked(NOW + 3_000_000) }), players, { kind: "draw-reminder" }, NOW)).toEqual([]);
+      expect(buildDeliveries(makeGame({ status: "open", paid: false }), players, { kind: "draw-reminder" }, NOW)).toEqual([]);
     });
 
     it("player-joined carries the joiner's emoji and a running count, replacing the last one quietly", () => {
@@ -198,11 +233,17 @@ describe("buildDeliveries", () => {
       { kind: "board-full" },
       { kind: "player-joined", name: "Sam" },
       { kind: "final" },
+      { kind: "draw-reminder" },
     ];
+    const unpaid = makeGame({
+      status: "open",
+      paid: false,
+      linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: NOW + 3_000_000, xIsHome: true },
+    });
     const text = events
-      .flatMap((e) => buildDeliveries(makeGame(), players, e, NOW))
+      .flatMap((e) => [...buildDeliveries(makeGame(), players, e, NOW), ...buildDeliveries(unpaid, players, e, NOW)])
       .map((d) => `${d.content.title} ${d.content.body}`)
       .join("\n");
-    expect(text).not.toMatch(/\$|\bbets?\b|wager|gambl|\bpot\b|payout|buy-?in|\bodds\b|\bcash\b|\bmoney\b/i);
+    expect(text).not.toMatch(/\$|\bbets?\b|wager|gambl|\bpot\b|payout|buy-?in|\bodds\b|\bcash\b|\bmoney\b|jackpot|stakes|\d+\.\d\d/i);
   });
 });

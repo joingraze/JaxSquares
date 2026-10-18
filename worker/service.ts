@@ -79,16 +79,20 @@ export async function broadcast(env: Env, gameId: string, activity?: Activity): 
   return state;
 }
 
-/** draft -> open after a successful payment. Idempotent. */
-export async function activateGame(
+/**
+ * The board's host fee is paid (the purchase the ledger chose): the host can
+ * draw the numbers now, and a linked board draws its own at kickoff. A
+ * legacy draft opens too. Idempotent; pushes the new state.
+ */
+export async function markPaid(
   env: Env,
   gameId: string,
   purchase: { provider: "test" | "stripe" | "iap"; reference: string; amountCents: number },
 ): Promise<GameState | null> {
   const current = await db.getGame(env.DB, gameId);
   if (!current) return null;
-  if (current.status !== "draft") return loadState(env, gameId);
-  const { state } = await db.commit(env.DB, gameId, [db.activateGame(env.DB, gameId, purchase, Date.now())]);
+  if (current.paid) return loadState(env, gameId);
+  const { state } = await db.commit(env.DB, gameId, [db.markPaid(env.DB, gameId, purchase, Date.now())]);
   if (state) await pushToRoom(env, gameId, state);
   return state;
 }
@@ -161,8 +165,10 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
  * period scores (never replacing a host-entered score), append every-score
  * entries when the total goes up (a touchdown and its conversion seen in one
  * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
- * when it's corrected down, lock at kickoff if the host hasn't, and mark the board
- * final when the game ends. Pushes the new state and sends pushes.
+ * when it's corrected down, lock at kickoff if the host hasn't (only once the
+ * host fee is paid: an unpaid board stays open, still taking the feed's
+ * scores, until its host pays and draws), and mark the board final when the
+ * game ends. Pushes the new state and sends pushes.
  *
  * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
  * own sockets directly instead of fetching itself.
@@ -193,11 +199,12 @@ export async function applyLiveUpdate(
     notifications.push({ kind: "game-starting" });
   }
 
-  // Boards linked to a real game lock at kickoff so every period can be decided.
+  // Boards linked to a real game lock at kickoff so every period can be decided,
+  // once their host fee is paid; until then the host draws when they pay.
   // (Not on a "post" that isn't final: that's a postponed/canceled game.)
   let numbers = game.numbers;
   let status = game.status;
-  if (status === "open" && (live.state === "in" || update.isFinal)) {
+  if (status === "open" && game.paid && (live.state === "in" || update.isFinal)) {
     numbers = drawNumbers(game.format);
     const locked = newActivity("locked", null, { auto: true }, now);
     writes.push(db.lockGame(env.DB, gameId, numbers, now), db.insertActivityIfChanged(env.DB, gameId, locked));

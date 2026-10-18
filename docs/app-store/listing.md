@@ -6,8 +6,8 @@ screenshots are generated from the real app; see `docs/app-store/README.md`.
 
 **Hard rule for every field below:** no money between players. Don't use
 "bet", "wager", "gamble", "pot", "pool", "buy-in", "payout" or "odds", and don't
-show prices per square. JaxSquares is free to download. The only purchase is a
-host paying once to unlock a board they create.
+show prices per square. JaxSquares is free to download. The only purchase is the
+host fee: a host pays once per board, when they draw its numbers.
 
 **Trademark rule:** keep "Super Bowl", "NFL", and real team names and logos out
 of the name, subtitle, keywords, description and screenshots. The NFL enforces
@@ -26,7 +26,7 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 | Primary category | **Sports** | |
 | Secondary category | **Entertainment** | |
 | Price | Free | |
-| In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). It unlocks one board the host creates; joining is always free. | |
+| In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). The host fee for one board, paid when the host draws its numbers; creating a board, joining and picking squares are free. | |
 | Copyright | `2026 JaxSquares` | |
 | Availability | United States to start. Add other countries once the copy is checked for each. | |
 | Devices | iPhone only, so no iPad screenshots are needed | |
@@ -82,10 +82,11 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 > • Haptics, confetti and a gold glow when your square hits.
 >
 > FREE TO PLAY, AND NO MONEY BETWEEN FRIENDS
-> JaxSquares is free to download, and joining a board is always free. The only
-> purchase is a one-time unlock for each board you host. Players never pay to
-> join, squares are never sold, and no money changes hands in the app. You
-> play for fun and bragging rights.
+> JaxSquares is free to download, and setting up a board, inviting friends and
+> joining are always free. The only purchase is the host fee for each board you
+> host, paid when you draw the numbers. Players never pay to join, squares are
+> never sold, and no money changes hands in the app. You play for fun and
+> bragging rights.
 >
 > PRIVATE BY DEFAULT
 > A board is only for the people you share it with. There are no accounts, no
@@ -166,8 +167,10 @@ accept whatever Apple computes; don't change the answers.
 > JaxSquares is a free-to-play football squares game for friends. There is no
 > gambling: players never pay to join, squares are never sold, and the app
 > never collects, holds or distributes money or prizes. The only purchase is a
-> consumable in-app purchase (com.jaxsquares.app.board) that a host buys to
-> unlock one board they create. It doesn't buy any chance to win anything. A
+> consumable in-app purchase (com.jaxsquares.app.board): the host fee a host
+> pays when they draw the numbers on a board they made (making the board,
+> inviting and picking squares are free). It doesn't buy any chance to win
+> anything. A
 > host may add an optional free-text note per period (e.g. "Loser buys
 > wings"); the server rejects notes that mention money, and the app takes no
 > part in them.
@@ -207,7 +210,8 @@ Before you submit, make the demo board on production:
 
 1. Create a board with two made-up teams and a prize note or two, and invite
    enough people (or devices) to fill most of it.
-2. Lock it, enter a Q1 and a Half score, and leave it open.
+2. Draw the numbers (the host fee comes first), enter a Q1 and a Half score,
+   and leave it open.
 3. Paste its id over `<DEMO_ID>` and its six-character code (the id in
    capitals) over `<DEMO_CODE>`.
 4. On the host's phone, open Host tools → "Host from another phone" and copy

@@ -13,7 +13,7 @@ import { paymentsRoutes } from "./routes";
 import { signStripePayload } from "./stripe";
 import { createTestD1, type TestD1 } from "./testD1";
 
-vi.mock("../service", () => ({ isHost: vi.fn(), activateGame: vi.fn(), loadState: vi.fn() }));
+vi.mock("../service", () => ({ isHost: vi.fn(), markPaid: vi.fn(), loadState: vi.fn() }));
 vi.mock("../db", () => ({ getGame: vi.fn() }));
 
 const ADMIN = "admin-token-1";
@@ -27,8 +27,9 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 const stateOf = (game: Game) => ({ game, version: 1 }) as unknown as GameState;
 
-function draft(id: string): Game {
-  return { id, name: "Big Game", status: "draft", createdAt: 0 } as Game;
+/** A new board: open (friends picking squares), its host fee not paid yet. */
+function unpaid(id: string): Game {
+  return { id, name: "Big Game", status: "open", paid: false, createdAt: 0 } as Game;
 }
 
 async function testPem(): Promise<string> {
@@ -71,14 +72,14 @@ const purchases = () => ledger.query("SELECT reference, game_id, provider, statu
 beforeEach(async () => {
   pem ??= await testPem();
   ledger = await createTestD1(["migrations/0003_purchases.sql", "migrations/0006_purchases_unused.sql"]);
-  games = new Map([["g1", draft("g1")], ["g2", draft("g2")]]);
+  games = new Map([["g1", unpaid("g1")], ["g2", unpaid("g2")]]);
   vi.mocked(db.getGame).mockImplementation(async (_db, id) => games.get(id) ?? null);
   vi.mocked(service.isHost).mockImplementation(async (_env, _id, token) => token === ADMIN);
   vi.mocked(service.loadState).mockImplementation(async (_env, id) => (games.has(id) ? stateOf(games.get(id)!) : null));
-  vi.mocked(service.activateGame).mockImplementation(async (_env, id) => {
+  vi.mocked(service.markPaid).mockImplementation(async (_env, id) => {
     const game = games.get(id);
     if (!game) return null;
-    if (game.status === "draft") games.set(id, { ...game, status: "open" });
+    if (!game.paid) games.set(id, { ...game, paid: true });
     return stateOf(games.get(id)!);
   });
   fetchMock = vi.fn(async () => {
@@ -94,11 +95,11 @@ afterEach(() => {
 });
 
 describe("POST /games/:id/pay/test", () => {
-  it("opens the host's draft board with a no-charge purchase", async () => {
+  it("marks the host's board paid with a no-charge purchase", async () => {
     const res = await call("/games/g1/pay/test");
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { state: GameState }).state.game.status).toBe("open");
-    expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "test", reference: "test:g1", amountCents: 0 });
+    expect(((await res.json()) as { state: GameState }).state.game.paid).toBe(true);
+    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "test", reference: "test:g1", amountCents: 0 });
     expect(purchases()).toEqual([
       { reference: "test:g1", game_id: "g1", provider: "test", status: "paid", amount_cents: 0, currency: "usd", livemode: 0 },
     ]);
@@ -116,14 +117,14 @@ describe("POST /games/:id/pay/test", () => {
     expect((await call("/games/g1/pay/test", { admin: null })).status).toBe(403);
     expect((await call("/games/g1/pay/test", { clientId: null })).status).toBe(400);
     expect((await call("/games/zzz/pay/test")).status).toBe(404);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
   });
 
   it("is off in live mode", async () => {
     const env = makeEnv({ PAYMENTS_MODE: "live", STRIPE_PUBLISHABLE_KEY: "pk_live_1" });
     const res = await call("/games/g1/pay/test", { env });
     expect(res.status).toBe(403);
-    expect(games.get("g1")!.status).toBe("draft");
+    expect(games.get("g1")!.paid).toBe(false);
   });
 });
 
@@ -220,20 +221,20 @@ describe("POST /games/:id/pay/stripe", () => {
     expect(purchases().map((p) => [p.reference, p.status])).toEqual([["pi_1", "pending"]]);
   });
 
-  it("activates right away when the stored intent already succeeded (webhook still in flight)", async () => {
+  it("marks the board paid right away when the stored intent already succeeded (webhook still in flight)", async () => {
     fetchMock.mockResolvedValueOnce(Response.json(intent()));
     await call("/games/g1/pay/stripe");
     fetchMock.mockResolvedValueOnce(Response.json(intent({ status: "succeeded", amount_received: 499 })));
     const res = await call("/games/g1/pay/stripe");
     expect(res.status).toBe(409);
     const body = (await res.json()) as { state: GameState };
-    expect(body.state.game.status).toBe("open");
-    expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "stripe", reference: "pi_1", amountCents: 499 });
+    expect(body.state.game.paid).toBe(true);
+    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "stripe", reference: "pi_1", amountCents: 499 });
     expect(purchases()[0].status).toBe("paid");
   });
 
-  it("says the board is already active instead of charging twice", async () => {
-    games.set("g1", { ...draft("g1"), status: "open" });
+  it("says the board is already paid for instead of charging twice", async () => {
+    games.set("g1", { ...unpaid("g1"), paid: true });
     const res = await call("/games/g1/pay/stripe");
     expect(res.status).toBe(409);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -278,11 +279,11 @@ describe("POST /stripe/webhook", () => {
     );
   }
 
-  it("activates the board on payment_intent.succeeded", async () => {
+  it("marks the board paid on payment_intent.succeeded", async () => {
     const res = await deliver(succeeded());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ received: true });
-    expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "stripe", reference: "pi_9", amountCents: 499 });
+    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "stripe", reference: "pi_9", amountCents: 499 });
     expect(purchases()).toEqual([
       { reference: "pi_9", game_id: "g1", provider: "stripe", status: "paid", amount_cents: 499, currency: "usd", livemode: 1 },
     ]);
@@ -292,7 +293,7 @@ describe("POST /stripe/webhook", () => {
     await deliver(succeeded());
     expect((await deliver(succeeded())).status).toBe(200);
     expect(purchases()).toHaveLength(1);
-    expect(games.get("g1")!.status).toBe("open");
+    expect(games.get("g1")!.paid).toBe(true);
   });
 
   it("rejects a tampered body", async () => {
@@ -300,7 +301,7 @@ describe("POST /stripe/webhook", () => {
     const signature = await signStripePayload(payload, WEBHOOK_SECRET, NOW());
     const res = await deliver(payload.replace('"g1"', '"g2"'), signature);
     expect(res.status).toBe(400);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
   });
 
   it("rejects a replayed (stale) delivery", async () => {
@@ -308,13 +309,13 @@ describe("POST /stripe/webhook", () => {
     const res = await deliver(payload, await signStripePayload(payload, WEBHOOK_SECRET, NOW() - 600));
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toMatch(/stale/);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
   });
 
-  it("keeps a payment for a board deleted before it landed as unused, and opens nothing", async () => {
+  it("keeps a payment for a board deleted before it landed as unused, and marks nothing", async () => {
     games.delete("g1");
     expect((await deliver(succeeded())).status).toBe(200);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
     expect(purchases()).toEqual([
       { reference: "pi_9", game_id: "g1", provider: "stripe", status: "unused", amount_cents: 499, currency: "usd", livemode: 1 },
     ]);
@@ -323,7 +324,7 @@ describe("POST /stripe/webhook", () => {
   it("ignores intents that aren't board purchases, and other event types", async () => {
     expect((await deliver(succeeded({ game_id: "g1" }))).status).toBe(200);
     expect((await deliver(event("charge.succeeded", { id: "ch_1", object: "charge", metadata: { game_id: "g1", product: "board" } }))).status).toBe(200);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
     expect(purchases()).toEqual([]);
   });
 });
@@ -349,15 +350,15 @@ describe("POST /games/:id/pay/iap", () => {
     return { signedTransactionInfo: `${part({ alg: "ES256", x5c: [] })}.${part(payload)}.${base64UrlEncode(new Uint8Array(64))}` };
   }
 
-  it("verifies the purchase with Apple and opens the board", async () => {
+  it("verifies the purchase with Apple and marks the board paid", async () => {
     fetchMock.mockResolvedValueOnce(Response.json(signedTransaction()));
     const res = await call("/games/g1/pay/iap", { body: { transactionId: TX } });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { state: GameState }).state.game.status).toBe("open");
+    expect(((await res.json()) as { state: GameState }).state.game.paid).toBe(true);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`${APP_STORE_HOSTS.production}/inApps/v1/transactions/${TX}`);
     expect((init.headers as Record<string, string>).authorization).toMatch(/^Bearer /);
-    expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "iap", reference: TX, amountCents: 499 });
+    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "iap", reference: TX, amountCents: 499 });
     expect(purchases()).toEqual([
       { reference: TX, game_id: "g1", provider: "iap", status: "paid", amount_cents: 499, currency: "usd", livemode: 1 },
     ]);
@@ -378,7 +379,7 @@ describe("POST /games/:id/pay/iap", () => {
     expect((await call("/games/g1/pay/iap", { body: { transactionId: TX } })).status).toBe(200);
     const res = await call("/games/g2/pay/iap", { body: { transactionId: TX } });
     expect(res.status).toBe(409);
-    expect(games.get("g2")!.status).toBe("draft");
+    expect(games.get("g2")!.paid).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1); // the second board never reached Apple
   });
 
@@ -395,7 +396,7 @@ describe("POST /games/:id/pay/iap", () => {
       fetchMock.mockResolvedValueOnce(Response.json(signedTransaction(over)));
       expect((await call("/games/g1/pay/iap", { body: { transactionId: TX } })).status).toBe(400);
     }
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
   });
 
   it("answers a retry from the ledger without asking Apple again", async () => {
@@ -406,12 +407,12 @@ describe("POST /games/:id/pay/iap", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("won't let a second purchase pay for a board that's already open: it's kept as unused, not paid", async () => {
+  it("won't let a second purchase pay for a board that's already paid for: it's kept as unused, not paid", async () => {
     // tx 1001 is charged but can't be confirmed (a bad Apple key answers 401 every time)...
     vi.spyOn(console, "error").mockImplementation(() => {});
     fetchMock.mockResolvedValue(new Response("", { status: 401 }));
     for (let i = 0; i < 3; i++) expect((await call("/games/g1/pay/iap", { body: { transactionId: "1001" } })).status).toBe(502);
-    // ...another purchase opens the board, then recovery sends 1001 again.
+    // ...another purchase pays for the board, then recovery sends 1001 again.
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (url: string) =>
       Response.json(signedTransaction({ transactionId: url.endsWith("1002") ? "1002" : "1001" })),
@@ -420,9 +421,9 @@ describe("POST /games/:id/pay/iap", () => {
     const res = await call("/games/g1/pay/iap", { body: { transactionId: "1001" } });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { error: string; state: GameState; unused: boolean };
-    expect(body).toMatchObject({ unused: true, state: { game: { status: "open" } } });
-    expect(body.error).toMatch(/already open.*reportaproblem\.apple\.com/);
-    expect(service.activateGame).toHaveBeenCalledTimes(1);
+    expect(body).toMatchObject({ unused: true, state: { game: { paid: true } } });
+    expect(body.error).toMatch(/already paid for.*reportaproblem\.apple\.com/);
+    expect(service.markPaid).toHaveBeenCalledTimes(1);
     expect(purchases().map((p) => [p.reference, p.status])).toEqual([
       ["1002", "paid"],
       ["1001", "unused"],
@@ -446,7 +447,7 @@ describe("POST /games/:id/pay/iap", () => {
     expect(purchases()).toEqual([
       { reference: TX, game_id: "g1", provider: "iap", status: "unused", amount_cents: 499, currency: "usd", livemode: 1 },
     ]);
-    expect(service.activateGame).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
     // Not bound to the deleted board: nothing is recorded.
     fetchMock.mockResolvedValue(Response.json(signedTransaction({ transactionId: "77", appAccountToken: undefined })));
     expect((await call("/games/g1/pay/iap", { body: { transactionId: "77" } })).status).toBe(404);
@@ -455,7 +456,7 @@ describe("POST /games/:id/pay/iap", () => {
     expect(purchases()).toHaveLength(1);
   });
 
-  it("answers 410 for a purchase that opened a board that's since been deleted", async () => {
+  it("answers 410 for a purchase that paid for a board that's since been deleted", async () => {
     fetchMock.mockResolvedValueOnce(Response.json(signedTransaction()));
     expect((await call("/games/g1/pay/iap", { body: { transactionId: TX } })).status).toBe(200);
     games.delete("g1");
@@ -465,12 +466,12 @@ describe("POST /games/:id/pay/iap", () => {
     expect(purchases()[0].status).toBe("paid");
   });
 
-  describe("two payments for one draft at the same instant", () => {
+  describe("two payments for one board at the same instant", () => {
     /** Apple answers for whichever transaction is asked about. */
     const appleAnswers = () =>
       fetchMock.mockImplementation(async (url: string) => Response.json(signedTransaction({ transactionId: url.split("/").pop() })));
 
-    it("two App Store transactions: one opens the board, the other is kept as unused (409) for a refund", async () => {
+    it("two App Store transactions: one pays for the board, the other is kept as unused (409) for a refund", async () => {
       appleAnswers();
       const [a, b] = await Promise.all([
         call("/games/g1/pay/iap", { body: { transactionId: "1001" } }),
@@ -478,13 +479,13 @@ describe("POST /games/:id/pay/iap", () => {
       ]);
       expect([a.status, b.status].sort()).toEqual([200, 409]);
       const lost = (await (a.status === 409 ? a : b).json()) as { error: string; unused: boolean; state: GameState };
-      expect(lost).toMatchObject({ unused: true, error: expect.stringMatching(/already open.*reportaproblem\.apple\.com/) });
+      expect(lost).toMatchObject({ unused: true, error: expect.stringMatching(/already paid for.*reportaproblem\.apple\.com/) });
       const rows = purchases();
       expect(rows.map((r) => r.status).sort()).toEqual(["paid", "unused"]);
       const winner = rows.find((r) => r.status === "paid")!.reference;
-      expect(service.activateGame).toHaveBeenCalledTimes(1);
-      expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "iap", reference: winner, amountCents: 499 });
-      expect(games.get("g1")!.status).toBe("open");
+      expect(service.markPaid).toHaveBeenCalledTimes(1);
+      expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", { provider: "iap", reference: winner, amountCents: 499 });
+      expect(games.get("g1")!.paid).toBe(true);
     });
 
     it("a Stripe webhook and an App Store purchase: only one is recorded as paying for the board", async () => {
@@ -522,8 +523,8 @@ describe("POST /games/:id/pay/iap", () => {
       const winner = rows.find((r) => r.status === "paid")!;
       // The App Store purchase is told when it lost, so the app finishes it and the host can ask for a refund.
       expect(iapRes.status).toBe(winner.reference === TX ? 200 : 409);
-      expect(service.activateGame).toHaveBeenCalledTimes(1);
-      expect(service.activateGame).toHaveBeenCalledWith(expect.anything(), "g1", expect.objectContaining({ reference: winner.reference }));
+      expect(service.markPaid).toHaveBeenCalledTimes(1);
+      expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "g1", expect.objectContaining({ reference: winner.reference }));
     });
   });
 

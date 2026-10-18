@@ -110,7 +110,7 @@ describe("createBoardPaymentIntent", () => {
       currency: "usd",
       "automatic_payment_methods[enabled]": "true",
       "automatic_payment_methods[allow_redirects]": "never",
-      description: "JaxSquares board",
+      description: "JaxSquares host fee (one board)",
       "metadata[game_id]": "g1",
       "metadata[product]": "board",
     });

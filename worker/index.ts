@@ -22,7 +22,8 @@ import {
 } from "../shared/formats";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
-import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
+import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
+import { PAYMENT_REQUIRED_CODE } from "../shared/types";
 import type {
   Activity,
   CreateGameResponse,
@@ -45,7 +46,7 @@ import { pushRoutes, type NotifyEvent } from "./push";
 import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLimit";
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
-import { closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
+import { broadcast, closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
 
 export { GameRoom } from "./room";
 export { ScoreHub } from "./scores/hub";
@@ -69,6 +70,12 @@ const MAX_SCORE = 999;
 const DEFAULT_COLOR = "#38bdf8";
 const DEFAULT_BUNDLE_ID = "com.jaxsquares.app";
 const BOARD_FULL = "This board has all the players it can take. Ask the host to make room.";
+/** POST /lock on a board whose host fee isn't paid yet (402, with PAYMENT_REQUIRED_CODE). */
+const DRAW_NEEDS_PAYMENT = "Draw the numbers once the board's paid for.";
+/** How long before a linked board's kickoff its host hears "draw the numbers" while the fee is unpaid. */
+const DRAW_REMINDER_LEAD_MS = 60 * 60_000;
+/** A board made this recently isn't reminded: its host is setting it up right now. */
+const DRAW_REMINDER_MIN_AGE_MS = 15 * 60_000;
 
 // ---- small validation helpers ----
 
@@ -389,12 +396,14 @@ api.post("/games", requireClient, async (c) => {
       prizes: {},
       maxPerPlayer,
       numbers: null,
-      status: "draft",
+      // Open right away: setting up, inviting and picking squares are free; the host fee is due at the draw.
+      status: "open",
       linkedEvent,
       startsAt,
       hostPlayerId: me,
       createdAt: now,
       lockedAt: null,
+      paid: false,
     };
     try {
       const created = newActivity("created", me, {}, now);
@@ -403,7 +412,7 @@ api.post("/games", requireClient, async (c) => {
       if (String(err).includes("UNIQUE") && attempt < 3) continue; // id collision: roll again
       throw err;
     }
-    const res: CreateGameResponse = { game, adminToken, paymentRequired: true };
+    const res: CreateGameResponse = { game, adminToken, paymentRequired: false };
     return c.json(res, 201);
   }
   throw new Error("unreachable");
@@ -615,20 +624,25 @@ api.post("/games/:id/release", requireClient, async (c) => {
 api.post("/games/:id/lock", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
-  if (state.game.status === "draft") fail(409, "This board isn't open yet");
-  if (state.game.status !== "open") fail(409, "Numbers are already drawn");
+  const { game } = state;
+  if (game.status !== "open" && game.status !== "draft") fail(409, "Numbers are already drawn");
+  // The host fee is due at the draw (a legacy draft hasn't paid either; paying opens it).
+  if (!game.paid) return c.json({ error: DRAW_NEEDS_PAYMENT, code: PAYMENT_REQUIRED_CODE }, 402);
   const now = Date.now();
   const me = c.get("playerId");
   const locked = newActivity("locked", me, {}, now);
-  const { state: next } = await commitOr404(
-    c,
-    id,
-    [db.lockGame(c.env.DB, id, drawNumbers(state.game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked)],
-    now,
-  );
+  const writes = [db.lockGame(c.env.DB, id, drawNumbers(game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked)];
+  // A linked game that ended before its host paid and drew: the room stopped
+  // polling at the final whistle, so the board goes final with the draw.
+  const over = !!game.linkedEvent && state.live?.state === "post" && liveLabel(state.live, game.status) === "Final";
+  const final = over ? newActivity("final", null, {}, now) : null;
+  if (final) writes.push(db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final));
+  const { state: next } = await commitOr404(c, id, writes, now);
   const recorded = next.activity.some((a) => a.id === locked.id);
-  // The host who drew the numbers isn't pushed about it.
-  publish(c, next, [locked.id], recorded ? [{ kind: "numbers-drawn", actor: me }] : []);
+  const ended = !!final && next.activity.some((a) => a.id === final.id);
+  // The host who drew the numbers isn't pushed about it; a game already over gets the wrap-up instead.
+  const notifications: NotifyEvent[] = ended ? [{ kind: "final", actor: me }] : recorded ? [{ kind: "numbers-drawn", actor: me }] : [];
+  publish(c, next, final ? [locked.id, final.id] : [locked.id], notifications);
   return c.json({ state: next });
 });
 
@@ -897,8 +911,10 @@ app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 // ---- Cron (every minute) ----
 // Wakes the GameRoom of linked games about to kick off or in progress so live
-// polling starts on time; once an hour also runs housekeeping (stale drafts,
-// old activity, expired rate-limit windows; see worker/housekeeping.ts).
+// polling starts on time, and reminds hosts of linked boards kicking off
+// within the hour whose host fee is unpaid (they don't draw on their own);
+// once an hour also runs housekeeping (old activity, expired rate-limit
+// windows, boards left from the pay-to-open flow; see worker/housekeeping.ts).
 
 async function wakeLinkedGames(env: Env, now: number): Promise<void> {
   const ids = await db.gamesToWake(env.DB, now, POLL_LEAD_MS);
@@ -908,15 +924,24 @@ async function wakeLinkedGames(env: Env, now: number): Promise<void> {
   for (const r of results) if (r.status === "rejected") console.error("wake failed", r.reason);
 }
 
-/** Hourly cleanup; boards it deleted (stale drafts) are closed like a host delete. */
+/**
+ * "Kickoff soon, draw the numbers" to the host of each linked board kicking
+ * off within the hour with its host fee unpaid. Once per board (claimed in SQL).
+ */
+async function remindUnpaidHosts(env: Env, now: number): Promise<void> {
+  const ids = await db.claimDrawReminders(env.DB, now, DRAW_REMINDER_LEAD_MS, DRAW_REMINDER_MIN_AGE_MS);
+  await Promise.all(ids.map((id) => notifyAll(env, id, [{ kind: "draw-reminder" }])));
+}
+
+/** Hourly cleanup; a leftover draft it opens gets its new state pushed like any change. */
 async function housekeep(env: Env, now: number): Promise<void> {
-  const { drafts } = await housekeeping(env, now);
-  await Promise.all(drafts.map((id) => closeRoom(env, id)));
+  const { opened } = await housekeeping(env, now);
+  await Promise.all(opened.map((id) => broadcast(env, id)));
 }
 
 async function scheduled(controller: ScheduledController, env: Env): Promise<void> {
   const now = Date.now();
-  const jobs = [wakeLinkedGames(env, now)];
+  const jobs = [wakeLinkedGames(env, now), remindUnpaidHosts(env, now)];
   if (isHousekeepingTick(controller.scheduledTime || now)) jobs.push(housekeep(env, now));
   const results = await Promise.allSettled(jobs);
   for (const r of results) if (r.status === "rejected") console.error("cron job failed", r.reason);

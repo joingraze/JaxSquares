@@ -118,12 +118,18 @@ describe("sectionOf / hostAction / actionFor", () => {
     // My own board is never an invite, even before I pick.
     expect(sectionOf(summary({ status: "open", isHost: true, claimed: 3 }))).toBe("needs");
     const live = { state: "in" as const, period: 1, clock: "9:00", detail: "Q1 9:00", scoreX: 0, scoreY: 0, updatedAt: 1 };
-    expect(sectionOf(summary({ status: "open", isHost: true, live }))).toBe("live");
-    expect(actionFor(summary({ status: "open", isHost: true, live }))).toBeNull();
+    // A linked game on without its numbers (the host fee wasn't paid by kickoff): live news to
+    // players, a draw to do for the host.
+    expect(sectionOf(summary({ status: "open", mySquares: 2, live }))).toBe("live");
+    expect(actionFor(summary({ status: "open", mySquares: 2, live }))).toBeNull();
+    expect(sectionOf(summary({ status: "open", isHost: true, claimed: 40, live }))).toBe("needs");
+    expect(actionFor(summary({ status: "open", isHost: true, claimed: 40, live }))).toBe("lock");
+    expect(sectionOf(summary({ status: "locked", isHost: true, claimed: 40, live }))).toBe("live");
   });
 
   it("asks the host for the right next step", () => {
-    expect(hostAction(summary({ status: "draft" }))).toBe("finish-setup");
+    // A draft left from the pay-to-open flow is like any open board (paying at the draw opens it).
+    expect(hostAction(summary({ status: "draft" }))).toBe("invite");
     expect(hostAction(summary({ claimed: 100 }))).toBe("lock");
     expect(hostAction(summary({ claimed: 25, totalSquares: 25 }))).toBe("lock");
     expect(hostAction(summary({ claimed: 58 }))).toBe("invite");
@@ -137,7 +143,6 @@ describe("sectionOf / hostAction / actionFor", () => {
 describe("groupBoards", () => {
   it("orders to-dos by urgency, invites and upcoming boards by kickoff", () => {
     const s = groupBoards([
-      summary({ id: "draft", isHost: true, status: "draft" }),
       summary({ id: "fill", isHost: true, claimed: 40 }),
       summary({ id: "full", isHost: true, claimed: 100 }),
       summary({ id: "pick", claimed: 10 }),
@@ -149,7 +154,7 @@ describe("groupBoards", () => {
       summary({ id: "new-final", status: "final", lastActivityAt: 9 }),
     ]);
     // Picking moved out of Needs you: it's for host to-dos only.
-    expect(s.needs.map((g) => g.id)).toEqual(["full", "fill", "draft"]);
+    expect(s.needs.map((g) => g.id)).toEqual(["full", "fill"]);
     expect(s.invites.map((g) => g.id)).toEqual(["opened", "pick"]);
     expect(s.next.map((g) => g.id)).toEqual(["soon", "later", "tbd"]);
     expect(s.final.map((g) => g.id)).toEqual(["new-final", "old-final"]);
@@ -162,7 +167,7 @@ describe("groupBoards", () => {
     // A full board waiting on my draw beats an invite; an invite beats inviting more to mine.
     expect(primaryActionId(groupBoards([summary({ id: "pick" }), summary({ id: "full", isHost: true, claimed: 100 })]))).toBe("full");
     expect(primaryActionId(groupBoards([summary({ id: "fill", isHost: true, claimed: 3 }), summary({ id: "pick", joined: false })]))).toBe("pick");
-    expect(primaryActionId(groupBoards([summary({ id: "draft", isHost: true, status: "draft" })]))).toBe("draft");
+    expect(primaryActionId(groupBoards([summary({ id: "fill", isHost: true, claimed: 3 })]))).toBe("fill");
     expect(primaryActionId(groupBoards([summary({ id: "full", claimed: 100 })]))).toBeNull();
   });
 });
@@ -272,13 +277,15 @@ describe("cardModel", () => {
     expect(cardModel(summary({ claimed: 84 }), now)).toMatchObject({ status: "16 left", action: { kind: "pick", label: "Pick squares" } });
     expect(cardModel(summary({ isHost: true, claimed: 100 }), now)).toMatchObject({ status: "Board's full", statusTone: "gold", action: { label: "Draw numbers" }, buzz: false });
     expect(cardModel(summary({ isHost: true, claimed: 92 }), now)).toMatchObject({ status: "8 left", statusIsLeft: true, statusTone: "gold", action: { label: "Draw numbers" } });
-    expect(cardModel(summary({ isHost: true, status: "draft" }), now)).toMatchObject({ status: "Not open yet", action: { label: "Finish setup" }, meter: false });
     expect(cardModel(summary({ mySquares: 5, claimed: 100 }), now)).toMatchObject({ status: "Board's full", action: null });
   });
 
-  it("says who draws on a full board I'm watching: the kickoff on a linked game, else the host", () => {
+  it("says who draws on a full board I'm watching: the kickoff on a paid linked game, else the host", () => {
     const full = { mySquares: 0, claimed: 100, joined: true };
     expect(cardModel(summary({ ...full, linked: true }), now)).toMatchObject({ status: "Board's full", meta: "numbers drawn at kickoff" });
+    expect(cardModel(summary({ ...full, linked: true, paid: true }), now)).toMatchObject({ status: "Board's full", meta: "numbers drawn at kickoff" });
+    // Its host fee isn't paid: it won't draw itself at kickoff.
+    expect(cardModel(summary({ ...full, linked: true, paid: false }), now)).toMatchObject({ status: "Board's full", meta: "waiting on the host's draw" });
     expect(cardModel(summary({ ...full, linked: false }), now)).toMatchObject({ status: "Board's full", meta: "waiting on the host's draw" });
   });
 });

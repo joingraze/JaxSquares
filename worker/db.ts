@@ -72,6 +72,10 @@ export interface GameRow {
   version: number;
   /** When "your board is full" was announced (migration 0007); null until then. Server-only. */
   board_full_at?: number | null;
+  /** When the host fee was paid (migration 0009); null = not yet. Public as `Game.paid`. */
+  paid_at?: number | null;
+  /** When the host was reminded to draw before kickoff (migration 0009). Server-only. */
+  draw_reminder_at?: number | null;
 }
 
 interface PlayerRow {
@@ -155,6 +159,8 @@ export function rowToGame(r: GameRow, hostPlayerId: string): Game {
     hostPlayerId,
     createdAt: r.created_at,
     lockedAt: r.locked_at,
+    // Grandfathered boards (made under pay-to-open) were stamped by migration 0009.
+    paid: r.paid_at != null,
   };
 }
 
@@ -567,15 +573,22 @@ export function releaseSquares(
   return cells.map((c) => stmt.bind(gameId, c.row, c.col, clientId));
 }
 
-/** open -> locked with the drawn numbers. No-op unless the board is open. */
+/**
+ * open -> locked with the drawn numbers. No-op unless the board is open and
+ * its host fee is paid (the routes say why first; this keeps a race honest).
+ */
 export function lockGame(db: D1Database, gameId: string, numbers: Record<string, NumberDraw>, now: number): D1PreparedStatement {
   return db
-    .prepare(`UPDATE games SET status = 'locked', numbers = ?, locked_at = ? WHERE id = ? AND status = 'open'`)
+    .prepare(`UPDATE games SET status = 'locked', numbers = ?, locked_at = ? WHERE id = ? AND status = 'open' AND paid_at IS NOT NULL`)
     .bind(JSON.stringify(numbers), now, gameId);
 }
 
-/** draft -> open after the creator's payment. No-op unless still a draft. */
-export function activateGame(
+/**
+ * Records the board's host fee: stamps paid_at with the purchase that paid
+ * it (the ledger, worker/payments/store.ts, decides which one that is). A
+ * legacy draft opens too. No-op once the board is paid.
+ */
+export function markPaid(
   db: D1Database,
   gameId: string,
   purchase: { provider: string; reference: string; amountCents: number },
@@ -583,8 +596,9 @@ export function activateGame(
 ): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE games SET status = 'open', activated_at = ?, payment_provider = ?, payment_reference = ?, payment_amount_cents = ?
-       WHERE id = ? AND status = 'draft'`,
+      `UPDATE games SET paid_at = ?1, payment_provider = ?2, payment_reference = ?3, payment_amount_cents = ?4,
+         activated_at = COALESCE(activated_at, ?1), status = CASE WHEN status = 'draft' THEN 'open' ELSE status END
+       WHERE id = ?5 AND paid_at IS NULL`,
     )
     .bind(now, purchase.provider, purchase.reference, Math.trunc(purchase.amountCents) || 0, gameId);
 }
@@ -799,6 +813,7 @@ export async function listGamesForClient(
       isHost: r.host_client_id === clientId,
       joined: !!r.joined,
       linked: game.linkedEvent !== null,
+      paid: game.paid,
       // Public profile only: the host's public id, never their clientId.
       host: r.host_name !== null ? { id: game.hostPlayerId, name: r.host_name, color: r.host_color ?? "", emoji: r.host_emoji ?? "" } : null,
       mySquares: r.my_squares,
@@ -868,30 +883,40 @@ export async function hitRateLimit(db: D1Database, key: string, windowMs: number
   return row?.count ?? 1;
 }
 
+/**
+ * Claims the linked boards due a "kickoff soon, draw the numbers" reminder:
+ * still open with the host fee unpaid, kicking off within `leadMs`, made at
+ * least `minAgeMs` ago (a host setting up right now doesn't need one), and
+ * not reminded yet. Stamped in the same statement, so each board gets one.
+ */
+export async function claimDrawReminders(db: D1Database, now: number, leadMs: number, minAgeMs: number): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `UPDATE games SET draw_reminder_at = ?1
+       WHERE linked_event IS NOT NULL AND starts_at IS NOT NULL AND starts_at > ?1 AND starts_at <= ?2
+         AND status = 'open' AND paid_at IS NULL AND draw_reminder_at IS NULL AND created_at <= ?3
+       RETURNING id`,
+    )
+    .bind(now, now + leadMs, now - minAgeMs)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
 // ---- Housekeeping (cron) ----
 
-const GAME_TABLES = ["activity", "live_status", "manual_winners", "scores", "squares", "players"] as const;
-
 /**
- * Deletes up to `limit` boards still in "draft" (never paid for) that were
- * created before `before`. Returns their ids. Purchases are a ledger and stay.
+ * Settles boards from the pay-to-open flow that migration 0009 couldn't see:
+ * ones the previous Worker made or opened between the migration and the
+ * deploy (CI applies migrations just before it deploys). A board its payment
+ * opened counts as paid; a draft opens (it pays at the draw like any new
+ * board). Returns the ids of the boards it opened.
  */
-export async function deleteStaleDrafts(db: D1Database, before: number, limit = 100): Promise<string[]> {
-  const { results } = await db
-    .prepare(`SELECT id FROM games WHERE status = 'draft' AND created_at < ? ORDER BY created_at LIMIT ?`)
-    .bind(before, limit)
-    .all<{ id: string }>();
-  if (results.length === 0) return [];
-  const ids = JSON.stringify(results.map((r) => r.id));
-  // Re-checked inside the transaction: a draft paid for since the SELECT is
-  // kept, so only the ids the last statement actually deleted are returned
-  // (the cron closes their rooms).
-  const stillDraft = `SELECT id FROM games WHERE status = 'draft' AND id IN (SELECT value FROM json_each(?1))`;
-  const out = await db.batch([
-    ...GAME_TABLES.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id IN (${stillDraft})`).bind(ids)),
-    db.prepare(`DELETE FROM games WHERE id IN (${stillDraft}) RETURNING id`).bind(ids),
+export async function settleLegacyBoards(db: D1Database, now: number): Promise<string[]> {
+  const [, opened] = await db.batch([
+    db.prepare(`UPDATE games SET paid_at = COALESCE(activated_at, ?1) WHERE paid_at IS NULL AND payment_reference IS NOT NULL`).bind(now),
+    db.prepare(`UPDATE games SET status = 'open', version = version + 1, updated_at = ?1 WHERE status = 'draft' RETURNING id`).bind(now),
   ]);
-  return (out[out.length - 1].results as { id: string }[]).map((r) => r.id);
+  return (opened.results as { id: string }[]).map((r) => r.id);
 }
 
 /** Keeps only the newest `keep` activity rows of each game. Returns how many rows went. */

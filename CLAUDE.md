@@ -74,7 +74,11 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   (`amountIsRest`) or `restSoFar(state)`, never from the rule. Suggested
   amounts (`suggestPrizes`) fill the create flow until the host types one.
   Read amounts through `PeriodResult` / `prizeAmount`, not `rule.square.amount`.
-- The only payment is the creator paying to open a board (`docs/payments.md`).
+- The only payment is the host fee for a board, due when the host draws the
+  numbers: creating, inviting and picking squares are free, and `POST /lock`
+  answers 402 (`PAYMENT_REQUIRED_CODE`) until `Game.paid`. Boards made before
+  that count as paid; a linked board draws itself at kickoff only once paid
+  (`docs/payments.md`).
 
 ## Conventions
 
