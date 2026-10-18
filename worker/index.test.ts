@@ -5,6 +5,7 @@
 // Only the GameRoom (sockets) and push delivery are faked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR } from "../shared/formats";
+import { KICKOFF_ERRORS } from "../shared/kickoff";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { MAX_PLAYERS, resolveResults } from "../shared/squares";
 import type { CreateGameResponse, GameState, GameSummary, LiveUpdate } from "../shared/types";
@@ -35,18 +36,20 @@ const MIGRATIONS = [
   "migrations/0005_housekeeping.sql",
   "migrations/0006_purchases_unused.sql",
   "migrations/0007_board_full_announced.sql",
+  "migrations/0008_custom_kickoff.sql",
 ];
 
 let t: TestD1;
 let env: Env;
-let roomCalls: { url: string; body: string | null }[];
+let roomCalls: { url: string; body: string | null; game?: string | null }[];
 
 beforeEach(async () => {
   t = await createTestD1(MIGRATIONS);
   roomCalls = [];
   const stub = {
     fetch: async (input: string, init?: RequestInit) => {
-      roomCalls.push({ url: String(input), body: typeof init?.body === "string" ? init.body : null });
+      const game = (init?.headers as Record<string, string> | undefined)?.["x-game-id"] ?? null;
+      roomCalls.push({ url: String(input), body: typeof init?.body === "string" ? init.body : null, game });
       return new Response(null, { status: 204 });
     },
   };
@@ -879,6 +882,88 @@ describe("rules and prizes", () => {
     const done = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
     expect(done.game.status).toBe("final");
     expect(done.scores.map((s) => s.periodKey).sort()).toEqual(["final", "q1", "q2", "q3", "s1", "s2", "s3", "s4", "s5", "s6"]);
+  });
+});
+
+describe("custom kickoff", () => {
+  const HOUR = 3_600_000;
+  const DAY = 24 * HOUR;
+  const linked = (startsAt: number) => ({ provider: "espn", league: "nfl", eventId: "401", startsAt, xIsHome: false });
+
+  it("creates a custom board with the host's kickoff, on the board and in the summary", async () => {
+    const at = Date.now() + 3 * DAY;
+    const res = await call<CreateGameResponse>("POST", "/games", { body: createInput({ startsAt: at + 0.7 }) });
+    expect(res.status).toBe(201);
+    expect(res.body.game.startsAt).toBe(at);
+    expect(res.body.game.linkedEvent).toBeNull();
+    const { game } = (await call<GameState>("GET", `/games/${res.body.game.id}`, { client: null })).body;
+    expect(game.startsAt).toBe(at);
+    const { games } = (await call<{ games: GameSummary[] }>("GET", "/me/games")).body;
+    expect(games.find((g) => g.id === game.id)?.startsAt).toBe(at);
+  });
+
+  it("is optional: no set time is null", async () => {
+    for (const startsAt of [undefined, null]) {
+      const res = await call<CreateGameResponse>("POST", "/games", { body: createInput({ startsAt }) });
+      expect(res.status).toBe(201);
+      expect(res.body.game.startsAt).toBeNull();
+    }
+  });
+
+  it("takes a kickoff from about a day ago to a year ahead, and says why otherwise", async () => {
+    const now = Date.now();
+    const status = async (startsAt: unknown) => (await call<{ error?: string }>("POST", "/games", { body: createInput({ startsAt }) })).body;
+    expect((await status(now - 2 * HOUR)).error).toBeUndefined();
+    expect((await status(now + 360 * DAY)).error).toBeUndefined();
+    expect((await status(now - 2 * DAY)).error).toBe(KICKOFF_ERRORS.past);
+    expect((await status(now + 400 * DAY)).error).toBe(KICKOFF_ERRORS.future);
+    expect((await status("tomorrow")).error).toBe(KICKOFF_ERRORS.invalid);
+    expect((await status({ at: now })).error).toBe(KICKOFF_ERRORS.invalid);
+  });
+
+  it("uses a linked board's event time and ignores a kickoff sent with it", async () => {
+    const at = Date.now() + 2 * DAY;
+    const res = await call<CreateGameResponse>("POST", "/games", {
+      body: createInput({ league: "nfl", linkedEvent: linked(at), startsAt: Date.now() + 5 * DAY }),
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.game.startsAt).toBe(at);
+    expect(t.query(`SELECT starts_at FROM games WHERE id = ?`, res.body.game.id)).toEqual([{ starts_at: at }]);
+  });
+
+  it("lets the host change or clear it (host only, custom only, same checks), and pushes the new state", async () => {
+    const { id, admin } = await openBoard();
+    const at = Date.now() + 4 * DAY;
+    expect((await call("PATCH", `/games/${id}`, { client: ANA, admin: "nope", body: { startsAt: at } })).status).toBe(403);
+    roomCalls = [];
+    const set = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { startsAt: at } });
+    expect(set.status).toBe(200);
+    expect(set.body.state.game.startsAt).toBe(at);
+    expect(roomCalls.some((r) => r.url === "https://room/broadcast")).toBe(true);
+    // Display only: no activity, so nobody is pushed about it.
+    expect(set.body.state.activity.some((a) => a.type === "rules")).toBe(false);
+
+    const bad = await call<{ error: string }>("PATCH", `/games/${id}`, { admin, body: { startsAt: Date.now() + 500 * DAY } });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe(KICKOFF_ERRORS.future);
+
+    const cleared = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { startsAt: null } });
+    expect(cleared.body.state.game.startsAt).toBeNull();
+
+    const other = (await call<CreateGameResponse>("POST", "/games", { body: createInput({ league: "nfl", linkedEvent: linked(Date.now() + DAY) }) })).body;
+    const refused = await call<{ error: string }>("PATCH", `/games/${other.game.id}`, { admin: other.adminToken, body: { startsAt: at } });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toBe(KICKOFF_ERRORS.linked);
+  });
+
+  it("never wakes a custom board's room: it has no feed to poll and never locks itself", async () => {
+    const custom = await openBoard({ startsAt: Date.now() + 5 * 60_000 });
+    const real = (await call<CreateGameResponse>("POST", "/games", { body: createInput({ league: "nfl", linkedEvent: linked(Date.now() + 5 * 60_000) }) })).body;
+    await call("POST", `/games/${real.game.id}/pay/test`, { admin: real.adminToken });
+    roomCalls = [];
+    await worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 16, 3, 1), cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);
+    expect(roomCalls.filter((r) => r.url === "https://room/wake").map((r) => r.game)).toEqual([real.game.id]);
+    expect((await call<GameState>("GET", `/games/${custom.id}`, { client: null })).body.game.status).toBe("open");
   });
 });
 

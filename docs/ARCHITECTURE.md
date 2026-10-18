@@ -95,7 +95,9 @@ the same value synchronously.) It is stable per device and one-way.
   one request per scoreboard per TTL however many boards are live). Without the
   binding, or if it fails, callers fetch directly (`worker/scores/hub.ts`).
 - Cron trigger (every minute) wakes the `GameRoom` of linked games that start within
-  the next 15 minutes or are in progress, so polling starts on time. Once an hour
+  the next 15 minutes or are in progress, so polling starts on time (custom
+  boards keep their host-set kickoff in the same `games.starts_at`, but have
+  no feed to poll, so the wake query and its index, migration 0008, skip them). Once an hour
   (UTC minute 17) it also runs housekeeping (`worker/housekeeping.ts`): deletes
   boards still in `draft` (never paid) 7 days after creation (closing their
   rooms like a host delete), prunes activity beyond the newest 200 per game, and
@@ -113,10 +115,10 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute) |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name; 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push |
 | DELETE | `/api/games/:id` | C H | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404 |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `draft`/`open`; 400 for the host, 404 if not on the board, 409 once locked. They may join again |
@@ -521,6 +523,60 @@ score, q1, q2, q3, final.
   `teamVars(x, y, theme)` / `readableTeamColor(c, fallback, theme)` with
   `useResolvedTheme()` (team colors are lifted on dark and darkened to 3:1 on light).
 
+## Kickoff
+
+`Game.startsAt` (and `GameSummary.startsAt`) is when the board's game kicks off,
+epoch ms: a linked board's event time (from ESPN, as `linkedEvent.startsAt`),
+or a custom board's host-set time, or null for no set time. `gameKickoff(game)`
+in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
+
+- Custom boards only take one from the host: `CreateGameInput.startsAt` and
+  PATCH `startsAt` (host only), null or a number from a day ago to a year
+  ahead (`kickoffProblem`, shared by the worker and the client; 400 with
+  `KICKOFF_ERRORS` otherwise). Create ignores it on a linked board (its event
+  wins); PATCH refuses it there (400).
+- Display only. A custom board never locks itself at kickoff and gets no
+  "kickoff" push: nothing confirms the game started (no feed), and the host
+  draws the numbers when everyone's in. `game-starting` stays a linked-board
+  push, sent when the feed goes live; it never carries an amount.
+- Shown as "Kicks off Sun 1:00 PM PDT" (`kicksOffLabel` in `src/lib/format.ts`,
+  the device's zone labeled at the kickoff itself, so a November date reads
+  PST) on the scorebug while squares are picked and in the invite hero; the
+  locked scorebug counts down to it; Home sorts Invites and Up next by it and
+  counts down; the host sheet's Edit board changes it (`KickoffPicker`).
+
+## Create flow (client)
+
+`/new` is a five-step guided flow (`src/pages/CreateGame.tsx`, model in
+`src/features/create/wizard.ts`): `game` (NFL / College by week, soonest
+picked, or Custom teams + kickoff), `format` (how squares win), `prizes` (the
+rules & prizes editor; skippable, Review then flags "Square price: not set"),
+`details` (board name, max per player, the host's name on a device without
+one) and `review` (a card per step, then Create). Every step starts filled
+in: the default path is pick the game (a tapped game moves on by itself),
+Next x3, Create.
+
+- The step is the URL, `/new?step=game|format|prizes|details|review`; Next
+  pushes a history entry, so the browser's back and the iOS swipe go back a
+  step. Each entry's state carries `wizardDepth` (entries pushed since the
+  first step), `fromReview` (opened from a Review card: Next reads "Done" and
+  goes back to Review) and `appBack` (an in-app page sits under the flow: the
+  top bar's close goes back there). A URL can't skip an incomplete step
+  (`reachableStep`): it lands on the first one that still needs something.
+- Next is disabled (`aria-disabled`, still tappable to focus the field) with
+  its reason above it only when a step is truly incomplete (`stepBlocker`):
+  custom teams, a kickoff out of range, a prize note that talks money, the
+  host's name, money in the board name.
+- The draft (tab, picks, teams, kickoff, format, prize choice, name, cap,
+  host name) lives in `sessionStorage` (`jaxsquares.createDraft`, 12 h), so a
+  reload keeps it; it's cleared once the board opens. A picked game that has
+  started since is dropped on restore.
+- Creating works as before (test mode / App Store open the board in one tap;
+  a live web checkout opens `CheckoutSheet`). Opening the board first rewinds
+  the flow's entries (`history.go(-wizardDepth)`), then replaces the first
+  one with `/g/<id>?invite=1`, so Back from the board goes where the host
+  started, not into a finished flow.
+
 ## Board deep links (client)
 
 Query flags on `/g/<id>` that open a step on arrival. Each is handled once and
@@ -612,5 +668,7 @@ when you typed the score); live-score events have none either. Push resolves
 public ids to devices through `getMembers()`.
 `worker/index.ts` mounts the three routers under `/api` and calls `notify` from the
 core routes. Each module owns its own migration file: core `0002_*`,
-`0005_housekeeping.sql` (rate limits, draft-cleanup index) and
-`0007_board_full_announced.sql`, payments `0003_*` and `0006_*`, push `0004_*`.
+`0005_housekeeping.sql` (rate limits, draft-cleanup index),
+`0007_board_full_announced.sql` and `0008_custom_kickoff.sql` (custom boards'
+kickoff in `starts_at`; the cron's index covers linked boards only), payments
+`0003_*` and `0006_*`, push `0004_*`.

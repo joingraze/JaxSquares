@@ -191,6 +191,22 @@ describe("invites vs boards I'm playing", () => {
     expect(s.needs).toEqual([]);
   });
 
+  it("orders Invites and Up next by kickoff, custom boards' host-set times included (no set time last)", () => {
+    const now = Date.now();
+    // Custom boards (no linked game) carry the host's kickoff in startsAt, like a linked game's.
+    const s = groupBoards([
+      summary({ id: "invite-none", joined: false, startsAt: null, lastActivityAt: 9 }),
+      summary({ id: "invite-sunday", joined: false, startsAt: now + 5 * 86_400_000 }),
+      summary({ id: "invite-tonight", startsAt: now + 3 * 3_600_000 }),
+      summary({ id: "next-none", mySquares: 3, startsAt: null, lastActivityAt: 9 }),
+      summary({ id: "next-monday", mySquares: 3, startsAt: now + 6 * 86_400_000 }),
+      summary({ id: "next-tomorrow", mySquares: 3, startsAt: now + 86_400_000 }),
+    ]);
+    expect(s.invites.map((g) => g.id)).toEqual(["invite-tonight", "invite-sunday", "invite-none"]);
+    expect(s.next.map((g) => g.id)).toEqual(["next-tomorrow", "next-monday", "next-none"]);
+    expect(cardModel(summary({ mySquares: 3, startsAt: now + 3 * 3_600_000 }), now).status).toBe("Kickoff in 3h 0m");
+  });
+
   it("moves an invite I never picked on to Live once numbers are drawn or the game is on, tagged Watching", () => {
     const s = groupBoards([summary({ id: "drawn", status: "locked", joined: false }), summary({ id: "kicked", status: "open", live, claimed: 30 })]);
     expect(s.invites).toEqual([]);
@@ -289,6 +305,14 @@ describe("withState", () => {
     expect(g.myWins).toEqual([{ periodKey: "q1", label: "Q1" }]);
     expect(g.latestScore).toEqual({ scoreX: 14, scoreY: 10, label: "Half" });
     expect(g.leaderPlayerId).toBe(MAYA);
+  });
+
+  it("keeps a custom board's host-set kickoff (and a linked one's event time)", () => {
+    const at = Date.now() + 86_400_000;
+    expect(withState(summary({ startsAt: at }), state({ game: { linkedEvent: null, startsAt: at } }), ME).startsAt).toBe(at);
+    expect(withState(summary({ startsAt: at }), state({ game: { linkedEvent: null, startsAt: null } }), ME).startsAt).toBeNull();
+    const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: at + 1, xIsHome: false };
+    expect(withState(summary(), state({ game: { linkedEvent } }), ME).startsAt).toBe(at + 1);
   });
 
   it("doesn't call a postponed game Final (only a finished one)", () => {

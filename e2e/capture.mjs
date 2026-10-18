@@ -198,8 +198,16 @@ try {
       await page.getByTestId("team-x-input").first().fill("Packers");
       await page.getByTestId("team-y-input").first().fill("Bears");
     }
+    // The guided flow: on to "How squares win".
+    await page.getByTestId("wizard-next").first().tap();
+    await page.locator('[data-testid="wizard-step"][data-step="format"]').waitFor();
     await snap(page, "create-format");
     if (want("checkout")) {
+      // Defaults the rest of the way: prizes, final touches, review.
+      for (const step of ["prizes", "details", "review"]) {
+        await page.getByTestId("wizard-next").first().tap();
+        await page.locator(`[data-testid="wizard-step"][data-step="${step}"]`).waitFor();
+      }
       // Test mode creates the board in one tap (no checkout sheet); capture
       // whichever comes first: the checkout sheet or the new board's invite sheet.
       await page.getByTestId("create-submit").first().tap();

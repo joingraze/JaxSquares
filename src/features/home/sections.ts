@@ -3,6 +3,7 @@
 // snapshot of a board in play, friend activity grouped by person, and the
 // headline. No React or IO, so it is unit-tested in sections.test.ts.
 
+import { gameKickoff } from "../../../shared/kickoff";
 import type { GameState, GameSummary, HostProfile, Player, Team } from "../../../shared/types";
 import { periodNote, periodPhrase } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel, pluralize } from "../../lib/format";
@@ -254,7 +255,7 @@ export function withState(g: GameSummary, s: GameState, me: string): GameSummary
     claimed: s.squares.length,
     playerCount: s.players.length,
     live: s.live,
-    startsAt: s.game.linkedEvent?.startsAt ?? null,
+    startsAt: gameKickoff(s.game),
     myWins: myWins(results, me).map((w) => ({ periodKey: w.periodKey, label: w.reverse ? `${w.label} (reverse)` : w.label })),
     lastActivityAt: Math.max(g.lastActivityAt, s.activity[0]?.at ?? 0),
     latestScore: latestScoreOf(s, results),

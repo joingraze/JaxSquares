@@ -1,7 +1,9 @@
-// The create page's checkout decisions, end to end through the real lib/checkout
+// The create flow's checkout decisions, end to end through the real lib/checkout
 // with the server and StoreKit faked: a draft with an App Store purchase in
 // flight is never thrown away, and a page that loaded while checkout was in
-// test mode still opens the board after the switch to live.
+// test mode still opens the board after the switch to live. The board is set
+// up through the guided steps (custom teams, then Next to Review), and a
+// change goes through Review's cards (Done comes back to Review).
 
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -48,7 +50,7 @@ function draftOf(id: string, status = "draft") {
 }
 
 let server: { payments: PaymentConfig; payTest: () => Response; created: number };
-let requests: { method: string; url: string }[];
+let requests: { method: string; url: string; body: unknown }[];
 
 beforeEach(async () => {
   for (const fn of Object.values(native)) fn.mockClear();
@@ -60,7 +62,7 @@ beforeEach(async () => {
     vi.fn(async (input: string, init: RequestInit = {}) => {
       const url = String(input);
       const method = init.method ?? "GET";
-      requests.push({ method, url });
+      requests.push({ method, url, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
       if (url.includes("/api/schedule")) return json({ events: [], unavailable: true });
       if (url.endsWith("/api/config")) return json({ payments: server.payments, vapidPublicKey: null });
       if (method === "POST" && url.endsWith("/api/games")) {
@@ -76,6 +78,7 @@ beforeEach(async () => {
     }),
   );
   setProfile({ name: "Jordan" });
+  sessionStorage.clear();
 });
 
 async function renderPage(payments: PaymentConfig) {
@@ -91,10 +94,24 @@ async function renderPage(payments: PaymentConfig) {
       </MemoryRouter>
     </ToastProvider>,
   );
-  // No real games this week: the page leads with custom teams.
+  // No real games this week: the flow leads with custom teams.
   const x = await screen.findByTestId("team-x-input");
   fireEvent.change(x, { target: { value: "Chiefs" } });
   fireEvent.change(screen.getByTestId("team-y-input"), { target: { value: "Eagles" } });
+  // The rest keeps its defaults: Next to Review.
+  for (const step of ["format", "prizes", "details", "review"]) {
+    fireEvent.click(screen.getByTestId("wizard-next"));
+    await waitFor(() => expect(screen.getByTestId("wizard-step")).toHaveAttribute("data-step", step));
+  }
+}
+
+/** From Review, change the away team (the game card, then Done back to Review). */
+async function renameTeam(name: string) {
+  fireEvent.click(screen.getAllByTestId("review-edit").find((el) => el.getAttribute("data-step") === "game")!);
+  fireEvent.change(await screen.findByTestId("team-x-input"), { target: { value: name } });
+  expect(screen.getByTestId("wizard-next")).toHaveTextContent("Done");
+  fireEvent.click(screen.getByTestId("wizard-next"));
+  await waitFor(() => expect(screen.getByTestId("wizard-step")).toHaveAttribute("data-step", "review"));
 }
 
 const create = () => act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
@@ -110,7 +127,7 @@ describe("CreateGame checkout", () => {
     expect(native.purchaseProduct).toHaveBeenCalledWith(expect.objectContaining({ appAccountToken: expect.any(String) }));
 
     // The host renames a team and taps Create again: that makes a new draft...
-    fireEvent.change(screen.getByTestId("team-x-input"), { target: { value: "Raiders" } });
+    await renameTeam("Raiders");
     await create();
     await waitFor(() => expect(server.created).toBe(2));
     await waitFor(() => expect(native.purchaseProduct).toHaveBeenCalledTimes(2));
@@ -124,7 +141,7 @@ describe("CreateGame checkout", () => {
     await renderPage(LIVE);
     await create();
     expect(await screen.findByText(/No charge/)).toBeInTheDocument();
-    fireEvent.change(screen.getByTestId("team-x-input"), { target: { value: "Raiders" } });
+    await renameTeam("Raiders");
     await create();
     await waitFor(() => expect(requests.filter((r) => r.method === "DELETE").map((r) => r.url)).toEqual(["/api/games/g1"]));
   });

@@ -3,9 +3,11 @@
 // matchup), who's already in and how many squares are left, and exactly one
 // lime button. It stays short so the board itself is above the fold: tapping a
 // square is the fastest way in.
+import { gameKickoff } from "../../../shared/kickoff";
 import type { GameState } from "../../../shared/types";
+import { ClockIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, Button, cx, TeamMark } from "../../components/ui";
-import { kickoffLabel, shortMatchup, teamVars } from "../../lib/format";
+import { kicksOffLabel, shortMatchup, teamVars } from "../../lib/format";
 import "./invite.css";
 import { boardStats, crewLine, friendsIn, heroAction, hostOf, isUrgent, peopleInOrder, squaresLeftLabel } from "./inviteModel";
 import { useNewArrival } from "./useNewArrival";
@@ -44,7 +46,9 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
   const stats = boardStats(state);
   const open = game.status === "open" || game.status === "draft";
   const urgent = open && isUrgent(stats.left, stats.total);
-  const kickoff = game.linkedEvent && open && game.linkedEvent.startsAt > Date.now() ? kickoffLabel(game.linkedEvent.startsAt) : null;
+  // A linked game's time, or the custom board's host-set one ("Sun 1:00 PM PDT").
+  const startsAt = gameKickoff(game);
+  const kickoff = startsAt !== null && open && startsAt > Date.now() ? kicksOffLabel(startsAt) : null;
   const action = heroAction(state);
   const arrival = useNewArrival(state.players, true);
 
@@ -80,13 +84,18 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
               {host ? (
                 <>
                   <span className="font-bold text-ink">{host.name}</span> invited you
-                  {kickoff && <span className="text-ink-subtle"> · {kickoff}</span>}
                 </>
               ) : (
                 "You're invited"
               )}
             </p>
             <h2 className="truncate font-display text-title-3 font-extrabold leading-tight text-ink">{shortMatchup(game)}</h2>
+            {kickoff && (
+              <p data-testid="invite-kickoff" className="mt-0.5 flex items-center gap-1 truncate text-caption font-semibold text-ink-muted">
+                <ClockIcon size={12} className="shrink-0 text-ink-subtle" />
+                <span className="truncate">{kickoff}</span>
+              </p>
+            )}
           </div>
           <div aria-hidden className="flex shrink-0 gap-1">
             <TeamMark team={game.teamX} size="sm" />

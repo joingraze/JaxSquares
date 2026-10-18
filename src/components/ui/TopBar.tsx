@@ -18,10 +18,12 @@ export interface TopBarProps {
   trailing?: ReactNode;
   /** Extra content under the large title (chips, a segmented control). */
   children?: ReactNode;
+  /** Pinned under the bar row, inside the sticky bar (it stays put while the page scrolls), e.g. a step indicator. */
+  accessory?: ReactNode;
   className?: string;
 }
 
-export function TopBar({ title, subtitle, large = true, largeTitle, back, leading, trailing, children, className }: TopBarProps) {
+export function TopBar({ title, subtitle, large = true, largeTitle, back, leading, trailing, children, accessory, className }: TopBarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const barRef = useRef<HTMLElement>(null);
@@ -93,6 +95,7 @@ export function TopBar({ title, subtitle, large = true, largeTitle, back, leadin
           </CompactTitle>
           <div className="relative z-10 ml-auto flex items-center gap-1">{trailing}</div>
         </div>
+        {accessory}
       </header>
       {large && (
         <div className="px-4 pb-3 pt-1">

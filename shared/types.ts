@@ -171,6 +171,12 @@ export interface Game {
   numbers: Record<string, NumberDraw> | null;
   status: GameStatus;
   linkedEvent: LinkedEvent | null;
+  /**
+   * Kickoff, epoch ms: the linked event's time, or on a custom board the
+   * host's (null = no set time). Display only: a custom board never locks
+   * itself. Always sent by the API; optional only so older fixtures type-check.
+   */
+  startsAt?: number | null;
   /** Public id of the host's player (see Player.id). */
   hostPlayerId: string;
   createdAt: number;
@@ -349,6 +355,7 @@ export interface GameSummary {
   totalSquares: number;
   playerCount: number;
   live: LiveStatus | null;
+  /** Kickoff (Game.startsAt): the linked event's, or a custom board's host-set time; null = no set time. */
   startsAt: number | null;
   /** Periods this device's squares have won so far. */
   myWins: { periodKey: string; label: string }[];
@@ -412,6 +419,12 @@ export interface CreateGameInput {
   maxPerPlayer: number;
   /** Set when the board is linked to a real game from /api/schedule. */
   linkedEvent: LinkedEvent | null;
+  /**
+   * Custom boards only: the host's kickoff time (epoch ms), or null for no set
+   * time. From about a day ago to a year ahead (400 otherwise). A linked
+   * board's kickoff is its event's, so this is ignored there.
+   */
+  startsAt?: number | null;
   /** The host's player profile, so they appear on the board right away. */
   host: { name: string; color: string; emoji: string };
 }
@@ -462,6 +475,11 @@ export interface UpdateGameInput {
    * the numbers are drawn (409 otherwise); the board size never.
    */
   format?: GameFormat;
+  /**
+   * Custom boards only: a new kickoff (epoch ms) or null for no set time,
+   * validated like CreateGameInput.startsAt; 400 on a linked board.
+   */
+  startsAt?: number | null;
 }
 
 /** An upcoming real game a board can be linked to. */

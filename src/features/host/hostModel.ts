@@ -32,6 +32,7 @@ import {
   type PeriodResult,
   type ScorePlay,
 } from "../../../shared/squares";
+import { kickoffProblem } from "../../../shared/kickoff";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
@@ -585,22 +586,34 @@ export function winnerRows(state: GameState): WinnerRow[] {
   return all.filter((r) => r.result || r === firstOpen);
 }
 
-// ---- Edit board (name and the per-player cap; prices, prizes and notes are under Rules & prizes) ----
+// ---- Edit board (name, a custom board's kickoff, the per-player cap; prices, prizes and notes are under Rules & prizes) ----
 
 export interface EditDraft {
   name: string;
   maxPerPlayer: number;
+  /** Custom boards: the kickoff (null = no set time). A linked board's comes from its schedule. */
+  startsAt: number | null;
 }
 
 export function editDraftOf(game: Game): EditDraft {
-  return { name: game.name, maxPerPlayer: game.maxPerPlayer };
+  return { name: game.name, maxPerPlayer: game.maxPerPlayer, startsAt: game.startsAt ?? null };
+}
+
+/** The host can set the kickoff: custom boards only (a linked game's comes from ESPN). */
+export function canEditKickoff(game: Pick<Game, "linkedEvent">): boolean {
+  return game.linkedEvent === null;
 }
 
 const tidy = (s: string) => s.replace(/\s+/g, " ").trim();
 
-export function editErrors(draft: EditDraft): { name: string | null } {
+export function editErrors(draft: EditDraft, game?: Pick<Game, "startsAt">, now = Date.now()): { name: string | null; kickoff: string | null } {
   const name = tidy(draft.name);
-  return { name: !name ? "Give your board a name" : mentionsMoney(name) ? MONEY_ERRORS.name : null };
+  // Only a changed kickoff is checked: an older board's past one doesn't stop a rename.
+  const changed = game !== undefined && draft.startsAt !== (game.startsAt ?? null);
+  return {
+    name: !name ? "Give your board a name" : mentionsMoney(name) ? MONEY_ERRORS.name : null,
+    kickoff: changed && draft.startsAt !== null ? kickoffProblem(draft.startsAt, now) : null,
+  };
 }
 
 /** True when max squares per person can still change (the API refuses once locked). */
@@ -614,6 +627,7 @@ export function editPatch(game: Game, draft: EditDraft): UpdateGameInput | null 
   const name = tidy(draft.name);
   if (name && name !== game.name) out.name = name;
   if (canEditMax(game) && draft.maxPerPlayer !== game.maxPerPlayer) out.maxPerPlayer = draft.maxPerPlayer;
+  if (canEditKickoff(game) && draft.startsAt !== (game.startsAt ?? null)) out.startsAt = draft.startsAt;
   return Object.keys(out).length ? out : null;
 }
 

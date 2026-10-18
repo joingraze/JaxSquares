@@ -1,13 +1,16 @@
-// Edit board: the name and the per-player cap (only while squares are still
-// open). The square price, prizes and notes have their own view, "Rules &
-// prizes", which this one points to.
+// Edit board: the name, a custom board's kickoff (a linked game's comes from
+// its schedule) and the per-player cap (only while squares are still open).
+// The square price, prizes and notes have their own view, "Rules & prizes",
+// which this one points to.
 
 import type { Game } from "../../../shared/types";
 import { ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { TextField } from "../../components/ui";
+import { useNow } from "../board/useNow";
+import { KickoffPicker } from "../create/KickoffPicker";
 import { MaxSquares } from "../rules/MaxSquares";
 import { prizesSummary } from "../rules/rulesModel";
-import { canEditMax, editErrors, type EditDraft } from "./hostModel";
+import { canEditKickoff, canEditMax, editErrors, type EditDraft } from "./hostModel";
 
 export interface EditBoardProps {
   game: Game;
@@ -20,7 +23,8 @@ export interface EditBoardProps {
 const NAME_MAX = 60;
 
 export function EditBoard({ game, draft, onChange, onRules }: EditBoardProps) {
-  const errors = editErrors(draft);
+  const now = useNow(30_000);
+  const errors = editErrors(draft, game, now);
   return (
     <div className="flex flex-col gap-5 pb-2">
       <TextField
@@ -33,6 +37,10 @@ export function EditBoard({ game, draft, onChange, onRules }: EditBoardProps) {
         error={errors.name}
         onChange={(e) => onChange({ ...draft, name: e.target.value })}
       />
+
+      {canEditKickoff(game) && (
+        <KickoffPicker value={draft.startsAt} onChange={(startsAt) => onChange({ ...draft, startsAt })} now={now} error={errors.kickoff} />
+      )}
 
       <MaxSquares
         value={draft.maxPerPlayer}

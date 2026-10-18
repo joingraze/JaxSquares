@@ -286,6 +286,21 @@ export function kickoffLabel(ts: number, now = Date.now()): string {
   return `${new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${time}`;
 }
 
+/**
+ * Short name of the device's time zone at `ts` (so a November date reads "PST"
+ * while October reads "PDT"), e.g. "PDT"; "GMT-7" where there's no
+ * abbreviation. `timeZone` is for tests.
+ */
+export function zoneLabel(ts = Date.now(), timeZone?: string): string {
+  const part = new Intl.DateTimeFormat("en-US", { timeZoneName: "short", timeZone }).formatToParts(new Date(ts)).find((p) => p.type === "timeZoneName");
+  return part?.value ?? "";
+}
+
+/** "Kicks off Sun 1:00 PM PDT", "Kicks off Today 8:20 PM PDT", "Kicks off Oct 26 · 1:00 PM PDT". */
+export function kicksOffLabel(ts: number, now = Date.now()): string {
+  return `Kicks off ${kickoffLabel(ts, now)} ${zoneLabel(ts)}`.trim();
+}
+
 /** Compact countdown: "2d 4h", "3h 12m", "45m", "<1m". */
 export function countdown(ms: number): string {
   if (ms <= 0) return "now";

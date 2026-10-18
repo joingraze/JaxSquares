@@ -5,18 +5,32 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | testid | where |
 |---|---|
 | `new-board` | primary "create a board" call to action (home + tab bar) |
-| `game-option` | each real game in the create flow's game picker |
+| `wizard-step` | the create flow's current step (`data-step=game\|format\|prizes\|details\|review`); the URL says the same (`/new?step=<step>`) |
+| `wizard-next` | the create flow's Next (steps 1-4; "Skip for now" on prizes with nothing chosen, "Done" on a step opened from Review). `aria-disabled` with its reason above it while the step is incomplete; a tap then points at the field |
+| `wizard-back` | the create flow's Back (steps 2-5): the previous step, or Review for a step opened from it |
+| `review-edit` | each summary card on Review (`data-step=game\|format\|prizes\|details`): opens that step; its Next ("Done") comes back |
+| `review-prizes` | Review's prizes card body (`data-state=set\|fun\|unset`; `unset` reads "Square price: not set") |
+| `review-kickoff` | Review's kickoff line on a custom board ("Kicks off Sun 1:00 PM PDT" or "No set time") |
+| `game-option` | each real game in the create flow's game picker; tapping one picks it and moves on to step 2 |
 | `game-search` | the game picker's team search |
 | `week-toggle` | each week row in the game picker (also `data-week=<season type>-<week>`, e.g. `2-7`); `aria-expanded` when open |
 | `week-see-all` | "See all N games" in the lead week |
 | `week-more` | "Full schedule · N more weeks" |
-| `host-name` | the creator's name field, if the create flow asks for it |
+| `host-name` | the creator's name field on Final touches, if the create flow asks for it (a device with no name yet) |
+| `board-name` | the board name field on Final touches (auto-filled from the matchup) |
+| `custom-kickoff` | the kickoff card under custom teams (and in Edit board for a custom board) |
+| `kickoff-day` | a one-tap kickoff day (`data-day=YYYY-MM-DD` local, `aria-pressed` when picked): Today, Tomorrow, then the week's days by name |
+| `kickoff-time` | a one-tap kickoff time (`data-time=HH:MM` local, 24-hour; `aria-pressed`) |
+| `kickoff-input` | the full date & time input (`datetime-local`, local time) behind "Other date & time" |
+| `kickoff-none` | "No set time" (`aria-pressed` while there's none; then reads "Set a kickoff") |
+| `board-kickoff` | "Kicks off Sun 1:00 PM PDT" on a board's scorebug while squares are picked |
 | `custom-matchup` | the "type your own teams" option |
 | `team-x-input`, `team-y-input` | custom matchup team inputs |
 | `format-option` | each format preset card (also `data-format=<preset>`) |
-| `format-custom` | the "Custom rules" card in the create page's rules, shown (selected) when the rules match no preset |
-| `prizes-open` | the create page's "Square price & prizes" row (opens the rules & prizes editor); its summary line is `prizes-summary` ("Square price: not set" until the host sets one) |
-| `rules-editor` | the rules & prizes editor (create page and the host sheet's Rules & prizes view) |
+| `format-custom` | the "Custom rules" card on the create flow's How squares win step, shown (selected) when the rules match no preset |
+| `board-size-option` | How squares win: Classic 10×10 / Quick 5×5 (`data-size=100\|25`, `aria-checked`) |
+| `format-reverse`, `format-fresh` | How squares win: the Reverse winners and New numbers each quarter switches |
+| `rules-editor` | the rules & prizes editor (the create flow's Square price & prizes step and the host sheet's Rules & prizes view) |
 | `rules-choice`, `rules-choice-option` | how prizes read: the three choices, each with `data-choice=$\|pts\|fun` (Dollars, Points, Just for fun) |
 | `rules-square-price` | the square price input (after picking Dollars or Points) |
 | `square-price` | the square price card (input, quick picks, and once a price is set the board's total and the split) |
@@ -24,9 +38,9 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `board-total` | "All 100 squares: $1,000", the board's total at the square price |
 | `prize-budget` | "Prizes: $800 of $1,000" with left / over / adds up and "+ every score" (`data-status=none\|under\|exact\|over`) |
 | `prize-split` | each "Split the $1,000" choice (`data-split=even\|bigger-final`, `aria-pressed` when the amounts already match it): fills the fixed moments' amounts |
-| `every-score-options` | the every-score setups (the create page's Every score card, and the editor's every-score row) |
+| `every-score-options` | the every-score setups (under the create flow's Every score card, and the editor's every-score row) |
 | `every-score-reverse` | "Also pay the reverse at each quarter and the final" switch |
-| `every-score-reverse-amount` | create page only: one reverse amount for every quarter-end and the final |
+| `every-score-reverse-amount` | create flow only: one reverse amount for every quarter-end and the final |
 | `every-score-by-kind` | "Amount by score type" switch |
 | `score-kind-amount` | an amount by score type (`data-kind=touchdown\|fieldGoal\|conversion\|safety`, `data-side=square\|reverse`) |
 | `score-kind-other` | "Other scores": the every-score default amount while amounts go by score type (`data-side`) |
@@ -53,7 +67,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `invite-card` | each card in it (`data-game=<board id>`); the whole card opens the board |
 | `invite-pick` | "Pick squares" on an invite card: opens the board |
 | `invite-hide` | "Not for me" on an invite I only opened (not joined): hides it from Home (drops it from the seen list) with an Undo toast |
-| `create-submit` | the button that creates the board / opens checkout |
+| `create-submit` | Review's "Create board": creates the board / opens checkout |
 | `pay-confirm` | the confirm button in the checkout sheet (live web checkout, and host controls opening an unpaid draft). Test mode and the App Store skip it: `create-submit` creates and opens the board in one tap |
 | `invite-share` | the share-invite button in the invite sheet |
 | `invite-copy` | the link preview card in the invite sheet (tap to copy) |

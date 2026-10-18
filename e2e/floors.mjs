@@ -130,6 +130,12 @@ async function createToInvite(browser, { linked }) {
   await shot(page, `${linked ? "l" : "c"}-01-home`);
   await tap(page, t, page.getByTestId("new-board"), "new board");
 
+  // The guided flow: 1 the game, 2 how squares win, 3 square price & prizes,
+  // 4 final touches, 5 review (docs/testids.md). Steps 2-4 start filled in, so
+  // the default path is: pick the game (a tapped game moves on by itself),
+  // Next x3, Create. Each step is a new screen to read.
+  const step = (name) => page.locator(`[data-testid="wizard-step"][data-step="${name}"]`);
+  const p = linked ? "l" : "c";
   if (linked) {
     await waitFor(page, t, page.getByTestId("game-option"), "game picker");
     t.screens += 1;
@@ -145,18 +151,27 @@ async function createToInvite(browser, { linked }) {
     await type(page, t, page.getByTestId("team-x-input"), "Chiefs", "team 1");
     await tap(page, t, page.getByTestId("team-y-input"), "focus team 2");
     await type(page, t, page.getByTestId("team-y-input"), "Eagles", "team 2");
+    // The kickoff keeps its default (next Sunday, 1:00 PM).
+    await tap(page, t, page.getByTestId("wizard-next"), "next (game)");
   }
 
-  // Some flows ask the host's name before creating; fill it if present.
-  const hostName = page.getByTestId("host-name");
-  if (await hostName.count()) {
-    await tap(page, t, hostName, "focus your name");
-    await type(page, t, hostName, "Jordan", "your name");
+  for (const name of ["format", "prizes", "details"]) {
+    await waitFor(page, t, step(name), `step: ${name}`);
+    t.screens += 1;
+    await shot(page, `${p}-03-${name}`);
+    // A device that has never set a name is asked on Final touches.
+    const hostName = page.getByTestId("host-name");
+    if (name === "details" && (await hostName.count())) {
+      await tap(page, t, hostName, "focus your name");
+      await type(page, t, hostName, "Jordan", "your name");
+    }
+    await tap(page, t, page.getByTestId("wizard-next"), `next (${name})`);
   }
 
+  await waitFor(page, t, step("review"), "step: review");
   await waitFor(page, t, page.getByTestId("create-submit"), "create button");
   t.screens += 1;
-  await shot(page, `${linked ? "l" : "c"}-03-details`);
+  await shot(page, `${p}-03-review`);
   await tap(page, t, page.getByTestId("create-submit"), "create board");
 
   // Live web checkout shows a confirm sheet; test mode and the App Store

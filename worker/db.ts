@@ -11,6 +11,7 @@
 // appends a version bump and the full state read to the same batch: one round
 // trip per mutation, and the state it returns is exactly what was written.
 
+import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
 import type {
@@ -132,6 +133,7 @@ function json<T>(text: string | null | undefined, fallback: T): T {
 
 /** `hostPlayerId` is the public id derived from `r.host_client_id`. */
 export function rowToGame(r: GameRow, hostPlayerId: string): Game {
+  const linkedEvent = json<LinkedEvent | null>(r.linked_event, null);
   return {
     id: r.id,
     name: r.name,
@@ -145,7 +147,9 @@ export function rowToGame(r: GameRow, hostPlayerId: string): Game {
     maxPerPlayer: r.max_per_player,
     numbers: json<Record<string, NumberDraw> | null>(r.numbers, null),
     status: r.status as Game["status"],
-    linkedEvent: json<LinkedEvent | null>(r.linked_event, null),
+    linkedEvent,
+    // A linked board's kickoff is its event's; a custom board's is the host's (migration 0008).
+    startsAt: linkedEvent?.startsAt ?? r.starts_at ?? null,
     hostPlayerId,
     createdAt: r.created_at,
     lockedAt: r.locked_at,
@@ -385,7 +389,7 @@ export function insertGame(
         game.maxPerPlayer,
         game.status,
         game.linkedEvent ? JSON.stringify(game.linkedEvent) : null,
-        game.linkedEvent?.startsAt ?? null,
+        gameKickoff(game),
         hostClientId,
         adminToken,
         game.createdAt,
@@ -405,11 +409,13 @@ export interface GameFieldUpdate {
   maxPerPlayer?: number;
   format?: GameFormat;
   periods?: Period[];
+  /** A custom board's kickoff (null = no set time). Never for a linked board: its event's time stays. */
+  startsAt?: number | null;
 }
 
 export function updateGameFields(db: D1Database, gameId: string, fields: GameFieldUpdate): D1PreparedStatement | null {
   const sets: string[] = [];
-  const args: (string | number)[] = [];
+  const args: (string | number | null)[] = [];
   if (fields.name !== undefined) {
     sets.push("name = ?");
     args.push(fields.name);
@@ -429,6 +435,11 @@ export function updateGameFields(db: D1Database, gameId: string, fields: GameFie
   if (fields.maxPerPlayer !== undefined) {
     sets.push("max_per_player = ?");
     args.push(fields.maxPerPlayer);
+  }
+  if (fields.startsAt !== undefined) {
+    // Guarded in SQL too: a linked board's starts_at is its event's.
+    sets.push("starts_at = CASE WHEN linked_event IS NULL THEN ? ELSE starts_at END");
+    args.push(fields.startsAt);
   }
   if (sets.length === 0) return null;
   return db.prepare(`UPDATE games SET ${sets.join(", ")} WHERE id = ?`).bind(...args, gameId);
@@ -674,12 +685,15 @@ export function upsertLive(db: D1Database, gameId: string, live: LiveStatus): D1
 
 // ---- Cron / dashboard ----
 
-/** Linked boards that kick off within `leadMs` or are still in progress. */
+/**
+ * Linked boards that kick off within `leadMs` or are still in progress. A
+ * custom board's kickoff is in starts_at too, but it has no feed to poll.
+ */
 export async function gamesToWake(db: D1Database, now: number, leadMs: number): Promise<string[]> {
   const { results } = await db
     .prepare(
       `SELECT g.id FROM games g LEFT JOIN live_status l ON l.game_id = g.id
-       WHERE g.starts_at IS NOT NULL AND g.starts_at <= ?1 AND g.starts_at >= ?2
+       WHERE g.linked_event IS NOT NULL AND g.starts_at IS NOT NULL AND g.starts_at <= ?1 AND g.starts_at >= ?2
          AND g.status IN ('open', 'locked')
          AND (l.state IS NULL OR l.state <> 'post')
        ORDER BY g.starts_at LIMIT 500`,
@@ -789,7 +803,7 @@ export async function listGamesForClient(
       totalSquares: totalSquares(game.format.boardSize),
       playerCount: r.player_count,
       live: liveStatus,
-      startsAt: game.linkedEvent?.startsAt ?? null,
+      startsAt: gameKickoff(game),
       myWins: myWins(results, me).map((w) => ({
         periodKey: w.periodKey,
         label: w.reverse ? `${w.label} (reverse)` : w.label,

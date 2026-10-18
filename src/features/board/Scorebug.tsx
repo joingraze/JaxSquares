@@ -1,14 +1,16 @@
 // Broadcast-style scoreboard at the top of a board: both teams in their colors,
-// the score (live or last recorded), where the game is, and who's here.
+// the score (live or last recorded), where the game is, when it kicks off
+// (a linked game's time, or a custom board's host-set one), and who's here.
 //
 // It's kept short on purpose so the whole grid fits on the first screen:
 // once numbers are drawn it's one strip (marks, scores, clock); while squares
 // are being picked it adds one row of who's in.
 
+import { gameKickoff } from "../../../shared/kickoff";
 import type { GameState } from "../../../shared/types";
-import { WifiOffIcon } from "../../components/icons";
+import { ClockIcon, WifiOffIcon } from "../../components/icons";
 import { AvatarGroup, Badge, LiveDot, ProgressRing, TeamMark, cx } from "../../components/ui";
-import { countdown, kickoffLabel, shortTeam } from "../../lib/format";
+import { countdown, kicksOffLabel, shortTeam } from "../../lib/format";
 import type { ConnectionState } from "../../lib/live";
 import { boardPhase, claimedCount, headlineScore, type BoardPhase } from "./boardModel";
 
@@ -29,6 +31,7 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
   const picking = phase === "open" || phase === "draft";
   const { claimed, total } = claimedCount(state);
   const left = total - claimed;
+  const kickoff = gameKickoff(game);
 
   return (
     <section
@@ -51,6 +54,12 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
         <TeamSide side="x" name={shortTeam(game.teamX, game.league)} team={game.teamX} score={score?.scoreX ?? null} dim={leader < 0} stacked={!picking} />
         <Center phase={phase} state={state} detail={score?.detail ?? null} nextLabel={nextLabel} now={now} watching={picking ? 0 : watching} connection={connection} />
         <TeamSide side="y" name={shortTeam(game.teamY, game.league)} team={game.teamY} score={score?.scoreY ?? null} dim={leader > 0} stacked={!picking} />
+        {picking && kickoff !== null && kickoff > now && (
+          <p data-testid="board-kickoff" className="col-span-3 -mt-1 flex items-center justify-center gap-1.5 text-caption font-semibold text-ink-muted">
+            <ClockIcon size={13} className="shrink-0 text-ink-subtle" />
+            {kicksOffLabel(kickoff, now)}
+          </p>
+        )}
       </div>
 
       {picking && (
@@ -177,7 +186,7 @@ function Center({
     );
   }
   // Locked: numbers drawn, waiting on kickoff or the next result.
-  const kickoff = state.game.linkedEvent?.startsAt ?? null;
+  const kickoff = gameKickoff(state.game);
   const pre = kickoff !== null && kickoff > now && !detail;
   if (detail) {
     // A recorded score is on the board: keep the middle quiet so the numbers lead.
@@ -195,7 +204,7 @@ function Center({
       <span className="whitespace-nowrap text-caption font-semibold text-ink-muted">
         {pre ? `Kickoff in ${countdown(kickoff - now)}` : nextLabel ? `${nextLabel} up next` : "Game on"}
       </span>
-      {pre && <span className="sr-only">{kickoffLabel(kickoff, now)}</span>}
+      {pre && <span className="sr-only">{kicksOffLabel(kickoff, now)}</span>}
     </div>
   );
 }

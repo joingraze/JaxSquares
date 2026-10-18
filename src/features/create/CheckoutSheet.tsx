@@ -30,7 +30,7 @@ import {
   type CheckoutMethod,
   type MountedCheckout,
 } from "../../lib/checkout";
-import { kickoffLabel, readableTeamColor, withAlpha } from "../../lib/format";
+import { kickoffLabel, readableTeamColor, withAlpha, zoneLabel } from "../../lib/format";
 import { haptic, platform } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
 import { formatLine } from "./model";
@@ -424,7 +424,7 @@ function Ticket({ game }: { game: Game }) {
         ) : (
           <>
             <PencilIcon size={15} className="shrink-0 text-ink-subtle" />
-            You run the score · winners pop instantly
+            {game.startsAt ? `You run the score · ${kickoffLabel(game.startsAt)} ${zoneLabel(game.startsAt)}`.trim() : "You run the score · winners pop instantly"}
           </>
         )}
       </div>

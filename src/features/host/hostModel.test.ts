@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MONEY_ERRORS } from "../../../shared/formats";
+import { KICKOFF_ERRORS } from "../../../shared/kickoff";
 import type { GameState, NumberDraw, Player, Score, Square } from "../../../shared/types";
 import {
   NEXT_ENTRY,
@@ -7,6 +8,7 @@ import {
   canSaveScore,
   cleanTyped,
   defaultTargetKey,
+  canEditKickoff,
   editDraftOf,
   editErrors,
   editPatch,
@@ -477,9 +479,32 @@ describe("winnerRows", () => {
 });
 
 describe("edit board", () => {
-  it("edits the name and the cap only (prices, prizes and notes live under Rules & prizes)", () => {
-    expect(editDraftOf(locked().game)).toEqual({ name: "Test board", maxPerPlayer: 0 });
+  it("edits the name, the cap and a custom board's kickoff (prices, prizes and notes live under Rules & prizes)", () => {
+    expect(editDraftOf(locked().game)).toEqual({ name: "Test board", maxPerPlayer: 0, startsAt: null });
     expect(editErrors({ ...editDraftOf(locked().game), name: "  " }).name).toBeTruthy();
+  });
+
+  it("sends a custom board's new kickoff (or no set time), never a linked board's", () => {
+    const now = Date.now();
+    const custom = makeState({ game: { linkedEvent: null, startsAt: now + 3_600_000 } }).game;
+    const later = now + 2 * 86_400_000;
+    expect(editDraftOf(custom).startsAt).toBe(now + 3_600_000);
+    expect(editPatch(custom, { ...editDraftOf(custom), startsAt: later })).toEqual({ startsAt: later });
+    expect(editPatch(custom, { ...editDraftOf(custom), startsAt: null })).toEqual({ startsAt: null });
+    const linked = makeState({
+      game: { linkedEvent: { provider: "espn", league: "nfl", eventId: "1", startsAt: now + 1, xIsHome: false }, startsAt: now + 1 },
+    }).game;
+    expect(canEditKickoff(linked)).toBe(false);
+    expect(editPatch(linked, { ...editDraftOf(linked), startsAt: later })).toBeNull();
+  });
+
+  it("checks a changed kickoff like the server, and leaves an old one alone", () => {
+    const now = Date.now();
+    const old = makeState({ game: { linkedEvent: null, startsAt: now - 30 * 86_400_000 } }).game;
+    // A rename on a board whose kickoff is long past still saves.
+    expect(editErrors({ ...editDraftOf(old), name: "Rematch" }, old, now).kickoff).toBeNull();
+    expect(editErrors({ ...editDraftOf(old), startsAt: now + 500 * 86_400_000 }, old, now).kickoff).toBe(KICKOFF_ERRORS.future);
+    expect(editErrors({ ...editDraftOf(old), startsAt: now + 86_400_000 }, old, now).kickoff).toBeNull();
   });
 
   it("flags money in the board name, inline, with the server's message", () => {

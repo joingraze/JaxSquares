@@ -37,11 +37,13 @@ export interface GamePickerProps {
   showErrors?: boolean;
   /** Live NFL team colors, so typed teams match their real games. */
   colors?: TeamColors;
+  /** Under the typed teams on the Custom tab (the create flow's kickoff picker). */
+  customFooter?: ReactNode;
 }
 
 const LEAGUE_LABEL: Record<ScheduleLeague, string> = { nfl: "NFL", ncaaf: "College" };
 
-export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom, onCustomChange, showErrors, colors }: GamePickerProps) {
+export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom, onCustomChange, showErrors, colors, customFooter }: GamePickerProps) {
   const noGamesAnywhere = !schedule.nfl.loading && !schedule.ncaaf.loading && !schedule.nfl.events.length && !schedule.ncaaf.events.length;
   const count = (league: ScheduleLeague) =>
     !schedule[league].loading && schedule[league].events.length > 0 ? (
@@ -79,6 +81,7 @@ export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom
               </p>
             </div>
           )}
+          {customFooter && <div className="mt-4">{customFooter}</div>}
         </div>
       ) : (
         <div key={tab} className="animate-fade-in">

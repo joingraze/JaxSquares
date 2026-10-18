@@ -10,11 +10,8 @@ function startOfDay(ts: number): number {
   return new Date(ts).setHours(0, 0, 0, 0);
 }
 
-/** Short name of the device's time zone right now, e.g. "PDT" ("GMT-7" where there's no abbreviation). */
-export function zoneLabel(now = Date.now()): string {
-  const part = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(new Date(now)).find((p) => p.type === "timeZoneName");
-  return part?.value ?? "";
-}
+/** Short name of the device's time zone, e.g. "PDT" (lives in lib/format: the board shows it too). */
+export { zoneLabel } from "../../lib/format";
 
 /** "Today", "Tomorrow", or "Thursday, Oct 22", in local time. */
 export function dayHeading(ts: number, now = Date.now()): string {

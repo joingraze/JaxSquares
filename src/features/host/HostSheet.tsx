@@ -41,7 +41,7 @@ import {
   cx,
 } from "../../components/ui";
 import { PUBLIC_ORIGIN } from "../../lib/api";
-import { kickoffLabel, pluralize, teamVars } from "../../lib/format";
+import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
 import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
@@ -65,6 +65,7 @@ import "./host.css";
 import {
   NEXT_ENTRY,
   defaultTargetKey,
+  canEditKickoff,
   editDraftOf,
   editErrors,
   editPatch,
@@ -390,8 +391,8 @@ export function HostSheet(props: HostSheetProps) {
       </Button>
     );
   } else if (view === "edit") {
-    const errors = editErrors(draft);
-    const invalid = !!errors.name;
+    const errors = editErrors(draft, game);
+    const invalid = !!errors.name || !!errors.kickoff;
     const patch = editPatch(game, draft);
     title = <>{back()}Edit board</>;
     body = <EditBoard game={game} draft={draft} onChange={setDraft} onRules={() => onView("rules")} />;
@@ -598,7 +599,7 @@ export function HostSheet(props: HostSheetProps) {
           <ListRow
             leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
             title="Edit board"
-            subtitle={game.status === "open" || game.status === "draft" ? "Name, max squares per player" : "Name"}
+            subtitle={["Name", canEditKickoff(game) && "kickoff", (game.status === "open" || game.status === "draft") && "max squares per player"].filter(Boolean).join(", ")}
             chevron
             onClick={() => onView("edit")}
           />
@@ -827,6 +828,8 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
   const ready = lockIsTheMove(f.claimed, f.total);
   const nobody = lockReadiness(f) === "empty";
   const kickoff = game.linkedEvent?.startsAt ?? null;
+  // A custom board's kickoff is only a plan: it never locks itself.
+  const planned = !game.linkedEvent && game.startsAt && game.startsAt > Date.now() ? game.startsAt : null;
   return (
     <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
       <div
@@ -870,7 +873,9 @@ function OpenHero({ state, onInvite, onLock }: { state: GameState; onInvite: () 
           ? "Lock & draw turns on once someone picks a square."
           : kickoff
             ? `Locks itself at kickoff (${kickoffLabel(kickoff)}) if you don't.`
-            : "Lock when everyone's in. The numbers get drawn live."}
+            : planned
+              ? `${kicksOffLabel(planned)}. Lock when everyone's in.`
+              : "Lock when everyone's in. The numbers get drawn live."}
       </p>
     </div>
   );

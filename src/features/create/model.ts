@@ -1,9 +1,11 @@
 // Pure helpers for the create-board flow: team names, the auto board name,
 // plain-language format copy and the request body. No React, no IO.
 
+import { kickoffProblem } from "../../../shared/kickoff";
 import {
   BOARD_SIZE_INFO,
   freshNumbersAllowed,
+  mentionsMoney,
   matchingPreset,
   periodsFor,
   PRESET_INFO,
@@ -329,6 +331,8 @@ export function matchupShortNames(m: Matchup | null): [string, string] | null {
 
 export interface CreateDraft {
   matchup: Matchup | null;
+  /** Custom boards: the kickoff (epoch ms), null for no set time. A linked board's is its event's. */
+  kickoff?: number | null;
   /** Live team colors for typed NFL teams (teamColorsFrom). */
   colors?: TeamColors;
   /** The rules (notes inside them), board size, fresh numbers, square price. */
@@ -368,36 +372,55 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
     prizes: {},
     maxPerPlayer: Math.max(0, Math.min(total, Math.round(d.maxPerPlayer))),
     linkedEvent: teams.linkedEvent,
+    ...(teams.linkedEvent ? {} : { startsAt: d.kickoff ?? null }),
     host: { ...d.host, name: d.host.name.trim() },
   };
 }
 
-/** The first thing stopping Create, in page order, with the button's one-line ask. */
+/** Something stopping Create (or a step's Next), with the one-line ask shown next to the button. */
 export type CreateBlocker =
   | { field: "game"; label: string }
   | { field: "team-x" | "team-y"; label: string }
+  | { field: "kickoff"; label: string }
+  | { field: "prize"; key: string; label: string }
   | { field: "host"; label: string }
-  | { field: "prize"; key: string; label: string };
+  | { field: "name"; label: string };
 
-export function firstBlocker(d: {
+export interface BlockerInput {
   matchup: Matchup | null;
   /** Null when this device already has a name (the field isn't shown). */
   hostName: string | null;
   format: GameFormat;
-}): CreateBlocker | null {
+  /** Custom boards: the kickoff (null = no set time). */
+  kickoff?: number | null;
+  /** The board name as typed ("" = the matchup's). */
+  name?: string;
+  now?: number;
+}
+
+/** Everything stopping Create, in the flow's order: the game, the prizes, the final touches. */
+export function blockersOf(d: BlockerInput): CreateBlocker[] {
+  const out: CreateBlocker[] = [];
   const m = d.matchup;
-  if (!m) return { field: "game", label: "Pick a game to continue" };
-  if (m.kind === "custom") {
+  if (!m) out.push({ field: "game", label: "Pick a game to continue" });
+  else if (m.kind === "custom") {
     const x = Boolean(m.x.trim());
     const y = Boolean(m.y.trim());
-    if (!x && !y) return { field: "team-x", label: "Add both teams to continue" };
-    if (!x) return { field: "team-x", label: "Add the away team to continue" };
-    if (!y) return { field: "team-y", label: "Add the home team to continue" };
+    if (!x && !y) out.push({ field: "team-x", label: "Add both teams to continue" });
+    else if (!x) out.push({ field: "team-x", label: "Add the away team to continue" });
+    else if (!y) out.push({ field: "team-y", label: "Add the home team to continue" });
+    if (d.kickoff != null && kickoffProblem(d.kickoff, d.now ?? Date.now())) out.push({ field: "kickoff", label: "Pick another kickoff to continue" });
   }
-  if (d.hostName !== null && !d.hostName.trim()) return { field: "host", label: "Add your name to continue" };
   const prize = firstPrizeProblem(d.format);
-  if (prize) return { field: "prize", key: prize.key, label: "Fix the prize note to continue" };
-  return null;
+  if (prize) out.push({ field: "prize", key: prize.key, label: "Fix the prize note to continue" });
+  if (d.hostName !== null && !d.hostName.trim()) out.push({ field: "host", label: "Add your name to continue" });
+  if (d.name && mentionsMoney(d.name)) out.push({ field: "name", label: "Change the board name to continue" });
+  return out;
+}
+
+/** The first thing stopping Create, in the flow's order. */
+export function firstBlocker(d: BlockerInput): CreateBlocker | null {
+  return blockersOf(d)[0] ?? null;
 }
 
 /** Stable key for a request body, so re-tapping Create reuses the same unpaid draft. */

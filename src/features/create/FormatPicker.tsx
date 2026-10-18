@@ -1,16 +1,19 @@
-// How squares win, opened from the settings card's "Change": four one-tap
-// preset cards (each with a tiny game timeline showing when a square wins),
-// an Advanced list of switches, and a live "how this board works" summary with
-// a mini board. Card tags never change; the summary is the one place a
-// modifier's effect shows ("8 winners" with reverse on). With Every score
-// picked, its two setups sit right under the cards: the reverse at each
-// quarter and the final, and amounts by score type. Rules fine-tuned in
-// "Square price & prizes" (say, every score plus the quarters) show as a
-// "Custom rules" card; tapping a preset goes back to it, keeping amounts.
+// How squares win (the create flow's second step): four one-tap preset cards,
+// each with a tiny game timeline showing when a square wins and one plain
+// line about it; with Every score picked, its two setups sit right under the
+// cards (the reverse at each quarter and the final, amounts by score type).
+// Then the board size as two cards with a tiny grid, the reverse and fresh
+// numbers switches, each with a one-line explanation and a small picture,
+// and a live "how this board works" summary with a mini board. Card tags
+// never change; the summary is the one place a modifier's effect shows
+// ("8 winners" with reverse on). Rules fine-tuned in "Square price & prizes"
+// (say, every score plus the quarters) show as a "Custom rules" card;
+// tapping a preset goes back to it, keeping amounts.
 
-import type { CSSProperties } from "react";
-import { BOARD_SIZE_INFO, PERIOD_PRESETS, PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
-import type { GameFormat, MomentRule, Team } from "../../../shared/types";
+import type { CSSProperties, ReactNode } from "react";
+import { PERIOD_PRESETS, PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import type { BoardSize, GameFormat, MomentRule, Team } from "../../../shared/types";
+import { CheckIcon, ShuffleIcon } from "../../components/icons";
 import { cx, Switch } from "../../components/ui";
 import { readableTeamColor } from "../../lib/format";
 import { haptic } from "../../lib/native";
@@ -47,11 +50,18 @@ const MARKS: Record<FixedPreset, number[]> = {
   "every-score": [0.08, 0.2, 0.33, 0.46, 0.6, 0.71, 0.86, 0.95],
 };
 
-const ADVANCED = {
-  reverse: { label: "Reverse winners", description: "Swap the digits and that square wins too." },
-  small: { label: `${BOARD_SIZE_INFO[25].label} board`, description: "25 squares, two numbers per row and column." },
-  fresh: { label: "New numbers each quarter", description: "A fresh draw before every quarter." },
+/** Each preset in one plain line, short enough for a card. */
+const WHEN: Record<FixedPreset, string> = {
+  quarters: "After Q1, at the half, after Q3 and at the final",
+  halves: "One at the half, one at the final",
+  final: "One winner when the game ends",
+  "every-score": "A winner each time the score changes",
 };
+
+const SIZES: { size: BoardSize; label: string; line: string }[] = [
+  { size: 100, label: "Classic 10×10", line: "100 squares · 1 number each way" },
+  { size: 25, label: "Quick 5×5", line: "25 squares · 2 numbers each way" },
+];
 
 export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoice, teamX, teamY }: FormatPickerProps) {
   const rules = rulesOf(format);
@@ -63,7 +73,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoi
   const setRules = (next: MomentRule[]) => set({ rules: next });
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <div role="radiogroup" aria-label="When squares win" className="grid grid-cols-2 gap-2.5">
         {PERIOD_PRESETS.map((preset) => (
           <FormatCard
@@ -94,7 +104,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoi
       </div>
 
       {hasScoreMoment(rules) && (
-        <div className="-mt-1.5 flex flex-col gap-2 animate-fade-in">
+        <div className="-mt-2.5 flex flex-col gap-2 animate-fade-in">
           <p className="eyebrow px-1 text-ink-subtle">Every score options</p>
           <EveryScoreOptions
             rules={rules}
@@ -110,43 +120,97 @@ export function FormatPicker({ format, onChange, prizeChoice = null, onPrizeChoi
         </div>
       )}
 
-      <div>
-        <p className="eyebrow px-1 text-ink-subtle">Advanced</p>
-        <div className="mt-2 divide-y divide-line overflow-hidden rounded-2xl bg-surface-3 ring-1 ring-inset ring-line">
-          <Switch
-            className="min-h-15 px-3.5 py-2.5"
-            label={ADVANCED.reverse.label}
-            description={ADVANCED.reverse.description}
-            checked={allReverse(rules)}
-            onChange={(reverse) => setRules(setReverseEverywhere(rules, reverse))}
-          />
-          <Switch
-            className="min-h-15 px-3.5 py-2.5"
-            label={ADVANCED.small.label}
-            description={ADVANCED.small.description}
-            checked={format.boardSize === 25}
-            onChange={(small) => set({ boardSize: small ? 25 : 100 })}
-          />
-          {canUseFreshNumbers(rules) && (
+      <section aria-label="Board size" className="flex flex-col gap-2">
+        <p className="eyebrow px-1 text-ink-subtle">Board size</p>
+        <div role="radiogroup" aria-label="Board size" className="divide-y divide-line overflow-hidden rounded-2xl bg-surface-3 ring-1 ring-inset ring-line">
+          {SIZES.map(({ size, label, line }) => {
+            const on = format.boardSize === size;
+            return (
+              <button
+                key={size}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                data-testid="board-size-option"
+                data-size={size}
+                onClick={() => {
+                  if (on) return;
+                  void haptic("selection");
+                  set({ boardSize: size });
+                }}
+                className="pressable flex min-h-16 w-full items-center gap-3 px-3.5 py-2.5 text-left transition-colors hover:bg-ink/3"
+              >
+                <GridGlyph n={size === 25 ? 5 : 10} on={on} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-callout font-semibold text-ink">{label}</span>
+                  <span className="mt-0.5 block text-footnote text-ink-muted">{line}</span>
+                </span>
+                <span
+                  aria-hidden
+                  className={cx(
+                    "grid h-6 w-6 shrink-0 place-items-center rounded-full transition-all duration-300 ease-spring",
+                    on ? "scale-100 bg-brand-400 text-ink-inverse" : "scale-90 ring-2 ring-inset ring-line-strong",
+                  )}
+                >
+                  {on && <CheckIcon size={14} strokeWidth={3.2} />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section aria-label="More ways to win" className="flex flex-col gap-2">
+        <p className="eyebrow px-1 text-ink-subtle">More ways to win</p>
+        <div className="divide-y divide-line overflow-hidden rounded-2xl bg-surface-3 ring-1 ring-inset ring-line">
+          <OptionRow visual={<ReverseGlyph on={allReverse(rules)} />}>
             <Switch
-              className="min-h-15 px-3.5 py-2.5"
-              label={ADVANCED.fresh.label}
-              description={ADVANCED.fresh.description}
-              checked={format.freshNumbers}
-              onChange={(freshNumbers) => set({ freshNumbers })}
+              data-testid="format-reverse"
+              label="Reverse winners"
+              description="Swap the two digits: that square wins too."
+              checked={allReverse(rules)}
+              onChange={(reverse) => setRules(setReverseEverywhere(rules, reverse))}
             />
+          </OptionRow>
+          {canUseFreshNumbers(rules) && (
+            <OptionRow
+              visual={
+                <span className={cx("grid h-full w-full place-items-center", format.freshNumbers ? "text-ink-brand" : "text-ink-subtle")}>
+                  <ShuffleIcon size={20} />
+                </span>
+              }
+            >
+              <Switch
+                data-testid="format-fresh"
+                label="New numbers each quarter"
+                description="A fresh draw before every quarter."
+                checked={format.freshNumbers}
+                onChange={(freshNumbers) => set({ freshNumbers })}
+              />
+            </OptionRow>
           )}
         </div>
-      </div>
+      </section>
 
       <HowItWorks format={format} teamX={teamX} teamY={teamY} />
     </div>
   );
 }
 
+function OptionRow({ visual, children }: { visual: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex min-h-16 items-center gap-3 px-3.5 py-2.5">
+      <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-2 ring-1 ring-inset ring-line">
+        {visual}
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
 const FIXED_AT: Record<string, number> = { q1: 0.25, q2: 0.5, q3: 0.75, final: 1 };
 
-/** The rules' timeline as a small glyph (dots where squares win), for the settings card's summary row. */
+/** The rules' timeline as a small glyph (dots where squares win), for summary rows. */
 export function FormatGlyph({ rules }: { rules: readonly MomentRule[] }) {
   const many = rules.some((r) => r.moment === "score");
   const fixed = rules.filter((r) => r.moment !== "score").map((r) => FIXED_AT[r.moment]);
@@ -163,6 +227,48 @@ export function FormatGlyph({ rules }: { rules: readonly MomentRule[] }) {
   );
 }
 
+/** A tiny board: n×n dots, one lit. */
+function GridGlyph({ n, on }: { n: number; on: boolean }) {
+  const lit = n === 5 ? 7 : 23;
+  return (
+    <span
+      aria-hidden
+      className="grid h-10 w-10 shrink-0 gap-px rounded-lg bg-surface-2 p-1 ring-1 ring-inset ring-line"
+      style={{ gridTemplateColumns: `repeat(${n}, 1fr)` }}
+    >
+      {Array.from({ length: n * n }, (_, i) => (
+        <span
+          key={i}
+          className={cx(
+            "rounded-[1px]",
+            i === lit ? (on ? "bg-gold-400" : "bg-ink/45") : on ? "bg-brand-400/35" : "bg-ink/12",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
+/** Two lit squares mirrored across the board's diagonal: the square and its reverse. */
+function ReverseGlyph({ on }: { on: boolean }) {
+  const cells = Array.from({ length: 16 }, (_, i) => i);
+  const win = 1 * 4 + 3; // row 1, col 3
+  const rev = 3 * 4 + 1; // row 3, col 1
+  return (
+    <span className="grid h-7 w-7 grid-cols-4 gap-px">
+      {cells.map((i) => (
+        <span
+          key={i}
+          className={cx(
+            "rounded-[1.5px] transition-colors",
+            i === win ? "bg-gold-400" : i === rev ? (on ? "bg-gold-300" : "bg-ink/12") : "bg-ink/12",
+          )}
+        />
+      ))}
+    </span>
+  );
+}
+
 function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selected: boolean; onSelect: () => void }) {
   const info = PRESET_INFO[preset];
   const marks = MARKS[preset];
@@ -172,11 +278,12 @@ function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selec
       type="button"
       role="radio"
       aria-checked={selected}
+      aria-label={`${info.label}: ${WHEN[preset]}`}
       data-testid="format-option"
       data-format={preset}
       onClick={onSelect}
       className={cx(
-        "pressable relative flex min-h-24 flex-col items-start justify-between gap-3 overflow-hidden rounded-card p-3.5 text-left ring-inset transition-[background-color,box-shadow]",
+        "pressable relative flex min-h-34 flex-col items-start gap-3 overflow-hidden rounded-card p-3.5 text-left ring-inset transition-[background-color,box-shadow]",
         selected
           ? "bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 ring-2 ring-brand-line"
           : "bg-surface-3 ring-1 ring-line hover:bg-surface-4",
@@ -201,9 +308,10 @@ function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selec
           />
         ))}
       </span>
-      <span className="block">
+      <span className="flex flex-1 flex-col">
         <span className="block font-display text-headline font-extrabold leading-tight text-ink">{info.label}</span>
-        <span className={cx("mt-0.5 block text-footnote font-semibold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset)}</span>
+        <span className="mt-1 block text-footnote leading-snug text-ink-muted">{WHEN[preset]}</span>
+        <span className={cx("mt-auto block pt-1.5 text-caption font-bold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset)}</span>
       </span>
     </button>
   );

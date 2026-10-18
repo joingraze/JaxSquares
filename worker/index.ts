@@ -20,6 +20,7 @@ import {
   sanitizePrizes,
   withRules,
 } from "../shared/formats";
+import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
 import type {
@@ -125,6 +126,14 @@ function cleanLinkedEvent(v: unknown, now: number): LinkedEvent | null {
   if (!Number.isFinite(startsAt) || startsAt < now - day || startsAt > now + 400 * day) return null;
   if (typeof e.xIsHome !== "boolean") return null;
   return { provider: "espn", league: e.league, eventId: e.eventId, startsAt: Math.trunc(startsAt), xIsHome: e.xIsHome };
+}
+
+/** A custom board's kickoff from a request: null when absent (no set time), a 400 when out of range. */
+function cleanKickoff(v: unknown, now: number): number | null {
+  if (v === undefined || v === null) return null;
+  const problem = kickoffProblem(v, now);
+  if (problem) fail(400, problem);
+  return Math.trunc(v as number);
 }
 
 function cleanProfile(v: unknown): { name: string; color: string; emoji: string } {
@@ -352,6 +361,8 @@ api.post("/games", requireClient, async (c) => {
   if (body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
   let league: League = LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
   if (linkedEvent) league = linkedEvent.league;
+  // A custom board's kickoff is the host's (optional); a linked board's is its event's.
+  const startsAt = linkedEvent ? linkedEvent.startsAt : cleanKickoff(body.startsAt, now);
   const sport: Sport = SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
   const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(requested.boardSize));
   if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
@@ -380,6 +391,7 @@ api.post("/games", requireClient, async (c) => {
       numbers: null,
       status: "draft",
       linkedEvent,
+      startsAt,
       hostPlayerId: me,
       createdAt: now,
       lockedAt: null,
@@ -446,6 +458,11 @@ api.patch("/games/:id", requireClient, async (c) => {
     } else {
       fields.prizes = cleanPrizes(game.format, body.prizes);
     }
+  }
+  if (body.startsAt !== undefined) {
+    // Display only, so it can change any time; a linked board's comes from its schedule.
+    if (game.linkedEvent) fail(400, KICKOFF_ERRORS.linked);
+    fields.startsAt = cleanKickoff(body.startsAt, Date.now());
   }
   if (body.maxPerPlayer !== undefined) {
     if (game.status !== "draft" && game.status !== "open") fail(409, "Squares are already locked");
