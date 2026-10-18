@@ -212,6 +212,19 @@ describe("fetchLiveForEvent", () => {
     expect(await fetchLiveForEvent(linked)).toBeNull();
   });
 
+  it("doesn't mix up its cache with the schedule's for the same day", async () => {
+    // The picker and the live lookup fetch the same scoreboard URL but cache different shapes.
+    respondWith(() => scoreboard([ev("401773100", kickoff, status.scheduled())]));
+    expect((await getSchedule("nfl"))?.map((e) => e.eventId)).toEqual(["401773100"]);
+    expect(await fetchLiveForEvent(linked)).toMatchObject({ live: { state: "pre" }, completedPeriods: 0 });
+
+    clearMemoryCache();
+    cache = new MemoryCache();
+    vi.stubGlobal("caches", { default: cache });
+    expect(await fetchLiveForEvent(linked)).toMatchObject({ live: { state: "pre" } });
+    expect((await getSchedule("nfl"))?.map((e) => e.eventId)).toEqual(["401773100"]);
+  });
+
   it("works without the Cache API", async () => {
     vi.stubGlobal("caches", undefined);
     respondWith(() => scoreboard([ev("401773100", kickoff, status.final(), [[7, 0, 0, 3], [0, 0, 0, 0]])]));

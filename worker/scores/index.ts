@@ -31,11 +31,15 @@ const LIVE_TIMEOUT_MS = 4000;
 /** No football game runs this long, so an older "pre"/"in" entry is stale data. */
 const MAX_GAME_SPAN_MS = 6 * HOUR_MS;
 /** Bump when the cached (parsed) shape changes so old entries are ignored after a deploy. */
-const CACHE_VERSION = "2";
+const CACHE_VERSION = "3";
 
-function cacheKey(upstreamUrl: string): string {
+/**
+ * The schedule and live scores read the same ESPN scoreboard URLs but cache
+ * different parsed shapes, so each kind gets its own key.
+ */
+function cacheKey(upstreamUrl: string, kind: "schedule" | "live"): string {
   const url = new URL(upstreamUrl);
-  url.searchParams.set("jx", CACHE_VERSION);
+  url.searchParams.set("jx", `${CACHE_VERSION}-${kind}`);
   return url.toString();
 }
 
@@ -66,7 +70,7 @@ export async function getSchedule(league: LinkedLeague, now = Date.now()): Promi
   const results = await Promise.all(
     urls.map((url) =>
       cached({
-        key: cacheKey(url),
+        key: cacheKey(url, "schedule"),
         ttlSeconds: SCHEDULE_TTL_S,
         staleSeconds: SCHEDULE_STALE_S,
         load: async () => {
@@ -133,7 +137,7 @@ async function findSnapshot(event: LinkedEvent): Promise<CachedValue<GameSnapsho
   if (Number.isFinite(event.startsAt) && event.startsAt > 0) {
     const url = scoreboardUrl(event.league, slateDay(event.startsAt));
     const board = await cached({
-      key: cacheKey(url),
+      key: cacheKey(url, "live"),
       ttlSeconds: LIVE_TTL_S,
       load: async () => {
         const json = await fetchEspnJson(url, LIVE_TIMEOUT_MS);
@@ -149,7 +153,7 @@ async function findSnapshot(event: LinkedEvent): Promise<CachedValue<GameSnapsho
 
   const url = summaryUrl(event.league, event.eventId);
   const summary = await cached({
-    key: cacheKey(url),
+    key: cacheKey(url, "live"),
     ttlSeconds: LIVE_TTL_S,
     load: async () => {
       const snap = parseSummarySnapshot(await fetchEspnJson(url, LIVE_TIMEOUT_MS));
