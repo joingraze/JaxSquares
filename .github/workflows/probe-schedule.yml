@@ -1,7 +1,7 @@
 name: Probe schedule
 
-# One-off diagnostic: runs the repo's ESPN parser against real ESPN responses
-# (fetched without a custom User-Agent). Runs only when this file changes.
+# One-off diagnostic: which ESPN scoreboard queries work, and the repo's parser
+# on real responses. Runs only when this file changes on the v1 branch.
 on:
   push:
     branches:
@@ -20,39 +20,52 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Fetch real ESPN responses
+      - name: Query variants
         run: |
           mkdir -p probe
-          from=$(date -u -d '-1 day' +%Y%m%d); to=$(date -u -d '+10 day' +%Y%m%d)
+          d0=$(date -u -d '-1 day' +%Y%m%d); d1=$(date -u +%Y%m%d); d7=$(date -u -d '+7 day' +%Y%m%d); d10=$(date -u -d '+10 day' +%Y%m%d)
           B=https://site.api.espn.com/apis/site/v2/sports/football
-          curl -s -o probe/nfl.json  -w 'nfl range %{http_code} %{size_download}B\n'   "$B/nfl/scoreboard?dates=$from-$to&limit=1000"
-          curl -s -o probe/ncaaf.json -w 'ncaaf range %{http_code} %{size_download}B\n' "$B/college-football/scoreboard?dates=$from-$to&limit=1000&groups=80"
-          live=$(jq -r '[.events[] | select(.status.type.state=="in")][0].id // ([.events[]][0].id)' probe/ncaaf.json)
-          echo "summary event: $live"
-          curl -s -o probe/summary.json -w 'summary %{http_code} %{size_download}B\n' "$B/college-football/summary?event=$live"
-          echo "--- trimmed NFL fixture (first 2 events):"
-          jq -c '{events: [.events[:2][] | {id, date, name, shortName, status, competitions: [.competitions[0] | {competitors: [.competitors[] | {homeAway, score, linescores, team: (.team | {displayName, abbreviation, color, location, name})}]}]}]}' probe/nfl.json | head -c 4000; echo
+          try() {
+            name="$1"; url="$2"
+            code=$(curl -s -o "probe/$name.json" -w '%{http_code}' -m 25 "$url")
+            n=$(jq '.events | length' "probe/$name.json" 2>/dev/null || echo "-")
+            echo "== $code events=$n [$name] $url"
+            [ "$code" = 200 ] || { head -c 200 "probe/$name.json"; echo; }
+          }
+          try nfl_range_limit   "$B/nfl/scoreboard?dates=$d0-$d10&limit=1000"
+          try nfl_range         "$B/nfl/scoreboard?dates=$d0-$d10"
+          try nfl_range_l100    "$B/nfl/scoreboard?dates=$d0-$d10&limit=100"
+          try nfl_range7        "$B/nfl/scoreboard?dates=$d1-$d7"
+          try nfl_day           "$B/nfl/scoreboard?dates=$d1"
+          try nfl_plain         "$B/nfl/scoreboard"
+          try ncaaf_range_limit "$B/college-football/scoreboard?dates=$d0-$d10&limit=1000&groups=80"
+          try ncaaf_range       "$B/college-football/scoreboard?dates=$d0-$d10&groups=80"
+          try ncaaf_range_l300  "$B/college-football/scoreboard?dates=$d0-$d10&groups=80&limit=300"
+          try ncaaf_range7      "$B/college-football/scoreboard?dates=$d1-$d7&groups=80&limit=300"
+          try ncaaf_plain       "$B/college-football/scoreboard?groups=80&limit=300"
+          echo "--- NFL plain: season/week/calendar"
+          jq -c '{season: .season, week: .week, leagues: [.leagues[0] | {calendarType, calendarStartDate, calendarEndDate}]}' probe/nfl_plain.json | head -c 800; echo
 
-      - name: Run the repo's parser on them
+      - name: Run the repo's parser on the 200 responses
         run: |
           cat > worker/scores/probe.live.test.ts <<'EOF'
-          import { readFileSync } from "node:fs";
+          import { readdirSync, readFileSync } from "node:fs";
           import { it } from "vitest";
-          import { parseSchedule, parseScoreboardSnapshots, parseSummarySnapshot, toLiveUpdate } from "./espn";
-          const load = (f: string) => JSON.parse(readFileSync(`probe/${f}`, "utf8"));
+          import { parseSchedule, parseScoreboardSnapshots, toLiveUpdate } from "./espn";
           it("parses real ESPN data", () => {
-            for (const [file, league] of [["nfl.json", "nfl"], ["ncaaf.json", "ncaaf"]] as const) {
-              const raw = load(file);
+            for (const f of readdirSync("probe").filter((f) => f.endsWith(".json")).sort()) {
+              let raw: any;
+              try { raw = JSON.parse(readFileSync(`probe/${f}`, "utf8")); } catch { continue; }
+              if (!Array.isArray(raw?.events)) continue;
+              const league = f.startsWith("nfl") ? "nfl" : "ncaaf";
               const all = parseSchedule(raw, league);
               const upcoming = all.filter((e) => e.state !== "post");
-              console.log(`${league}: raw events ${raw.events?.length}, parsed ${all.length}, not finished ${upcoming.length}`);
-              for (const e of upcoming.slice(0, 4)) console.log("  ", new Date(e.startsAt).toISOString(), e.state, e.away.abbr, e.away.color, "@", e.home.abbr, e.home.color, "|", e.name);
+              console.log(`${f}: raw ${raw.events.length}, parsed ${all.length}, not finished ${upcoming.length}, first ${upcoming[0] ? new Date(upcoming[0].startsAt).toISOString() + " " + upcoming[0].away.abbr + "@" + upcoming[0].home.abbr + " " + upcoming[0].home.color : "-"}`);
             }
-            const snaps = parseScoreboardSnapshots(load("ncaaf.json"));
-            const live = snaps.find((s) => s.live?.state === "in") ?? snaps[0];
-            console.log("scoreboard snapshot:", JSON.stringify(live).slice(0, 600));
-            if (live) console.log("live update:", JSON.stringify(toLiveUpdate(live, true, Date.now())).slice(0, 600));
-            console.log("summary snapshot:", JSON.stringify(parseSummarySnapshot(load("summary.json"))).slice(0, 600));
+            const snaps = parseScoreboardSnapshots(JSON.parse(readFileSync("probe/ncaaf_plain.json", "utf8")));
+            const live: any = snaps.find((s: any) => JSON.stringify(s).includes('"in"')) ?? snaps[0];
+            console.log("snapshot:", JSON.stringify(live).slice(0, 500));
+            if (live) console.log("live update:", JSON.stringify(toLiveUpdate(live, true, Date.now())).slice(0, 500));
           });
           EOF
-          npx vitest run worker/scores/probe.live.test.ts --reporter=verbose 2>&1 | grep -v "^ *$" | head -80
+          npx vitest run worker/scores/probe.live.test.ts 2>&1 | grep -E "json:|snapshot|live update|✓|×|Error|FAIL" | head -60
