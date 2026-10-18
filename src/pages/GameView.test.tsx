@@ -178,6 +178,73 @@ describe("GameView players list for the host", () => {
   });
 });
 
+describe("Let Jax pick", () => {
+  const MAYA = "maya_public_id_000000";
+  type Cells = { cells: { row: number; col: number }[] };
+
+  /** Answers claim requests with `answer(cells, call)`; everything else is offline. */
+  function claimServer(answer: (cells: Cells["cells"], call: number) => { claimed: number; state: GameState }) {
+    const calls: Cells["cells"][] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).endsWith("/claim") && init?.method === "POST") {
+          const { cells } = JSON.parse(String(init.body)) as Cells;
+          calls.push(cells);
+          const { claimed, state } = answer(cells, calls.length);
+          return new Response(JSON.stringify({ claimed, skipped: cells.length - claimed, state }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: "offline in tests" }), { status: 503 });
+      }),
+    );
+    return calls;
+  }
+
+  it("a newcomer: Jax picks an open square and the join sheet opens to claim it", async () => {
+    board.state = openBoard([player(HOST, "Jordan")]);
+    await renderBoard();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("jax-pick"));
+    });
+    expect(await screen.findByTestId("join-name")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cell").filter((c) => c.dataset.state === "selected")).toHaveLength(1);
+    expect(screen.getByText("Jax picked this one!")).toBeInTheDocument();
+  });
+
+  it("on the board: claims right away, and picks again when someone takes his square first", async () => {
+    const me = identity.getPlayerId();
+    const start = { ...openBoard([player(HOST, "Jordan"), player(MAYA, "Maya"), player(me, "Sam")]), squares: [] };
+    board.state = start;
+    const calls = claimServer((cells, call) => {
+      const [cell] = cells;
+      // The first pick loses the race to Maya; the second one lands.
+      const owner = call === 1 ? MAYA : me;
+      const prior = call === 1 ? [] : [{ ...calls[0][0], playerId: MAYA, claimedAt: 1 }];
+      return { claimed: call === 1 ? 0 : 1, state: { ...start, squares: [...prior, { ...cell, playerId: owner, claimedAt: 2 }], version: call + 1 } };
+    });
+    await renderBoard();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("jax-pick"));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toHaveLength(1);
+    expect(calls[1]).toHaveLength(1);
+    expect(calls[1][0]).not.toEqual(calls[0][0]);
+    expect(screen.queryByTestId("join-name")).toBeNull();
+    expect(await screen.findByText("Jax picked this one!")).toBeInTheDocument();
+  });
+
+  it("isn't offered once I'm at the per-player max (full and locked boards: see jaxPick.test)", async () => {
+    const me = identity.getPlayerId();
+    const mine = [0, 1].map((col) => ({ row: 0, col, playerId: me, claimedAt: 0 }));
+    board.state = { ...openBoard([player(HOST, "Jordan"), player(me, "Sam")]), squares: mine };
+    board.state.game = { ...board.state.game, maxPerPlayer: 2 };
+    await renderBoard();
+    expect(screen.queryByTestId("jax-pick")).toBeNull();
+  });
+});
+
 describe("GameView opened from an invite link", () => {
   it("paints the skeleton for a frame, then the board the page carried (no fetch)", async () => {
     board.state = openBoard([player(HOST, "Jordan")]);

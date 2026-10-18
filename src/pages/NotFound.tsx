@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { buttonStyles, EmptyState, TopBar } from "../components/ui";
+import { buttonStyles, EmptyState, Jax, TopBar } from "../components/ui";
 
 export default function NotFound() {
   return (
@@ -7,9 +7,9 @@ export default function NotFound() {
       <TopBar title="Not found" large={false} back="/" />
       <div className="flex flex-1 items-center justify-center px-safe">
         <EmptyState
-          art="🏈"
+          illustration={<Jax pose="peek" size={156} />}
           title="Out of bounds"
-          description="That page went wide right. Let's get you back on the field."
+          description="Jax sniffed all over and this page isn't here. Let's get you back on the field."
           action={
             <Link to="/" replace className={buttonStyles({ size: "lg", block: true })}>
               Back to Home

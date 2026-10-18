@@ -201,7 +201,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
   const status = done
     ? "Numbers locked in"
     : !draw
-      ? "Shuffling…"
+      ? "Jax is shuffling…"
       : xLanded
         ? `Drawing ${abbr(game.teamY)} numbers…`
         : `Drawing ${abbr(game.teamX)} numbers…`;
@@ -271,7 +271,7 @@ export function NumberReveal({ game, squares, players, me, draw, drawLabel, onCl
             {done ? "The numbers are in!" : "Shuffling the numbers"}
           </h2>
           <p className="mt-1.5 text-subhead text-ink-muted" aria-live="polite">
-            {done ? "Everyone on the board sees them now." : `Random 0–9 for each team · ${taken} ${taken === 1 ? "square" : "squares"} in play`}
+            {done ? "Jax shuffled them. Everyone on the board sees them now." : `Random 0–9 for each team · ${taken} ${taken === 1 ? "square" : "squares"} in play`}
           </p>
         </div>
 

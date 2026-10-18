@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PlusIcon } from "../../components/icons";
-import { buttonStyles, Button, Wordmark } from "../../components/ui";
+import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
 import { useHideTabBar } from "../../components/shell";
 import { haptic } from "../../lib/native";
 import { JoinCodeSheet } from "./JoinCodeSheet";
@@ -27,11 +27,19 @@ export function Welcome() {
       </div>
 
       <div className="home-enter">
-        <h1 className="font-display text-hero font-extrabold text-ink">
-          Football squares,
-          <br />
-          <span className="text-ink-brand">live with your crew.</span>
-        </h1>
+        <div className="relative">
+          <h1 className="font-display text-hero font-extrabold text-ink">
+            Football squares,
+            <br />
+            <span className="text-ink-brand">
+              live with your
+              <br />
+              crew.
+            </span>
+          </h1>
+          {/* Jax, the dog the app is named after, part of the crew: in the space the short last lines leave. */}
+          <Jax pose="sit" size={78} className="pointer-events-none absolute -bottom-1 -right-1 max-[359px]:hidden" />
+        </div>
         <p className="mt-2.5 max-w-[22rem] text-callout text-ink-muted">
           Make a board, text the link, and watch the squares fill up. Scores and winners land live.
         </p>

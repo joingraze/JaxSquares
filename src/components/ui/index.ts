@@ -12,6 +12,8 @@ export { celebrate, CELEBRATION_COLORS, prefersReducedMotion, type CelebrateKind
 export { cx } from "./cx";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { IconButton, type IconButtonProps } from "./IconButton";
+export { Jax, type JaxPose, type JaxProps } from "./Jax";
+export { JaxCheer, type JaxCheerProps } from "./JaxCheer";
 export { ListGroup, type ListGroupProps } from "./ListGroup";
 export { ListRow, type ListRowProps } from "./ListRow";
 export { LiveDot, type LiveDotProps } from "./LiveDot";

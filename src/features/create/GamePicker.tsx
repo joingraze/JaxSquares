@@ -16,7 +16,7 @@ import {
   StarIcon,
   XIcon,
 } from "../../components/icons";
-import { cx, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
+import { cx, Jax, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
 import { kickoffLabel, shortTeamName } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CustomMatchup } from "./CustomMatchup";
@@ -69,12 +69,16 @@ export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom
             onChange={onCustomChange}
             showErrors={showErrors}
             colors={colors}
-            note={
-              noGamesAnywhere
-                ? "No games to link right now. Any two teams work; you punch in the score."
-                : "Any two teams work. You punch in the score as the game goes."
-            }
+            note={noGamesAnywhere ? undefined : "Any two teams work. You punch in the score as the game goes."}
           />
+          {noGamesAnywhere && (
+            <div className="mt-2 flex items-center gap-3 pr-1">
+              <Jax pose="sleep" size={76} />
+              <p className="min-w-0 flex-1 text-footnote text-ink-subtle">
+                No games to link right now, so Jax is napping. Any two teams work; you punch in the score.
+              </p>
+            </div>
+          )}
         </div>
       ) : (
         <div key={tab} className="animate-fade-in">
@@ -142,13 +146,15 @@ function GameList({
 
   if (!events.length && !weeks.length) {
     return (
-      <div className="flex items-center gap-3.5 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
-        <span aria-hidden className="text-[1.75rem] leading-none">📡</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-callout font-bold text-ink">No {LEAGUE_LABEL[league]} games to link right now</p>
-          <p className="text-footnote text-ink-muted">Type your teams and run the score yourself.</p>
+      <div className="flex flex-col gap-3 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
+        <div className="flex items-center gap-3">
+          <Jax pose="sleep" size={92} className="-ml-1" />
+          <div className="min-w-0 flex-1">
+            <p className="text-callout font-bold text-ink">No {LEAGUE_LABEL[league]} games to link right now</p>
+            <p className="text-footnote text-ink-muted">Jax is napping. Type your teams and run the score yourself.</p>
+          </div>
         </div>
-        <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+        <button type="button" onClick={onCustom} className="pressable h-11 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
           Type teams
         </button>
       </div>

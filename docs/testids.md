@@ -23,6 +23,8 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `join-submit` | join button in the join sheet |
 | `cell` | every board square, with `data-row`, `data-col`, `data-state=empty\|mine\|taken\|selected\|winner` |
 | `claim-submit` | claim button in the board's action bar |
+| `jax-pick` | "Let Jax pick" on an open board (next to the hint above the grid): claims one random open square for me (joined), or picks it and opens the join sheet (newcomer). Hidden while squares are picked by hand, at my max, or when the board is full |
+| `jax-cheer` | not a control: the Jax cheer overlay while it plays after one of my squares wins (board and Home), for screenshot harnesses |
 | `host-lock` | lock board + draw numbers |
 | `score-x`, `score-y`, `score-save` | host score entry |
 | `host-open` | the host bar button that opens the host sheet |

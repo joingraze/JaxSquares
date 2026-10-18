@@ -1,0 +1,39 @@
+/* Jax's few motions. Every one stops under reduced motion (index.css clamps
+   all animations); JaxCheer also skips its hop there. */
+
+/* Asleep: a slow breath, and the z's drift. */
+.jx-breathe {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: jx-breathe 3.8s ease-in-out infinite;
+}
+@keyframes jx-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.012, 1.04); }
+}
+.jx-zz {
+  animation: jx-zz 3.8s ease-in-out infinite;
+}
+@keyframes jx-zz {
+  0%, 100% { opacity: 0.5; transform: translate(0, 1px); }
+  50% { opacity: 1; transform: translate(1px, -2px); }
+}
+
+/* A win: Jax pops up from the bottom edge, hops twice and ducks back down. */
+.jx-cheer {
+  transform-origin: 50% 100%;
+  animation: jx-cheer 2600ms both;
+}
+@keyframes jx-cheer {
+  0% { transform: translateY(110%) scale(0.9); opacity: 0; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+  16% { transform: translateY(0) scale(1); opacity: 1; animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1); }
+  28% { transform: translateY(-12%) scale(1.02, 0.98); animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1); }
+  38% { transform: translateY(0) scale(1.03, 0.96); animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1); }
+  50% { transform: translateY(-9%) scale(1); animation-timing-function: cubic-bezier(0.33, 0, 0.67, 1); }
+  60% { transform: translateY(0) scale(1); }
+  84% { transform: translateY(0); opacity: 1; animation-timing-function: cubic-bezier(0.55, 0, 0.75, 0.2); }
+  100% { transform: translateY(115%); opacity: 0; }
+}
+.jx-cheer-glow {
+  background: radial-gradient(closest-side, rgb(255 194 51 / 0.45), rgb(255 171 15 / 0.12) 60%, transparent);
+}

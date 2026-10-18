@@ -18,7 +18,7 @@ import { cellKey, countClaimedBy, drawFor, gridSize, resolveResults, upcomingPer
 import type { Activity, GameState } from "../../shared/types";
 import { GridIcon, SearchIcon, ShareIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
-import { ActionBar, Avatar, Button, EmptyState, IconButton, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
+import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
 import { ActivityFeed } from "../features/board/ActivityFeed";
 import { Board, type BoardCallout } from "../features/board/Board";
 import {
@@ -51,6 +51,7 @@ import { PlayersList } from "../features/board/PlayersList";
 import { ResultsStrip } from "../features/board/ResultsStrip";
 import { RightNow } from "../features/board/RightNow";
 import { Scorebug } from "../features/board/Scorebug";
+import { jaxPick, jaxPickBlocked } from "../features/board/jaxPick";
 import { celebratedWins, markCelebrated } from "../features/board/storage";
 import { Ticker } from "../features/board/Ticker";
 import { useTicker } from "../features/board/useTicker";
@@ -82,6 +83,8 @@ type Glory = { periods: string[]; burst: boolean };
 const CALLOUT_MS = 2600;
 /** How long the big "You won" banner stays before folding into the Winners card. */
 const GLORY_MS = 15_000;
+/** "Let Jax pick": squares he tries when someone keeps beating him to it. */
+const JAX_TRIES = 4;
 
 export default function GameView() {
   const theme = useResolvedTheme();
@@ -171,6 +174,11 @@ export default function GameView() {
   /** Wins being celebrated right now (the gold banner), else null. */
   const [glory, setGlory] = useState<Glory | null>(null);
   const gloryRef = useRef<HTMLElement>(null);
+  /** Bumped when a win just happened: Jax pops up and cheers. */
+  const [cheer, setCheer] = useState(0);
+  /** A newcomer's pending pick that Jax made (claimed, with re-picks, once they've joined). */
+  const jaxKeyRef = useRef<string | null>(null);
+  const [jaxBusy, setJaxBusy] = useState(false);
   const hadState = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
@@ -300,10 +308,12 @@ export default function GameView() {
     const latest = results[results.length - 1];
     const freshPeriods = new Set(fresh.map((w) => w.split(":")[0]));
     void haptic("success");
+    const burst = !!latest && freshPeriods.has(latest.periodKey);
     setGlory({
       periods: results.filter((r) => freshPeriods.has(r.periodKey)).map((r) => r.periodKey),
-      burst: !!latest && freshPeriods.has(latest.periodKey),
+      burst,
     });
+    if (burst) setCheer((n) => n + 1);
   }, [game, winIds, results]);
 
   // The celebration is a moment: one burst on the banner, then it folds into the Winners card.
@@ -467,19 +477,123 @@ export default function GameView() {
     }
   }, [joined, claim, release]);
 
+  /**
+   * "Let Jax pick", once I'm on the board: claim his square the same way a tap + Claim does. If
+   * someone takes it first, he picks again from the board the server sent back.
+   */
+  const jaxClaim = useCallback(
+    async (first: Cell) => {
+      if (!id) return;
+      const myId = getPlayerId();
+      const tried = new Set<string>();
+      let cell: Cell | null = first;
+      setJaxBusy(true);
+      try {
+        for (let attempt = 0; cell && attempt < JAX_TRIES; attempt++) {
+          const target: Cell = cell;
+          tried.add(cellKey(target.row, target.col));
+          void haptic("medium");
+          const res = await mutate(() => api.claim(id, [target]), claimPatch(myId, [target]));
+          if (res.claimed > 0) {
+            void haptic("success");
+            void celebrate("pop", { origin: originOfCell(target) });
+            setCallout({
+              key: cellKey(target.row, target.col),
+              tone: "brand",
+              children: <CalloutBody icon={<Jax pose="face" size={34} />} title="Jax picked this one!" detail="It's yours. Tap it to give it back." />,
+            });
+            maybeAskNotify();
+            return;
+          }
+          const s = res.state;
+          cell = jaxPick({
+            status: s.game.status,
+            boardSize: s.game.format.boardSize,
+            maxPerPlayer: s.game.maxPerPlayer,
+            squares: s.squares,
+            me: myId,
+            exclude: tried,
+          });
+        }
+        void haptic("warning");
+        ticker.show({ title: "Jax couldn't find an open square", detail: "They just got snapped up.", tone: "neutral" });
+      } catch (err) {
+        toast.error(errorMessage(err));
+      } finally {
+        setJaxBusy(false);
+      }
+    },
+    [id, mutate, toast, ticker, maybeAskNotify],
+  );
+
   const onJoined = useCallback(
     (fresh: GameState) => {
       receive(fresh);
       setJoinOpen(false);
       const picked = cellsOf(selectionRef.current.claim);
       setSelection(EMPTY_SELECTION);
+      const jaxKey = jaxKeyRef.current;
+      jaxKeyRef.current = null;
       // The welcome card ("You're in", what you got, Bring a friend) takes it from here.
       welcomeRef.current = true;
       setWelcome(true);
+      if (jaxKey) {
+        // Still just Jax's pick: claim it (he re-picks if it's taken). Taken by someone while
+        // the join sheet was up: he picks another. Changed by hand: a normal claim below.
+        const myId = getPlayerId();
+        const kept = picked.length === 1 && cellKey(picked[0].row, picked[0].col) === jaxKey ? picked[0] : null;
+        const lost = picked.length === 0 && fresh.squares.some((sq) => cellKey(sq.row, sq.col) === jaxKey && sq.playerId !== myId);
+        const target =
+          kept ??
+          (lost
+            ? jaxPick({ status: fresh.game.status, boardSize: fresh.game.format.boardSize, maxPerPlayer: fresh.game.maxPerPlayer, squares: fresh.squares, me: myId })
+            : null);
+        if (target) {
+          void jaxClaim(target);
+          return;
+        }
+      }
       if (picked.length > 0) void claim(picked);
     },
-    [receive, claim],
+    [receive, claim, jaxClaim],
   );
+
+  /** "Let Jax pick": a random open square, through the same path as tapping it. */
+  const letJaxPick = useCallback(() => {
+    const s = stateRef.current;
+    if (!s) return;
+    const myId = getPlayerId();
+    const cell = jaxPick({
+      status: s.game.status,
+      boardSize: s.game.format.boardSize,
+      maxPerPlayer: s.game.maxPerPlayer,
+      squares: s.squares,
+      me: myId,
+      exclude: selectionRef.current.claim,
+    });
+    if (!cell) {
+      void haptic("warning");
+      ticker.show({ title: "Jax couldn't find an open square", detail: "Every square is spoken for.", tone: "neutral" });
+      return;
+    }
+    setSpot(null);
+    if (s.players.some((p) => p.id === myId)) {
+      void jaxClaim(cell);
+      return;
+    }
+    // Not on the board yet: exactly like tapping that square (the join sheet opens), and once
+    // they've joined Jax claims it.
+    void haptic("selection");
+    const key = cellKey(cell.row, cell.col);
+    jaxKeyRef.current = key;
+    setSelection({ claim: new Set([key]), release: new Set() });
+    setCallout({
+      key,
+      tone: "brand",
+      children: <CalloutBody icon={<Jax pose="face" size={34} />} title="Jax picked this one!" detail="Join and it's yours." />,
+    });
+    if (!getAdminToken(s.game.id)) setJoinOpen(true);
+  }, [jaxClaim, ticker]);
 
   const dismissWelcome = useCallback(() => {
     welcomeRef.current = false;
@@ -654,9 +768,13 @@ export default function GameView() {
       <>
         <TopBar title="Board" large={false} back />
         <EmptyState
-          art={deleted ? "🧹" : "🧐"}
-          title={deleted ? "This board was deleted" : "Board not found"}
-          description={deleted ? "The host took this board down. Squares and results are gone with it." : "This link may be old, or the host deleted the board."}
+          illustration={<Jax pose="peek" size={156} />}
+          title={deleted ? "This board was deleted" : "Jax looked everywhere"}
+          description={
+            deleted
+              ? "The host took this board down. Squares and results went with it."
+              : "This board isn't here. The link may be old, or the host deleted the board."
+          }
           action={
             <Button size="lg" block onClick={() => navigate("/", { replace: true })}>
               Back to my boards
@@ -705,6 +823,11 @@ export default function GameView() {
   // What's left once this selection goes through (a give-back frees a spot).
   const leftAfter = squaresLeftFor(game.maxPerPlayer, mineAfter(mineCount, selection));
   const showBar = !pick && !joinOpen && open && claimN + releaseN > 0;
+  // "Let Jax pick" while nothing is picked by hand, there's an open square, and I'm under my max.
+  const canJaxPick =
+    !pick &&
+    claimN + releaseN === 0 &&
+    !jaxPickBlocked({ status: game.status, boardSize: game.format.boardSize, maxPerPlayer: game.maxPerPlayer, squares: state.squares, me });
   const firstMine = state.squares.find((sq) => sq.playerId === me);
   const focusKey =
     [...selection.claim][0] ??
@@ -826,11 +949,18 @@ export default function GameView() {
               />
             </div>
           ) : (
-            !newcomer &&
+            (!newcomer || canJaxPick) &&
             !pick &&
             !(phase === "draft" && hostBar) && (
               <div className="mb-1 flex min-h-6 items-center gap-2 px-3 text-footnote leading-snug text-ink-muted">
-                <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} />
+                <span className="min-w-0 flex-1">
+                  {newcomer ? (
+                    <b className="font-bold text-ink">Tap any open square, or let Jax choose.</b>
+                  ) : (
+                    <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} />
+                  )}
+                </span>
+                {canJaxPick && <JaxPickButton onClick={letJaxPick} busy={jaxBusy} />}
               </div>
             )
           )}
@@ -1040,6 +1170,7 @@ export default function GameView() {
       )}
 
       <Ticker note={tickerNote} onDismiss={dismissTicker} />
+      <JaxCheer play={cheer} />
 
       <Suspense fallback={null}>
         <InviteSheet
@@ -1059,6 +1190,33 @@ export default function GameView() {
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
       </Suspense>
     </div>
+  );
+}
+
+/** Viewport origin (0..1) of a board square, for a confetti pop right on it. */
+function originOfCell(cell: Cell): { x: number; y: number } {
+  const el = typeof document === "undefined" ? null : document.querySelector(`[data-testid="cell"][data-row="${cell.row}"][data-col="${cell.col}"]`);
+  const r = el?.getBoundingClientRect();
+  if (!r || typeof window === "undefined" || !window.innerWidth) return { x: 0.5, y: 0.6 };
+  return { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight };
+}
+
+/** "Let Jax pick": the pill next to the board hint. */
+function JaxPickButton({ onClick, busy }: { onClick: () => void; busy: boolean }) {
+  return (
+    <button
+      type="button"
+      data-testid="jax-pick"
+      onClick={onClick}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      className="pressable tap-target -my-1 flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-surface-3 py-0.5 pl-1 pr-3 text-footnote font-extrabold text-ink shadow-[inset_0_1px_0_rgb(255_255_255/0.06)] ring-1 ring-inset ring-line-strong disabled:opacity-60"
+    >
+      <span aria-hidden className="grid h-7 w-8 place-items-center overflow-hidden">
+        <Jax pose="face" size={32} />
+      </span>
+      {busy ? "Picking…" : "Let Jax pick"}
+    </button>
   );
 }
 

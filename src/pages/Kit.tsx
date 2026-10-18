@@ -14,6 +14,9 @@ import {
   Chip,
   EmptyState,
   IconButton,
+  Jax,
+  JaxCheer,
+  type JaxPose,
   ListGroup,
   ListRow,
   LiveDot,
@@ -42,6 +45,8 @@ const SWATCHES: [string, string[]][] = [
   ["live", ["700", "600", "500", "400", "300"]],
 ];
 
+const JAX_POSES: JaxPose[] = ["sit", "peek", "cheer", "sleep", "face"];
+
 const KC = { name: "Kansas City", abbr: "KC", color: "#e31837" };
 const PHI = { name: "Philadelphia", abbr: "PHI", color: "#004c54" };
 
@@ -65,6 +70,7 @@ export default function Kit() {
   const [notify, setNotify] = useState(true);
   const [name, setName] = useState("Jax");
   const [loading, setLoading] = useState(false);
+  const [cheer, setCheer] = useState(0);
 
   const people = PLAYER_COLORS.slice(0, 7).map((c, i) => ({ name: c.name, color: c.value, emoji: PLAYER_EMOJIS[i * 3] }));
 
@@ -105,6 +111,31 @@ export default function Kit() {
             <p className="eyebrow text-ink-muted">Overline · Q3 · live</p>
           </div>
         </Section>
+
+        <section id="kit-jax" className="flex flex-col gap-3">
+          <h2 className="eyebrow text-ink-subtle">Jax</h2>
+          <p className="text-subhead text-ink-muted">
+            The dog the app is named after. Use him at moments (welcome, empty, a win), never as decoration.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            {JAX_POSES.map((pose) => (
+              <Card key={pose} padding="none" className="flex flex-col items-center gap-2 px-2 pb-3 pt-4">
+                <span className="grid h-32 place-items-center">
+                  <Jax pose={pose} size={pose === "sleep" ? 150 : pose === "face" ? 96 : 120} />
+                </span>
+                <span className="flex items-end gap-2">
+                  <Jax pose={pose} size={44} />
+                  <Jax pose={pose} size={24} />
+                </span>
+                <code className="text-caption font-semibold text-ink-muted">pose="{pose}"</code>
+              </Card>
+            ))}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setCheer((n) => n + 1)}>
+            Play the win cheer
+          </Button>
+          <JaxCheer play={cheer} />
+        </section>
 
         <Section title="Color">
           {SWATCHES.map(([family, steps]) => (
@@ -304,6 +335,9 @@ export default function Kit() {
           </Card>
           <Card padding="none">
             <EmptyState title="No boards yet" description="Make a board and send the link to your crew." />
+          </Card>
+          <Card padding="none">
+            <EmptyState illustration={<Jax pose="peek" size={140} />} title="Jax looked everywhere" description="This board isn't here." />
           </Card>
         </Section>
 

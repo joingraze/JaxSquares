@@ -3,7 +3,8 @@
 // board will ping about next (with per-board mutes), host links and About.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LockIcon, MoonIcon, PencilIcon, PhoneIcon, SunIcon, TrophyIcon } from "../components/icons";
+import { Link } from "react-router-dom";
+import { LockIcon, MoonIcon, PawIcon, PencilIcon, PhoneIcon, SunIcon, TrophyIcon } from "../components/icons";
 import { Button, Card, ListGroup, ListRow, SegmentedControl, TopBar, cx, useToast, type SegmentOption } from "../components/ui";
 import { appVersion, WEB_VERSION } from "../features/notifications/profile/appVersion";
 import { HostLinksSheet } from "../features/notifications/profile/HostLinksSheet";
@@ -98,6 +99,10 @@ export default function Profile() {
           footer={
             <>
               JaxSquares {version} · Squares for bragging rights. No money changes hands, ever.
+              <Link to="/support#meet-jax" className="mt-0.5 flex w-fit items-center gap-1.5 py-2 font-semibold text-ink-muted hover:text-ink">
+                <PawIcon size={13} filled strokeWidth={0} className="shrink-0" />
+                Named after Jax, our chief squares officer.
+              </Link>
             </>
           }
         >

@@ -9,10 +9,10 @@
 // boards, boards past the follow cap).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ArrowRightIcon, ShareIcon, WifiOffIcon } from "../../components/icons";
-import { Button, celebrate, cx, LiveDot, useToast } from "../../components/ui";
+import { Button, buttonStyles, celebrate, cx, Jax, JaxCheer, LiveDot, useToast } from "../../components/ui";
 import { inviteUrl, type ApiError } from "../../lib/api";
 import { getPlayerId, useProfile } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
@@ -110,7 +110,13 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   const [joining, setJoining] = useState(false);
   const { pull, refreshing } = usePullToRefresh(refresh);
   const [winPulse, setWinPulse] = useState(0);
-  useWinCelebration(boards, details, () => setWinPulse((n) => n + 1));
+  const [cheer, setCheer] = useState(0);
+  useWinCelebration(
+    boards,
+    details,
+    () => setWinPulse((n) => n + 1),
+    () => setCheer((n) => n + 1),
+  );
 
   const winningNow = sections.live.some((g) => {
     const snap = details[g.id] ? liveSnapshot(details[g.id], me) : null;
@@ -203,6 +209,25 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           </section>
         )}
 
+        {sections.live.length + sections.needs.length + sections.next.length === 0 && (
+          <section aria-labelledby="home-quiet" className="home-enter flex items-center gap-3 rounded-card bg-surface-2 py-3 pl-2 pr-4 ring-1 ring-inset ring-line" style={enter()}>
+            <Jax pose="sleep" size={116} />
+            <div className="min-w-0 flex-1">
+              <h2 id="home-quiet" className="font-display text-headline font-extrabold text-ink">
+                All quiet
+              </h2>
+              <p className="text-footnote text-ink-muted">Jax is napping till the next kickoff.</p>
+              <Link
+                to="/new"
+                onClick={() => void haptic("light")}
+                className={buttonStyles({ size: "sm", variant: "secondary", className: "mt-2.5" })}
+              >
+                Start the next board
+              </Link>
+            </div>
+          </section>
+        )}
+
         {sections.final.length > 0 && (
           <section aria-labelledby="home-final" className="home-enter" style={enter()}>
             <SectionHeader id="home-final" title="Final" count={sections.final.length} />
@@ -230,6 +255,7 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
       </div>
 
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />
+      <JaxCheer play={cheer} />
     </>
   );
 }
@@ -293,9 +319,9 @@ function PullIndicator({ pull, refreshing }: { pull: number; refreshing: boolean
  * already on the board when Home opened stay quiet, and the board's
  * per-device ledger means a win is celebrated once, here or there). With the
  * headline on screen it takes the news (no toast saying it twice); scrolled
- * away, a toast carries it in plain words.
+ * away, a toast carries it in plain words. Either way Jax pops up to cheer.
  */
-function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string, GameState>>, onHeadline: () => void) {
+function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string, GameState>>, onHeadline: () => void, onCheer: () => void) {
   const toast = useToast();
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
@@ -304,12 +330,15 @@ function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string
   statesRef.current = states;
   const onHeadlineRef = useRef(onHeadline);
   onHeadlineRef.current = onHeadline;
+  const onCheerRef = useRef(onCheer);
+  onCheerRef.current = onCheer;
   const seen = useRef<Set<string> | null>(null);
 
   const announce = useCallback(
     (game: GameSummary, win: { periodKey: string; label: string }) => {
       void haptic("success");
       void celebrate("win");
+      onCheerRef.current();
       if (typeof window !== "undefined" && window.scrollY < 120) {
         onHeadlineRef.current();
         return;

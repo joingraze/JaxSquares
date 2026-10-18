@@ -291,3 +291,15 @@ export const PhoneIcon = make(
     <path d="M10.5 18.5h3" />
   </>,
 );
+/** Jax's paw print. */
+export const PawIcon = make(
+  "Paw",
+  <>
+    <path d="M12 12.5c-2.9 0-5.5 2.6-5.5 4.9 0 1.6 1.3 2.4 2.8 2.4 1.1 0 1.7-.6 2.7-.6s1.6.6 2.7.6c1.5 0 2.8-.8 2.8-2.4 0-2.3-2.6-4.9-5.5-4.9Z" />
+    <ellipse cx="5.2" cy="10" rx="1.7" ry="2.2" />
+    <ellipse cx="9" cy="5.6" rx="1.8" ry="2.4" />
+    <ellipse cx="15" cy="5.6" rx="1.8" ry="2.4" />
+    <ellipse cx="18.8" cy="10" rx="1.7" ry="2.2" />
+  </>,
+  { fillable: true },
+);

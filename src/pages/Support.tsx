@@ -1,8 +1,11 @@
 // Support page (App Store "Support URL": https://jaxsquares.com/support).
 // The contact address is a placeholder until the mailbox exists.
-import type { ReactNode } from "react";
-import { ChevronDownIcon } from "../components/icons";
-import { buttonStyles, Card, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
+import { useEffect, useRef, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
+import jaxJpg from "../assets/jax-portrait-512.jpg";
+import jaxWebp from "../assets/jax-portrait-512.webp";
+import { ChevronDownIcon, PawIcon } from "../components/icons";
+import { buttonStyles, Card, Jax, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
@@ -93,7 +96,58 @@ function FaqItem({ faq, defaultOpen }: { faq: Faq; defaultOpen?: boolean }) {
   );
 }
 
+/** The real Jax (a tight, metadata-free crop of the owner's photo) next to his drawing. */
+function MeetJax() {
+  return (
+    <section id="meet-jax" aria-labelledby="meet-jax-title" className="scroll-mt-20">
+      <Card padding="none" className="relative overflow-hidden">
+        {/* Sunset warmth from his photo. */}
+        <div aria-hidden className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-[radial-gradient(closest-side,rgb(255_171_15/0.22),transparent)]" />
+        <div className="relative flex items-center gap-4 p-4">
+          <div className="relative shrink-0">
+            <picture>
+              <source srcSet={jaxWebp} type="image/webp" />
+              <img
+                src={jaxJpg}
+                width={512}
+                height={512}
+                loading="lazy"
+                decoding="async"
+                alt="Jax, a small fluffy golden dog with floppy ears, on the beach at sunset"
+                className="h-32 w-32 rounded-[1.5rem] bg-surface-3 object-cover shadow-float ring-2 ring-gold-line/70"
+              />
+            </picture>
+            <span aria-hidden className="absolute -bottom-2 -right-3 grid h-11 w-11 place-items-center rounded-full bg-surface-2 shadow-float ring-1 ring-inset ring-line-strong">
+              <Jax pose="face" size={34} />
+            </span>
+          </div>
+          <div className="min-w-0">
+            <p className="eyebrow flex items-center gap-1 text-ink-subtle">
+              <PawIcon size={12} filled strokeWidth={0} />
+              Meet Jax
+            </p>
+            <h2 id="meet-jax-title" className="mt-1 font-display text-title-3 font-extrabold text-ink">
+              Chief squares officer
+            </h2>
+            <p className="mt-1 text-subhead text-ink-muted">JaxSquares is named after Jax. He hasn't missed a kickoff yet.</p>
+          </div>
+        </div>
+      </Card>
+    </section>
+  );
+}
+
 export default function Support() {
+  // Profile links here as /support#meet-jax.
+  const { hash } = useLocation();
+  const scrolled = useRef(false);
+  useEffect(() => {
+    if (hash !== "#meet-jax" || scrolled.current) return;
+    scrolled.current = true;
+    const t = setTimeout(() => document.getElementById("meet-jax")?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    return () => clearTimeout(t);
+  }, [hash]);
+
   return (
     <>
       <TopBar title="Support" subtitle="Help for game day, from real people." back />
@@ -124,6 +178,8 @@ export default function Support() {
             ))}
           </ListGroup>
         </section>
+
+        <MeetJax />
 
         <ListGroup title="The fine print">
           <ListRow title="Privacy Policy" subtitle="What we keep and why" to="/privacy" />
