@@ -14,7 +14,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
-import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, upcomingPeriod } from "../../shared/squares";
+import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
 import { GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
@@ -51,7 +51,8 @@ import { PlayersList } from "../features/board/PlayersList";
 import { ResultsStrip } from "../features/board/ResultsStrip";
 import { RightNow } from "../features/board/RightNow";
 import { Scorebug } from "../features/board/Scorebug";
-import { jaxPick, jaxPickBlocked } from "../features/board/jaxPick";
+import { JaxCountSheet } from "../features/board/JaxCountSheet";
+import { jaxPickBlocked, jaxPickLimit, jaxPickMany, type JaxPickInput } from "../features/board/jaxPick";
 import { celebratedWins, markCelebrated } from "../features/board/storage";
 import { Ticker } from "../features/board/Ticker";
 import { useTicker } from "../features/board/useTicker";
@@ -182,9 +183,11 @@ export default function GameView() {
   const gloryRef = useRef<HTMLElement>(null);
   /** Bumped when a win just happened: Jax pops up and cheers. */
   const [cheer, setCheer] = useState(0);
-  /** A newcomer's pending pick that Jax made (claimed, with re-picks, once they've joined). */
-  const jaxKeyRef = useRef<string | null>(null);
+  /** A newcomer's pending picks that Jax made (claimed, with re-picks, once they've joined). */
+  const jaxKeysRef = useRef<ReadonlySet<string> | null>(null);
   const [jaxBusy, setJaxBusy] = useState(false);
+  /** "How many squares?" is open, for at most this many. */
+  const [jaxAsk, setJaxAsk] = useState<number | null>(null);
   const hadState = useRef(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
@@ -279,15 +282,18 @@ export default function GameView() {
 
   // ?invite=1 (the create flow lands here after checkout): open the invite sheet once,
   // even while the board is still "draft" because the payment webhook hasn't landed yet.
+  // Only for the host: a friend sent that exact URL just gets the board.
   useEffect(() => {
     if (params.get("invite") !== "1") return;
-    setJustCreated(true);
-    setFromCheckout(true);
-    setInviteOpen(true);
+    if (id && getAdminToken(id)) {
+      setJustCreated(true);
+      setFromCheckout(true);
+      setInviteOpen(true);
+    }
     const nextParams = new URLSearchParams(params);
     nextParams.delete("invite");
     setParams(nextParams, { replace: true });
-  }, [params, setParams]);
+  }, [params, setParams, id]);
 
   // Fresh from checkout but still "draft": check back every couple of seconds until the payment lands.
   const draftAfterCheckout = fromCheckout && game?.status === "draft";
@@ -487,42 +493,50 @@ export default function GameView() {
    * "Let Jax pick", once I'm on the board: claim his square the same way a tap + Claim does. If
    * someone takes it first, he picks again from the board the server sent back.
    */
+  /** Claims Jax's picks, re-picking any square someone takes first, until he has `want` of them. */
   const jaxClaim = useCallback(
-    async (first: Cell) => {
+    async (first: Cell[], want: number) => {
       if (!id) return;
       const myId = getPlayerId();
       const tried = new Set<string>();
-      let cell: Cell | null = first;
+      const got: Cell[] = [];
+      let batch = first;
       setJaxBusy(true);
       try {
-        for (let attempt = 0; cell && attempt < JAX_TRIES; attempt++) {
-          const target: Cell = cell;
-          tried.add(cellKey(target.row, target.col));
+        for (let attempt = 0; batch.length > 0 && attempt < JAX_TRIES; attempt++) {
+          const targets = batch;
+          for (const c of targets) tried.add(cellKey(c.row, c.col));
           void haptic("medium");
-          const res = await mutate(() => api.claim(id, [target]), claimPatch(myId, [target]));
-          if (res.claimed > 0) {
-            void haptic("success");
-            void celebrate("pop", { origin: originOfCell(target) });
-            setCallout({
-              key: cellKey(target.row, target.col),
-              tone: "brand",
-              children: <CalloutBody icon={<Jax pose="face" size={34} />} title="Jax picked this one!" detail="It's yours. Tap it to give it back." />,
-            });
-            maybeAskNotify();
-            return;
-          }
-          const s = res.state;
-          cell = jaxPick({
-            status: s.game.status,
-            boardSize: s.game.format.boardSize,
-            maxPerPlayer: s.game.maxPerPlayer,
-            squares: s.squares,
-            me: myId,
-            exclude: tried,
-          });
+          const res = await mutate(() => api.claim(id, targets), claimPatch(myId, targets));
+          const mine = new Set(res.state.squares.filter((sq) => sq.playerId === myId).map((sq) => cellKey(sq.row, sq.col)));
+          got.push(...targets.filter((c) => mine.has(cellKey(c.row, c.col))));
+          if (got.length >= want) break;
+          batch = jaxPickMany(jaxInputOf(res.state, myId, tried), want - got.length);
         }
-        void haptic("warning");
-        ticker.show({ title: "Jax couldn't find an open square", detail: "They just got snapped up.", tone: "neutral" });
+        if (got.length > 0) {
+          void haptic("success");
+          void celebrate("pop", { origin: originOfCell(got[0]) });
+          setCallout({
+            key: cellKey(got[0].row, got[0].col),
+            tone: "brand",
+            children: (
+              <CalloutBody
+                icon={<Jax pose="face" size={34} />}
+                title={got.length === 1 ? "Jax picked this one!" : `Jax picked ${got.length} squares!`}
+                detail={got.length === 1 ? "It's yours. Tap it to give it back." : "They're yours. Tap one to give it back."}
+              />
+            ),
+          });
+          maybeAskNotify();
+        }
+        if (got.length < want) {
+          void haptic("warning");
+          ticker.show(
+            got.length === 0
+              ? { title: "Jax couldn't find an open square", detail: "They just got snapped up.", tone: "neutral" }
+              : { title: `Jax got ${got.length} of ${want}`, detail: "The rest just got snapped up.", tone: "neutral" },
+          );
+        }
       } catch (err) {
         toast.error(errorMessage(err));
       } finally {
@@ -538,24 +552,22 @@ export default function GameView() {
       setJoinOpen(false);
       const picked = cellsOf(selectionRef.current.claim);
       setSelection(EMPTY_SELECTION);
-      const jaxKey = jaxKeyRef.current;
-      jaxKeyRef.current = null;
+      const jaxKeys = jaxKeysRef.current;
+      jaxKeysRef.current = null;
       // The welcome card ("You're in", what you got, Bring a friend) takes it from here.
       welcomeRef.current = true;
       setWelcome(true);
-      if (jaxKey) {
-        // Still just Jax's pick: claim it (he re-picks if it's taken). Taken by someone while
-        // the join sheet was up: he picks another. Changed by hand: a normal claim below.
+      if (jaxKeys && picked.every((c) => jaxKeys.has(cellKey(c.row, c.col)))) {
+        // Still just Jax's picks: claim them, and he replaces any taken while the join sheet
+        // was up. Changed by hand: a normal claim below.
         const myId = getPlayerId();
-        const kept = picked.length === 1 && cellKey(picked[0].row, picked[0].col) === jaxKey ? picked[0] : null;
-        const lost = picked.length === 0 && fresh.squares.some((sq) => cellKey(sq.row, sq.col) === jaxKey && sq.playerId !== myId);
-        const target =
-          kept ??
-          (lost
-            ? jaxPick({ status: fresh.game.status, boardSize: fresh.game.format.boardSize, maxPerPlayer: fresh.game.maxPerPlayer, squares: fresh.squares, me: myId })
-            : null);
-        if (target) {
-          void jaxClaim(target);
+        const pickedKeys = new Set(picked.map((c) => cellKey(c.row, c.col)));
+        const lost = [...jaxKeys].filter((k) => !pickedKeys.has(k) && fresh.squares.some((sq) => cellKey(sq.row, sq.col) === k && sq.playerId !== myId)).length;
+        const want = picked.length + lost;
+        const extra = picked.length < want ? jaxPickMany(jaxInputOf(fresh, myId, new Set([...jaxKeys, ...pickedKeys])), want - picked.length) : [];
+        const targets = [...picked, ...extra];
+        if (targets.length > 0) {
+          void jaxClaim(targets, want);
           return;
         }
       }
@@ -564,42 +576,56 @@ export default function GameView() {
     [receive, claim, jaxClaim],
   );
 
-  /** "Let Jax pick": a random open square, through the same path as tapping it. */
+  /** Jax picks `count` random open squares, through the same path as tapping them. */
+  const jaxPickCount = useCallback(
+    (count: number) => {
+      const s = stateRef.current;
+      if (!s) return;
+      setJaxAsk(null);
+      const myId = getPlayerId();
+      const cells = jaxPickMany(jaxInputOf(s, myId, selectionRef.current.claim), count);
+      if (cells.length === 0) {
+        void haptic("warning");
+        ticker.show({ title: "Jax couldn't find an open square", detail: "Every square is spoken for.", tone: "neutral" });
+        return;
+      }
+      setSpot(null);
+      if (s.players.some((p) => p.id === myId)) {
+        void jaxClaim(cells, cells.length);
+        return;
+      }
+      // Not on the board yet: exactly like tapping those squares (the join sheet opens), and once
+      // they've joined Jax claims them.
+      void haptic("selection");
+      const keys = new Set(cells.map((c) => cellKey(c.row, c.col)));
+      jaxKeysRef.current = keys;
+      setSelection({ claim: keys, release: new Set() });
+      setCallout({
+        key: cellKey(cells[0].row, cells[0].col),
+        tone: "brand",
+        children: (
+          <CalloutBody
+            icon={<Jax pose="face" size={34} />}
+            title={cells.length === 1 ? "Jax picked this one!" : `Jax picked ${cells.length} squares!`}
+            detail={cells.length === 1 ? "Join and it's yours." : "Join and they're yours."}
+          />
+        ),
+      });
+      if (!getAdminToken(s.game.id)) setJoinOpen(true);
+    },
+    [jaxClaim, ticker],
+  );
+
+  /** "Let Jax pick": asks how many when more than one square is possible, else picks the one. */
   const letJaxPick = useCallback(() => {
     const s = stateRef.current;
     if (!s) return;
-    const myId = getPlayerId();
-    const cell = jaxPick({
-      status: s.game.status,
-      boardSize: s.game.format.boardSize,
-      maxPerPlayer: s.game.maxPerPlayer,
-      squares: s.squares,
-      me: myId,
-      exclude: selectionRef.current.claim,
-    });
-    if (!cell) {
-      void haptic("warning");
-      ticker.show({ title: "Jax couldn't find an open square", detail: "Every square is spoken for.", tone: "neutral" });
-      return;
-    }
-    setSpot(null);
-    if (s.players.some((p) => p.id === myId)) {
-      void jaxClaim(cell);
-      return;
-    }
-    // Not on the board yet: exactly like tapping that square (the join sheet opens), and once
-    // they've joined Jax claims it.
-    void haptic("selection");
-    const key = cellKey(cell.row, cell.col);
-    jaxKeyRef.current = key;
-    setSelection({ claim: new Set([key]), release: new Set() });
-    setCallout({
-      key,
-      tone: "brand",
-      children: <CalloutBody icon={<Jax pose="face" size={34} />} title="Jax picked this one!" detail="Join and it's yours." />,
-    });
-    if (!getAdminToken(s.game.id)) setJoinOpen(true);
-  }, [jaxClaim, ticker]);
+    const limit = jaxPickLimit(jaxInputOf(s, getPlayerId(), selectionRef.current.claim));
+    if (limit > 1) {
+      void haptic("selection");
+      setJaxAsk(limit);
+    } else jaxPickCount(1);
+  }, [jaxPickCount]);
 
   const dismissWelcome = useCallback(() => {
     welcomeRef.current = false;
@@ -1241,6 +1267,16 @@ export default function GameView() {
           }}
         />
         <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} onRules={openRules} />
+        <JaxCountSheet
+          open={jaxAsk !== null}
+          onClose={() => setJaxAsk(null)}
+          limit={jaxAsk ?? 1}
+          openSquares={squaresLeft(state)}
+          capLeft={game.maxPerPlayer > 0 ? Math.max(0, game.maxPerPlayer - mineCount) : null}
+          price={game.format.justForFun ? null : (game.format.squarePrice ?? null)}
+          unit={unit}
+          onPick={jaxPickCount}
+        />
         <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
         <RulesSheet
@@ -1267,6 +1303,11 @@ function originOfCell(cell: Cell): { x: number; y: number } {
   const r = el?.getBoundingClientRect();
   if (!r || typeof window === "undefined" || !window.innerWidth) return { x: 0.5, y: 0.6 };
   return { x: (r.left + r.width / 2) / window.innerWidth, y: (r.top + r.height / 2) / window.innerHeight };
+}
+
+/** What Jax picks from: the board as it stands, skipping `exclude` (squares tried or already picked). */
+function jaxInputOf(s: GameState, me: string, exclude?: ReadonlySet<string>): JaxPickInput {
+  return { status: s.game.status, boardSize: s.game.format.boardSize, maxPerPlayer: s.game.maxPerPlayer, squares: s.squares, me, exclude };
 }
 
 /** "Let Jax pick": the pill next to the board hint. */

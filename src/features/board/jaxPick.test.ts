@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cellKey } from "../../../shared/squares";
 import type { Square } from "../../../shared/types";
-import { jaxPick, jaxPickBlocked, type JaxPickInput } from "./jaxPick";
+import { jaxPick, jaxPickBlocked, jaxPickLimit, jaxPickMany, jaxQuickCounts, type JaxPickInput } from "./jaxPick";
 
 const ME = "me-public-id";
 const sq = (row: number, col: number, playerId = "someone"): Square => ({ row, col, playerId, claimedAt: 1 });
@@ -88,5 +88,58 @@ describe("jaxPick", () => {
     expect(cell).not.toBeNull();
     expect(cell!.row).toBeGreaterThanOrEqual(0);
     expect(cell!.row).toBeLessThan(10);
+  });
+});
+
+describe("jaxPickMany", () => {
+  it("picks as many different open squares as asked", () => {
+    let seed = 7;
+    const rng = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const squares = [sq(0, 0), sq(0, 1), sq(5, 5, ME)];
+    const picked = jaxPickMany(input({ squares }), 10, rng);
+    expect(picked).toHaveLength(10);
+    const keys = picked.map((c) => cellKey(c.row, c.col));
+    expect(new Set(keys).size).toBe(10);
+    for (const k of ["0,0", "0,1", "5,5"]) expect(keys).not.toContain(k);
+  });
+
+  it("never picks more than the open squares or my per-player max allow", () => {
+    const fewLeft = allBut([[2, 2], [7, 3]]);
+    expect(jaxPickLimit(input({ squares: fewLeft }))).toBe(2);
+    expect(jaxPickMany(input({ squares: fewLeft }), 5).map((c) => cellKey(c.row, c.col)).sort()).toEqual(["2,2", "7,3"]);
+
+    const mine = [sq(0, 0, ME), sq(0, 1, ME)];
+    expect(jaxPickLimit(input({ squares: mine, maxPerPlayer: 5 }))).toBe(3);
+    expect(jaxPickMany(input({ squares: mine, maxPerPlayer: 5 }), 10)).toHaveLength(3);
+    expect(jaxPickLimit(input({ maxPerPlayer: 0 }))).toBe(100);
+  });
+
+  it("skips excluded squares and counts them out of the limit", () => {
+    const exclude = new Set(["0,0", "0,1"]);
+    expect(jaxPickLimit(input({ boardSize: 25, exclude }))).toBe(23);
+    const picked = jaxPickMany(input({ boardSize: 25, exclude }), 23);
+    expect(picked.map((c) => cellKey(c.row, c.col))).not.toContain("0,0");
+    expect(new Set(picked.map((c) => cellKey(c.row, c.col))).size).toBe(23);
+  });
+
+  it("picks nothing when blocked or asked for none", () => {
+    expect(jaxPickMany(input({ status: "locked" }), 3)).toEqual([]);
+    expect(jaxPickLimit(input({ status: "locked" }))).toBe(0);
+    expect(jaxPickMany(input(), 0)).toEqual([]);
+    expect(jaxPickMany(input({ squares: allBut([]) }), 3)).toEqual([]);
+  });
+
+  it("keeps the rng in range even if it returns 1", () => {
+    const picked = jaxPickMany(input({ boardSize: 25 }), 25, () => 1);
+    expect(new Set(picked.map((c) => cellKey(c.row, c.col))).size).toBe(25);
+  });
+});
+
+describe("jaxQuickCounts", () => {
+  it("offers the counts that fit, plus Max when my per-player max is the cap", () => {
+    expect(jaxQuickCounts(100, false).map((c) => c.label)).toEqual(["1", "2", "3", "5", "10"]);
+    expect(jaxQuickCounts(4, false).map((c) => c.label)).toEqual(["1", "2", "3"]);
+    expect(jaxQuickCounts(4, true).map((c) => c.label)).toEqual(["1", "2", "3", "Max 4"]);
+    expect(jaxQuickCounts(5, true).map((c) => c.label)).toEqual(["1", "2", "3", "5"]);
   });
 });

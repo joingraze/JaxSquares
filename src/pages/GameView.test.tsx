@@ -3,7 +3,7 @@
 // host's own board, not an invite: no "<host> invited you" hero, and tapping a
 // square doesn't throw them into the join sheet.
 
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, Player } from "../../shared/types";
@@ -200,15 +200,82 @@ describe("Let Jax pick", () => {
     return calls;
   }
 
-  it("a newcomer: Jax picks an open square and the join sheet opens to claim it", async () => {
+  /** Taps "Let Jax pick", picks `count` in the "How many squares?" sheet and confirms. */
+  async function askJax(count: number) {
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("jax-pick"));
+    });
+    await screen.findByTestId("jax-count-sheet");
+    const chip = screen.getAllByTestId("jax-count-chip").find((c) => c.dataset.count === String(count))!;
+    await act(async () => {
+      fireEvent.click(chip);
+    });
+    expect(screen.getByTestId("jax-count-confirm")).toHaveTextContent(`Pick ${count} square`);
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("jax-count-confirm"));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+  }
+
+  it("a newcomer: asks how many, picks them and opens the join sheet to claim them", async () => {
     board.state = openBoard([player(HOST, "Jordan")]);
+    await renderBoard();
+    await askJax(3);
+    expect(await screen.findByTestId("join-name")).toBeInTheDocument();
+    expect(screen.getAllByTestId("cell").filter((c) => c.dataset.state === "selected")).toHaveLength(3);
+    expect(screen.getByText("Jax picked 3 squares!")).toBeInTheDocument();
+  });
+
+  it("offers only as many as I'm allowed, and skips the question when that's one", async () => {
+    const me = identity.getPlayerId();
+    const mine = [0, 1, 2].map((col) => ({ row: 0, col, playerId: me, claimedAt: 0 }));
+    board.state = { ...openBoard([player(HOST, "Jordan"), player(me, "Sam")]), squares: mine };
+    board.state.game = { ...board.state.game, maxPerPlayer: 5 };
     await renderBoard();
     await act(async () => {
       fireEvent.click(screen.getByTestId("jax-pick"));
     });
-    expect(await screen.findByTestId("join-name")).toBeInTheDocument();
-    expect(screen.getAllByTestId("cell").filter((c) => c.dataset.state === "selected")).toHaveLength(1);
-    expect(screen.getByText("Jax picked this one!")).toBeInTheDocument();
+    const counts = (await screen.findAllByTestId("jax-count-chip")).map((c) => c.textContent);
+    expect(counts).toEqual(["1", "2"]);
+    cleanup();
+
+    // At one square from my max: no question, Jax just picks it.
+    const calls = claimServer((cells) => ({ claimed: 1, state: { ...board.state!, squares: [...board.state!.squares, { ...cells[0], playerId: me, claimedAt: 2 }] } }));
+    board.state = { ...board.state, game: { ...board.state.game, maxPerPlayer: 4 } };
+    await renderBoard();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("jax-pick"));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    expect(screen.queryByTestId("jax-count-sheet")).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toHaveLength(1);
+  });
+
+  it("on the board: claims all of them at once, and replaces any someone takes first", async () => {
+    const me = identity.getPlayerId();
+    const start = { ...openBoard([player(HOST, "Jordan"), player(MAYA, "Maya"), player(me, "Sam")]), squares: [] };
+    board.state = start;
+    const calls = claimServer((cells, call) => {
+      // First call: Maya beats Jax to the first of his 3 picks. Second call: the replacement lands.
+      if (call === 1) {
+        const [lost, ...won] = cells;
+        return {
+          claimed: won.length,
+          state: { ...start, squares: [{ ...lost, playerId: MAYA, claimedAt: 1 }, ...won.map((c) => ({ ...c, playerId: me, claimedAt: 2 }))], version: 2 },
+        };
+      }
+      const prior = [{ ...calls[0][0], playerId: MAYA, claimedAt: 1 }, ...calls[0].slice(1).map((c) => ({ ...c, playerId: me, claimedAt: 2 }))];
+      return { claimed: cells.length, state: { ...start, squares: [...prior, ...cells.map((c) => ({ ...c, playerId: me, claimedAt: 3 }))], version: 3 } };
+    });
+    await renderBoard();
+    await askJax(3);
+    expect(calls.map((c) => c.length)).toEqual([3, 1]);
+    const firstKeys = calls[0].map((c) => `${c.row},${c.col}`);
+    expect(new Set(firstKeys).size).toBe(3);
+    expect(firstKeys).not.toContain(`${calls[1][0].row},${calls[1][0].col}`);
+    expect(screen.queryByTestId("join-name")).toBeNull();
+    expect(await screen.findByText("Jax picked 3 squares!")).toBeInTheDocument();
   });
 
   it("on the board: claims right away, and picks again when someone takes his square first", async () => {
@@ -223,10 +290,7 @@ describe("Let Jax pick", () => {
       return { claimed: call === 1 ? 0 : 1, state: { ...start, squares: [...prior, { ...cell, playerId: owner, claimedAt: 2 }], version: call + 1 } };
     });
     await renderBoard();
-    await act(async () => {
-      fireEvent.click(screen.getByTestId("jax-pick"));
-      await new Promise((r) => setTimeout(r, 30));
-    });
+    await askJax(1);
     expect(calls).toHaveLength(2);
     expect(calls[0]).toHaveLength(1);
     expect(calls[1]).toHaveLength(1);
@@ -288,5 +352,34 @@ describe("light/dark from the board", () => {
 
     await act(async () => fireEvent.click(screen.getByTestId("board-theme-toggle")));
     expect(getThemePreference()).toBe(start);
+  });
+});
+
+describe("?invite=1 after creating a board", () => {
+  function renderAt(path: string) {
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/g/:id" element={<GameView />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+  }
+
+  it("opens the invite sheet for the host", async () => {
+    board.state = openBoard([player(HOST, "Jordan")]);
+    identity.saveAdminToken("brd123", "admin-token");
+    renderAt("/g/brd123?invite=1");
+    expect(await screen.findByTestId("invite-share")).toBeInTheDocument();
+  });
+
+  it("doesn't, for a friend sent that exact URL", async () => {
+    board.state = openBoard([player(HOST, "Jordan")]);
+    renderAt("/g/brd123?invite=1");
+    await act(async () => {});
+    expect(screen.getByText(/invited you/)).toBeInTheDocument();
+    expect(screen.queryByTestId("invite-share")).toBeNull();
   });
 });
