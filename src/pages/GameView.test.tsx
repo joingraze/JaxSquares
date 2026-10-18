@@ -268,3 +268,25 @@ describe("GameView opened from an invite link", () => {
   });
 });
 
+
+describe("light/dark from the board", () => {
+  it("flips the theme from the top bar and saves it", async () => {
+    const { getResolvedTheme, getThemePreference } = await import("../lib/theme");
+    board.state = openBoard([player(HOST, "Jordan")]);
+    await renderBoard();
+
+    const toggle = screen.getByTestId("board-theme-toggle");
+    const start = getResolvedTheme();
+    const other = start === "dark" ? "light" : "dark";
+    expect(toggle).toHaveAccessibleName(`Switch to ${other} mode`);
+
+    await act(async () => fireEvent.click(toggle));
+    expect(getThemePreference()).toBe(other);
+    expect(document.documentElement.dataset.theme).toBe(other);
+    expect(localStorage.getItem("jaxsquares.theme")).toBe(other);
+    expect(screen.getByTestId("board-theme-toggle")).toHaveAccessibleName(`Switch to ${start} mode`);
+
+    await act(async () => fireEvent.click(screen.getByTestId("board-theme-toggle")));
+    expect(getThemePreference()).toBe(start);
+  });
+});

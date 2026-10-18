@@ -16,7 +16,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, unitOf } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
-import { GiftIcon, GridIcon, SearchIcon, ShareIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
+import { GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
 import { ActivityFeed } from "../features/board/ActivityFeed";
@@ -67,7 +67,7 @@ import { pluralize, teamVars } from "../lib/format";
 import { getAdminToken, getPlayerId, isHostOf, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
-import { useResolvedTheme } from "../lib/theme";
+import { setThemePreference, useResolvedTheme } from "../lib/theme";
 
 // Not in the board's own chunk: host tools (only the host needs them; see hostDevice below) and the
 // sheets, which all start closed and load once the board is up.
@@ -889,7 +889,19 @@ export default function GameView() {
         title={compactTitle ?? game.name}
         large={false}
         back
-        trailing={<IconButton label="Invite friends" icon={<ShareIcon size={22} />} onClick={share} haptic="light" />}
+        trailing={
+          <span className="flex items-center">
+            {/* Flip light/dark right from the board (e.g. watching outside in the sun); Profile can go back to the phone's setting. */}
+            <IconButton
+              data-testid="board-theme-toggle"
+              label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              icon={theme === "dark" ? <SunIcon size={22} /> : <MoonIcon size={21} />}
+              onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
+              haptic="light"
+            />
+            <IconButton label="Invite friends" icon={<ShareIcon size={22} />} onClick={share} haptic="light" />
+          </span>
+        }
       />
 
       <div className="flex flex-col gap-3 px-safe pt-1">

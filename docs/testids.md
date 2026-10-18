@@ -58,3 +58,4 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
 | `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |
 | `theme-dark`, `theme-light`, `theme-system` | Profile → Appearance: the Dark / Light / System segments (saves the choice and switches at once) |
+| `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |

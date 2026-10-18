@@ -1,5 +1,6 @@
-// Appearance: the dark "game night" look (the default), a light "day game"
-// look, or whatever the phone is set to.
+// Appearance: whatever the phone is set to (the default), or always the dark
+// "game night" look, or always the light "day game" look. Set in Profile, and
+// flipped between light and dark from a board's top bar.
 //
 // The preference is a per-device setting like the profile: localStorage for
 // synchronous reads (the pre-paint script in index.html reads the same key),
@@ -15,7 +16,7 @@ export type ThemePreference = "dark" | "light" | "system";
 export type ResolvedTheme = "dark" | "light";
 
 export const THEME_STORAGE_KEY = "jaxsquares.theme";
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = "dark";
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = "system";
 
 /**
  * Each theme's canvas (--color-canvas in src/index.css): the browser chrome

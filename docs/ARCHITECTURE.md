@@ -407,8 +407,9 @@ score, q1, q2, q3, final.
 
 ## Appearance (client)
 
-- Per-device choice in Profile: `dark` (default, the brand look), `light` or
-  `system`, stored under `jaxsquares.theme` (localStorage, mirrored to Capacitor
+- Per-device choice: `system` (default, follows the phone), `dark` (the brand
+  look) or `light`, set in Profile → Appearance, and flipped between light and
+  dark by the sun/moon button in a board's top bar. Stored under `jaxsquares.theme` (localStorage, mirrored to Capacitor
   Preferences). `src/lib/theme.ts` resolves it (`system` follows
   `prefers-color-scheme` live) onto `<html data-theme="dark|light">`, the
   `color-scheme` / `theme-color` metas and the native status bar style. The

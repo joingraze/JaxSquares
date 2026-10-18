@@ -55,12 +55,13 @@
     -->
     <script id="theme-boot">
       (function () {
-        var d = document.documentElement, t = "dark";
+        var d = document.documentElement, t = "dark", p = null;
         try {
-          var p = localStorage.getItem("jaxsquares.theme");
-          if (p === "light") t = "light";
-          else if (p === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches) t = "light";
+          p = localStorage.getItem("jaxsquares.theme");
         } catch (e) {}
+        // Nothing (or nothing valid) saved: follow the phone, like theme.ts.
+        if (p !== "dark" && p !== "light") p = "system";
+        if (p === "light" || (p === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches)) t = "light";
         d.setAttribute("data-theme", t);
         var m = document.querySelector('meta[name="theme-color"]');
         if (m) m.setAttribute("content", t === "light" ? "#eef2ec" : "#060c09");

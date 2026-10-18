@@ -75,13 +75,13 @@ afterEach(() => {
 });
 
 describe("theme preference", () => {
-  it("parses saved values, falling back to the dark default", async () => {
+  it("parses saved values, falling back to the phone's setting", async () => {
     const { parseThemePreference } = await load();
     expect(parseThemePreference("light")).toBe("light");
     expect(parseThemePreference("dark")).toBe("dark");
     expect(parseThemePreference("system")).toBe("system");
-    expect(parseThemePreference(null)).toBe("dark");
-    expect(parseThemePreference("sepia")).toBe("dark");
+    expect(parseThemePreference(null)).toBe("system");
+    expect(parseThemePreference("sepia")).toBe("system");
   });
 
   it("resolves system from the OS: light only when the phone asks for it", async () => {
@@ -92,14 +92,23 @@ describe("theme preference", () => {
     expect(resolveTheme("light", false)).toBe("light");
   });
 
-  it("starts dark when nothing is saved, even on a light phone", async () => {
+  it("follows the phone when nothing is saved", async () => {
     fakeMedia({ light: true });
     const theme = await load();
     cleanup = theme.initTheme();
-    expect(theme.getThemePreference()).toBe("dark");
+    expect(theme.getThemePreference()).toBe("system");
+    expect(html().dataset.theme).toBe("light");
+    expect(meta("theme-color")).toBe(theme.THEME_COLORS.light);
+    expect(meta("color-scheme")).toBe("light");
+  });
+
+  it("is dark on a dark phone when nothing is saved", async () => {
+    fakeMedia({ light: false });
+    const theme = await load();
+    cleanup = theme.initTheme();
+    expect(theme.getThemePreference()).toBe("system");
     expect(html().dataset.theme).toBe("dark");
     expect(meta("theme-color")).toBe(theme.THEME_COLORS.dark);
-    expect(meta("color-scheme")).toBe("dark");
   });
 
   it("applies a saved light choice: data-theme, metas and the status bar", async () => {
@@ -185,7 +194,9 @@ describe("theme preference", () => {
     const theme = await load();
     cleanup = theme.initTheme();
     const { result } = renderHook(() => ({ pref: theme.useThemePreference(), resolved: theme.useResolvedTheme() }));
-    expect(result.current).toEqual({ pref: "dark", resolved: "dark" });
+    expect(result.current).toEqual({ pref: "system", resolved: "dark" });
+    act(() => theme.setThemePreference("light"));
+    expect(result.current).toEqual({ pref: "light", resolved: "light" });
     act(() => theme.setThemePreference("system"));
     expect(result.current).toEqual({ pref: "system", resolved: "dark" });
     act(() => media.setLight(true));
