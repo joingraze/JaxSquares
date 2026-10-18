@@ -383,7 +383,7 @@ export function AmountField({
           parsed.error ? "ring-danger-500 focus-within:ring-danger-500" : "ring-line-strong focus-within:ring-brand-line",
         )}
       >
-        {unit === "$" && <span className="font-display text-callout font-extrabold text-ink-muted">$</span>}
+        {unit === "$" && <span className="font-display text-body font-extrabold text-ink-muted">$</span>}
         <input
           data-testid={testId}
           {...data}
@@ -401,7 +401,7 @@ export function AmountField({
             if (!p.error) onChange(p.value);
           }}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-          className="h-full min-w-0 flex-1 bg-transparent font-display text-callout font-extrabold tabular-nums text-ink outline-none placeholder:font-sans placeholder:font-medium placeholder:text-ink-subtle"
+          className="h-full min-w-0 flex-1 bg-transparent font-display text-body font-extrabold tabular-nums text-ink outline-none placeholder:font-sans placeholder:font-medium placeholder:text-ink-subtle"
         />
         {unit === "pts" && <span className="text-footnote font-bold text-ink-muted">pts</span>}
         {!parsed.error && parsed.value !== null && <CheckIcon size={14} strokeWidth={3} className="shrink-0 text-ink-brand" />}

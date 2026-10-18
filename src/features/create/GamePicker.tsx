@@ -223,7 +223,7 @@ function GameList({
             spellCheck={false}
             enterKeyHint="search"
             onChange={(e) => setQuery(e.target.value)}
-            className="h-full min-w-0 flex-1 bg-transparent text-callout font-medium text-ink outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden"
+            className="h-full min-w-0 flex-1 bg-transparent text-body font-medium text-ink outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden"
           />
           {q && (
             <button

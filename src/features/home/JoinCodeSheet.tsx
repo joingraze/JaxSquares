@@ -133,7 +133,7 @@ export function JoinCodeSheet({ open, onClose }: JoinCodeSheetProps) {
           enterKeyHint="go"
           aria-invalid={error ? true : undefined}
           aria-describedby="join-code-help"
-          className="absolute inset-0 h-full w-full cursor-text opacity-0"
+          className="absolute inset-0 h-full w-full cursor-text text-body opacity-0"
         />
       </label>
       <p
