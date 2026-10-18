@@ -66,6 +66,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `score-quick-adds`, `score-quick-add` | the every-score pad's one-tap points (`data-play=TD\|FG\|XP\|2-PT\|Safety`: +6, +3, +1, +2, +2) for the team being typed |
 | `host-open` | the host bar button that opens the host sheet |
 | `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step |
+| `reveal-close`, `reveal-done` | the number reveal (host, after the draw): the X at the top (closes it any time, even mid-shuffle) and "See the board" (pinned at the bottom once the numbers land) |
 | `host-bar-action` | the host bar's next-action pill |
 | `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |

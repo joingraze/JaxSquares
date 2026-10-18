@@ -76,6 +76,8 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<HostView>("home");
   const [reveal, setReveal] = useState<Reveal | null>(null);
+  /** The host closed the reveal (it can be closed mid-shuffle). */
+  const revealClosed = useRef(false);
   const [picking, setPicking] = useState<string | null>(null);
   const [payOpen, setPayOpen] = useState(false);
   const [payments, setPayments] = useState<PaymentConfig | null>(null);
@@ -196,8 +198,11 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   // ---- lock + reveal ----
   const lock = async () => {
     setOpen(false);
+    revealClosed.current = false;
     setReveal({ draw: null, label: null, state });
     const next = await actions.lock();
+    // Closed while the draw was on its way: the board already has the numbers; don't pop back up.
+    if (next && revealClosed.current) return;
     if (!next) {
       setReveal(null);
       later(() => openSheet("lock"), 60);
@@ -323,7 +328,10 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
           me={me}
           draw={reveal.draw}
           drawLabel={reveal.label}
-          onClose={() => setReveal(null)}
+          onClose={() => {
+            revealClosed.current = true;
+            setReveal(null);
+          }}
           onShare={() => void shareNumbers()}
         />
       )}

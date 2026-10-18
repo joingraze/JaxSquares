@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig, GameState, NumberDraw, Player, Square } from "../../../shared/types";
@@ -171,6 +171,24 @@ describe("HostControls", () => {
     await waitFor(() => expect(apply).toHaveBeenCalledWith(lockedState));
     // The reveal (reduced motion: instant) offers the way back to the board.
     expect(await screen.findByRole("button", { name: "See the board" })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("reveal-close"));
+    expect(screen.queryByTestId("reveal-done")).toBeNull();
+  });
+
+  it("can be closed mid-shuffle, and doesn't pop back up when the draw lands", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const lockedState = makeState({ status: "locked", numbers: { "*": DRAW } });
+    let land!: (v: { state: GameState }) => void;
+    lock.mockReturnValue(new Promise((r) => (land = r)));
+    const { apply } = renderHost(makeState({}, { squares: fillSquares(60) }));
+    fireEvent.click(screen.getByTestId("host-open"));
+    fireEvent.click(await screen.findByTestId("host-lock"));
+    fireEvent.click(await screen.findByTestId("host-lock-confirm"));
+    fireEvent.click(await screen.findByTestId("reveal-close"));
+    expect(screen.queryByTestId("reveal-close")).toBeNull();
+    await act(async () => land({ state: lockedState }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(lockedState));
+    expect(screen.queryByTestId("reveal-close")).toBeNull();
   });
 
   it("types a score, previews the winner and saves it", async () => {
