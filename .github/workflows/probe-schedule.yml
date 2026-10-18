@@ -1,0 +1,39 @@
+name: Probe schedule
+
+# One-off diagnostic: compares the live /api/schedule with ESPN's raw
+# scoreboard responses. Runs only when this file changes on the v1 branch.
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/probe-schedule.yml
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Live API
+        run: |
+          for l in nfl ncaaf; do
+            echo "== live $l"
+            curl -sS -m 25 -w '\nHTTP %{http_code} in %{time_total}s\n' "https://jaxsquares.turnoverapp.workers.dev/api/schedule?league=$l" | head -c 1500
+            echo
+          done
+
+      - name: ESPN direct
+        run: |
+          from=$(date -u -d '-1 day' +%Y%m%d)
+          to=$(date -u -d '+10 day' +%Y%m%d)
+          UA='JaxSquares/1.0 (+https://jaxsquares.com)'
+          for u in \
+            "nfl/scoreboard?dates=$from-$to&limit=1000" \
+            "nfl/scoreboard" \
+            "college-football/scoreboard?dates=$from-$to&limit=1000&groups=80" \
+            "college-football/scoreboard?groups=80"; do
+            url="https://site.api.espn.com/apis/site/v2/sports/football/$u"
+            code=$(curl -s -o r.json -w '%{http_code}' -m 25 -H 'accept: application/json' -H "user-agent: $UA" "$url")
+            echo "== HTTP $code $url ($(wc -c < r.json) bytes)"
+            jq -c '{events: (.events | length), season: .season, week: .week, first: (.events[0] | {id, date, name, shortName, status: .status, competitors: (.competitions[0].competitors | map({homeAway, score, linescores, team: (.team | {displayName, abbreviation, color, location, name})}))})}' r.json 2>&1 | head -c 3000
+            echo
+          done
