@@ -1,15 +1,28 @@
-// Which game: this week's real games (NFL / College) as dense one-line rows
-// (soonest three, plus search), or a custom matchup with two typed teams.
+// Which game: real games (NFL / College) a week at a time — the current week's
+// soonest three (plus "see all" and search), later weeks as rows that open to
+// that week's schedule — or a custom matchup with two typed teams.
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { ScheduleEvent } from "../../../shared/types";
-import { AlertIcon, CheckIcon, FootballIcon, LiveIcon, PencilIcon, SearchIcon, StarIcon, XIcon } from "../../components/icons";
+import {
+  AlertIcon,
+  CalendarIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  FootballIcon,
+  LiveIcon,
+  PencilIcon,
+  SearchIcon,
+  StarIcon,
+  XIcon,
+} from "../../components/icons";
 import { cx, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
 import { kickoffLabel, shortTeamName } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CustomMatchup } from "./CustomMatchup";
 import { kickoffParts, startsIn, withSideColors, type TeamColors } from "./model";
-import type { Schedule, ScheduleLeague } from "./useSchedule";
+import { groupByDay, matchesQuery, siteLabel, weekRange, weekTag, zoneLabel } from "./scheduleView";
+import { useWeekGames, type LeagueSchedule, type Schedule, type ScheduleLeague } from "./useSchedule";
 
 export type PickerTab = ScheduleLeague | "custom";
 
@@ -17,7 +30,7 @@ export interface GamePickerProps {
   schedule: Schedule;
   tab: PickerTab;
   onTab: (tab: PickerTab) => void;
-  selectedEventId: string | null;
+  selected: ScheduleEvent | null;
   onPickEvent: (event: ScheduleEvent) => void;
   custom: { x: string; y: string };
   onCustomChange: (side: "x" | "y", value: string) => void;
@@ -27,9 +40,8 @@ export interface GamePickerProps {
 }
 
 const LEAGUE_LABEL: Record<ScheduleLeague, string> = { nfl: "NFL", ncaaf: "College" };
-const FIRST_ROWS = 3;
 
-export function GamePicker({ schedule, tab, onTab, selectedEventId, onPickEvent, custom, onCustomChange, showErrors, colors }: GamePickerProps) {
+export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom, onCustomChange, showErrors, colors }: GamePickerProps) {
   const noGamesAnywhere = !schedule.nfl.loading && !schedule.ncaaf.loading && !schedule.nfl.events.length && !schedule.ncaaf.events.length;
   const count = (league: ScheduleLeague) =>
     !schedule[league].loading && schedule[league].events.length > 0 ? (
@@ -68,9 +80,8 @@ export function GamePicker({ schedule, tab, onTab, selectedEventId, onPickEvent,
         <div key={tab} className="animate-fade-in">
           <GameList
             league={tab}
-            loading={schedule[tab].loading}
-            events={schedule[tab].events}
-            selectedEventId={selectedEventId}
+            schedule={schedule[tab]}
+            selected={selected}
             onPick={onPickEvent}
             onCustom={() => onTab("custom")}
             showErrors={showErrors}
@@ -81,35 +92,39 @@ export function GamePicker({ schedule, tab, onTab, selectedEventId, onPickEvent,
   );
 }
 
-function matches(e: ScheduleEvent, q: string): boolean {
-  const hay = [e.away.name, e.home.name, e.away.abbr, e.home.abbr, e.shortName].join(" ").toLowerCase();
-  return q
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((w) => hay.includes(w));
-}
+const FIRST_ROWS = 3;
+/** Later weeks shown before "Full schedule". */
+const NEXT_WEEKS = 3;
+const LEAD = "lead";
 
 function GameList({
   league,
-  loading,
-  events,
-  selectedEventId,
+  schedule,
+  selected,
   onPick,
   onCustom,
   showErrors,
 }: {
   league: ScheduleLeague;
-  loading: boolean;
-  events: ScheduleEvent[];
-  selectedEventId: string | null;
+  schedule: LeagueSchedule;
+  selected: ScheduleEvent | null;
   onPick: (e: ScheduleEvent) => void;
   onCustom: () => void;
   showErrors?: boolean;
 }) {
+  const { loading, events, week, weeks } = schedule;
+  const leadId = week?.id ?? LEAD;
   const [query, setQuery] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  // Which week is open; until someone toggles one, the lead week (or the first
+  // later week when the lead has nothing), decided once the schedule is in.
+  const [openState, setOpen] = useState<string | null | undefined>(undefined);
+  const open = openState === undefined ? (events.length ? leadId : (weeks[0]?.id ?? null)) : openState;
+  const [leadAll, setLeadAll] = useState(false);
+  const [allWeeks, setAllWeeks] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const laterOpen = open && open !== leadId ? open : null;
+  const later = useWeekGames(league, laterOpen, attempt);
 
   if (loading) {
     return (
@@ -125,7 +140,7 @@ function GameList({
     );
   }
 
-  if (!events.length) {
+  if (!events.length && !weeks.length) {
     return (
       <div className="flex items-center gap-3.5 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
         <span aria-hidden className="text-[1.75rem] leading-none">📡</span>
@@ -141,25 +156,42 @@ function GameList({
   }
 
   const q = query.trim();
-  let shown: ScheduleEvent[];
-  if (q) shown = events.filter((e) => matches(e, q));
-  else if (expanded) shown = events;
-  else {
-    shown = events.slice(0, FIRST_ROWS);
-    const picked = events.find((e) => e.eventId === selectedEventId);
-    if (picked && !shown.includes(picked)) shown = [...shown, picked];
+  const openWeek = laterOpen ? weeks.find((w) => w.id === laterOpen) : null;
+  const laterEvents = later?.status === "ready" ? later.events : [];
+  const searchPool = [...events, ...laterEvents.filter((e) => !events.some((x) => x.eventId === e.eventId))];
+  const results = q ? searchPool.filter((e) => matchesQuery(e, q)) : [];
+
+  let leadRows: ScheduleEvent[] = [];
+  if (open === leadId && !leadAll) {
+    leadRows = events.slice(0, FIRST_ROWS);
+    if (selected && events.some((e) => e.eventId === selected.eventId) && !leadRows.some((e) => e.eventId === selected.eventId)) {
+      leadRows = [...leadRows, selected];
+    }
   }
-  const searchable = events.length > FIRST_ROWS;
+  const visible = new Set(
+    (q ? results : open === leadId ? (leadAll ? events : leadRows) : laterEvents).map((e) => e.eventId),
+  );
+  const pinned = selected && !visible.has(selected.eventId) ? selected : null;
+  const shownWeeks = allWeeks ? weeks : weeks.slice(0, NEXT_WEEKS);
+  const hiddenWeeks = weeks.length - shownWeeks.length;
+
+  const toggle = (id: string) => {
+    void haptic("selection");
+    setOpen(open === id ? null : id);
+  };
 
   const pick = (e: ScheduleEvent) => {
     onPick(e);
-    // Picked from a search or the full list: fold back to the short list (the pick stays in it).
-    if (q || expanded) {
+    // Picked from a search: fold the search away (the pick stays on screen).
+    if (q) {
       setQuery("");
-      setExpanded(false);
       searchRef.current?.blur();
     }
   };
+
+  const row = (e: ScheduleEvent, grouped = false) => (
+    <GameRow key={e.eventId} event={e} grouped={grouped} selected={e.eventId === selected?.eventId} onPick={() => pick(e)} />
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -169,26 +201,17 @@ function GameList({
           <span className="font-bold text-ink">Live scores built in.</span> Winners update on their own.
         </span>
       </p>
-      {shown.map((e) => (
-        <GameRow key={e.eventId} event={e} selected={e.eventId === selectedEventId} onPick={() => pick(e)} />
-      ))}
-      {q && shown.length === 0 && (
-        <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
-          <p className="min-w-0 flex-1 text-footnote text-ink-muted">No {LEAGUE_LABEL[league]} game with “{q}” this week.</p>
-          <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
-            Type teams
-          </button>
-        </div>
-      )}
-      {searchable && (
+
+      {searchPool.length > FIRST_ROWS && (
         <div className="flex h-12 items-center gap-2 rounded-2xl bg-surface-2 pl-3.5 pr-1.5 ring-1 ring-inset ring-line transition-shadow focus-within:ring-2 focus-within:ring-brand-400">
           <SearchIcon size={18} className="shrink-0 text-ink-subtle" />
           <input
             ref={searchRef}
             type="search"
+            data-testid="game-search"
             aria-label={`Search ${LEAGUE_LABEL[league]} games`}
             value={query}
-            placeholder={`Find a team · ${events.length} games`}
+            placeholder={`Find a team · ${searchPool.length} games`}
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -196,7 +219,7 @@ function GameList({
             onChange={(e) => setQuery(e.target.value)}
             className="h-full min-w-0 flex-1 bg-transparent text-callout font-medium text-ink outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden"
           />
-          {q ? (
+          {q && (
             <button
               type="button"
               aria-label="Clear search"
@@ -208,18 +231,107 @@ function GameList({
             >
               <XIcon size={16} />
             </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              className="tap-target h-10 shrink-0 rounded-xl px-3 text-subhead font-bold text-brand-400 hover:bg-white/5"
-            >
-              {expanded ? "Fewer" : "See all"}
-            </button>
           )}
         </div>
       )}
-      {showErrors && !selectedEventId && (
+
+      {pinned && !q && row(pinned)}
+
+      {q ? (
+        results.length ? (
+          results.map((e) => row(e))
+        ) : (
+          <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
+            <p className="min-w-0 flex-1 text-footnote text-ink-muted">
+              No {LEAGUE_LABEL[league]} game with “{q}” in {openWeek ? `${week?.label ?? "this week"} or ${openWeek.label}` : (week?.label ?? "this week")}.
+            </p>
+            <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+              Type teams
+            </button>
+          </div>
+        )
+      ) : (
+        <>
+          {events.length > 0 && (
+            <WeekHeader
+              id={leadId}
+              label={week?.label ?? "This week"}
+              tag={week ? weekTag(week) : "This week"}
+              range={week ? weekRange(week) : null}
+              open={open === leadId}
+              onToggle={() => toggle(leadId)}
+            />
+          )}
+          {open === leadId && events.length > 0 && (
+            <div id={`week-${leadId}`} className="flex flex-col gap-2">
+              {leadAll ? <DayGroups events={events} row={row} /> : leadRows.map((e) => row(e))}
+              {events.length > FIRST_ROWS && (
+                <button
+                  type="button"
+                  data-testid="week-see-all"
+                  onClick={() => setLeadAll((v) => !v)}
+                  className="tap-target h-10 self-start rounded-xl px-2 text-subhead font-bold text-brand-400 hover:bg-white/5"
+                >
+                  {leadAll ? "Show fewer" : `See all ${events.length} games`}
+                </button>
+              )}
+            </div>
+          )}
+
+          {shownWeeks.map((w) => (
+            <div key={w.id} className="flex flex-col gap-2">
+              <WeekHeader id={w.id} label={w.label} range={weekRange(w)} open={open === w.id} onToggle={() => toggle(w.id)} />
+              {open === w.id && (
+                <div id={`week-${w.id}`} className="flex flex-col gap-2">
+                  {!later || later.status === "loading" ? (
+                    <div aria-busy="true" aria-label={`Loading ${w.label}`} className="flex flex-col gap-2">
+                      {[0, 1].map((i) => (
+                        <Skeleton key={i} className="h-14 w-full rounded-2xl" />
+                      ))}
+                    </div>
+                  ) : later.status === "error" ? (
+                    <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
+                      <p className="min-w-0 flex-1 text-footnote text-ink-muted">Couldn’t load {w.label}.</p>
+                      <button
+                        type="button"
+                        onClick={() => setAttempt((n) => n + 1)}
+                        className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong"
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : later.events.length ? (
+                    <DayGroups events={later.events} row={row} />
+                  ) : (
+                    <p className="rounded-2xl bg-surface-2 px-4 py-3 text-footnote text-ink-muted ring-1 ring-inset ring-line">
+                      No matchups set for {w.label} yet. Check back once the teams are known.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {hiddenWeeks > 0 && (
+            <button
+              type="button"
+              data-testid="week-more"
+              onClick={() => {
+                void haptic("selection");
+                setAllWeeks(true);
+              }}
+              className="pressable flex h-12 items-center justify-center gap-1.5 rounded-2xl text-subhead font-bold text-brand-400 ring-1 ring-inset ring-line hover:bg-white/5"
+            >
+              <CalendarIcon size={16} />
+              Full schedule · {hiddenWeeks} more {hiddenWeeks === 1 ? "week" : "weeks"}
+            </button>
+          )}
+        </>
+      )}
+
+      <p className="px-1 text-caption text-ink-subtle">Times in {zoneLabel()}</p>
+
+      {showErrors && !selected && (
         <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-danger-400">
           <AlertIcon size={14} />
           Tap a game to put it on your board.
@@ -229,27 +341,67 @@ function GameList({
   );
 }
 
-function GameRow({ event, selected, onPick }: { event: ScheduleEvent; selected: boolean; onPick: () => void }) {
+function WeekHeader({ id, label, tag, range, open, onToggle }: { id: string; label: string; tag?: string; range: string | null; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="week-toggle"
+      data-week={id}
+      aria-expanded={open}
+      aria-controls={`week-${id}`}
+      onClick={onToggle}
+      className={cx(
+        "pressable flex min-h-12 w-full items-center gap-2 rounded-2xl px-3.5 text-left transition-colors",
+        open ? "bg-transparent px-1" : "bg-surface-2 ring-1 ring-inset ring-line hover:bg-surface-3",
+      )}
+    >
+      <span className="min-w-0 truncate font-display text-headline font-extrabold text-ink">{label}</span>
+      {tag && <span className="shrink-0 rounded-full bg-brand-400/15 px-2 py-0.5 text-caption font-bold text-brand-300">{tag}</span>}
+      <span className="ml-auto shrink-0 whitespace-nowrap text-footnote font-semibold tabular-nums text-ink-muted">{range}</span>
+      <ChevronDownIcon size={18} className={cx("shrink-0 text-ink-subtle transition-transform duration-200", open && "rotate-180")} />
+    </button>
+  );
+}
+
+function DayGroups({ events, row }: { events: ScheduleEvent[]; row: (e: ScheduleEvent, grouped?: boolean) => ReactNode }) {
+  return (
+    <>
+      {groupByDay(events).map((g) => (
+        <div key={g.day} className="flex flex-col gap-2">
+          <p className="px-1 pt-1 text-caption font-bold uppercase tracking-wider text-ink-subtle">{g.day}</p>
+          {g.events.map((e) => row(e, true))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function GameRow({ event, selected, grouped, onPick }: { event: ScheduleEvent; selected: boolean; grouped?: boolean; onPick: () => void }) {
   const soon = startsIn(event.startsAt);
   const { day, time } = kickoffParts(event.startsAt);
+  const site = siteLabel(event);
   // The colors the board will use (away across the top), so the pick looks the same after Create.
   const { teamX: away, teamY: home } = withSideColors(event.away, event.home);
   const awayName = shortTeamName(event.away, event.league);
   const homeName = shortTeamName(event.home, event.league);
-  // Long college names wrap between the teams instead of cutting one off.
-  const long = awayName.length + homeName.length > 16;
+  // Longer matchups (most college ones, with their ranks) get the smaller type and
+  // wrap between the teams instead of cutting a name off.
+  const rankChars = (n?: number) => (n ? String(n).length + 1 : 0);
+  const long = awayName.length + homeName.length + rankChars(event.ranks?.away) + rankChars(event.ranks?.home) > 12;
+  const rank = (n?: number) =>
+    n ? <span className="mr-0.5 align-[0.12em] font-sans text-caption font-bold text-ink-subtle">{n}</span> : null;
   return (
     <button
       type="button"
       data-testid="game-option"
       aria-pressed={selected}
-      aria-label={`${event.away.name} at ${event.home.name}, ${kickoffLabel(event.startsAt)}`}
+      aria-label={`${event.away.name} at ${event.home.name}, ${kickoffLabel(event.startsAt)}${site ? `, ${site}` : ""}`}
       onClick={() => {
         void haptic("selection");
         onPick();
       }}
       className={cx(
-        "pressable flex h-14 w-full items-center gap-3 rounded-2xl pl-2.5 pr-3 text-left ring-inset transition-[background-color,box-shadow]",
+        "pressable flex min-h-14 w-full items-center gap-3 rounded-2xl py-2 pl-2.5 pr-3 text-left ring-inset transition-[background-color,box-shadow]",
         selected
           ? "bg-[linear-gradient(100deg,rgb(198_249_31/0.16),rgb(198_249_31/0.04)_70%)] bg-surface-2 ring-2 ring-brand-400"
           : "bg-surface-2 ring-1 ring-line hover:bg-surface-3",
@@ -259,19 +411,37 @@ function GameRow({ event, selected, onPick }: { event: ScheduleEvent; selected: 
         <TeamMark team={away} size="sm" />
         <TeamMark team={home} size="sm" />
       </span>
-      <span
-        className={cx(
-          "min-w-0 flex-1 font-display font-extrabold text-ink",
-          long ? "line-clamp-2 text-callout leading-[1.15]" : "truncate text-headline",
-        )}
-      >
-        <span className="whitespace-nowrap">{awayName}</span>
-        <span className="font-sans text-subhead font-semibold text-ink-subtle">{"\u00a0@ "}</span>
-        <span className="whitespace-nowrap">{homeName}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          className={cx(
+            "font-display font-extrabold text-ink",
+            long ? "line-clamp-2 text-callout leading-[1.15]" : "truncate text-headline",
+          )}
+        >
+          <span className="whitespace-nowrap">
+            {rank(event.ranks?.away)}
+            {awayName}
+          </span>
+          <span className="font-sans text-subhead font-semibold text-ink-subtle">{"\u00a0@ "}</span>
+          <span className="whitespace-nowrap">
+            {rank(event.ranks?.home)}
+            {homeName}
+          </span>
+        </span>
+        {site && <span className="truncate text-caption font-semibold text-ink-muted">{site}</span>}
       </span>
       <span className="flex shrink-0 flex-col items-end leading-tight">
-        <span className={cx("text-caption font-bold", soon ? "text-brand-300" : "text-ink-muted")}>{soon ?? day}</span>
-        <span className="text-footnote font-semibold tabular-nums text-ink">{time}</span>
+        {grouped ? (
+          <>
+            <span className="text-footnote font-semibold tabular-nums text-ink">{time}</span>
+            {soon && <span className="text-caption font-bold text-brand-300">{soon}</span>}
+          </>
+        ) : (
+          <>
+            <span className={cx("text-caption font-bold", soon ? "text-brand-300" : "text-ink-muted")}>{soon ?? day}</span>
+            <span className="text-footnote font-semibold tabular-nums text-ink">{time}</span>
+          </>
+        )}
       </span>
       <span
         aria-hidden

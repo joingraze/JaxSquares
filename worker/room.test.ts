@@ -8,7 +8,7 @@ import { CLOSE_DELETED, GameRoom, MAX_SOCKETS, POLL_LEAD_MS, countWatching, poll
 import { loadState } from "./service";
 
 vi.mock("./service", () => ({ applyLiveUpdate: vi.fn(), loadState: vi.fn() }));
-vi.mock("./scores", () => ({ fetchLiveForEvent: vi.fn() }));
+vi.mock("./scores", () => ({ liveVia: vi.fn() }));
 
 const KICKOFF = 1_800_000_000_000;
 

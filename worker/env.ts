@@ -16,6 +16,8 @@ export interface Env {
   ASSETS: Fetcher;
   /** One Durable Object per game: holds live sockets and polls live scores. */
   GAME_ROOM: DurableObjectNamespace;
+  /** One Durable Object per league that every ESPN request goes through (worker/scores/hub.ts). */
+  SCORE_HUB?: DurableObjectNamespace;
 
   /** Public origin, e.g. "https://jaxsquares.com". Used in invite links and pushes. */
   APP_ORIGIN?: string;

@@ -6,9 +6,10 @@
 // Freshness is tracked with our own header instead of relying on eviction, which
 // lets an entry outlive its TTL and be served as a fallback when upstream fails.
 //
-// No in-isolate de-duplication of concurrent misses on purpose: sharing one
-// promise across request contexts (e.g. two Durable Objects in one isolate) can
-// hang the waiter if the originating request is cancelled.
+// Concurrent misses are only de-duplicated when the caller passes its own
+// `inflight` map: sharing one promise across request contexts (e.g. two Durable
+// Objects in one isolate) can hang the waiter if the originating request is
+// cancelled. The ScoreHub Durable Object is a single context, so it does.
 
 const FETCHED_AT = "x-jax-fetched-at";
 
@@ -48,6 +49,11 @@ export interface CachedOptions<T> {
   /** Defaults to caches.default; null disables caching. Injectable for tests. */
   cache?: Cache | null;
   now?: () => number;
+  /**
+   * Lookups in progress, by key: a second caller for the same key waits on the
+   * first one's fetch. Only pass a map owned by a single request context.
+   */
+  inflight?: Map<string, Promise<unknown>>;
 }
 
 function defaultCache(): Cache | null {
@@ -59,7 +65,17 @@ function defaultCache(): Cache | null {
 }
 
 /** Returns the cached or freshly loaded value, a stale value if loading fails, or null. */
-export async function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> | null> {
+export function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> | null> {
+  const { inflight } = opts;
+  if (!inflight) return lookup(opts);
+  const pending = inflight.get(opts.key) as Promise<CachedValue<T> | null> | undefined;
+  if (pending) return pending;
+  const started = lookup(opts).finally(() => inflight.delete(opts.key));
+  inflight.set(opts.key, started);
+  return started;
+}
+
+async function lookup<T>(opts: CachedOptions<T>): Promise<CachedValue<T> | null> {
   const now = opts.now ?? Date.now;
   const cache = opts.cache === undefined ? defaultCache() : opts.cache;
   const ttlMs = opts.ttlSeconds * 1000;

@@ -75,6 +75,12 @@ the same value synchronously.) It is stable per device and one-way.
   holds the hibernatable WebSockets for that game, broadcasts state, tracks presence,
   and, for boards linked to a real game, polls live scores with an alarm while the
   game is on.
+- Durable Object `ScoreHub` (`SCORE_HUB`, one per league via `idFromName("espn:nfl")`)
+  is the only thing that calls ESPN: every room's live poll and every
+  `/api/schedule` request goes through it, so concurrent callers share one
+  in-flight fetch and its memory is one cache for the whole app (ESPN sees about
+  one request per scoreboard per TTL however many boards are live). Without the
+  binding, or if it fails, callers fetch directly (`worker/scores/hub.ts`).
 - Cron trigger (every minute) wakes the `GameRoom` of linked games that start within
   the next 15 minutes or are in progress, so polling starts on time. Once an hour
   (UTC minute 17) it also runs housekeeping (`worker/housekeeping.ts`): deletes
@@ -93,7 +99,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute) |
-| GET | `/api/schedule?league=nfl\|ncaaf` | – | – | `{ events: ScheduleEvent[] }` (next ~10 days, cached) |
+| GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on money in a prize note, the name or a team name; 429 |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
@@ -312,8 +318,9 @@ rows per game in D1.
   `worker/db.ts`, `worker/index.ts`, `worker/service.ts`, `worker/room.ts`
   (GameRoom DO), `worker/playerIds.ts`, `worker/rateLimit.ts`,
   `worker/housekeeping.ts`, `migrations/*` – core API.
-- `worker/scores/*` – ESPN schedule + live score provider. Exports
-  `scheduleRoutes` (Hono) and `fetchLiveForEvent(event): Promise<LiveUpdate|null>`.
+- `worker/scores/*` – ESPN schedule + live score provider and the `ScoreHub`
+  Durable Object. Exports `scheduleRoutes` (Hono), `liveVia(env, event)`
+  (live scores through the hub) and `fetchLiveForEvent(event)`.
 - `worker/payments/*` – Stripe + IAP + test checkout. Exports `paymentsRoutes`
   (Hono) and `getPaymentConfig(env)`. Owns `worker/payments/store.ts` (its D1 tables).
 - `worker/push/*` – web push (VAPID) + FCM. Exports `pushRoutes` (Hono) and
@@ -386,8 +393,10 @@ applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 
 `worker/scores/index.ts` (scores):
 ```ts
-scheduleRoutes: Hono<{ Bindings: Env }>          // GET /schedule
-fetchLiveForEvent(event: LinkedEvent): Promise<LiveUpdate | null>
+scheduleRoutes: Hono<{ Bindings: Env }>          // GET /schedule (through the ScoreHub)
+liveVia(env: Env, event: LinkedEvent): Promise<LiveUpdate | null>  // through the ScoreHub; never throws
+fetchLiveForEvent(event: LinkedEvent): Promise<LiveUpdate | null>  // direct; what the hub runs
+getSchedule(league, week?): Promise<ScheduleResult | null>         // direct; what the hub runs
 ```
 `worker/payments/index.ts` (payments):
 ```ts

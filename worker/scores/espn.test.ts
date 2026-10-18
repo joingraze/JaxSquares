@@ -2,9 +2,11 @@
 import { describe, expect, it } from "vitest";
 import {
   espnDate,
+  parseCalendar,
   parseSchedule,
   parseScoreboardSnapshots,
   parseSummarySnapshot,
+  parseWeekId,
   scoreboardUrl,
   summaryUrl,
   toLiveUpdate,
@@ -52,6 +54,20 @@ describe("URLs", () => {
     expect(url.searchParams.has("groups")).toBe(false);
   });
 
+  it("builds a week-of-the-season scoreboard URL", () => {
+    const url = new URL(scoreboardUrl("ncaaf", { seasonType: 3, week: 1 }));
+    expect(url.searchParams.get("seasontype")).toBe("3");
+    expect(url.searchParams.get("week")).toBe("1");
+    expect(url.searchParams.has("dates")).toBe(false);
+    expect(url.searchParams.get("groups")).toBe("80");
+  });
+
+  it("reads week ids", () => {
+    expect(parseWeekId("2-7")).toEqual({ seasonType: 2, week: 7 });
+    expect(parseWeekId("3-999")).toEqual({ seasonType: 3, week: 999 });
+    for (const bad of ["", "2", "4-1", "2-0", "2-07", "2-1000", "2-7x", " 2-7"]) expect(parseWeekId(bad)).toBeNull();
+  });
+
   it("limits college to FBS", () => {
     const url = new URL(scoreboardUrl("ncaaf", NOW));
     expect(url.pathname).toBe("/apis/site/v2/sports/football/college-football/scoreboard");
@@ -78,7 +94,23 @@ describe("parseSchedule", () => {
       home: { name: "Kansas City Chiefs", abbr: "KC", color: "#e31837" },
       away: { name: "Buffalo Bills", abbr: "BUF", color: "#00338d" },
       state: "pre",
+      venue: { name: "Test Stadium", city: "Testville", country: "USA" },
     });
+  });
+
+  it("marks neutral-site and international games with their venue", () => {
+    const wembley = { fullName: "Wembley Stadium", address: { city: "London", country: "England" } };
+    const [event] = parseSchedule(scoreboard([game(status.scheduled(), undefined, undefined, { neutralSite: true, venue: wembley })]), "nfl");
+    expect(event).toMatchObject({ neutralSite: true, venue: { name: "Wembley Stadium", city: "London", country: "England" } });
+  });
+
+  it("keeps top-25 ranks and drops ESPN's 99 for unranked", () => {
+    const sb = scoreboard([
+      { id: "1", date: "2026-10-17T19:30Z", home: { team: TEAMS.uga, rank: 5 }, away: { team: TEAMS.app }, status: status.scheduled() },
+      { id: "2", date: "2026-10-17T19:30Z", home: { team: TEAMS.uga }, away: { team: TEAMS.app, rank: 25 }, status: status.scheduled() },
+      { id: "3", date: "2026-10-17T19:30Z", home: { team: TEAMS.uga }, away: { team: TEAMS.app }, status: status.scheduled() },
+    ]);
+    expect(parseSchedule(sb, "ncaaf").map((e) => e.ranks)).toEqual([{ home: 5 }, { away: 25 }, undefined]);
   });
 
   it("omits color when ESPN has none and lowercases hex", () => {
@@ -118,6 +150,33 @@ describe("parseSchedule", () => {
   it("returns nothing for a non-scoreboard body", () => {
     expect(parseSchedule({ code: 404 }, "nfl")).toEqual([]);
     expect(parseSchedule(null, "nfl")).toEqual([]);
+  });
+});
+
+describe("parseCalendar", () => {
+  it("lists pre, regular and postseason weeks in order and finds the scoreboard's week", () => {
+    const { current, weeks } = parseCalendar(scoreboard([]));
+    expect(weeks.map((w) => `${w.id} ${w.label}`)).toEqual([
+      "1-2 Preseason Week 1",
+      "2-5 Week 5",
+      "2-6 Week 6",
+      "2-7 Week 7",
+      "2-8 Week 8",
+      "3-1 Wild Card",
+      "3-3 Conf Champ",
+    ]);
+    expect(current).toEqual({
+      id: "2-6",
+      label: "Week 6",
+      startsAt: Date.parse("2026-10-14T07:00Z"),
+      endsAt: Date.parse("2026-10-21T07:00Z"),
+    });
+  });
+
+  it("copes with a missing or odd calendar", () => {
+    expect(parseCalendar({ events: [] })).toEqual({ current: null, weeks: [] });
+    expect(parseCalendar({ leagues: [{ calendar: ["2026-09-06T07:00Z"] }], events: [] })).toEqual({ current: null, weeks: [] });
+    expect(parseCalendar(null)).toEqual({ current: null, weeks: [] });
   });
 });
 

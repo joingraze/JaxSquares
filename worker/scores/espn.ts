@@ -3,7 +3,7 @@
 // optional and the parsers never throw on odd data: a malformed event is skipped,
 // a missing number becomes 0 or "unknown", and callers decide what to do with gaps.
 
-import type { League, LiveUpdate, ScheduleEvent, Team } from "../../shared/types";
+import type { League, LiveUpdate, ScheduleEvent, ScheduleWeek, Team } from "../../shared/types";
 
 export type LinkedLeague = Exclude<League, "custom">;
 export type EspnState = "pre" | "in" | "post";
@@ -33,6 +33,8 @@ interface RawLinescore {
 interface RawCompetitor {
   homeAway?: string;
   team?: RawTeam;
+  /** College poll rank; 99 means unranked. */
+  curatedRank?: { current?: number };
   /** A string on the scoreboard ("27"); tolerate numbers too. */
   score?: string | number;
   linescores?: RawLinescore[];
@@ -55,6 +57,8 @@ interface RawCompetition {
   date?: string;
   competitors?: RawCompetitor[];
   status?: RawStatus;
+  neutralSite?: boolean;
+  venue?: { fullName?: string; address?: { city?: string; state?: string; country?: string } };
 }
 
 interface RawEvent {
@@ -73,14 +77,29 @@ export function espnDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10).replace(/-/g, "");
 }
 
+/** A week of the season: ESPN's season type (1 pre, 2 regular, 3 post) and its week value. */
+export interface WeekRef {
+  seasonType: number;
+  week: number;
+}
+
+/** "2-7" -> { seasonType: 2, week: 7 }; null for anything else. */
+export function parseWeekId(id: string): WeekRef | null {
+  const m = /^([1-3])-([1-9]\d{0,2})$/.exec(id);
+  return m ? { seasonType: Number(m[1]), week: Number(m[2]) } : null;
+}
+
 /**
- * The scoreboard for the current slate (the current week for the NFL), or for one
- * US day when `day` is given. ESPN answers 400 to date ranges, so callers that
- * need several days fetch them one at a time.
+ * The scoreboard for the current week, for one US day when `at` is a day (epoch
+ * ms), or for a given week of the season. ESPN answers 400 to date ranges.
  */
-export function scoreboardUrl(league: LinkedLeague, day?: number): string {
+export function scoreboardUrl(league: LinkedLeague, at?: number | WeekRef): string {
   const params = new URLSearchParams();
-  if (day !== undefined) params.set("dates", espnDate(day));
+  if (typeof at === "number") params.set("dates", espnDate(at));
+  else if (at) {
+    params.set("seasontype", String(at.seasonType));
+    params.set("week", String(at.week));
+  }
   if (league === "ncaaf") {
     // groups=80 is FBS; without it the college scoreboard returns only a featured subset.
     params.set("groups", "80");
@@ -139,6 +158,22 @@ function homeAndAway(competitors: RawCompetitor[] | undefined): [RawCompetitor, 
   return away ? [home, away] : null;
 }
 
+function parseRank(raw: RawCompetitor): number | undefined {
+  const n = toNumber(raw.curatedRank?.current);
+  return n !== null && Number.isInteger(n) && n >= 1 && n <= 25 ? n : undefined;
+}
+
+function parseVenue(raw: RawCompetition["venue"]): ScheduleEvent["venue"] | undefined {
+  const name = raw?.fullName?.trim();
+  if (!name) return undefined;
+  const venue: NonNullable<ScheduleEvent["venue"]> = { name };
+  const city = raw?.address?.city?.trim();
+  const country = raw?.address?.country?.trim();
+  if (city) venue.city = city;
+  if (country) venue.country = country;
+  return venue;
+}
+
 function isPlaceholderTeam(team: Team): boolean {
   return /^tbd$/i.test(team.name) || /^tbd$/i.test(team.abbr ?? "");
 }
@@ -165,7 +200,7 @@ export function parseSchedule(json: unknown, league: LinkedLeague): ScheduleEven
     const away = parseTeam(sides[1].team);
     // Unannounced playoff slots can't be meaningfully linked to a board.
     if (!home || !away || isPlaceholderTeam(home) || isPlaceholderTeam(away)) continue;
-    out.push({
+    const item: ScheduleEvent = {
       eventId: String(event.id),
       league,
       name: event.name || `${away.name} at ${home.name}`,
@@ -174,9 +209,61 @@ export function parseSchedule(json: unknown, league: LinkedLeague): ScheduleEven
       home,
       away,
       state: parseState(competition?.status ?? event.status),
-    });
+    };
+    const venue = parseVenue(competition?.venue);
+    if (venue) item.venue = venue;
+    if (competition?.neutralSite === true) item.neutralSite = true;
+    const homeRank = parseRank(sides[0]);
+    const awayRank = parseRank(sides[1]);
+    if (homeRank || awayRank) item.ranks = { ...(homeRank && { home: homeRank }), ...(awayRank && { away: awayRank }) };
+    out.push(item);
   }
   return out;
+}
+
+// ---- Season calendar ----
+
+export interface SeasonCalendar {
+  /** The week this scoreboard covers, when ESPN says. */
+  current: ScheduleWeek | null;
+  /** Every pre, regular and postseason week of the season, in order. */
+  weeks: ScheduleWeek[];
+}
+
+/**
+ * Weeks from a scoreboard's `leagues[0].calendar` (ESPN groups them by season
+ * type: preseason, regular season, postseason, off season) and the week the
+ * scoreboard itself covers (`season.type` + `week.number`).
+ */
+export function parseCalendar(json: unknown): SeasonCalendar {
+  const root = asRecord(json);
+  const league = asRecord(Array.isArray(root?.leagues) ? root.leagues[0] : null);
+  const groups = Array.isArray(league?.calendar) ? league.calendar : [];
+  const weeks: ScheduleWeek[] = [];
+  for (const g of groups) {
+    const group = asRecord(g);
+    const type = toNumber(group?.value);
+    // 4 is the off season (all-star games); nothing there to put on a board.
+    if (type === null || type < 1 || type > 3 || !Array.isArray(group?.entries)) continue;
+    for (const e of group.entries) {
+      const entry = asRecord(e);
+      const week = toNumber(entry?.value);
+      const startsAt = Date.parse(String(entry?.startDate ?? ""));
+      const endsAt = Date.parse(String(entry?.endDate ?? ""));
+      // Long names ("Conference Championship") use ESPN's short form ("Conf Champ").
+      const full = typeof entry?.label === "string" ? entry.label.trim() : "";
+      const short = typeof entry?.alternateLabel === "string" ? entry.alternateLabel.trim() : "";
+      const label = full.length > 18 && short ? short : full;
+      if (week === null || !Number.isInteger(week) || week < 1 || !label || !Number.isFinite(startsAt) || !Number.isFinite(endsAt)) continue;
+      // ESPN's endDate is the last minute of the week ("...T06:59Z"); make it exclusive.
+      weeks.push({ id: `${type}-${week}`, label, startsAt, endsAt: endsAt + 60_000 });
+    }
+  }
+  weeks.sort((a, b) => a.startsAt - b.startsAt);
+  const seasonType = toNumber(asRecord(root?.season)?.type);
+  const weekNumber = toNumber(asRecord(root?.week)?.number);
+  const currentId = seasonType !== null && weekNumber !== null ? `${seasonType}-${weekNumber}` : null;
+  return { current: weeks.find((w) => w.id === currentId) ?? null, weeks };
 }
 
 // ---- Live snapshots ----

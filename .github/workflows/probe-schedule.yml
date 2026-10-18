@@ -22,40 +22,6 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Raw ESPN week calendar, week queries and venues
-        run: |
-          cat > /tmp/shapes.mjs <<'EOF'
-          const B = "https://site.api.espn.com/apis/site/v2/sports/football";
-          async function get(path) {
-            const res = await fetch(`${B}/${path}`, { headers: { accept: "application/json" } });
-            const json = res.ok ? await res.json() : null;
-            return { status: res.status, json };
-          }
-          function brief(e) {
-            const c = e.competitions?.[0] ?? {};
-            return { id: e.id, short: e.shortName, date: e.date, week: e.week, season: e.season, neutral: c.neutralSite, venue: c.venue && { name: c.venue.fullName, city: c.venue.address?.city, state: c.venue.address?.state, country: c.venue.address?.country }, state: c.status?.type?.state };
-          }
-          for (const [lg, path, extra] of [["nfl", "nfl", ""], ["ncaaf", "college-football", "&groups=80&limit=300"]]) {
-            const cur = await get(`${path}/scoreboard?${extra.slice(1)}`);
-            const j = cur.json ?? {};
-            console.log(`== ${lg} default: status ${cur.status}, events ${j.events?.length}, week ${JSON.stringify(j.week)}, season ${JSON.stringify(j.season)}`);
-            const cal = j.leagues?.[0]?.calendar;
-            console.log(`  calendarType ${j.leagues?.[0]?.calendarType}; calendar groups: ${Array.isArray(cal) ? cal.map((g) => typeof g === "string" ? "str" : `${g.label}(${g.value}) ${g.entries?.length ?? 0} entries`).join(" | ") : typeof cal}`);
-            if (Array.isArray(cal)) for (const g of cal) if (g.entries) console.log(`  ${g.label}: ${JSON.stringify(g.entries.slice(0, 2))} ... ${JSON.stringify(g.entries.slice(-2))}`);
-            console.log(`  season detail: ${JSON.stringify(j.leagues?.[0]?.season)?.slice(0, 400)}`);
-            for (const e of (j.events ?? []).slice(0, 3)) console.log("  ev", JSON.stringify(brief(e)));
-            const neutral = (j.events ?? []).filter((e) => e.competitions?.[0]?.neutralSite);
-            console.log(`  neutral-site games: ${neutral.map((e) => JSON.stringify(brief(e))).join(" ; ")}`);
-            const nextWeek = (j.week?.number ?? 7) + 1;
-            for (const q of [`seasontype=2&week=${nextWeek}`, `seasontype=2&week=${nextWeek + 3}`, `seasontype=3&week=1`]) {
-              const r = await get(`${path}/scoreboard?${q}${extra}`);
-              const ev = r.json?.events ?? [];
-              console.log(`  ${q}: status ${r.status}, events ${ev.length}, week ${JSON.stringify(r.json?.week)}, first ${ev[0] ? JSON.stringify(brief(ev[0])) : "-"} last ${ev.at(-1)?.date ?? "-"}`);
-            }
-          }
-          EOF
-          node /tmp/shapes.mjs
-
       - name: App code against real ESPN
         run: |
           cat > worker/scores/probe.live.test.ts <<'EOF'
@@ -64,10 +30,18 @@ jobs:
           import { fetchLiveForEvent, getSchedule } from "./index";
           it("real ESPN through the app code", async () => {
             for (const league of ["nfl", "ncaaf"] as const) {
-              const events = await getSchedule(league);
-              if (!events) { console.log(`${league}: UNAVAILABLE`); throw new Error(`${league} schedule unavailable`); }
-              console.log(`${league}: ${events.length} games; first: ${events.slice(0, 4).map((e) => `${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state}`).join(" | ")}`);
+              const result = await getSchedule(league);
+              if (!result) { console.log(`${league}: UNAVAILABLE`); throw new Error(`${league} schedule unavailable`); }
+              const { events, week, weeks } = result;
+              console.log(`${league}: ${week?.label} ${events.length} games; later: ${weeks.map((w) => w.label).join(", ")}`);
+              console.log(`  first: ${events.slice(0, 3).map((e) => `${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state} ${e.venue?.city ?? ""}${e.neutralSite ? " (neutral)" : ""} ${JSON.stringify(e.ranks ?? {})}`).join(" | ")}`);
               if (events.length === 0) throw new Error(`${league} schedule empty`);
+              if (weeks.length === 0) throw new Error(`${league} has no later weeks`);
+              const next = await getSchedule(league, weeks[0].id);
+              console.log(`  ${weeks[0].label}: ${next?.events.length} games; first ${next?.events[0]?.shortName}`);
+              if (!next?.events.length) throw new Error(`${league} ${weeks[0].id} empty`);
+              const ranked = [...events, ...next.events].filter((e) => e.ranks).length;
+              console.log(`  ranked games: ${ranked}; neutral: ${[...events, ...next.events].filter((e) => e.neutralSite).map((e) => `${e.shortName} @ ${e.venue?.name}, ${e.venue?.city}`).join("; ")}`);
               const pick = events.find((e) => e.state === "in") ?? events[0];
               const update = await fetchLiveForEvent({ provider: "espn", league, eventId: pick.eventId, startsAt: pick.startsAt, xIsHome: true });
               console.log(`  live ${pick.shortName}: ${JSON.stringify(update)?.slice(0, 300)}`);
@@ -75,5 +49,5 @@ jobs:
             }
           }, 60_000);
           EOF
-          npx vitest run worker/scores/probe.live.test.ts 2>&1 | grep -E "nfl:|ncaaf:|live |✓|×|Error|FAIL" | head -40
+          npx vitest run worker/scores/probe.live.test.ts 2>&1 | grep -E "nfl:|ncaaf:|first:|Week|Wild|Bowls|CFP|ranked|live |✓|×|Error|FAIL" | head -40
           npx vitest run worker/scores/probe.live.test.ts > /dev/null 2>&1

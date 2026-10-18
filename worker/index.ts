@@ -41,6 +41,7 @@ import { scheduleRoutes } from "./scores";
 import { closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
 
 export { GameRoom } from "./room";
+export { ScoreHub } from "./scores/hub";
 
 /**
  * `clientId`: the device's secret (x-client-id), used only for D1 lookups.

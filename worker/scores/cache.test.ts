@@ -79,6 +79,19 @@ describe("cached", () => {
     expect((await cached({ key: KEY, ttlSeconds: 10, cache: null, now: clock.now, load: async () => 2 }))?.value).toBe(2);
   });
 
+  it("shares one load between concurrent callers with an inflight map", async () => {
+    const { clock } = setup();
+    let release!: (v: string) => void;
+    const load = vi.fn(() => new Promise<string>((resolve) => (release = resolve)));
+    const inflight = new Map<string, Promise<unknown>>();
+    const opts = { key: KEY, ttlSeconds: 10, cache: null, now: clock.now, load, inflight };
+    const both = Promise.all([cached(opts), cached(opts)]);
+    release("one fetch");
+    expect((await both).map((r) => r?.value)).toEqual(["one fetch", "one fetch"]);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(inflight.size).toBe(0);
+  });
+
   it("serves warm values from memory when there is no Cache API (*.workers.dev)", async () => {
     const { clock } = setup();
     const load = vi.fn(async () => "fresh");

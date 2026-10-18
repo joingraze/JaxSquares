@@ -162,8 +162,9 @@ export const api = {
   // ---- App ----
   health: () => request<{ ok: true }>("GET", "/health"),
   config: () => request<AppConfig>("GET", "/config"),
-  schedule: (league: Exclude<League, "custom">, signal?: AbortSignal) =>
-    request<ScheduleResponse>("GET", `/schedule?league=${league}`, { signal }),
+  /** The first week with games to link plus the weeks after it, or one week's games with `week` ("2-8"). */
+  schedule: (league: Exclude<League, "custom">, signal?: AbortSignal, week?: string) =>
+    request<ScheduleResponse>("GET", `/schedule?league=${league}${week ? `&week=${encodeURIComponent(week)}` : ""}`, { signal }),
 
   // ---- Boards ----
   /** Creates a board and saves its admin token on this device. */

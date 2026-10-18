@@ -89,8 +89,8 @@ export default function CreateGame() {
   // ---- form state ----
   const [tab, setTab] = useState<PickerTab>("nfl");
   const tabTouched = useRef(false);
-  /** Explicit picks per league; without one, the soonest game is picked. */
-  const [picked, setPicked] = useState<Partial<Record<ScheduleLeague, string>>>({});
+  /** Explicit picks per league (any week); without one, the soonest game is picked. */
+  const [picked, setPicked] = useState<Partial<Record<ScheduleLeague, ScheduleEvent>>>({});
   const [custom, setCustom] = useState({ x: "", y: "" });
   const [format, setFormat] = useState<GameFormat>(defaultFormat);
   const [name, setName] = useState("");
@@ -156,7 +156,7 @@ export default function CreateGame() {
   // The game in the open league: the one tapped there, else the soonest.
   const leagueEvents = tab === "custom" ? [] : schedule[tab].events;
   const explicit = tab === "custom" ? undefined : picked[tab];
-  const event: ScheduleEvent | null = leagueEvents.find((e) => e.eventId === explicit) ?? leagueEvents[0] ?? null;
+  const event: ScheduleEvent | null = explicit ?? leagueEvents[0] ?? null;
 
   const matchup: Matchup | null = tab === "custom" ? { kind: "custom", x: custom.x, y: custom.y } : event ? { kind: "linked", event } : null;
   const teams = matchupTeams(matchup, colors);
@@ -171,7 +171,7 @@ export default function CreateGame() {
     setTab(next);
   };
 
-  const pickEvent = (e: ScheduleEvent) => setPicked((p) => (p[e.league] === e.eventId ? p : { ...p, [e.league]: e.eventId }));
+  const pickEvent = (e: ScheduleEvent) => setPicked((p) => (p[e.league]?.eventId === e.eventId ? p : { ...p, [e.league]: e }));
 
   /** Brings the first problem into view: focus its field, centered clear of both bars. */
   const showBlocker = (b: CreateBlocker) => {
@@ -350,7 +350,7 @@ export default function CreateGame() {
             schedule={schedule}
             tab={tab}
             onTab={pickTab}
-            selectedEventId={event?.eventId ?? null}
+            selected={event}
             onPickEvent={pickEvent}
             custom={custom}
             onCustomChange={(side, value) => setCustom((c) => ({ ...c, [side]: value }))}

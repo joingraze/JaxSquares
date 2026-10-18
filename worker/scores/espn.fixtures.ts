@@ -164,6 +164,8 @@ export interface SideFixture {
   lines?: number[];
   /** Override the headline score (defaults to the sum of lines). */
   score?: number;
+  /** College poll rank (ESPN sends 99 when unranked). */
+  rank?: number;
 }
 
 export interface EventFixture {
@@ -173,6 +175,7 @@ export interface EventFixture {
   away: SideFixture;
   status: StatusFixture;
   neutralSite?: boolean;
+  venue?: { fullName: string; address: { city?: string; state?: string; country?: string } };
 }
 
 function competitor(side: SideFixture, homeAway: "home" | "away", order: number, st: StatusFixture) {
@@ -185,6 +188,7 @@ function competitor(side: SideFixture, homeAway: "home" | "away", order: number,
     homeAway,
     ...(st.type.completed ? { winner: false } : {}),
     team: team(side.team),
+    curatedRank: { current: side.rank ?? 99 },
     score: String(score),
     ...(side.lines
       ? { linescores: side.lines.map((v, i) => ({ value: v, displayValue: String(v), period: i + 1 })) }
@@ -220,7 +224,7 @@ export function scoreboardEvent(e: EventFixture) {
         conferenceCompetition: false,
         playByPlayAvailable: true,
         recent: false,
-        venue: { id: "3622", fullName: "Test Stadium", address: { city: "Testville", state: "MO", country: "USA" }, indoor: false },
+        venue: { id: "3622", indoor: false, ...(e.venue ?? { fullName: "Test Stadium", address: { city: "Testville", state: "MO", country: "USA" } }) },
         competitors: [competitor(e.home, "home", 0, e.status), competitor(e.away, "away", 1, e.status)],
         notes: [],
         status: e.status,
@@ -235,7 +239,48 @@ export function scoreboardEvent(e: EventFixture) {
   };
 }
 
-export function scoreboard(events: EventFixture[]) {
+/** ESPN's season calendar as the scoreboard sends it, trimmed to a few weeks per group. */
+export const CALENDAR = [
+  {
+    label: "Preseason",
+    value: "1",
+    startDate: "2026-08-06T07:00Z",
+    endDate: "2026-09-06T06:59Z",
+    entries: [{ label: "Preseason Week 1", alternateLabel: "Pre Wk 1", detail: "Aug 13-19", value: "2", startDate: "2026-08-13T07:00Z", endDate: "2026-08-20T06:59Z" }],
+  },
+  {
+    label: "Regular Season",
+    value: "2",
+    startDate: "2026-09-06T07:00Z",
+    endDate: "2027-01-13T07:59Z",
+    entries: [
+      { label: "Week 5", alternateLabel: "Week 5", detail: "Oct 7-13", value: "5", startDate: "2026-10-07T07:00Z", endDate: "2026-10-14T06:59Z" },
+      { label: "Week 6", alternateLabel: "Week 6", detail: "Oct 14-20", value: "6", startDate: "2026-10-14T07:00Z", endDate: "2026-10-21T06:59Z" },
+      { label: "Week 7", alternateLabel: "Week 7", detail: "Oct 21-27", value: "7", startDate: "2026-10-21T07:00Z", endDate: "2026-10-28T06:59Z" },
+      { label: "Week 8", alternateLabel: "Week 8", detail: "Oct 28-Nov 3", value: "8", startDate: "2026-10-28T07:00Z", endDate: "2026-11-04T07:59Z" },
+    ],
+  },
+  {
+    label: "Postseason",
+    value: "3",
+    startDate: "2027-01-13T08:00Z",
+    endDate: "2027-02-16T07:59Z",
+    entries: [
+      { label: "Wild Card", alternateLabel: "Wild Card", detail: "Jan 13-19", value: "1", startDate: "2027-01-13T08:00Z", endDate: "2027-01-20T07:59Z" },
+      { label: "Conference Championship", alternateLabel: "Conf Champ", detail: "Jan 27-Feb 2", value: "3", startDate: "2027-01-27T08:00Z", endDate: "2027-02-03T07:59Z" },
+    ],
+  },
+  {
+    label: "Off Season",
+    value: "4",
+    startDate: "2027-02-16T08:00Z",
+    endDate: "2027-08-01T06:59Z",
+    entries: [{ label: "Pro Bowl", alternateLabel: "Pro Bowl", detail: "Feb 20", value: "1", startDate: "2027-02-20T08:00Z", endDate: "2027-02-21T07:59Z" }],
+  },
+];
+
+/** A scoreboard response; `week` is the week it covers (Week 6 of the regular season by default). */
+export function scoreboard(events: EventFixture[], week: { seasonType: number; week: number } = { seasonType: 2, week: 6 }) {
   return {
     leagues: [
       {
@@ -247,10 +292,11 @@ export function scoreboard(events: EventFixture[]) {
         season: { year: 2026, startDate: "2026-08-01T07:00Z", endDate: "2027-02-15T07:59Z", type: { id: "2", type: 2, name: "Regular Season" } },
         calendarType: "list",
         calendarIsWhitelist: true,
+        calendar: CALENDAR,
       },
     ],
-    season: { type: 2, year: 2026 },
-    week: { number: 7 },
+    season: { type: week.seasonType, year: 2026 },
+    week: { number: week.week },
     events: events.map(scoreboardEvent),
   };
 }

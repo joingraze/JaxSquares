@@ -26,10 +26,17 @@
     }
   ],
   // One GameRoom per game: live sockets, presence, and live-score polling.
+  // One ScoreHub per league: every ESPN request goes through it (shared cache).
   "durable_objects": {
-    "bindings": [{ "name": "GAME_ROOM", "class_name": "GameRoom" }]
+    "bindings": [
+      { "name": "GAME_ROOM", "class_name": "GameRoom" },
+      { "name": "SCORE_HUB", "class_name": "ScoreHub" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["ScoreHub"] }
+  ],
   // Wake rooms of linked games that are about to start or in progress.
   "triggers": { "crons": ["* * * * *"] },
   "vars": {

@@ -13,7 +13,7 @@
 import { isPlayerId } from "../shared/playerId";
 import type { Activity, GameState, LiveMessage } from "../shared/types";
 import type { Env } from "./env";
-import { fetchLiveForEvent } from "./scores";
+import { liveVia } from "./scores";
 import { applyLiveUpdate, loadState } from "./service";
 
 const POLL_LIVE_MS = 15_000;
@@ -212,7 +212,7 @@ export class GameRoom implements DurableObject {
 
     let next = POLL_PRE_MS;
     try {
-      const update = await fetchLiveForEvent(state.game.linkedEvent);
+      const update = await liveVia(this.env, state.game.linkedEvent);
       if (update) {
         await applyLiveUpdate(this.env, gameId, update, (s, activities) => this.deliver(s, activities));
         if (update.isFinal) return;

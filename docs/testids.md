@@ -6,6 +6,10 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 |---|---|
 | `new-board` | primary "create a board" call to action (home + tab bar) |
 | `game-option` | each real game in the create flow's game picker |
+| `game-search` | the game picker's team search |
+| `week-toggle` | each week row in the game picker (also `data-week=<season type>-<week>`, e.g. `2-7`); `aria-expanded` when open |
+| `week-see-all` | "See all N games" in the lead week |
+| `week-more` | "Full schedule · N more weeks" |
 | `host-name` | the creator's name field, if the create flow asks for it |
 | `custom-matchup` | the "type your own teams" option |
 | `team-x-input`, `team-y-input` | custom matchup team inputs |

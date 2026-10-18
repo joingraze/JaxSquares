@@ -365,12 +365,40 @@ export interface ScheduleEvent {
   home: Team;
   away: Team;
   state: "pre" | "in" | "post";
+  /** Where it's played, when the provider says. */
+  venue?: { name: string; city?: string; country?: string };
+  /** Neither team's home field (bowls, international games, rivalry games at a third site). */
+  neutralSite?: boolean;
+  /** Poll ranks (college top 25) at kickoff time, when ranked. */
+  ranks?: { home?: number; away?: number };
 }
 
-/** GET /api/schedule. `unavailable` is true when the provider couldn't be reached (still 200). */
+/**
+ * A week of the season as the provider files it, e.g. "Week 7" or "Wild Card".
+ * `id` is "<season type>-<week>" (1 preseason, 2 regular season, 3 postseason),
+ * the value GET /api/schedule takes as `week`.
+ */
+export interface ScheduleWeek {
+  id: string;
+  label: string;
+  startsAt: number;
+  /** Exclusive end, epoch ms. */
+  endsAt: number;
+}
+
+/**
+ * GET /api/schedule?league=nfl[&week=2-8]. Without `week`: the first week that
+ * still has games to link (this week, or next week once this one's are done)
+ * plus the weeks after it, for picking further ahead. With `week`: that week's
+ * games. `unavailable` is true when the provider couldn't be reached (still 200).
+ */
 export interface ScheduleResponse {
   events: ScheduleEvent[];
   unavailable?: boolean;
+  /** The week `events` belongs to. */
+  week?: ScheduleWeek | null;
+  /** Later weeks through the end of the season (only without `week`). */
+  weeks?: ScheduleWeek[];
 }
 
 export interface PaymentConfig {
