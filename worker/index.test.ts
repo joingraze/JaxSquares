@@ -62,6 +62,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/**
+ * Rate limits count in fixed windows that reset on the minute (or hour), so a
+ * test that fills one must not straddle a reset: pin the clock just after one.
+ */
+function pinClock(): void {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.UTC(2026, 9, 18, 17, 0, 1));
+}
+
 async function call<T = Record<string, unknown>>(
   method: string,
   path: string,
@@ -418,6 +427,7 @@ describe("players", () => {
   });
 
   it(`lets ${RATE_LIMITS.joinBoard.limit} new players join one board per minute`, async () => {
+    pinClock();
     const { id } = await openBoard(); // Ana and Ben joined already
     for (let i = 2; i < RATE_LIMITS.joinBoard.limit; i++) expect((await joinAs(id, `bot-client-${String(i).padStart(8, "0")}`)).status).toBe(200);
     const limited = await joinAs(id, "bot-client-one-too-many");
@@ -432,6 +442,7 @@ describe("players", () => {
   });
 
   it(`allows ${RATE_LIMITS.join.limit} joins/renames per device per minute`, async () => {
+    pinClock();
     const { id } = await openBoard(); // Ana has used 1 already
     for (let i = 1; i < RATE_LIMITS.join.limit; i++) expect((await joinAs(id, ANA, `Ana ${i}`)).status).toBe(200);
     const limited = await joinAs(id, ANA, "Ana again");
@@ -795,6 +806,7 @@ describe("rules and prizes", () => {
 });
 
 describe("rate limits", () => {
+  beforeEach(pinClock);
   it(`allows ${RATE_LIMITS.createGame.limit} new boards per device per hour`, async () => {
     for (let i = 0; i < RATE_LIMITS.createGame.limit; i++) expect((await call("POST", "/games", { body: createInput() })).status).toBe(201);
     const res = await call("POST", "/games", { body: createInput() });
@@ -828,6 +840,7 @@ describe("rate limits per network address", () => {
   // has to run into a limit too.
   const ip = "203.0.113.7";
   const device = (i: number) => `rotating-device-id-${String(i).padStart(6, "0")}`;
+  beforeEach(pinClock);
 
   it(`allows ${RATE_LIMITS.createGameIp.limit} new boards per address per hour, however many device ids it uses`, async () => {
     const create = (client: string, from = ip) => call("POST", "/games", { client, body: createInput(), headers: { "cf-connecting-ip": from } });
