@@ -1,7 +1,7 @@
 name: Probe schedule
 
-# One-off diagnostic: which ESPN endpoints/headers a server is allowed to use.
-# Runs only when this file changes on the v1 branch.
+# One-off diagnostic: runs the repo's ESPN parser against real ESPN responses
+# (fetched without a custom User-Agent). Runs only when this file changes.
 on:
   push:
     branches:
@@ -13,27 +13,46 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: ESPN variants
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Fetch real ESPN responses
         run: |
-          CHROME='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
-          try() {
-            label="$1"; url="$2"; shift 2
-            code=$(curl -s -o r.out -w '%{http_code}' -m 25 "$@" "$url")
-            echo "== $code [$label] $url ($(wc -c < r.out) bytes)"
-            if [ "$code" = 200 ]; then
-              jq -c '{events: ((.events // .items // []) | length), first: ((.events // [])[0] | {id, date, shortName, state: .status.type.state})}' r.out 2>/dev/null | head -c 600 || head -c 300 r.out
-            else
-              head -c 500 r.out | tr '\n' ' '
-            fi
-            echo
-          }
-          S=https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard
-          try "no UA"       "$S" -A ''
-          try "curl UA"     "$S"
-          try "our UA"      "$S" -A 'JaxSquares/1.0 (+https://jaxsquares.com)'
-          try "chrome UA"   "$S" -A "$CHROME" -H 'accept: application/json'
-          try "chrome+ref"  "$S" -A "$CHROME" -H 'accept: application/json' -H 'referer: https://www.espn.com/' -H 'origin: https://www.espn.com'
-          try "site.web"    "https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard" -A "$CHROME"
-          try "core events" "https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/events?limit=5" -A "$CHROME"
-          try "cdn xhr"     "https://cdn.espn.com/core/nfl/scoreboard?xhr=1" -A "$CHROME"
-          try "ncaaf chrome" "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80" -A "$CHROME"
+          mkdir -p probe
+          from=$(date -u -d '-1 day' +%Y%m%d); to=$(date -u -d '+10 day' +%Y%m%d)
+          B=https://site.api.espn.com/apis/site/v2/sports/football
+          curl -s -o probe/nfl.json  -w 'nfl range %{http_code} %{size_download}B\n'   "$B/nfl/scoreboard?dates=$from-$to&limit=1000"
+          curl -s -o probe/ncaaf.json -w 'ncaaf range %{http_code} %{size_download}B\n' "$B/college-football/scoreboard?dates=$from-$to&limit=1000&groups=80"
+          live=$(jq -r '[.events[] | select(.status.type.state=="in")][0].id // ([.events[]][0].id)' probe/ncaaf.json)
+          echo "summary event: $live"
+          curl -s -o probe/summary.json -w 'summary %{http_code} %{size_download}B\n' "$B/college-football/summary?event=$live"
+          echo "--- trimmed NFL fixture (first 2 events):"
+          jq -c '{events: [.events[:2][] | {id, date, name, shortName, status, competitions: [.competitions[0] | {competitors: [.competitors[] | {homeAway, score, linescores, team: (.team | {displayName, abbreviation, color, location, name})}]}]}]}' probe/nfl.json | head -c 4000; echo
+
+      - name: Run the repo's parser on them
+        run: |
+          cat > worker/scores/probe.live.test.ts <<'EOF'
+          import { readFileSync } from "node:fs";
+          import { it } from "vitest";
+          import { parseSchedule, parseScoreboardSnapshots, parseSummarySnapshot, toLiveUpdate } from "./espn";
+          const load = (f: string) => JSON.parse(readFileSync(`probe/${f}`, "utf8"));
+          it("parses real ESPN data", () => {
+            for (const [file, league] of [["nfl.json", "nfl"], ["ncaaf.json", "ncaaf"]] as const) {
+              const raw = load(file);
+              const all = parseSchedule(raw, league);
+              const upcoming = all.filter((e) => e.state !== "post");
+              console.log(`${league}: raw events ${raw.events?.length}, parsed ${all.length}, not finished ${upcoming.length}`);
+              for (const e of upcoming.slice(0, 4)) console.log("  ", new Date(e.startsAt).toISOString(), e.state, e.away.abbr, e.away.color, "@", e.home.abbr, e.home.color, "|", e.name);
+            }
+            const snaps = parseScoreboardSnapshots(load("ncaaf.json"));
+            const live = snaps.find((s) => s.live?.state === "in") ?? snaps[0];
+            console.log("scoreboard snapshot:", JSON.stringify(live).slice(0, 600));
+            if (live) console.log("live update:", JSON.stringify(toLiveUpdate(live, true, Date.now())).slice(0, 600));
+            console.log("summary snapshot:", JSON.stringify(parseSummarySnapshot(load("summary.json"))).slice(0, 600));
+          });
+          EOF
+          npx vitest run worker/scores/probe.live.test.ts --reporter=verbose 2>&1 | grep -v "^ *$" | head -80
