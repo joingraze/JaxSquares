@@ -1,13 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="512" height="512"><defs>
-  <linearGradient id="jx-bg" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="#111a15"/><stop offset="0.7" stop-color="#060c09"/>
-  </linearGradient>
-  <radialGradient id="jx-flood-l" cx="0.08" cy="-0.06" r="0.8">
-    <stop offset="0" stop-color="#d6ff78" stop-opacity="0.1"/><stop offset="1" stop-color="#d6ff78" stop-opacity="0"/>
-  </radialGradient>
-  <radialGradient id="jx-flood-r" cx="0.92" cy="-0.06" r="0.8">
-    <stop offset="0" stop-color="#d6ff78" stop-opacity="0.07"/><stop offset="1" stop-color="#d6ff78" stop-opacity="0"/>
-  </radialGradient>
   <linearGradient id="jx-volt-a" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#d5ff52"/><stop offset="0.55" stop-color="#c6f91f"/><stop offset="1" stop-color="#b9ec12"/>
   </linearGradient>

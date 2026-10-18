@@ -257,13 +257,20 @@ Every icon and image comes from one SVG source:
 npm run brand     # node --experimental-strip-types scripts/brand/generate.ts
 ```
 
+- **The icon.** Jax's face (the `face` pose of `src/components/ui/Jax.tsx`)
+  over a dark 3x3 squares board whose top right square is lit gold. The app
+  icon, apple-touch and PWA icons, favicon, launch image, link-preview lockup
+  and Android adaptive foreground all use it. The favicon drops the board and
+  keeps his face and the gold square so it reads at 16 px.
 - **The mark.** The same design as the in-app `LogoMark`
   (`src/components/ui/Logo.tsx`): a 3x3 squares board with the winning square,
-  row 2 column 3, lit gold.
+  row 2 column 3, lit gold. `mark.svg` and the notification badge use it.
 - **Colors** (from `src/index.css`):
-  - canvas `#060c09` (pitch-950) for backgrounds
-  - volt `#c6f91f` and `#aee000` (brand-400/500) for the checkered tiles
+  - canvas `#060c09` (pitch-950) and pitch `#111a15` to `#1b281f` for
+    backgrounds and the icon's tiles
+  - volt `#c6f91f` and `#aee000` (brand-400/500) for the mark's checkered tiles
   - trophy gold `#ffc233` (gold-400) for the lit square
+  - Jax's fur colors are fixed (they're his)
   - The link preview also uses the team colors (`#3ab7ff`, `#ff66a6`), the
     player colors and live red.
 - **Source files.**
@@ -275,8 +282,8 @@ npm run brand     # node --experimental-strip-types scripts/brand/generate.ts
   size 96, as in the app) for display and Figtree for body. If those aren't
   installed it falls back to Inter.
 - **Outputs.**
-  - Web: `public/favicon.svg`, `public/favicon.ico` (16/32/48, snapped to whole
-    pixels), `public/apple-touch-icon.png`, `public/og-image.png`.
+  - Web: `public/favicon.svg`, `public/favicon.ico` (16/32/48),
+    `public/apple-touch-icon.png`, `public/og-image.png`.
   - `public/icons/`: `icon-192/512`, `maskable-192/512`, `icon.svg`,
     `mark.svg`, and `badge-96`, a white monochrome badge where the lit square is
     the one at full opacity.

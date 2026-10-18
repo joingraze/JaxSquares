@@ -1,7 +1,8 @@
 /// <reference lib="dom" />
 // Renders every brand asset from the SVG/HTML sources in this folder with
-// headless Chromium, so the icon, favicon, PWA icons, iOS app icon + launch
-// image and the link-preview card always come from one design.
+// headless Chromium, so the icon (Jax over the squares board), favicon, PWA
+// icons, iOS app icon + launch image and the link-preview card always come from
+// one design.
 //
 //   node --experimental-strip-types scripts/brand/generate.ts
 //
@@ -14,7 +15,7 @@ import { chromium, type Page } from "@playwright/test";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { badgeSvg, faviconSvg, iconSvg, markSvg, palette, splashSvg, type IconShape } from "./art.ts";
+import { badgeSvg, faviconSvg, iconArtSvg, iconSvg, markSvg, palette, splashSvg, type IconShape } from "./art.ts";
 import { ogHtml } from "./og.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -142,7 +143,7 @@ async function android(page: Page) {
   // Adaptive icon foreground: 108dp canvas, only the inner 66dp circle is guaranteed visible.
   for (const file of findFiles(res, /^ic_launcher_foreground\.png$/)) {
     const { width } = pngSize(file);
-    const html = `<div style="width:${width}px;height:${width}px;display:grid;place-items:center">${markSvg(Math.round(width * 0.62))}</div>`;
+    const html = `<div style="width:${width}px;height:${width}px;display:grid;place-items:center">${iconArtSvg(Math.round(width * 0.62))}</div>`;
     write(file, await render(page, html, width, width, true));
   }
   write(
