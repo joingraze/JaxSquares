@@ -25,9 +25,14 @@ import {
   winCounts,
   winnersOf,
   winningCell,
+  momentInPlay,
+  playerTake,
+  primaryAward,
+  prizeTotals,
   type ResultsInput,
 } from "./squares";
-import type { Game, GameFormat, LiveStatus, LiveUpdate, ManualWinner, NumberDraw, Score, Square } from "./types";
+import { fixedPeriods, withRules } from "./formats";
+import type { Game, GameFormat, LiveStatus, LiveUpdate, ManualWinner, MomentRule, NumberDraw, Score, Square } from "./types";
 
 /** Deterministic rng (mulberry32) so draws are reproducible. */
 function seeded(seed: number): () => number {
@@ -520,5 +525,155 @@ describe("summary helpers", () => {
     });
     const all = ["q1", "q2", "q3", "final"].map((k) => score(k, 1, 1));
     expect(upcomingPeriod(input(game, squares, all))).toBeNull();
+  });
+});
+
+// ---- Rules: custom moments, square/reverse per moment, amounts ----
+
+const prize = (amount: number | null, note = "") => ({ amount, note });
+
+/** The owner's example: every score change -> the square, $50; each quarter-end -> the reverse square, $200. */
+const OWNER_RULES: MomentRule[] = [
+  { moment: "score", square: prize(50), reverse: null },
+  { moment: "q1", square: null, reverse: prize(200) },
+  { moment: "q2", square: null, reverse: prize(200) },
+  { moment: "q3", square: null, reverse: prize(200) },
+  { moment: "final", square: null, reverse: prize(200, "Loser buys wings") },
+];
+
+function rulesGame(rules: MomentRule[], over: Partial<Game> = {}): Game {
+  const format = withRules({ ...defaultFormat(), rules });
+  return makeGame(format, { periods: fixedPeriods(rules), ...over });
+}
+
+describe("rules: the owner's example (every score $50 to the square, each quarter $200 to the reverse)", () => {
+  // IDENTITY draw: column = X's last digit, row = Y's last digit.
+  const game = rulesGame(OWNER_RULES);
+  const squares = [sq(0, 7, "ana"), sq(3, 7, "ana"), sq(7, 3, "ben"), sq(3, 4, "cy"), sq(0, 4, "dee"), sq(4, 0, "dee")];
+  const scores = [
+    score("s1", 7, 0),
+    score("s2", 7, 3),
+    score("q1", 7, 3),
+    score("s3", 14, 3),
+    score("s4", 14, 10),
+    score("q2", 14, 10),
+    score("s5", 17, 10),
+  ];
+  // Stored out of order, as D1 returns them.
+  const results = resolveResults(input(game, squares, [...scores].reverse()));
+
+  it("lays the moments out in the order they happened", () => {
+    expect(results.map((r) => r.periodKey)).toEqual(["s1", "s2", "q1", "s3", "s4", "q2", "s5"]);
+    expect(boardPeriods(game, scores).map((p) => p.label)).toEqual(["Score 1", "Score 2", "Q1", "Score 3", "Score 4", "Half", "Score 5", "Q3", "Final"]);
+  });
+
+  it("every score awards only the square, with its amount", () => {
+    const s2 = results.find((r) => r.periodKey === "s2")!;
+    expect(s2).toMatchObject({
+      cell: { row: 3, col: 7 },
+      winnerPlayerId: "ana",
+      reverseCell: null,
+      reverseWinnerPlayerId: null,
+      awardsSquare: true,
+      awardsReverse: false,
+      amount: 50,
+      reverseAmount: null,
+    });
+  });
+
+  it("each quarter awards only the reverse square, with the bigger amount", () => {
+    const q1 = results.find((r) => r.periodKey === "q1")!;
+    expect(q1).toMatchObject({
+      cell: null,
+      winnerPlayerId: null,
+      reverseCell: { row: 7, col: 3 },
+      reverseWinnerPlayerId: "ben",
+      awardsSquare: false,
+      awardsReverse: true,
+      amount: null,
+      reverseAmount: 200,
+      prize: null,
+    });
+    expect(primaryAward(q1)).toEqual({ cell: { row: 7, col: 3 }, playerId: "ben", amount: 200, note: null, reverse: true });
+    expect(winnersOf(q1)).toEqual(["ben"]);
+    expect(myWins(results, "ben")).toEqual([{ periodKey: "q1", label: "Q1", reverse: true }]);
+  });
+
+  it("totals each player's prizes", () => {
+    expect(prizeTotals(results)).toEqual({ ana: 150, ben: 200, cy: 50, dee: 250 });
+    expect(winCounts(results)).toEqual({ ana: 3, ben: 1, cy: 1, dee: 2 });
+  });
+
+  it("the final's note rides on the reverse square", () => {
+    const withFinal = resolveResults(input(game, [...squares, sq(0, 7, "ana")], [...scores, score("final", 27, 20)]));
+    const fin = withFinal.at(-1)!;
+    expect(fin).toMatchObject({ periodKey: "final", reverseCell: { row: 7, col: 0 }, reversePrize: "Loser buys wings", reverseAmount: 200 });
+    expect(playerTake(fin, "nobody")).toEqual({ amount: null, note: null, square: false, reverse: false });
+  });
+
+  it("a host pick on a reverse-only moment replaces the reverse square", () => {
+    const [q3] = resolveResults(input(game, [sq(5, 5, "eve")], [], [{ periodKey: "q3", row: 5, col: 5, updatedAt: 0 }]));
+    expect(q3).toMatchObject({ periodKey: "q3", cell: null, reverseCell: { row: 5, col: 5 }, reverseWinnerPlayerId: "eve", source: "host", reverseAmount: 200 });
+  });
+
+  it("the live square follows the moment in play (the reverse square mid-quarter)", () => {
+    const live: LiveStatus = { state: "in", period: 2, clock: "3:00", detail: "Q2 3:00", scoreX: 21, scoreY: 10, updatedAt: 0 };
+    const state = { game, squares: [sq(1, 0, "fay")], live, scores: scores.filter((s) => s.periodKey !== "q2"), manualWinners: [] };
+    expect(liveCell(state)).toEqual({ periodKey: "q2", cell: { row: 1, col: 0 }, playerId: "fay", reverseCell: null, reverse: true });
+    // Every fixed moment decided: what's left is the next score, which awards the square.
+    const done = ["q1", "q2", "q3", "final"].map((k) => score(k, 21, 10));
+    expect(momentInPlay({ game, scores: done, manualWinners: [] }, 4)).toMatchObject({ periodKey: null, rule: { moment: "score" } });
+    expect(liveCell({ ...state, scores: done })).toMatchObject({ periodKey: null, cell: { row: 0, col: 1 }, reverseCell: null });
+  });
+
+  it("records both the quarter-ends and the next fixed period", () => {
+    const update: LiveUpdate = {
+      live: { state: "in", period: 2, clock: "9:00", detail: "Q2 9:00", scoreX: 10, scoreY: 3, updatedAt: 0 },
+      linescoresX: [7, 3],
+      linescoresY: [3, 0],
+      completedPeriods: 1,
+      isFinal: false,
+    };
+    expect(periodScoresFromLinescores(game.format, update)).toEqual([{ periodKey: "q1", label: "Q1", scoreX: 7, scoreY: 3 }]);
+    expect(upcomingPeriod(input(game, [], scores))).toEqual({ key: "q3", label: "Q3" });
+    expect(periodKeyForLive(game.format, 3)).toBe("q3");
+  });
+
+  it("a fixed period with no score yet comes after the entries", () => {
+    expect(boardPeriods(game, [score("s1", 3, 0), score("s2", 3, 7)]).map((p) => p.key)).toEqual(["s1", "s2", "q1", "q2", "q3", "final"]);
+    // A skipped Q1 sits before the recorded Half.
+    expect(boardPeriods(game, [score("s1", 3, 0), score("q2", 3, 0), score("s2", 10, 0)]).map((p) => p.key)).toEqual(["q1", "s1", "q2", "s2", "q3", "final"]);
+  });
+});
+
+describe("rules: amounts on a classic board", () => {
+  it("the same player holding both squares of a period gets both amounts", () => {
+    const rules: MomentRule[] = [{ moment: "final", square: prize(100), reverse: prize(40) }];
+    const [r] = resolveResults(input(rulesGame(rules), [sq(7, 7, "a")], [score("final", 17, 7)]));
+    expect(r.cell).toEqual(r.reverseCell);
+    expect(prizeTotals([r])).toEqual({ a: 140 });
+    expect(playerTake(r, "a")).toEqual({ amount: 140, note: null, square: true, reverse: true });
+  });
+
+  it("skips moments the rules don't award, and amounts stay null without them", () => {
+    const rules: MomentRule[] = [{ moment: "q2", square: prize(null, "Wings"), reverse: null }];
+    const results = resolveResults(input(rulesGame(rules), [], [score("q1", 7, 3), score("q2", 14, 10), score("s1", 3, 0)]));
+    expect(results.map((r) => [r.periodKey, r.amount, r.prize])).toEqual([["q2", null, "Wings"]]);
+    expect(prizeTotals(results)).toEqual({});
+  });
+
+  it("legacy boards (no rules) resolve exactly as before, with no amounts", () => {
+    const game = makeGame({ reverse: true }, { prizes: { q1: "Wings" } });
+    const [r] = resolveResults(input(game, [sq(3, 7, "a"), sq(7, 3, "b")], [score("q1", 7, 3)]));
+    expect(r).toMatchObject({
+      cell: { row: 3, col: 7 },
+      reverseCell: { row: 7, col: 3 },
+      awardsSquare: true,
+      awardsReverse: true,
+      prize: "Wings",
+      reversePrize: null,
+      amount: null,
+      reverseAmount: null,
+    });
   });
 });

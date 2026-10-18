@@ -3,9 +3,10 @@
 // league name), so bodies stay short and never repeat it.
 //
 // Copy rules: short, fun, and never about money. A host's free-text prize note
-// may be quoted as-is.
+// may be quoted as-is; a square price or prize amount never goes in a push
+// (amounts stay in the app).
 
-import { prizeFor } from "../../shared/formats";
+import { periodNote } from "../../shared/formats";
 import type { Game, PeriodsPreset, Sport } from "../../shared/types";
 import type { Member } from "../db";
 import type { Delivery, NotifyEvent, NotifyKind, PushContent } from "./types";
@@ -29,6 +30,7 @@ const WRAP_UP: Record<PeriodsPreset, string> = {
   halves: "See who won each half.",
   final: "See the winning square.",
   "every-score": "See every winning square.",
+  custom: "See every winning square.",
 };
 
 /** Natural phrasing for a period label: "in Q1", "at Half", "at the Final", "on Score 3". */
@@ -89,8 +91,8 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       const winners = [...new Set(event.playerIds)];
       const tag = `${id}:win:${event.periodKey}`;
       const at = atPeriod(event.label);
-      // Falls back to the shared "*" note (an every-score board's only prize slot).
-      const prize = prizeFor(game.prizes, event.periodKey)?.trim();
+      // The square's note (else the reverse square's); never an amount: amounts stay in the app.
+      const prize = periodNote(game.format, game.prizes, event.periodKey)?.trim();
       const mine = base(game, event.kind, {
         body: `🎉 Your square hit ${at}!${prize ? ` 🏆 ${prize}` : ""}`,
         tag,

@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { Activity, GameState } from "../../../shared/types";
-import { FlagIcon, FootballIcon, LockIcon, SparklesIcon, TrophyIcon } from "../../components/icons";
+import { FlagIcon, FootballIcon, GiftIcon, LockIcon, SparklesIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
 import { relativeTime } from "../../lib/format";
 import { describeActivity } from "../notifications/activity";
@@ -16,6 +16,7 @@ const GLYPH: Record<string, { chip: string; icon: (px: number) => ReactNode }> =
   winner: { chip: "bg-gold-400 text-ink-inverse", icon: (px) => <TrophyIcon size={px} filled /> },
   final: { chip: "bg-ink text-canvas", icon: (px) => <FlagIcon size={px} /> },
   created: { chip: "bg-surface-4 text-ink-muted", icon: (px) => <SparklesIcon size={px} /> },
+  rules: { chip: "bg-gold-400/20 text-ink-gold", icon: (px) => <GiftIcon size={px} /> },
 };
 
 /** The one look for a system event, in the feed and in board notices alike. */

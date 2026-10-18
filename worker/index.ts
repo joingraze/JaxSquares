@@ -9,14 +9,19 @@ import {
   PrizeNoteError,
   everyScoreIndex,
   everyScorePeriod,
+  fixedPeriods,
+  foldNotes,
   formatError,
+  hasScoreMoment,
   mentionsMoney,
-  periodsFor,
+  rulesOf,
+  rulesShape,
   sanitizeFormat,
   sanitizePrizes,
+  withRules,
 } from "../shared/formats";
 import { isClientId, isPlayerId } from "../shared/playerId";
-import { MAX_PLAYERS, drawNumbers, isValidCell, resolveResults, totalSquares } from "../shared/squares";
+import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
 import type {
   Activity,
   CreateGameResponse,
@@ -25,6 +30,7 @@ import type {
   GameState,
   League,
   LinkedEvent,
+  Period,
   Sport,
   Team,
 } from "../shared/types";
@@ -169,6 +175,47 @@ function cleanPrizes(format: GameFormat, input: unknown): Record<string, string>
   }
 }
 
+/**
+ * An older client's prize notes for a board that has rules: period key ->
+ * note ("" clears it), checked like any note (400 on money). Only the keys
+ * the rules have (and "*").
+ */
+function legacyNotes(format: GameFormat, input: unknown): Record<string, string> {
+  const notes: Record<string, string> = {};
+  if (!input || typeof input !== "object" || Array.isArray(input)) return notes;
+  const kept = cleanPrizes(format, input);
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof value !== "string") continue;
+    if (key in kept) notes[key] = kept[key];
+    else if (!value.trim() && (key === "*" || fixedPeriods(rulesOf(format)).some((p) => p.key === key))) notes[key] = "";
+  }
+  return notes;
+}
+
+/** Fixed periods a format's rules award (what games.periods holds). */
+function periodsOf(format: GameFormat): Period[] {
+  return fixedPeriods(rulesOf(format));
+}
+
+/**
+ * Lock rules for a host's rules edit: amounts, notes, the unit and the square
+ * price change any time (even after the final, for corrections); who wins
+ * when only until the first score or host pick; fresh numbers only until the
+ * numbers are drawn; the board size never.
+ */
+function rulesEditProblem(state: GameState, next: GameFormat): string | null {
+  const { game } = state;
+  if (next.boardSize !== game.format.boardSize) return "The board size can't change once the board is made.";
+  const scoring = rulesShape(rulesOf(next)) !== rulesShape(rulesOf(game.format));
+  if (scoring && (state.scores.length > 0 || state.manualWinners.length > 0)) {
+    return "Scoring rules lock once the first score is in. You can still change amounts and notes.";
+  }
+  if (next.freshNumbers !== game.format.freshNumbers && game.numbers) {
+    return "New numbers each quarter locks once the numbers are drawn. You can still change amounts and notes.";
+  }
+  return null;
+}
+
 /** 429 with a friendly message once this player (or `subject`, e.g. a game id) is over `rule`; null to carry on. */
 async function rateLimited(c: Ctx, rule: RateRule, subject: string = c.get("playerId")): Promise<Response | null> {
   const { ok, retryAfter } = await checkRate(c.env.DB, rule, subject);
@@ -245,15 +292,16 @@ const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-/** Period key a host may score / pick a winner for; resolves "next" on every-score boards. */
+/**
+ * Period key a host may score / pick a winner for: one of the board's fixed
+ * periods, or (when every score wins) a score entry, "next" for a new one.
+ */
 function resolvePeriodKey(state: GameState, raw: unknown, allowNext: boolean): { key: string; label: string } {
   const { game } = state;
   const key = typeof raw === "string" ? raw.trim() : "";
-  if (game.format.periods !== "every-score") {
-    const p = game.periods.find((x) => x.key === key);
-    if (!p) fail(400, "Unknown period for this board");
-    return p;
-  }
+  const fixed = fixedPeriodsOf(game).find((x) => x.key === key);
+  if (fixed) return fixed;
+  if (!hasScoreMoment(rulesOf(game.format))) fail(400, "Unknown period for this board");
   const max = state.scores.reduce((m, s) => Math.max(m, everyScoreIndex(s.periodKey) ?? 0), 0);
   const n = allowNext && (key === "" || key === "next") ? max + 1 : everyScoreIndex(key);
   if (n === null || n > max + 1) fail(400, "Unknown score entry");
@@ -293,7 +341,7 @@ api.post("/games", requireClient, async (c) => {
   if (mentionsMoney(name)) fail(400, MONEY_ERRORS.name);
   const formatProblem = formatError(body.format);
   if (formatProblem) fail(400, formatProblem);
-  const format = sanitizeFormat(body.format);
+  const requested = sanitizeFormat(body.format);
   const teamX = cleanTeam(body.teamX);
   const teamY = cleanTeam(body.teamY);
   if (!teamX || !teamY) fail(400, "Pick both teams");
@@ -303,11 +351,13 @@ api.post("/games", requireClient, async (c) => {
   let league: League = LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
   if (linkedEvent) league = linkedEvent.league;
   const sport: Sport = SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
-  const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(format.boardSize));
+  const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(requested.boardSize));
   if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
   const host = cleanProfile(body.host);
   if (!host.name) fail(400, "Add your name so friends know it's your board");
-  const prizes = cleanPrizes(format, body.prizes);
+  // New boards keep every note inside their rules; an older client's notes are folded in.
+  const legacy = cleanPrizes(requested, body.prizes);
+  const format = requested.rules ? withRules({ ...requested, rules: foldNotes(requested.rules, legacy) }) : withRules(requested, legacy);
   // Counted only once the request is valid, so fixing a typo doesn't use up a try.
   const limited = await deviceLimited(c, RATE_LIMITS.createGame, RATE_LIMITS.createGameIp);
   if (limited) return limited;
@@ -322,8 +372,8 @@ api.post("/games", requireClient, async (c) => {
       teamX,
       teamY,
       format,
-      periods: periodsFor(format.periods),
-      prizes,
+      periods: periodsOf(format),
+      prizes: {},
       maxPerPlayer,
       numbers: null,
       status: "draft",
@@ -365,23 +415,49 @@ api.patch("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
   const body = await readJson(c);
-  const fields: { name?: string; prizes?: Record<string, string>; maxPerPlayer?: number } = {};
+  const { game } = state;
+  const fields: db.GameFieldUpdate = {};
   if (body.name !== undefined) {
     fields.name = cleanText(body.name, 60);
     if (!fields.name) fail(400, "Board name can't be empty");
     if (mentionsMoney(fields.name)) fail(400, MONEY_ERRORS.name);
   }
-  if (body.prizes !== undefined) fields.prizes = cleanPrizes(state.game.format, body.prizes);
+  let rulesActivity: Activity | null = null;
+  if (body.format !== undefined) {
+    // The whole rules + prizes, as the host's editor has them (see rulesEditProblem for what's locked when).
+    const problem = formatError(body.format);
+    if (problem) fail(400, problem);
+    const next = withRules(sanitizeFormat(body.format));
+    const locked = rulesEditProblem(state, next);
+    if (locked) fail(409, locked);
+    const scoring = rulesShape(rulesOf(next)) !== rulesShape(rulesOf(game.format)) || next.freshNumbers !== game.format.freshNumbers;
+    fields.format = next;
+    fields.periods = periodsOf(next);
+    // Notes now live in the rules (an older board's are in the editor's rules already).
+    fields.prizes = {};
+    rulesActivity = newActivity("rules", c.get("playerId"), { scoring });
+  } else if (body.prizes !== undefined) {
+    if (game.format.rules?.length) {
+      // An older client editing notes on a board that has rules: they land in the rules.
+      const notes = legacyNotes(game.format, body.prizes);
+      fields.format = { ...game.format, rules: foldNotes(game.format.rules, notes) };
+    } else {
+      fields.prizes = cleanPrizes(game.format, body.prizes);
+    }
+  }
   if (body.maxPerPlayer !== undefined) {
-    if (state.game.status !== "draft" && state.game.status !== "open") fail(409, "Squares are already locked");
-    const max = intIn(body.maxPerPlayer, 0, totalSquares(state.game.format.boardSize));
+    if (game.status !== "draft" && game.status !== "open") fail(409, "Squares are already locked");
+    const max = intIn(body.maxPerPlayer, 0, totalSquares(game.format.boardSize));
     if (max === null) fail(400, "Squares per player must be a whole number");
     fields.maxPerPlayer = max;
   }
   const stmt = db.updateGameFields(c.env.DB, id, fields);
   if (!stmt) fail(400, "Nothing to update");
-  const { state: next } = await commitOr404(c, id, [stmt]);
-  publish(c, next);
+  const writes = [stmt];
+  // Shows in the feed; never pushed.
+  if (rulesActivity) writes.push(db.insertActivity(c.env.DB, id, rulesActivity));
+  const { state: next } = await commitOr404(c, id, writes);
+  publish(c, next, rulesActivity ? [rulesActivity.id] : []);
   return c.json({ state: next });
 });
 
@@ -551,7 +627,7 @@ api.post("/games/:id/scores", requireClient, async (c) => {
   const scoreY = intIn(body.scoreY, 0, MAX_SCORE);
   if (scoreX === null || scoreY === null) fail(400, `Scores are whole numbers from 0 to ${MAX_SCORE}`);
   const period = resolvePeriodKey(state, body.periodKey, true);
-  const everyScore = game.format.periods === "every-score";
+  const everyScore = everyScoreIndex(period.key) !== null;
   const label = everyScore ? cleanText(body.label, 24) || period.label : period.label;
   // Shown on the board and in the winner push.
   if (mentionsMoney(label)) fail(400, MONEY_ERRORS.label);
@@ -596,7 +672,7 @@ api.delete("/games/:id/scores/:periodKey", requireClient, async (c) => {
   const writes = [db.deleteScore(c.env.DB, id, periodKey)];
   // An every-score entry goes with its host pick: the next entry reuses the
   // index, and it must be decided by its own score, not the removed one's pick.
-  if (state.game.format.periods === "every-score") writes.push(db.deleteManualWinner(c.env.DB, id, periodKey));
+  if (everyScoreIndex(periodKey) !== null) writes.push(db.deleteManualWinner(c.env.DB, id, periodKey));
   // Removing the Final score of a typed-in board reopens scoring.
   if (periodKey === "final" && state.game.status === "final" && !state.game.linkedEvent) {
     writes.push(db.reopenFinal(c.env.DB, id));
@@ -621,11 +697,13 @@ api.post("/games/:id/winners", requireClient, async (c) => {
     { periodKey: period.key, row, col, updatedAt: now },
   ];
   const result = resolveResults({ ...state, manualWinners }).find((r) => r.periodKey === period.key);
-  const playerIds = result?.winnerPlayerId ? [result.winnerPlayerId] : [];
+  // The pick replaces the square, or the reverse square on a moment where only the reverse wins.
+  const picked = result ? primaryAward(result).playerId : null;
+  const playerIds = picked ? [picked] : [];
   const winner = newActivity(
     "winner",
     c.get("playerId"),
-    { periodKey: period.key, label: period.label, playerIds, cell: { row, col }, manual: true, prize: result?.prize ?? null },
+    { periodKey: period.key, label: period.label, playerIds, cell: { row, col }, manual: true, prize: result ? resultNote(result) : null },
     now,
   );
   const { state: next } = await commitOr404(

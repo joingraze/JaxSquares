@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MONEY_ERRORS, PRIZE_MONEY_ERROR } from "../../../shared/formats";
+import { MONEY_ERRORS } from "../../../shared/formats";
 import type { GameState, NumberDraw, Player, Score, Square } from "../../../shared/types";
 import {
   NEXT_ENTRY,
@@ -24,7 +24,6 @@ import {
   parseScore,
   pressKey,
   previewWinner,
-  prizeFields,
   removeCopy,
   resolvedKey,
   revealDraw,
@@ -478,16 +477,9 @@ describe("winnerRows", () => {
 });
 
 describe("edit board", () => {
-  it("shows one prize per period, or one for every score", () => {
-    expect(prizeFields(locked().game).map((f) => f.key)).toEqual(["q1", "q2", "q3", "final"]);
-    expect(prizeFields(everyScore().game)).toEqual([{ key: "*", label: "Every score" }]);
-  });
-
-  it("flags money in prize notes and an empty name", () => {
-    const draft = { ...editDraftOf(locked().game), name: "  ", prizes: { q1: "Loser pays $20", q2: "Loser buys wings" } };
-    const errors = editErrors(draft);
-    expect(errors.name).toBeTruthy();
-    expect(errors.prizes).toEqual({ q1: PRIZE_MONEY_ERROR });
+  it("edits the name and the cap only (prices, prizes and notes live under Rules & prizes)", () => {
+    expect(editDraftOf(locked().game)).toEqual({ name: "Test board", maxPerPlayer: 0 });
+    expect(editErrors({ ...editDraftOf(locked().game), name: "  " }).name).toBeTruthy();
   });
 
   it("flags money in the board name, inline, with the server's message", () => {
@@ -495,13 +487,11 @@ describe("edit board", () => {
     expect(editErrors({ ...editDraftOf(locked().game), name: "Bucks vs Packers" }).name).toBeNull();
   });
 
-  it("sends only what changed, keeping notes the form doesn't show", () => {
+  it("sends only what changed, never touching notes", () => {
     const game = makeState({ game: { prizes: { q1: "Loser buys wings", "*": "Bragging rights" } } }).game;
     expect(editPatch(game, editDraftOf(game))).toBeNull();
     const renamed = editPatch(game, { ...editDraftOf(game), name: "  Big   Game " });
     expect(renamed).toEqual({ name: "Big Game" });
-    const prizes = editPatch(game, { ...editDraftOf(game), prizes: { q1: "", q2: " Picks  the snacks ", q3: "", final: "" } });
-    expect(prizes).toEqual({ prizes: { "*": "Bragging rights", q2: "Picks the snacks" } });
   });
 
   it("only changes max squares while the board is open", () => {

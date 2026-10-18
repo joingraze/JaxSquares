@@ -2,6 +2,8 @@
 // sensible defaults already picked, and one button that says exactly what
 // happens next ("Join & claim 2 squares"). Someone this phone already knows
 // skips the name step: "Welcome back, Sam" and the same one button.
+// The square price, prize lineup and cap (when the host set them) sit on top,
+// so nobody claims without knowing what to expect.
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import type { GameState } from "../../../shared/types";
 import { AlertIcon, CheckIcon, ShuffleIcon } from "../../components/icons";
@@ -10,6 +12,7 @@ import { api, errorMessage } from "../../lib/api";
 import { contrastText, shortMatchup } from "../../lib/format";
 import { getPlayerId, getProfile, hasProfileName, NAME_MAX_LENGTH, PLAYER_COLORS, PLAYER_EMOJIS, setProfile } from "../../lib/identity";
 import { haptic } from "../../lib/native";
+import { PrizeLineup } from "../rules/PrizeLineup";
 import "./invite.css";
 import { boardStats, defaultLook, hostOf, joinLabel, nameClash, nameProblem, shuffleLook, type Look } from "./inviteModel";
 
@@ -24,13 +27,15 @@ export interface JoinSheetProps {
    * after onJoined). 0 = joining without a pick; omitted = assume a claim.
    */
   selectedCount?: number;
+  /** Open the board's rules sheet (from the price/prize line). */
+  onRules?: () => void;
 }
 
 const COLOR_VALUES = PLAYER_COLORS.map((c) => c.value);
 /** Pale "Chalk" reads as an empty circle, so it's never the default (still pickable). */
 const AVOID_DEFAULT_COLORS = PLAYER_COLORS.filter((c) => c.name === "Chalk").map((c) => c.value);
 
-export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: JoinSheetProps) {
+export function JoinSheet({ state, open, onJoined, onClose, selectedCount, onRules }: JoinSheetProps) {
   const { game } = state;
   const formId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -158,6 +163,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount }: Joi
       }
     >
       <form id={formId} onSubmit={(e) => void submit(e)} noValidate className="flex flex-col gap-5">
+        {onRules && <PrizeLineup game={game} onOpen={onRules} />}
         {!editing && (
           <div className="flex animate-fade-in items-center gap-3 rounded-card bg-surface-3 py-3 pl-3 pr-1.5 ring-1 ring-inset ring-line">
             <span key={`${look.emoji}${look.color}`} className="animate-pop">

@@ -7,8 +7,12 @@ import {
   drawKeys,
   everyScoreIndex,
   everyScorePeriod,
-  periodsFor,
+  fixedPeriods,
+  hasScoreMoment,
   prizeFor,
+  ruleFor,
+  ruleForPeriodKey,
+  rulesOf,
 } from "./formats";
 import type {
   BoardSize,
@@ -17,6 +21,7 @@ import type {
   GameState,
   LiveStatus,
   LiveUpdate,
+  MomentRule,
   NumberDraw,
   Period,
   Score,
@@ -148,18 +153,61 @@ export function isBoardFull(state: Pick<GameState, "game" | "squares">): boolean
 // ---- Periods & results ----
 
 /**
- * Periods shown on a board: the fixed ones, or for every-score boards one per
- * recorded score entry (s1..sN, in order).
+ * The fixed periods a board awards (Q1 / Half / Q3 / Final), from its rules.
+ * A board made before rules existed keeps the periods it stored.
+ */
+export function fixedPeriodsOf(game: Pick<Game, "format" | "periods">): Period[] {
+  if (!game.format.rules?.length && game.periods.length > 0) return game.periods;
+  return fixedPeriods(rulesOf(game.format));
+}
+
+/** Every-score entries (s1..sN) for these keys, in order, labelled from their score. */
+function entryPeriods(keys: Iterable<string>, scoreBy: Map<string, Score>): Period[] {
+  const seen = new Set<string>();
+  for (const k of keys) if (everyScoreIndex(k) !== null) seen.add(k);
+  return [...seen]
+    .sort((a, b) => (everyScoreIndex(a) ?? 0) - (everyScoreIndex(b) ?? 0))
+    .map((key) => ({ key, label: scoreBy.get(key)?.label || everyScorePeriod(everyScoreIndex(key) ?? 0).label }));
+}
+
+/**
+ * Fixed periods and score entries in the order they happened. Scores only go
+ * up in a game, so a recorded quarter-end goes right after the run of entries
+ * whose scores are both at or below it. A fixed period with no score yet sits
+ * before a later recorded one, else after every entry (it's still to come).
+ */
+function mergePeriods(fixed: Period[], entries: Period[], scoreBy: Map<string, Score>): Period[] {
+  if (entries.length === 0) return fixed;
+  if (fixed.length === 0) return entries;
+  const out: Period[] = [];
+  const later: Period[] = [];
+  let i = 0;
+  fixed.forEach((f, idx) => {
+    const s = scoreBy.get(f.key);
+    if (!s) {
+      if (fixed.slice(idx + 1).some((g) => scoreBy.has(g.key))) out.push(f);
+      else later.push(f);
+      return;
+    }
+    while (i < entries.length) {
+      const e = scoreBy.get(entries[i].key);
+      if (e && (e.scoreX > s.scoreX || e.scoreY > s.scoreY)) break;
+      out.push(entries[i++]);
+    }
+    out.push(f);
+  });
+  return [...out, ...entries.slice(i), ...later];
+}
+
+/**
+ * Periods shown on a board: its fixed ones (from the rules), plus one per
+ * recorded score entry (s1..sN) when every score wins, in game order.
  */
 export function boardPeriods(game: Pick<Game, "format" | "periods">, scores: Score[]): Period[] {
-  if (game.format.periods !== "every-score") {
-    return game.periods.length > 0 ? game.periods : periodsFor(game.format.periods);
-  }
-  return scores
-    .map((s) => ({ s, n: everyScoreIndex(s.periodKey) }))
-    .filter((e): e is { s: Score; n: number } => e.n !== null)
-    .sort((a, b) => a.n - b.n)
-    .map(({ s, n }) => ({ key: s.periodKey, label: s.label || everyScorePeriod(n).label }));
+  const fixed = fixedPeriodsOf(game);
+  if (!hasScoreMoment(rulesOf(game.format))) return fixed;
+  const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
+  return mergePeriods(fixed, entryPeriods(scoreBy.keys(), scoreBy), scoreBy);
 }
 
 export interface PeriodResult {
@@ -167,14 +215,25 @@ export interface PeriodResult {
   label: string;
   /** null only when the host picked a winner for a period with no recorded score. */
   score: Score | null;
-  /** Winning square (the host's pick when overridden). */
+  /** Winning square (the host's pick when overridden); null when only the reverse square wins this period. */
   cell: Cell | null;
   /** Public player id owning `cell`, if claimed. */
   winnerPlayerId: string | null;
-  /** Reverse square (reverse boards only); may equal `cell`. */
+  /** Reverse square, when this period has one (the host's pick on a reverse-only period); may equal `cell`. */
   reverseCell: Cell | null;
   reverseWinnerPlayerId: string | null;
+  /** True when the square wins this period (its rule's `square`). */
+  awardsSquare: boolean;
+  /** True when the reverse square wins this period (its rule's `reverse`). */
+  awardsReverse: boolean;
+  /** The square's note (older boards: their period note), or null. Never an amount. */
   prize: string | null;
+  /** The reverse square's note, or null. */
+  reversePrize: string | null;
+  /** Display-only amount for the square, in the board's unit. */
+  amount: number | null;
+  /** Display-only amount for the reverse square. */
+  reverseAmount: number | null;
   /** "host" when the winner comes from a ManualWinner override. */
   source: "auto" | "host";
 }
@@ -182,39 +241,38 @@ export interface PeriodResult {
 export type ResultsInput = Pick<GameState, "game" | "squares" | "scores" | "manualWinners">;
 
 /**
- * Winners for every period that has a score or a host pick, in board order.
- * Empty until numbers are drawn. A ManualWinner replaces the computed square;
- * the reverse square still follows the recorded score.
+ * Winners for every period that has a score or a host pick, in game order.
+ * Empty until numbers are drawn. Each period follows its rule: the square
+ * only when the rule awards it, the reverse square only when it has one. A
+ * ManualWinner replaces the square (or, when only the reverse wins that
+ * period, the reverse square); a reverse square otherwise follows the score.
  */
 export function resolveResults(state: ResultsInput): PeriodResult[] {
   const { game, squares, scores, manualWinners } = state;
   if (!game.numbers) return [];
 
+  const rules = rulesOf(game.format);
+  const legacy = !game.format.rules?.length;
   const owner = new Map(squares.map((s) => [cellKey(s.row, s.col), s.playerId]));
   const ownerOf = (cell: Cell | null) => (cell ? (owner.get(cellKey(cell.row, cell.col)) ?? null) : null);
   const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
   const manualBy = new Map(manualWinners.map((m) => [m.periodKey, m]));
 
-  let periods: Period[];
-  if (game.format.periods === "every-score") {
-    // A host pick may exist for an entry whose score was removed; keep it.
-    const keys = new Set<string>();
-    for (const k of [...scoreBy.keys(), ...manualBy.keys()]) if (everyScoreIndex(k) !== null) keys.add(k);
-    periods = [...keys]
-      .sort((a, b) => (everyScoreIndex(a) ?? 0) - (everyScoreIndex(b) ?? 0))
-      .map((key) => ({ key, label: scoreBy.get(key)?.label || everyScorePeriod(everyScoreIndex(key) ?? 0).label }));
-  } else {
-    periods = boardPeriods(game, scores);
-  }
+  // A host pick may exist for an entry whose score was removed; keep it.
+  const entries = hasScoreMoment(rules) ? entryPeriods([...scoreBy.keys(), ...manualBy.keys()], scoreBy) : [];
+  const periods = mergePeriods(fixedPeriodsOf(game), entries, scoreBy);
 
   const out: PeriodResult[] = [];
   for (const p of periods) {
+    const rule = ruleForPeriodKey(rules, p.key);
+    if (!rule) continue;
     const score = scoreBy.get(p.key) ?? null;
     const manual = manualBy.get(p.key);
     if (!score && !manual) continue;
     const draw = drawFor(game, p.key);
-    const cell = manual ? { row: manual.row, col: manual.col } : score && draw ? winningCell(score, draw) : null;
-    const rev = game.format.reverse && score && draw ? reverseCell(score, draw) : null;
+    const picked = manual ? { row: manual.row, col: manual.col } : null;
+    const cell = rule.square ? (picked ?? (score && draw ? winningCell(score, draw) : null)) : null;
+    const rev = rule.reverse ? ((!rule.square ? picked : null) ?? (score && draw ? reverseCell(score, draw) : null)) : null;
     out.push({
       periodKey: p.key,
       label: p.label,
@@ -223,9 +281,64 @@ export function resolveResults(state: ResultsInput): PeriodResult[] {
       winnerPlayerId: ownerOf(cell),
       reverseCell: rev,
       reverseWinnerPlayerId: ownerOf(rev),
-      prize: prizeFor(game.prizes, p.key),
+      awardsSquare: !!rule.square,
+      awardsReverse: !!rule.reverse,
+      prize: rule.square ? (legacy ? prizeFor(game.prizes, p.key) : rule.square.note || null) : null,
+      reversePrize: rule.reverse?.note || null,
+      amount: rule.square?.amount ?? null,
+      reverseAmount: rule.reverse?.amount ?? null,
       source: manual ? "host" : "auto",
     });
+  }
+  return out;
+}
+
+/**
+ * A period's headline award: the square, or the reverse square when only
+ * the reverse wins that period. What a one-winner view shows (a card, the
+ * host's "needs a winner", the leader).
+ */
+export function primaryAward(r: PeriodResult): {
+  cell: Cell | null;
+  playerId: string | null;
+  amount: number | null;
+  note: string | null;
+  reverse: boolean;
+} {
+  return r.awardsSquare || !r.awardsReverse
+    ? { cell: r.cell, playerId: r.winnerPlayerId, amount: r.amount, note: r.prize, reverse: false }
+    : { cell: r.reverseCell, playerId: r.reverseWinnerPlayerId, amount: r.reverseAmount, note: r.reversePrize, reverse: true };
+}
+
+/** The note for a period's result (the square's, else the reverse square's). Never an amount. */
+export function resultNote(r: Pick<PeriodResult, "prize" | "reversePrize">): string | null {
+  return r.prize ?? r.reversePrize;
+}
+
+/** What this player won in a period: the amounts and notes of the squares (square, reverse) they hold. */
+export function playerTake(r: PeriodResult, playerId: string): { amount: number | null; note: string | null; square: boolean; reverse: boolean } {
+  const square = r.winnerPlayerId === playerId;
+  const reverse = r.reverseWinnerPlayerId === playerId;
+  const amounts = [square ? r.amount : null, reverse ? r.reverseAmount : null].filter((a): a is number => !!a);
+  const amount = amounts.length ? Math.round(amounts.reduce((s, a) => s + a, 0) * 100) / 100 : null;
+  const note = (square ? r.prize : null) ?? (reverse ? r.reversePrize : null);
+  return { amount, note, square, reverse };
+}
+
+/**
+ * Public player id -> total prize amount won (square and reverse amounts; the
+ * same player taking both squares of a period counts both). Display-only, in
+ * the board's unit. Players without an amount aren't listed.
+ */
+export function prizeTotals(results: PeriodResult[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  const add = (id: string | null, amount: number | null) => {
+    if (!id || !amount) return;
+    out[id] = Math.round(((out[id] ?? 0) + amount) * 100) / 100;
+  };
+  for (const r of results) {
+    add(r.winnerPlayerId, r.amount);
+    add(r.reverseWinnerPlayerId, r.reverseAmount);
   }
   return out;
 }
@@ -261,12 +374,12 @@ function cumulative(linescores: number[], n: number): number {
  * Cumulative scores for every fixed period a live update has completed.
  * Half = after 2 periods. Final only once the game is over and includes OT;
  * it uses the provider's game total, which is authoritative over linescores.
- * Every-score boards have no fixed periods (see nextEveryScoreEntry).
+ * Only the fixed moments the rules award; every-score entries come from
+ * nextEveryScoreEntry (a board with both gets both).
  */
 export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdate): PeriodScore[] {
-  if (format.periods === "every-score") return [];
   const out: PeriodScore[] = [];
-  for (const p of periodsFor(format.periods)) {
+  for (const p of fixedPeriods(rulesOf(format))) {
     if (p.key === "final") {
       if (!update.isFinal) continue;
       const x = Number.isFinite(update.live.scoreX) ? update.live.scoreX : cumulative(update.linescoresX, update.linescoresX.length);
@@ -330,9 +443,9 @@ export function retractedEntries(scores: Score[], scoreX: number, scoreY: number
   return out;
 }
 
-/** The fixed period in play for a live period number (1-4, 5+ = OT counts toward Final). */
+/** The fixed period in play for a live period number (1-4, 5+ = OT counts toward Final). null without fixed moments. */
 export function periodKeyForLive(format: GameFormat, livePeriod: number): string | null {
-  const keys = periodsFor(format.periods).map((p) => p.key);
+  const keys = fixedPeriods(rulesOf(format)).map((p) => p.key);
   if (keys.length === 0) return null;
   const order = ["q1", "q2", "q3", "final"];
   const idx = Math.min(Math.max(1, Math.trunc(livePeriod) || 1), 4) - 1;
@@ -341,39 +454,61 @@ export function periodKeyForLive(format: GameFormat, livePeriod: number): string
   return "final";
 }
 
+const decidedKeys = (state: Pick<GameState, "scores" | "manualWinners">) =>
+  new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
+
 /**
  * The fixed period the live game is playing for: the one covering the live
  * period number, or the next undecided one once that's decided. ESPN keeps
  * the period number through a break (2 all through halftime, 1 at "End of
- * 1st") while the board has already recorded that period. null on
- * every-score boards.
+ * 1st") while the board has already recorded that period. null when no
+ * fixed moment wins (every-score boards).
  */
 export function periodInPlay(state: Pick<GameState, "game" | "scores" | "manualWinners">, livePeriod: number): string | null {
   const key = periodKeyForLive(state.game.format, livePeriod);
   if (key === null) return null;
-  const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
+  const done = decidedKeys(state);
   if (!done.has(key)) return key;
-  const keys = boardPeriods(state.game, state.scores).map((p) => p.key);
+  const keys = fixedPeriodsOf(state.game).map((p) => p.key);
   return keys.slice(keys.indexOf(key) + 1).find((k) => !done.has(k)) ?? key;
 }
 
 /**
- * The square the current live score points at — "if it ended now". Uses the
- * draw for the period in play (see periodInPlay). null until locked or
- * without live data.
+ * What the live score is playing for: the fixed period in play while it's
+ * undecided; once every fixed period is decided (or with none), the next
+ * score on a board where every score wins (`periodKey` null).
+ */
+export function momentInPlay(
+  state: Pick<GameState, "game" | "scores" | "manualWinners">,
+  livePeriod: number,
+): { periodKey: string | null; rule: MomentRule | null } {
+  const rules = rulesOf(state.game.format);
+  const scoreRule = ruleFor(rules, "score");
+  const key = periodInPlay(state, livePeriod);
+  if (key !== null && (!scoreRule || !decidedKeys(state).has(key))) return { periodKey: key, rule: ruleForPeriodKey(rules, key) };
+  return { periodKey: null, rule: scoreRule };
+}
+
+/**
+ * The square the current live score points at — "if it ended now" — for
+ * the moment in play (see momentInPlay), under its draw. When only the
+ * reverse square wins that moment, `cell` is the reverse square (`reverse`
+ * set) and `reverseCell` is null. null until locked or without live data.
  */
 export function liveCell(
   state: Pick<GameState, "game" | "squares" | "live" | "scores" | "manualWinners">,
-): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null } | null {
+): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null; reverse?: true } | null {
   const { game, live } = state;
   if (!game.numbers || !live || live.state === "pre") return null;
-  const periodKey = periodInPlay(state, live.period);
+  const { periodKey, rule } = momentInPlay(state, live.period);
   const draw = drawFor(game, periodKey ?? SHARED_DRAW_KEY);
   if (!draw) return null;
   const cell = winningCell(live, draw);
   if (!cell) return null;
-  const rev = game.format.reverse ? reverseCell(live, draw) : null;
-  return { periodKey, cell, playerId: squareAt(state.squares, cell.row, cell.col)?.playerId ?? null, reverseCell: rev };
+  const rev = rule?.reverse ? reverseCell(live, draw) : null;
+  const ownerOf = (c: Cell) => squareAt(state.squares, c.row, c.col)?.playerId ?? null;
+  if (rule && !rule.square && rev) return { periodKey, cell: rev, playerId: ownerOf(rev), reverseCell: null, reverse: true };
+  return { periodKey, cell, playerId: ownerOf(cell), reverseCell: rev };
 }
 
 // ---- Dashboard / summary ----
@@ -401,11 +536,10 @@ export function winCounts(results: PeriodResult[]): Record<string, number> {
   return counts;
 }
 
-/** First fixed period still waiting for a result (null for every-score or when all are done). */
+/** First fixed period still waiting for a result (null without fixed moments, or when all are done). */
 export function upcomingPeriod(state: ResultsInput): Period | null {
-  if (state.game.format.periods === "every-score") return null;
-  const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
-  return boardPeriods(state.game, state.scores).find((p) => !done.has(p.key)) ?? null;
+  const done = decidedKeys(state);
+  return fixedPeriodsOf(state.game).find((p) => !done.has(p.key)) ?? null;
 }
 
 /**

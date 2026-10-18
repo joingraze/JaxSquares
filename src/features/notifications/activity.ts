@@ -337,6 +337,13 @@ export function describeActivity(activity: Activity, state: GameState, myPlayerI
       return winner(activity, state, myPlayerId);
     case "final":
       return final(state, myPlayerId);
+    case "rules":
+      // The host changed who wins or the prizes: worth a look before (and during) the game. Never pushed.
+      return {
+        text: (activity.data as Data).scoring === true ? `${nameOf(state, activity.actor)} changed the rules` : `${nameOf(state, activity.actor)} updated the prizes`,
+        tone: "info",
+        subject: activity.actor ? { kind: "player", id: activity.actor } : { kind: "system", glyph: "board" },
+      };
     default:
       return null;
   }

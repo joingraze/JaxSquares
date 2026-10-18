@@ -11,6 +11,7 @@ export interface SwitchProps {
   "aria-label"?: string;
   disabled?: boolean;
   className?: string;
+  "data-testid"?: string;
 }
 
 export function Switch({ checked, onChange, label, description, disabled, className, ...aria }: SwitchProps) {
@@ -22,6 +23,7 @@ export function Switch({ checked, onChange, label, description, disabled, classN
       id={id}
       aria-checked={checked}
       aria-label={aria["aria-label"]}
+      data-testid={aria["data-testid"]}
       aria-describedby={description ? `${id}-desc` : undefined}
       disabled={disabled}
       onClick={() => {

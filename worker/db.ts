@@ -12,7 +12,7 @@
 // trip per mutation, and the state it returns is exactly what was written.
 
 import { isPlayerId } from "../shared/playerId";
-import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, totalSquares } from "../shared/squares";
+import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
   Game,
@@ -398,11 +398,16 @@ export function insertGame(
   ];
 }
 
-export function updateGameFields(
-  db: D1Database,
-  gameId: string,
-  fields: { name?: string; prizes?: Record<string, string>; maxPerPlayer?: number },
-): D1PreparedStatement | null {
+/** What a host's PATCH may change. `format` (rules + prizes) comes with its fixed `periods`. */
+export interface GameFieldUpdate {
+  name?: string;
+  prizes?: Record<string, string>;
+  maxPerPlayer?: number;
+  format?: GameFormat;
+  periods?: Period[];
+}
+
+export function updateGameFields(db: D1Database, gameId: string, fields: GameFieldUpdate): D1PreparedStatement | null {
   const sets: string[] = [];
   const args: (string | number)[] = [];
   if (fields.name !== undefined) {
@@ -412,6 +417,14 @@ export function updateGameFields(
   if (fields.prizes !== undefined) {
     sets.push("prizes = ?");
     args.push(JSON.stringify(fields.prizes));
+  }
+  if (fields.format !== undefined) {
+    sets.push("format = ?");
+    args.push(JSON.stringify(fields.format));
+  }
+  if (fields.periods !== undefined) {
+    sets.push("periods = ?");
+    args.push(JSON.stringify(fields.periods));
   }
   if (fields.maxPerPlayer !== undefined) {
     sets.push("max_per_player = ?");
@@ -786,7 +799,8 @@ export function leaderOf(
 ): string | null {
   const now = liveCell(state);
   if (now) return now.playerId;
-  return results.at(-1)?.winnerPlayerId ?? null;
+  const last = results.at(-1);
+  return last ? primaryAward(last).playerId : null;
 }
 
 // ---- Rate limits (table from migrations/0005_housekeeping.sql) ----

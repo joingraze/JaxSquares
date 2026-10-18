@@ -13,10 +13,10 @@
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { periodPhrase } from "../../shared/formats";
-import { cellKey, countClaimedBy, drawFor, gridSize, resolveResults, upcomingPeriod } from "../../shared/squares";
+import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, unitOf } from "../../shared/formats";
+import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
-import { GridIcon, SearchIcon, ShareIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
+import { GiftIcon, GridIcon, SearchIcon, ShareIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
 import { ActivityFeed } from "../features/board/ActivityFeed";
@@ -59,6 +59,7 @@ import { useNow } from "../features/board/useNow";
 import { HostControls, loadHostTools } from "../features/host/hostTools";
 import { InviteHero } from "../features/invite/InviteHero";
 import { JoinedCard } from "../features/invite/JoinedCard";
+import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
 import { api, errorMessage, inviteUrl } from "../lib/api";
@@ -73,6 +74,7 @@ import { useResolvedTheme } from "../lib/theme";
 const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m) => ({ default: m.InviteSheet })));
 const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
 const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
+const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
 
 type Cell = { row: number; col: number };
 type Spotlight = { kind: "period" | "cell" | "player"; id: string };
@@ -107,6 +109,8 @@ export default function GameView() {
   // ---- live activity -> the bottom ticker (one alert per moment; tap one to see its square) ----
   // Read through a ref: the jump needs the board's current draw tabs and scroll position.
   const jumpRef = useRef<(cell: Cell, periodKey: string | null) => void>(() => {});
+  // The read-only rules sheet (the host's "Edit" in it opens the editor in host tools).
+  const [rulesOpen, setRulesOpen] = useState(false);
   const onActivity = useCallback(
     (a: Activity, s: GameState) => {
       let alert: ReturnType<typeof boardAlert> = null;
@@ -127,7 +131,8 @@ export default function GameView() {
         icon: note.icon,
         tone: note.tone,
         duration: note.duration,
-        onTap: cell ? () => jumpRef.current(cell, periodKey) : undefined,
+        // "Jordan updated the prizes": a tap shows them.
+        onTap: cell ? () => jumpRef.current(cell, periodKey) : a.type === "rules" ? () => setRulesOpen(true) : undefined,
       });
       if (alert.haptic) void haptic(alert.haptic);
     },
@@ -170,6 +175,7 @@ export default function GameView() {
   // Host tapped remove on a player's row: the host tools open the confirm.
   const [removeRequest, setRemoveRequest] = useState<string | null>(null);
   const clearRemoveRequest = useCallback(() => setRemoveRequest(null), []);
+  const [rulesRequest, setRulesRequest] = useState(0);
   const [callout, setCallout] = useState<BoardCallout | null>(null);
   /** Wins being celebrated right now (the gold banner), else null. */
   const [glory, setGlory] = useState<Glory | null>(null);
@@ -716,8 +722,15 @@ export default function GameView() {
     const where = axis.drawn
       ? `${s.game.teamX.abbr || s.game.teamX.name} ${axis.x[cell.col]} · ${s.game.teamY.abbr || s.game.teamY.name} ${axis.y[cell.row]}`
       : "Numbers get drawn at lock";
+    const unit = unitOf(s.game.format);
     const won = cell.wins.length
-      ? `Won ${cell.wins.map((w) => `${periodPhrase(w.periodKey, w.label).short}${w.reverse ? " (reverse)" : ""}`).join(", ")}`
+      ? `Won ${cell.wins
+          .map((w) => {
+            const r = results.find((x) => x.periodKey === w.periodKey);
+            const amount = r ? (w.reverse ? r.reverseAmount : r.amount) : null;
+            return `${periodPhrase(w.periodKey, w.label).short}${w.reverse ? " (reverse)" : ""}${amount ? ` · ${formatAmount(amount, unit)}` : ""}`;
+          })
+          .join(", ")}`
       : null;
     void haptic("light");
     setCallout({
@@ -835,6 +848,17 @@ export default function GameView() {
     (firstMine ? cellKey(firstMine.row, firstMine.col) : null);
   const myWinResults = results.filter((r) => r.winnerPlayerId === me || r.reverseWinnerPlayerId === me);
   const gloryResults = glory ? results.filter((r) => glory.periods.includes(r.periodKey)) : [];
+  // What I won, in the board's unit (display-only, in-app).
+  const unit = unitOf(game.format);
+  const takeLine = (list: typeof results) => {
+    const takes = list.map((r) => playerTake(r, me));
+    const total = takes.reduce((sum, t) => sum + (t.amount ?? 0), 0);
+    const note = takes.map((t) => t.note).filter(Boolean).at(-1) ?? null;
+    return [total > 0 ? formatAmount(Math.round(total * 100) / 100, unit) : null, note].filter(Boolean).join(" · ") || null;
+  };
+  // Before squares lock, everyone sees what a square costs and what's up for grabs (when the host set it).
+  const picking = game.status === "open" || game.status === "draft";
+  const openRules = () => setRulesOpen(true);
   const headline = headlineScore(state);
   const abbr = (t: typeof game.teamX) => t.abbr || t.name;
   const compactTitle =
@@ -885,13 +909,15 @@ export default function GameView() {
           )}
         </div>
 
+        {picking && !pick && <PrizeLineup game={game} onOpen={openRules} />}
+
         {/* My wins, one slim row. Out of the way while the host taps a square. */}
         {!pick &&
           (gloryResults.length > 0 ? (
             <WinBanner
               anchorRef={gloryRef}
               periods={gloryResults.map((r) => ({ key: r.periodKey, label: r.label }))}
-              prize={gloryResults[gloryResults.length - 1].prize}
+              prize={takeLine(gloryResults)}
               onBrag={() => void brag()}
               onShow={() => showSpot(gloryResults[gloryResults.length - 1].periodKey)}
             />
@@ -900,7 +926,7 @@ export default function GameView() {
             myWinResults.length > 0 && (
               <WinShelf
                 labels={myWinResults.map((r) => periodPhrase(r.periodKey, r.label).short)}
-                prize={myWinResults[myWinResults.length - 1].prize}
+                prize={takeLine(myWinResults)}
                 onBrag={() => void brag()}
                 onShow={() => showSpot(myWinResults[myWinResults.length - 1].periodKey)}
               />
@@ -917,6 +943,7 @@ export default function GameView() {
                 onInvite={share}
                 removeRequest={removeRequest}
                 onRemoveRequestHandled={clearRemoveRequest}
+                rulesRequest={rulesRequest}
               />
             )}
           </div>
@@ -1058,8 +1085,21 @@ export default function GameView() {
         {/* ---- results ---- */}
         {cards.length > 0 && (
           <section aria-label="Results">
-            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+            <div className="mb-2 flex items-center gap-2 px-1">
               <p className="eyebrow text-ink-subtle">{phase === "open" || phase === "draft" ? "What's up for grabs" : "Winners"}</p>
+              <span className="ml-auto" />
+              <button
+                type="button"
+                data-testid="rules-open"
+                onClick={() => {
+                  void haptic("selection");
+                  openRules();
+                }}
+                className="pressable tap-target flex h-7 items-center gap-1 rounded-full bg-surface-3 px-2.5 text-caption font-extrabold text-ink ring-1 ring-inset ring-line-strong"
+              >
+                <GiftIcon size={12} className="text-ink-gold" />
+                Rules & prizes
+              </button>
               {myWinResults.length > 0 && gloryResults.length === 0 && phase !== "final" && (
                 <button
                   type="button"
@@ -1077,11 +1117,12 @@ export default function GameView() {
               me={me}
               teamX={game.teamX}
               teamY={game.teamY}
-              reverse={game.format.reverse}
+              unit={unit}
               predraw={!game.numbers}
               liveNow={nowView?.live ? { playerId: nowView.ownerId, scoreX: nowView.scoreX, scoreY: nowView.scoreY } : null}
               selectedKey={spot?.kind === "period" ? spot.id : null}
-              grid={game.format.periods !== "every-score"}
+              grid={!hasScoreMoment(rulesOf(game.format))}
+              newestFirst={fixedPeriodsOf(game).length === 0}
               onSelect={(key) => {
                 void haptic("selection");
                 setCallout(null);
@@ -1102,6 +1143,7 @@ export default function GameView() {
           </p>
           <PlayersList
             rows={rows}
+            unit={unit}
             total={state.players.length}
             hostId={game.hostPlayerId}
             stage={phase === "open" || phase === "draft" ? "picking" : "game"}
@@ -1185,9 +1227,22 @@ export default function GameView() {
             setJustCreated(false);
           }}
         />
-        <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} />
+        <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} onRules={openRules} />
         <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
+        <RulesSheet
+          open={rulesOpen}
+          onClose={() => setRulesOpen(false)}
+          game={game}
+          onEdit={
+            hostBar && HostControls
+              ? () => {
+                  setRulesOpen(false);
+                  setRulesRequest((n) => n + 1);
+                }
+              : undefined
+          }
+        />
       </Suspense>
     </div>
   );

@@ -1,7 +1,8 @@
 // "Pings by board" on Profile: which boards can still ping, in a stable order,
 // and what each one will ping about next. Pure, tested in pings.test.ts.
 
-import { periodsFor } from "../../../../shared/formats";
+import { fixedPeriods, rulesOf } from "../../../../shared/formats";
+import { periodKeyForLive } from "../../../../shared/squares";
 import type { GameSummary } from "../../../../shared/types";
 
 export interface PingBoards {
@@ -29,14 +30,12 @@ export function pingBoards(games: readonly GameSummary[]): PingBoards {
 
 /** The next result this board will ping about: "Q1", "Half", "Q3", "Final", or "the next score". */
 export function upcomingResult(g: Pick<GameSummary, "format" | "live" | "latestScore">): string | null {
-  const preset = g.format.periods;
-  if (preset === "every-score") return "the next score";
-  const periods = periodsFor(preset);
+  // The fixed moments the rules award; a board where only every score wins pings about the next score.
+  const periods = fixedPeriods(rulesOf(g.format));
+  if (periods.length === 0) return "the next score";
   if (g.live?.state === "in") {
-    const p = g.live.period;
-    if (preset === "quarters") return p <= 1 ? "Q1" : p === 2 ? "Half" : p === 3 ? "Q3" : "Final";
-    if (preset === "halves") return p <= 2 ? "Half" : "Final";
-    return "Final";
+    const key = periodKeyForLive(g.format, g.live.period);
+    return periods.find((p) => p.key === key)?.label ?? "Final";
   }
   const last = g.latestScore?.label;
   if (last) {

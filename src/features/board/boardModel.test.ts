@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveResults } from "../../../shared/squares";
-import type { Activity, GameState, NumberDraw, Player, Score, Square } from "../../../shared/types";
+import { defaultFormat, withRules } from "../../../shared/formats";
+import type { Activity, GameState, MomentRule, NumberDraw, Player, Score, Square } from "../../../shared/types";
 import {
   EMPTY_SELECTION,
   applyTap,
@@ -606,5 +607,64 @@ describe("right now", () => {
     expect(nowSentence({ ...base, ownerId: null })).toBe("Nobody wins if it's 17–13 at the end of Q3");
     expect(nowSentence({ ...base, live: false, periodKey: "q2", label: "Half", scoreX: 14, scoreY: 10 })).toBe("Wins at halftime if it stays 14–10");
     expect(nowSentence({ ...base, live: false, periodKey: "final", label: "Final" })).toBe("Wins at the final whistle if it stays 17–13");
+  });
+});
+
+describe("rules with amounts on the board", () => {
+  const p = (amount: number | null, note = "") => ({ amount, note });
+  // The owner's example: every score -> the square, $50; each quarter-end -> the reverse square, $200.
+  const OWNER: MomentRule[] = [
+    { moment: "score", square: p(50), reverse: null },
+    { moment: "q1", square: null, reverse: p(200) },
+    { moment: "q2", square: null, reverse: p(200) },
+    { moment: "q3", square: null, reverse: p(200) },
+    { moment: "final", square: null, reverse: p(200, "Loser buys wings") },
+  ];
+  const owner = (over: Parameters<typeof makeState>[0] = {}) =>
+    makeState({ ...over, game: { format: withRules({ ...defaultFormat(), rules: OWNER, squarePrice: 10 }), status: "locked", numbers: { "*": DIGITS }, ...over.game } });
+
+  it("cards show every score and the quarters in order, each with its amounts", () => {
+    // DIGITS: column = X's digit, row = 9 - Y's digit.
+    const s = owner({ scores: [score("s1", 7, 0), score("q1", 7, 0)], squares: [sq(9, 7, ME), sq(2, 0, MAYA)] });
+    const cards = periodCards(s, resolveResults(s));
+    expect(cards.map((c) => [c.key, c.status, c.amount, c.reverseAmount])).toEqual([
+      ["s1", "done", 50, null],
+      ["q1", "done", null, 200],
+      ["s2", "later", 50, null],
+      ["q2", "next", null, 200],
+      ["q3", "later", null, 200],
+      ["final", "later", null, 200],
+    ]);
+    expect(cards.at(-1)?.reversePrize).toBe("Loser buys wings");
+    // Q1 7-0: the reverse square is X 0 / Y 7 (row 2, col 0), Maya's.
+    expect(cards[1].result?.reverseWinnerPlayerId).toBe(MAYA);
+  });
+
+  it("'right now' points at the reverse square when only it wins this quarter", () => {
+    const live = { state: "in" as const, period: 2, clock: "5:00", detail: "Q2 5:00", scoreX: 14, scoreY: 10, updatedAt: 1 };
+    const s = owner({ scores: [score("q1", 7, 0)], squares: [sq(5, 0, MAYA)], live });
+    const now = rightNow(s, ME)!;
+    // Reverse of 14-10: X digit 0 on the columns, Y digit 4 on the rows (row 9 - 4).
+    expect(now).toMatchObject({ periodKey: "q2", reverseOnly: true, cell: { row: 5, col: 0 }, ownerId: MAYA, reverse: null, amount: 200, unit: "$" });
+    expect(nowSentence(now)).toBe("Wins if it's 14–10 at halftime (reverse)");
+  });
+
+  it("players see what their squares come to, and winners their totals", () => {
+    const s = owner({ scores: [score("s1", 7, 0), score("q1", 7, 0)], squares: [sq(9, 7, ME), sq(8, 7, ME), sq(2, 0, MAYA)] });
+    const rows = playerRows(s, resolveResults(s), ME);
+    expect(rows.map((r) => [r.player.name, r.squares, r.squaresValue, r.prizeTotal])).toEqual([
+      ["Jordan", 2, 20, 50],
+      ["Maya", 1, 10, 200],
+    ]);
+    // No price, no amounts: nothing extra.
+    const plain = makeState({ squares: [sq(0, 0, ME)] });
+    expect(playerRows(plain, [], ME)[0]).toMatchObject({ squaresValue: null, prizeTotal: null });
+  });
+
+  it("the feed says when the host changed the rules or the prizes", () => {
+    const s = owner();
+    const a = (scoring: boolean): Activity => ({ id: "r", type: "rules", at: 1, actor: MAYA, data: { scoring } });
+    expect(fallbackActivityText(a(true), s, ME)).toBe("Maya changed the rules");
+    expect(fallbackActivityText(a(false), s, ME)).toBe("Maya updated the prizes");
   });
 });

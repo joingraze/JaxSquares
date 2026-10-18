@@ -1,19 +1,22 @@
 // Pure helpers for the create-board flow: team names, the auto board name,
 // plain-language format copy and the request body. No React, no IO.
 
-import { BOARD_SIZE_INFO, periodsFor, PRESET_INFO, PRIZE_MAX_LENGTH, SHARED_DRAW_KEY, validatePrizeNote } from "../../../shared/formats";
+import {
+  BOARD_SIZE_INFO,
+  freshNumbersAllowed,
+  matchingPreset,
+  periodsFor,
+  PRESET_INFO,
+  ruleFor,
+  rulesOf,
+  rulesSummary,
+  tidyNote,
+  type FixedPreset,
+} from "../../../shared/formats";
 import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
-import { pluralize, shortTeamName } from "../../lib/format";
-import type {
-  CreateGameInput,
-  GameFormat,
-  League,
-  LinkedEvent,
-  Period,
-  PeriodsPreset,
-  ScheduleEvent,
-  Team,
-} from "../../../shared/types";
+import { shortTeamName } from "../../lib/format";
+import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Team } from "../../../shared/types";
+import { capLine, firstNoteProblem, formatOf, noteInputId, type PrizeChoice } from "../rules/rulesModel";
 
 /**
  * Side colors for a team with no live color (the board's own fallbacks, see
@@ -164,7 +167,7 @@ export function startsIn(ts: number, now = Date.now()): string | null {
 // ---- Format copy ----
 
 /** How many winning moments a preset has (null = one per score change). */
-export function winnerCount(preset: PeriodsPreset): number | null {
+export function winnerCount(preset: FixedPreset): number | null {
   return preset === "every-score" ? null : periodsFor(preset).length;
 }
 
@@ -172,29 +175,53 @@ export function winnerCount(preset: PeriodsPreset): number | null {
  * Short, stable tag for a format card: "4 winners", "1 winner", "1 winner per
  * score". Modifiers (reverse) don't change it; the summary shows their effect once.
  */
-export function winnersTag(preset: PeriodsPreset): string {
+export function winnersTag(preset: FixedPreset): string {
   const n = winnerCount(preset);
   if (n === null) return "1 winner per score";
   return `${n} ${n === 1 ? "winner" : "winners"}`;
 }
 
-const WHEN: Record<PeriodsPreset, string> = {
+const WHEN: Record<FixedPreset, string> = {
   quarters: "after Q1, at halftime, after Q3 and at the final",
   halves: "at halftime and at the final",
   final: "at the final (overtime counts)",
   "every-score": "every time the score changes",
 };
 
+const MOMENT_WHEN: Record<Moment, string> = {
+  score: "every time the score changes",
+  q1: "after Q1",
+  q2: "at halftime",
+  q3: "after Q3",
+  final: "at the final",
+};
+
+/** "after Q1, at halftime and at the final". */
+function whenList(moments: Moment[]): string {
+  const words = moments.map((m) => MOMENT_WHEN[m]);
+  return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+const winnersWord = (n: number) => `${n} ${n === 1 ? "winner" : "winners"}`;
+
+/** Fresh numbers apply: the rules allow them (a board without rules: the quarters preset). */
+function freshApplies(format: GameFormat): boolean {
+  return format.freshNumbers && (format.rules?.length ? freshNumbersAllowed(format.rules) : format.periods === "quarters");
+}
+
 /**
  * The summary headline as two phrases that are each kept on one line:
- * { winners: "8 winners", size: "100 squares" }, or "2 winners every score".
+ * { winners: "8 winners", size: "100 squares" }, "2 winners every score", or
+ * "Every score + 4 winners" when both win.
  */
 export function boardHeadlineParts(format: GameFormat): { winners: string; size: string } {
   const size = `${format.boardSize} squares`;
-  const n = winnerCount(format.periods);
-  if (n === null) return { winners: format.reverse ? "2 winners every score" : "A winner every score", size };
-  const total = format.reverse ? n * 2 : n;
-  return { winners: `${total} ${total === 1 ? "winner" : "winners"}`, size };
+  const rules = rulesOf(format);
+  const fixed = rules.filter((r) => r.moment !== "score").reduce((n, r) => n + (r.square ? 1 : 0) + (r.reverse ? 1 : 0), 0);
+  const score = ruleFor(rules, "score");
+  if (!score) return { winners: winnersWord(fixed), size };
+  if (fixed === 0) return { winners: score.square && score.reverse ? "2 winners every score" : "A winner every score", size };
+  return { winners: `Every score + ${winnersWord(fixed)}`, size };
 }
 
 /** "4 winners · 100 squares", "8 winners · 25 squares", "A winner every score · 100 squares". */
@@ -206,60 +233,58 @@ export function boardHeadline(format: GameFormat): string {
 /**
  * Plain-language rules that follow every choice, e.g. "The square matching the
  * last digit of each team's score wins after Q1, at halftime, after Q3 and at
- * the final."
+ * the final." Custom rules say where the square and the reverse square win.
  */
 export function describeBoard(format: GameFormat): string {
-  let text = `The square matching the last digit of each team's score wins ${WHEN[format.periods]}.`;
-  if (format.reverse) text += " Flip the digits and that square wins too.";
+  const rules = rulesOf(format);
+  const exact = matchingPreset(rules);
+  let text: string;
+  if (exact) {
+    text = `The square matching the last digit of each team's score wins ${WHEN[exact.preset]}.`;
+    if (exact.reverse) text += " Flip the digits and that square wins too.";
+  } else {
+    const square = rules.filter((r) => r.square).map((r) => r.moment);
+    const reverse = rules.filter((r) => r.reverse).map((r) => r.moment);
+    text = square.length ? `The square matching the last digit of each team's score wins ${whenList(square)}.` : "";
+    if (reverse.length && reverse.join() === square.join()) text += " Flip the digits and that square wins too.";
+    else if (reverse.length) {
+      text += square.length
+        ? ` Flip the digits and that square wins ${whenList(reverse)}.`
+        : `Flip the last digits of the two scores: that square wins ${whenList(reverse)}.`;
+    }
+    text = text.trim();
+  }
   if (format.boardSize === 25) text += " Two numbers per row and column.";
-  if (format.freshNumbers && format.periods === "quarters") text += " New numbers every quarter.";
+  if (freshApplies(format)) text += " New numbers every quarter.";
   return text;
 }
 
-/** One line for the details row and the checkout ticket: "Every quarter · 10×10 · Reverse". */
+/** One line for the rules row and the checkout ticket: "Every quarter · 10×10 · Reverse". */
 export function formatLine(format: GameFormat): string {
-  const parts = [PRESET_INFO[format.periods].label, BOARD_SIZE_INFO[format.boardSize].short];
-  if (format.reverse) parts.push("Reverse");
-  if (format.freshNumbers && format.periods === "quarters") parts.push("New numbers each Q");
+  const rules = rulesOf(format);
+  const exact = matchingPreset(rules);
+  const size = BOARD_SIZE_INFO[format.boardSize].short;
+  const parts = exact ? [PRESET_INFO[exact.preset].label, size] : [rulesSummary(rules), size];
+  if (exact?.reverse) parts.push("Reverse");
+  if (freshApplies(format)) parts.push("New numbers each Q");
   return parts.join(" · ");
 }
 
-/** Prize-note slots for a format; every-score boards get one note for every score ("*"). */
-export function prizeSlots(format: GameFormat): Period[] {
-  if (format.periods === "every-score") return [{ key: SHARED_DRAW_KEY, label: "Every score" }];
-  return periodsFor(format.periods);
+/** The rules row's title: the preset's name, or "Custom rules". */
+export function rulesTitle(format: GameFormat): string {
+  const exact = matchingPreset(rulesOf(format));
+  return exact ? PRESET_INFO[exact.preset].label : PRESET_INFO.custom.label;
 }
 
-/** Notes worth sending: trimmed, non-empty, only for this format's slots. */
-export function cleanPrizes(format: GameFormat, notes: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const slot of prizeSlots(format)) {
-    const note = (notes[slot.key] ?? "").replace(/\s+/g, " ").trim().slice(0, PRIZE_MAX_LENGTH);
-    if (note) out[slot.key] = note;
-  }
-  return out;
+/** The details row's second line: "No max per player" or "Up to 5 squares each". */
+export function detailsSummary(maxPerPlayer: number): string {
+  return capLine(maxPerPlayer) ?? "No max per player";
 }
 
-/** DOM id of a prize slot's input (the create page focuses it on a blocked submit). */
-export const prizeInputId = (key: string) => `prize-${key === "*" ? "all" : key}`;
-
-/** The details row's second line: "No square limit · No prizes yet". */
-export function detailsSummary(format: GameFormat, maxPerPlayer: number, prizes: Record<string, string>): string {
-  const prizeCount = Object.keys(cleanPrizes(format, prizes)).length;
-  return [
-    maxPerPlayer > 0 ? `Max ${pluralize(maxPerPlayer, "square")} each` : "No square limit",
-    prizeCount > 0 ? pluralize(prizeCount, "prize") : "No prizes yet",
-  ].join(" · ");
-}
-
-/** First prize slot whose note mentions money, with the message to show. */
-export function firstPrizeProblem(format: GameFormat, notes: Record<string, string>): { key: string; message: string } | null {
-  for (const slot of prizeSlots(format)) {
-    const note = notes[slot.key] ?? "";
-    const message = note.trim() ? validatePrizeNote(note) : null;
-    if (message) return { key: slot.key, message };
-  }
-  return null;
+/** The first rule note (in game order) that mentions money, with the message to show. */
+export function firstPrizeProblem(format: GameFormat): { key: string; message: string } | null {
+  const problem = firstNoteProblem(rulesOf(format));
+  return problem ? { key: noteInputId(problem.moment, problem.side), message: problem.message } : null;
 }
 
 // ---- Request body ----
@@ -304,20 +329,32 @@ export interface CreateDraft {
   matchup: Matchup | null;
   /** Live team colors for typed NFL teams (teamColorsFrom). */
   colors?: TeamColors;
+  /** The rules (notes inside them), board size, fresh numbers, square price. */
   format: GameFormat;
+  /** How prizes read (null: not chosen, and no amounts go out). */
+  prizeChoice?: PrizeChoice;
   name: string;
   maxPerPlayer: number;
-  prizes: Record<string, string>;
   host: { name: string; color: string; emoji: string };
 }
 
-/** The POST /api/games body, or null while the matchup is incomplete. */
+/** The format a create draft sends: canonical rules, amounts only with "$" or points, notes trimmed. */
+export function createFormat(format: GameFormat, choice: PrizeChoice = null): GameFormat {
+  const rules = rulesOf(format).map((r) => ({
+    ...r,
+    square: r.square ? { ...r.square, note: tidyNote(r.square.note) } : null,
+    reverse: r.reverse ? { ...r.reverse, note: tidyNote(r.reverse.note) } : null,
+  }));
+  return formatOf(format, { rules, choice, squarePrice: format.squarePrice ?? null, freshNumbers: format.freshNumbers });
+}
+
+/** The POST /api/games body, or null while the matchup is incomplete. Notes travel inside the rules. */
 export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
   const teams = matchupTeams(d.matchup, d.colors);
   if (!teams) return null;
   const short = matchupShortNames(d.matchup);
   const name = d.name.trim().slice(0, BOARD_NAME_MAX) || (short ? boardNameFor(short[0], short[1]) : "") || "Squares";
-  const format: GameFormat = { ...d.format, freshNumbers: d.format.freshNumbers && d.format.periods === "quarters" };
+  const format = createFormat(d.format, d.prizeChoice ?? null);
   const total = format.boardSize;
   return {
     name,
@@ -326,7 +363,7 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
     teamX: teams.teamX,
     teamY: teams.teamY,
     format,
-    prizes: cleanPrizes(format, d.prizes),
+    prizes: {},
     maxPerPlayer: Math.max(0, Math.min(total, Math.round(d.maxPerPlayer))),
     linkedEvent: teams.linkedEvent,
     host: { ...d.host, name: d.host.name.trim() },
@@ -345,7 +382,6 @@ export function firstBlocker(d: {
   /** Null when this device already has a name (the field isn't shown). */
   hostName: string | null;
   format: GameFormat;
-  prizes: Record<string, string>;
 }): CreateBlocker | null {
   const m = d.matchup;
   if (!m) return { field: "game", label: "Pick a game to continue" };
@@ -357,7 +393,7 @@ export function firstBlocker(d: {
     if (!y) return { field: "team-y", label: "Add the home team to continue" };
   }
   if (d.hostName !== null && !d.hostName.trim()) return { field: "host", label: "Add your name to continue" };
-  const prize = firstPrizeProblem(d.format, d.prizes);
+  const prize = firstPrizeProblem(d.format);
   if (prize) return { field: "prize", key: prize.key, label: "Fix the prize note to continue" };
   return null;
 }

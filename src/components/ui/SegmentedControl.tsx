@@ -18,6 +18,7 @@ export interface SegmentedControlProps<T extends string | number> {
   "aria-label": string;
   size?: "sm" | "md";
   className?: string;
+  "data-testid"?: string;
 }
 
 /**
@@ -62,6 +63,7 @@ export function SegmentedControl<T extends string | number>({
     <div
       role="radiogroup"
       aria-label={aria["aria-label"]}
+      data-testid={aria["data-testid"]}
       onKeyDown={onKeyDown}
       className={cx(
         // Light: a recessed grey track under a white thumb (dark raises the thumb by lightening it).

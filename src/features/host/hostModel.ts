@@ -4,20 +4,23 @@
 
 import {
   MONEY_ERRORS,
-  PRIZE_MAX_LENGTH,
   SHARED_DRAW_KEY,
   everyScoreIndex,
   everyScorePeriod,
+  hasScoreMoment,
   mentionsMoney,
-  periodsFor,
   prizeFor,
-  validatePrizeNote,
+  ruleForPeriodKey,
+  rulesOf,
+  unitOf,
 } from "../../../shared/formats";
 import {
   boardPeriods,
   cellKey,
   drawFor,
+  fixedPeriodsOf,
   liveLabel,
+  primaryAward,
   resolveResults,
   reverseCell,
   totalSquares,
@@ -26,7 +29,7 @@ import {
   type Cell,
   type PeriodResult,
 } from "../../../shared/squares";
-import type { Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
+import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
 /** Highest score the API accepts. */
@@ -34,6 +37,16 @@ export const MAX_SCORE = 999;
 
 /** periodKey that appends a new entry on every-score boards. */
 export const NEXT_ENTRY = "next";
+
+/** Every score change wins on this board (it records score entries s1..sN). */
+export function hasEntries(game: Pick<Game, "format">): boolean {
+  return hasScoreMoment(rulesOf(game.format));
+}
+
+/** Only score entries win (no fixed period): the classic every-score board. */
+export function entriesOnly(game: Pick<Game, "format" | "periods">): boolean {
+  return fixedPeriodsOf(game).length === 0;
+}
 
 // ---- What the host should do next ----
 
@@ -112,9 +125,10 @@ export function hostSummary(state: GameState): HostSummary {
   }
 
   // Locked.
-  const everyScore = game.format.periods === "every-score";
+  const everyScore = entriesOnly(game);
+  const mixed = !everyScore && hasEntries(game);
   const recorded = everyScore ? state.scores.length : decidedCount(state);
-  const periods = everyScore ? 0 : boardPeriods(game, state.scores).length;
+  const periods = everyScore ? 0 : fixedPeriodsOf(game).length;
   const status = everyScore
     ? `${recorded} ${recorded === 1 ? "score" : "scores"} so far`
     : `${recorded} of ${periods} ${isLinked(game) ? "decided" : "prizes decided"}`;
@@ -127,7 +141,7 @@ export function hostSummary(state: GameState): HostSummary {
       slim: true,
     };
   }
-  if (everyScore) return { status, progress, action: { kind: "score", label: "Add score" }, slim: false };
+  if (everyScore || mixed) return { status, progress, action: { kind: "score", label: "Add score" }, slim: false };
   const next = upcomingPeriod(state);
   return { status, progress, action: { kind: "score", label: next ? `${next.label} score` : "Scores" }, slim: false };
 }
@@ -146,10 +160,10 @@ export function lockIsTheMove(claimed: number, total: number): boolean {
   return left === 0 || claimed / total >= LOCK_READY_SHARE || isUrgent(left, total);
 }
 
-/** Decided prizes whose square nobody owns (and the host hasn't handed out). */
+/** Decided prizes whose square nobody owns (and the host hasn't handed out). The reverse square on a reverse-only moment. */
 export function emptyPrizes(state: GameState): number {
   const manual = new Set(state.manualWinners.map((m) => m.periodKey));
-  return resolveResults(state).filter((r) => !r.winnerPlayerId && !manual.has(r.periodKey)).length;
+  return resolveResults(state).filter((r) => !primaryAward(r).playerId && !manual.has(r.periodKey)).length;
 }
 
 /** True once someone besides the host has joined (the invite button stops saying "Invite friends"). */
@@ -185,14 +199,15 @@ export function hostStatusLine(state: GameState, now = Date.now()): string {
     if (state.live?.state === "in") return "Live · scores come in on their own";
     return gameStarted(state, now) ? "Scores come in on their own" : "Numbers drawn · waiting for kickoff";
   }
-  if (game.format.periods === "every-score") return "Numbers drawn · add each score as it happens";
+  if (entriesOnly(game)) return "Numbers drawn · add each score as it happens";
   const next = upcomingPeriod(state);
+  if (hasEntries(game)) return next ? `Numbers drawn · add each score · ${next.label} is up next` : "Numbers drawn · add each score as it happens";
   return next ? `Numbers drawn · ${next.label} is up next` : "All prizes decided";
 }
 
 function decidedCount(state: Pick<GameState, "game" | "scores" | "manualWinners">): number {
   const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
-  return boardPeriods(state.game, state.scores).filter((p) => done.has(p.key)).length;
+  return fixedPeriodsOf(state.game).filter((p) => done.has(p.key)).length;
 }
 
 // ---- Locking ----
@@ -274,16 +289,17 @@ export interface ScoreTarget {
   existing: Score | null;
 }
 
-/** Periods the host can type a score for, in board order (every-score: entries, then a new one). */
+/**
+ * Periods the host can type a score for, in game order: fixed periods, and
+ * on a board where every score wins its entries, then a new one.
+ */
 export function scoreTargets(state: Pick<GameState, "game" | "scores">): ScoreTarget[] {
   const { game, scores } = state;
   const by = new Map(scores.map((s) => [s.periodKey, s]));
-  if (game.format.periods !== "every-score") {
-    return boardPeriods(game, scores).map((p) => ({ key: p.key, label: p.label, existing: by.get(p.key) ?? null }));
-  }
-  const entries = boardPeriods(game, scores).map((p) => ({ key: p.key, label: p.label, existing: by.get(p.key) ?? null }));
-  const n = entries.reduce((m, e) => Math.max(m, everyScoreIndex(e.key) ?? 0), 0);
-  return [...entries, { key: NEXT_ENTRY, label: everyScorePeriod(n + 1).label, existing: null }];
+  const targets = boardPeriods(game, scores).map((p) => ({ key: p.key, label: p.label, existing: by.get(p.key) ?? null }));
+  if (!hasEntries(game)) return targets;
+  const n = scores.reduce((m, s) => Math.max(m, everyScoreIndex(s.periodKey) ?? 0), 0);
+  return [...targets, { key: NEXT_ENTRY, label: everyScorePeriod(n + 1).label, existing: null }];
 }
 
 /** The live period number each fixed period ends with (linked boards); "final" ends with the game. */
@@ -318,7 +334,8 @@ function liveScoreIsFor(state: Pick<GameState, "game" | "live">, key: string): b
  */
 export function defaultTargetKey(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners" | "live">): string {
   const { game } = state;
-  if (game.format.periods === "every-score") return NEXT_ENTRY;
+  // Score changes are what a host types most where every score wins.
+  if (hasEntries(game)) return NEXT_ENTRY;
   const periods = boardPeriods(game, state.scores);
   const next = upcomingPeriod(state);
   if (next && stillInPlay(state.live, next.key)) {
@@ -351,7 +368,8 @@ export interface ScoreDraft {
 export function initialDraft(state: GameState, key: string): ScoreDraft {
   const existing = state.scores.find((s) => s.periodKey === key);
   if (existing) return { x: String(existing.scoreX), y: String(existing.scoreY) };
-  if (state.game.format.periods === "every-score") {
+  // Where every score wins, a new entry (or a quarter-end being marked) starts from the latest score.
+  if (hasEntries(state.game)) {
     const last = latestEntry(state.scores);
     return { x: String(last?.scoreX ?? 0), y: String(last?.scoreY ?? 0) };
   }
@@ -371,7 +389,8 @@ export interface ScoreSuggestion {
  * scored since). Null when editing a recorded score or on every-score boards.
  */
 export function scoreSuggestion(state: GameState, key: string): ScoreSuggestion | null {
-  if (state.game.format.periods === "every-score" || key === NEXT_ENTRY) return null;
+  // Where every score wins, a quarter-end starts from the latest score already (see initialDraft).
+  if (hasEntries(state.game) || key === NEXT_ENTRY) return null;
   if (state.scores.some((s) => s.periodKey === key)) return null;
   if (state.live && state.live.state !== "pre") {
     if (!liveScoreIsFor(state, key)) return null;
@@ -434,6 +453,11 @@ export interface WinnerPreview {
   digitX: number;
   digitY: number;
   prize: string | null;
+  /** Display-only amount the square (or, on a reverse-only moment, the reverse square) wins. */
+  amount: number | null;
+  unit: AmountUnit;
+  /** Only the reverse square wins this moment: `cell` is the reverse square. */
+  reverseOnly: boolean;
   /** A host pick that will keep overriding the computed square. */
   manual: ManualWinner | null;
 }
@@ -446,11 +470,17 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
   const real = resolvedKey(state, key);
   const draw = drawFor(state.game, real === NEXT_ENTRY ? SHARED_DRAW_KEY : real);
   if (!draw) return null;
-  const cell = winningCell({ scoreX, scoreY }, draw);
+  const rule = ruleForPeriodKey(rulesOf(state.game.format), real);
+  const reverseOnly = !!rule && !rule.square && !!rule.reverse;
+  const square = winningCell({ scoreX, scoreY }, draw);
+  const swapped = reverseCell({ scoreX, scoreY }, draw);
+  const cell = reverseOnly ? swapped : square;
   if (!cell) return null;
   const owner = new Map(state.squares.map((s) => [cellKey(s.row, s.col), s.playerId]));
   const ownerOf = (c: Cell) => owner.get(cellKey(c.row, c.col)) ?? null;
-  const rev = state.game.format.reverse ? reverseCell({ scoreX, scoreY }, draw) : null;
+  const rev = rule?.reverse && !reverseOnly ? swapped : null;
+  const legacy = !state.game.format.rules?.length;
+  const note = legacy ? prizeFor(state.game.prizes, real) : (reverseOnly ? rule?.reverse?.note : rule?.square?.note) || null;
   return {
     periodKey: real,
     cell,
@@ -458,7 +488,10 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
     reverse: rev && (rev.row !== cell.row || rev.col !== cell.col) ? { cell: rev, ownerId: ownerOf(rev) } : null,
     digitX: scoreX % 10,
     digitY: scoreY % 10,
-    prize: prizeFor(state.game.prizes, real),
+    prize: note,
+    amount: (reverseOnly ? rule?.reverse?.amount : rule?.square?.amount) ?? null,
+    unit: unitOf(state.game.format),
+    reverseOnly,
     manual: state.manualWinners.find((m) => m.periodKey === real) ?? null,
   };
 }
@@ -521,10 +554,9 @@ export function winnerRows(state: GameState): WinnerRow[] {
   const byKey = new Map(results.map((r) => [r.periodKey, r]));
   const manual = new Set(state.manualWinners.map((m) => m.periodKey));
   const scores = new Map(state.scores.map((s) => [s.periodKey, s]));
-  const keys =
-    state.game.format.periods === "every-score"
-      ? results.map((r) => ({ key: r.periodKey, label: r.label }))
-      : boardPeriods(state.game, state.scores).map((p) => ({ key: p.key, label: p.label }));
+  const keys = entriesOnly(state.game)
+    ? results.map((r) => ({ key: r.periodKey, label: r.label }))
+    : boardPeriods(state.game, state.scores).map((p) => ({ key: p.key, label: p.label }));
   const all = keys.map(({ key, label }) => ({
     key,
     label,
@@ -537,48 +569,22 @@ export function winnerRows(state: GameState): WinnerRow[] {
   return all.filter((r) => r.result || r === firstOpen);
 }
 
-// ---- Edit board ----
-
-export interface PrizeField {
-  key: string;
-  label: string;
-}
-
-/** Which prize notes the edit form shows: one per period, or one for every score. */
-export function prizeFields(game: Pick<Game, "format" | "periods">): PrizeField[] {
-  if (game.format.periods === "every-score") return [{ key: SHARED_DRAW_KEY, label: "Every score" }];
-  const periods = game.periods.length ? game.periods : periodsFor(game.format.periods);
-  return periods.map((p) => ({ key: p.key, label: p.label }));
-}
+// ---- Edit board (name and the per-player cap; prices, prizes and notes are under Rules & prizes) ----
 
 export interface EditDraft {
   name: string;
-  prizes: Record<string, string>;
   maxPerPlayer: number;
 }
 
 export function editDraftOf(game: Game): EditDraft {
-  const prizes: Record<string, string> = {};
-  for (const f of prizeFields(game)) prizes[f.key] = game.prizes[f.key] ?? "";
-  return { name: game.name, prizes, maxPerPlayer: game.maxPerPlayer };
+  return { name: game.name, maxPerPlayer: game.maxPerPlayer };
 }
 
 const tidy = (s: string) => s.replace(/\s+/g, " ").trim();
 
-/** Inline error for a prize note (money is never allowed), or null. */
-export function prizeError(note: string): string | null {
-  const t = tidy(note);
-  return t ? validatePrizeNote(t) : null;
-}
-
-export function editErrors(draft: EditDraft): { name: string | null; prizes: Record<string, string> } {
-  const prizes: Record<string, string> = {};
-  for (const [k, v] of Object.entries(draft.prizes)) {
-    const e = prizeError(v);
-    if (e) prizes[k] = e;
-  }
+export function editErrors(draft: EditDraft): { name: string | null } {
   const name = tidy(draft.name);
-  return { name: !name ? "Give your board a name" : mentionsMoney(name) ? MONEY_ERRORS.name : null, prizes };
+  return { name: !name ? "Give your board a name" : mentionsMoney(name) ? MONEY_ERRORS.name : null };
 }
 
 /** True when max squares per person can still change (the API refuses once locked). */
@@ -586,23 +592,11 @@ export function canEditMax(game: Pick<Game, "status">): boolean {
   return game.status === "draft" || game.status === "open";
 }
 
-/** The PATCH body for what changed, or null when nothing did. Keeps notes the form doesn't show. */
+/** The PATCH body for what changed, or null when nothing did. */
 export function editPatch(game: Game, draft: EditDraft): UpdateGameInput | null {
   const out: UpdateGameInput = {};
   const name = tidy(draft.name);
   if (name && name !== game.name) out.name = name;
-
-  const fields = prizeFields(game);
-  let prizesChanged = false;
-  const prizes: Record<string, string> = {};
-  for (const [k, v] of Object.entries(game.prizes)) if (!fields.some((f) => f.key === k)) prizes[k] = v;
-  for (const f of fields) {
-    const note = tidy(draft.prizes[f.key] ?? "").slice(0, PRIZE_MAX_LENGTH).trim();
-    if (note !== (game.prizes[f.key] ?? "")) prizesChanged = true;
-    if (note) prizes[f.key] = note;
-  }
-  if (prizesChanged) out.prizes = prizes;
-
   if (canEditMax(game) && draft.maxPerPlayer !== game.maxPerPlayer) out.maxPerPlayer = draft.maxPerPlayer;
   return Object.keys(out).length ? out : null;
 }

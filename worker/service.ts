@@ -1,13 +1,15 @@
 // Core game service shared by the routes, the GameRoom Durable Object and the
 // payments/push modules. See docs/ARCHITECTURE.md "Cross-module function contracts".
 
-import { everyScoreIndex } from "../shared/formats";
+import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
 import {
   drawNumbers,
   liveChanged,
   nextEveryScoreEntry,
   periodScoresFromLinescores,
+  primaryAward,
   resolveResults,
+  resultNote,
   retractedEntries,
   winnersOf,
   type PeriodScore,
@@ -131,13 +133,12 @@ export function scoreEvents(
     if (!r) continue;
     const playerIds = winnersOf(r);
     if (playerIds.length === 0) continue;
+    // `cell` is the square the moment is about (the reverse square when only the reverse wins then).
+    // Notes only: amounts stay out of activity (and so out of anything built from it).
+    const cell = primaryAward(r).cell;
+    const reverseCell = r.awardsSquare ? r.reverseCell : null;
     activities.push(
-      newActivity(
-        "winner",
-        actor,
-        { periodKey: r.periodKey, label: r.label, playerIds, cell: r.cell, reverseCell: r.reverseCell, prize: r.prize },
-        now,
-      ),
+      newActivity("winner", actor, { periodKey: r.periodKey, label: r.label, playerIds, cell, reverseCell, prize: resultNote(r) }, now),
     );
     // No actor: a winner hears about their own square even when they entered the score.
     notifications.push({ kind: "winner", periodKey: r.periodKey, label: r.label, playerIds });
@@ -209,25 +210,23 @@ export async function applyLiveUpdate(
   // are deleted ahead of the upsert below, which may reuse the same index.
   let retracted: string[] = [];
   let scores = prev.scores;
-  if (game.format.periods === "every-score") {
-    if (live.state !== "pre") {
-      retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
-      for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
-      scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
-      const entry = nextEveryScoreEntry(scores, live.scoreX, live.scoreY);
-      if (entry) changed.push(entry);
-    }
-  } else {
-    const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
-    for (const ps of periodScoresFromLinescores(game.format, update)) {
-      const cur = existing.get(ps.periodKey);
-      if (cur?.source === "host") continue;
-      if (cur && cur.scoreX === ps.scoreX && cur.scoreY === ps.scoreY) continue;
-      changed.push(ps);
-    }
+  // A board can award both: every score change (entries) and fixed moments (quarter-ends).
+  if (hasScoreMoment(rulesOf(game.format)) && live.state !== "pre") {
+    retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
+    for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
+    scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
+    const entry = nextEveryScoreEntry(scores, live.scoreX, live.scoreY);
+    if (entry) changed.push(entry);
+  }
+  const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
+  for (const ps of periodScoresFromLinescores(game.format, update)) {
+    const cur = existing.get(ps.periodKey);
+    if (cur?.source === "host") continue;
+    if (cur && cur.scoreX === ps.scoreX && cur.scoreY === ps.scoreY) continue;
+    changed.push(ps);
   }
   for (const c of changed) {
-    const label = game.format.periods === "every-score" ? c.label : null;
+    const label = everyScoreIndex(c.periodKey) !== null ? c.label : null;
     writes.push(db.upsertLiveScore(env.DB, gameId, { ...c, label }, now));
   }
   if (changed.length > 0) {

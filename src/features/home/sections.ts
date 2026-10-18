@@ -4,7 +4,7 @@
 // is unit-tested in sections.test.ts.
 
 import type { GameState, GameSummary, Player, Team } from "../../../shared/types";
-import { periodPhrase, prizeFor } from "../../../shared/formats";
+import { periodNote, periodPhrase } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel } from "../../lib/format";
 import { lockIsTheMove } from "../host/hostModel";
 import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
@@ -299,7 +299,8 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
             periodKey: now.periodKey,
             periodLabel: label,
             digits: [lastDigit(live.scoreX), lastDigit(live.scoreY)],
-            prize: now.periodKey ? prizeFor(game.prizes, now.periodKey) : null,
+            // A note only, never an amount.
+            prize: now.periodKey ? periodNote(game.format, game.prizes, now.periodKey) : null,
           }
         : null,
       meWinning: leaderId === me || reverseOwner === me,

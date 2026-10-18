@@ -19,6 +19,7 @@ export interface ListRowProps {
   destructive?: boolean;
   disabled?: boolean;
   className?: string;
+  "data-testid"?: string;
 }
 
 /** A 56px+ row. Renders a Link with `to`, a button with `onClick`, otherwise a plain row. */
@@ -35,6 +36,7 @@ export function ListRow({
   destructive,
   disabled,
   className,
+  "data-testid": testId,
 }: ListRowProps) {
   const interactive = Boolean(to || onClick) && !disabled;
   const showChevron = chevron ?? Boolean(to);
@@ -58,17 +60,21 @@ export function ListRow({
   );
   if (to && !disabled) {
     return (
-      <Link to={to} onClick={onClick} onPointerDown={onPointerDown} className={classes}>
+      <Link to={to} onClick={onClick} onPointerDown={onPointerDown} className={classes} data-testid={testId}>
         {body}
       </Link>
     );
   }
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} onPointerDown={onPointerDown} disabled={disabled} className={classes}>
+      <button type="button" onClick={onClick} onPointerDown={onPointerDown} disabled={disabled} className={classes} data-testid={testId}>
         {body}
       </button>
     );
   }
-  return <div className={classes}>{body}</div>;
+  return (
+    <div className={classes} data-testid={testId}>
+      {body}
+    </div>
+  );
 }

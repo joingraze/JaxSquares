@@ -4,6 +4,7 @@
 // a live "who wins if you save this" preview.
 
 import type { ReactNode } from "react";
+import { formatAmount } from "../../../shared/formats";
 import type { GameState, Player, Team } from "../../../shared/types";
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
@@ -292,7 +293,9 @@ export function ScorePreview({
   const unchanged = !!recorded && String(recorded.scoreX) === entry.draft.x && String(recorded.scoreY) === entry.draft.y;
   const verb = unchanged ? (mine ? "win" : "wins") : "would win";
   let title: ReactNode;
-  let sub: string | null = p.prize;
+  // What it wins (display-only), then the note: "$200 · Loser buys wings"; "(reverse)" when only the reverse square wins.
+  let sub: string | null =
+    [p.amount ? formatAmount(p.amount, p.unit) : null, p.prize, p.reverseOnly ? "reverse square" : null].filter(Boolean).join(" · ") || null;
   if (p.manual) {
     title = (
       <>

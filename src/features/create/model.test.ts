@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { defaultFormat, PRIZE_MONEY_ERROR } from "../../../shared/formats";
-import type { ScheduleEvent } from "../../../shared/types";
+import { defaultFormat, PRIZE_AMOUNT_ERROR, withRules } from "../../../shared/formats";
+import type { GameFormat, MomentRule, ScheduleEvent } from "../../../shared/types";
 import {
   boardHeadline,
   boardNameFor,
   buildCreateInput,
+  createFormat,
+  detailsSummary,
+  rulesTitle,
   customShortName,
   CUSTOM_X_COLOR,
   CUSTOM_Y_COLOR,
@@ -16,7 +19,6 @@ import {
   inputSignature,
   matchNflTeam,
   orientEvent,
-  prizeSlots,
   resolveCustomTeam,
   kickoffParts,
   matchupTeams,
@@ -41,6 +43,20 @@ const event = (over: Partial<ScheduleEvent> = {}): ScheduleEvent => ({
 });
 
 const host = { name: "Jordan", color: "#ff6b35", emoji: "🏈" };
+
+/** A quarters board with these notes on the squares. */
+function noted(notes: Record<string, string>, base: GameFormat = withRules(defaultFormat())): GameFormat {
+  return { ...base, rules: base.rules!.map((r) => (r.square && notes[r.moment] !== undefined ? { ...r, square: { ...r.square, note: notes[r.moment] } } : r)) };
+}
+
+/** The owner's example: every score -> the square, $50; each quarter-end -> the reverse square, $200. */
+const OWNER_RULES: MomentRule[] = [
+  { moment: "score", square: { amount: 50, note: "" }, reverse: null },
+  { moment: "q1", square: null, reverse: { amount: 200, note: "" } },
+  { moment: "q2", square: null, reverse: { amount: 200, note: "" } },
+  { moment: "q3", square: null, reverse: { amount: 200, note: "" } },
+  { moment: "final", square: null, reverse: { amount: 200, note: "" } },
+];
 
 describe("custom teams", () => {
   it("matches NFL teams exactly by nickname, abbreviation, full name or a unique city", () => {
@@ -144,18 +160,19 @@ describe("firstBlocker", () => {
   const f = defaultFormat();
   const linked = { kind: "linked", event: event() } as const;
   it("asks for what's missing in page order", () => {
-    expect(firstBlocker({ matchup: null, hostName: null, format: f, prizes: {} })?.field).toBe("game");
-    expect(firstBlocker({ matchup: { kind: "custom", x: " ", y: "" }, hostName: "", format: f, prizes: {} })).toEqual({
+    expect(firstBlocker({ matchup: null, hostName: null, format: f })?.field).toBe("game");
+    expect(firstBlocker({ matchup: { kind: "custom", x: " ", y: "" }, hostName: "", format: f })).toEqual({
       field: "team-x",
       label: "Add both teams to continue",
     });
-    expect(firstBlocker({ matchup: { kind: "custom", x: "Packers", y: "" }, hostName: "", format: f, prizes: {} })?.field).toBe("team-y");
-    expect(firstBlocker({ matchup: linked, hostName: " ", format: f, prizes: {} })).toEqual({ field: "host", label: "Add your name to continue" });
-    expect(firstBlocker({ matchup: linked, hostName: "Jordan", format: f, prizes: { q3: "$20" } })).toMatchObject({ field: "prize", key: "q3" });
+    expect(firstBlocker({ matchup: { kind: "custom", x: "Packers", y: "" }, hostName: "", format: f })?.field).toBe("team-y");
+    expect(firstBlocker({ matchup: linked, hostName: " ", format: f })).toEqual({ field: "host", label: "Add your name to continue" });
+    // A note that mentions money points at its own input, inside the rules editor.
+    expect(firstBlocker({ matchup: linked, hostName: "Jordan", format: noted({ q3: "$20" }) })).toMatchObject({ field: "prize", key: "rule-note-q3-square" });
   });
 
   it("is clear once everything is in (a device with a name skips the name)", () => {
-    expect(firstBlocker({ matchup: linked, hostName: null, format: f, prizes: { q1: "Loser buys wings" } })).toBeNull();
+    expect(firstBlocker({ matchup: linked, hostName: null, format: noted({ q1: "Loser buys wings" }) })).toBeNull();
   });
 });
 
@@ -195,27 +212,36 @@ describe("format copy", () => {
     }
   });
 
-  it("gives every-score boards a single prize slot", () => {
-    expect(prizeSlots(defaultFormat()).map((p) => p.key)).toEqual(["q1", "q2", "q3", "final"]);
-    expect(prizeSlots({ ...defaultFormat(), periods: "every-score" }).map((p) => p.key)).toEqual(["*"]);
+  it("describes custom rules: every score plus the quarters, reverse only on the quarters", () => {
+    const owner = withRules({ ...defaultFormat(), rules: OWNER_RULES });
+    expect(boardHeadline(owner)).toBe("Every score + 4 winners · 100 squares");
+    expect(describeBoard(owner)).toBe(
+      "The square matching the last digit of each team's score wins every time the score changes. Flip the digits and that square wins after Q1, at halftime, after Q3 and at the final.",
+    );
+    expect(formatLine(owner)).toBe("Every score + quarters · Reverse on quarters · 10×10");
+    expect(rulesTitle(owner)).toBe("Custom rules");
+    expect(rulesTitle(withRules(defaultFormat()))).toBe("Every quarter");
+    expect(describeBoard(owner)).not.toMatch(/\$|money|bet|wager|pot\b|payout|buy-in/i);
+  });
+
+  it("words the per-player cap as a cap", () => {
+    expect(detailsSummary(0)).toBe("No max per player");
+    expect(detailsSummary(5)).toBe("Up to 5 squares each");
+    expect(detailsSummary(1)).toBe("Up to 1 square each");
   });
 
   it("flags a prize note that mentions money", () => {
-    const f = defaultFormat();
-    expect(firstPrizeProblem(f, { q1: "Loser buys wings" })).toBeNull();
-    expect(firstPrizeProblem(f, { q1: "Loser buys wings", q3: "$20 to the winner" })).toEqual({ key: "q3", message: PRIZE_MONEY_ERROR });
-    // Notes for periods this format doesn't have are ignored.
-    expect(firstPrizeProblem({ ...f, periods: "final" }, { q1: "$5" })).toBeNull();
+    expect(firstPrizeProblem(noted({ q1: "Loser buys wings" }))).toBeNull();
+    expect(firstPrizeProblem(noted({ q1: "Loser buys wings", q3: "$20 to the winner" }))).toEqual({ key: "rule-note-q3-square", message: PRIZE_AMOUNT_ERROR });
   });
 });
 
 describe("buildCreateInput", () => {
   const base: CreateDraft = {
     matchup: { kind: "custom", x: "Packers", y: "Bears" },
-    format: defaultFormat(),
+    format: withRules(defaultFormat()),
     name: "",
     maxPerPlayer: 0,
-    prizes: {},
     host,
   };
 
@@ -243,23 +269,42 @@ describe("buildCreateInput", () => {
     expect(input.linkedEvent?.xIsHome).toBe(false);
   });
 
-  it("keeps a typed name, trims prizes to this format and clamps the square limit", () => {
+  it("keeps a typed name, sends notes inside the rules (prizes {}) and clamps the square limit", () => {
+    const halves = withRules({ periods: "halves", boardSize: 25, reverse: false, freshNumbers: false });
     const input = buildCreateInput({
       ...base,
       name: "  The Big One ",
-      format: { periods: "halves", boardSize: 25, reverse: false, freshNumbers: true },
-      prizes: { q1: "Not used", q2: "  Loser   does dishes ", final: "" },
+      format: noted({ q2: "  Loser   does dishes ", final: "" }, halves),
       maxPerPlayer: 40,
     })!;
     expect(input.name).toBe("The Big One");
-    expect(input.prizes).toEqual({ q2: "Loser does dishes" });
-    expect(input.format.freshNumbers).toBe(false);
+    expect(input.prizes).toEqual({});
+    expect(input.format.rules?.map((r) => [r.moment, r.square?.note])).toEqual([
+      ["q2", "Loser does dishes"],
+      ["final", ""],
+    ]);
     expect(input.maxPerPlayer).toBe(25);
+    // Fresh numbers can't go with a winner on every score.
+    expect(buildCreateInput({ ...base, format: { ...withRules({ ...defaultFormat(), periods: "every-score" }), freshNumbers: true } })!.format.freshNumbers).toBe(false);
+  });
+
+  it("sends amounts only once the host picks dollars or points", () => {
+    const owner = { ...withRules({ ...defaultFormat(), rules: OWNER_RULES }), squarePrice: 10 };
+    const notChosen = buildCreateInput({ ...base, format: owner })!.format;
+    expect(notChosen.squarePrice).toBeNull();
+    expect(notChosen.rules?.every((r) => !r.square?.amount && !r.reverse?.amount)).toBe(true);
+    const dollars = buildCreateInput({ ...base, format: owner, prizeChoice: "$" })!.format;
+    expect(dollars).toMatchObject({ unit: "$", squarePrice: 10, justForFun: false, periods: "custom" });
+    expect(dollars.rules?.map((r) => r.square?.amount ?? r.reverse?.amount)).toEqual([50, 200, 200, 200, 200]);
+    expect(buildCreateInput({ ...base, format: owner, prizeChoice: "pts" })!.format.unit).toBe("pts");
+    const fun = buildCreateInput({ ...base, format: owner, prizeChoice: "fun" })!.format;
+    expect(fun).toMatchObject({ justForFun: true, squarePrice: null });
+    expect(createFormat(owner, "fun").rules?.every((r) => !r.square?.amount && !r.reverse?.amount)).toBe(true);
   });
 
   it("gives the same signature for the same board", () => {
-    const a = buildCreateInput({ ...base, prizes: { q1: "Wings", final: "Bragging rights" } })!;
-    const b = buildCreateInput({ ...base, prizes: { final: "Bragging rights", q1: "Wings" } })!;
+    const a = buildCreateInput({ ...base, format: noted({ q1: "Wings", final: "Bragging rights" }) })!;
+    const b = buildCreateInput({ ...base, format: noted({ final: "Bragging rights", q1: "Wings" }) })!;
     expect(inputSignature(a)).toBe(inputSignature(b));
     expect(inputSignature(a)).not.toBe(inputSignature({ ...a, maxPerPlayer: 3 }));
   });

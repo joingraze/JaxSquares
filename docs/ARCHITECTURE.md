@@ -7,9 +7,19 @@ exception so far: the public-id rename below, which closed an impersonation hole
 
 ## Product rules (non-negotiable)
 
-- No money moves between players, ever. No prices per square, pots, buy-ins,
-  payouts, odds, "bet"/"wager" language. A host may add a free-text prize note per
-  period ("Loser buys wings"). Copy never implies money changes hands in the app.
+- No money moves between players, ever: the app never collects, holds, sends or
+  tracks payment between them. A host may show a **square price** and **prize
+  amounts** as structured, display-only fields (`GameFormat.squarePrice`,
+  `Prize.amount`) in "$" or points (`GameFormat.unit`), or mark the board **just
+  for fun** (`GameFormat.justForFun`: no amounts, players see a badge). Amounts
+  are empty by default, so a default board shows no money at all. The inputs
+  carry "Shown to everyone before they pick squares. JaxSquares never collects
+  or sends money." No betting vocabulary anywhere ("bet", "wager", "pot",
+  "payout", "buy-in", "jackpot", "odds", "stakes", "gamble"): say "square price",
+  "prize", "amount".
+- Amounts never leave the app: not in push notifications, link previews/OG
+  tags, invite or share text, or activity data. A host's free-text note ("Loser
+  buys wings") may be quoted in a push.
 - The only payment is the creator paying JaxSquares to create a board: one tap with
   Apple Pay / Google Pay (Stripe) on the web, Apple In-App Purchase in the iOS app.
   With `PAYMENTS_MODE` unset the app runs a clearly labeled no-charge test checkout.
@@ -18,12 +28,14 @@ exception so far: the public-id rename below, which closed an impersonation hole
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
 - Real time: every mutation is pushed to every open board within one second.
 - Prize notes never mention money: `validatePrizeNote` (`shared/formats.ts`)
-  rejects currency symbols, codes and amounts (also stuck to a number, "20usd"),
-  paying or owing an amount, and money, payment-app and betting words; the
-  API answers 400 "Prize notes can't include money. Try something like 'Loser
-  buys wings'." (App Store guideline 5.3). The same check (`mentionsMoney`)
-  covers the board name (every push's title), team names and every-score
-  labels: 400 with `MONEY_ERRORS.name` / `.team` / `.label`.
+  rejects cash, payment-app and betting talk with `PRIZE_MONEY_ERROR` ("Notes
+  can't mention cash or payment apps. Keep it fun, like 'Loser buys wings'.")
+  and a currency amount (symbols, codes, "20usd", paying or owing an amount)
+  with `PRIZE_AMOUNT_ERROR` ("Put amounts in the amount box. Notes are for
+  extras, like 'Loser buys wings'."); the API answers 400 with either (App
+  Store guideline 5.3). The same check (`mentionsMoney`) covers the board name
+  (every push's title), team names and every-score labels: 400 with
+  `MONEY_ERRORS.name` / `.team` / `.label`.
 
 ## Identity: secret clientId, public player id
 
@@ -100,10 +112,10 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute) |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on money in a prize note, the name or a team name; 429 |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name; 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a prize note or the name |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules |
 | DELETE | `/api/games/:id` | C H | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404 |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `draft`/`open`; 400 for the host, 404 if not on the board, 409 once locked. They may join again |
@@ -288,17 +300,71 @@ when their summary's `version` moves past the state held.
 | `score` | `{ periodKey, label, scoreX, scoreY, source: "live" \| "host" }` |
 | `winner` | `{ periodKey, label, playerIds, cell, reverseCell?, prize, manual? }` |
 | `final` | `{}` |
+| `rules` | `{ scoring }`: the host edited rules or prizes (actor = host's public id); `scoring` when who wins changed (moments, square/reverse, fresh numbers), not just amounts, notes, unit or price. Never pushed |
+
+Winner activity carries notes only (`prize` = the square's note, else the
+reverse square's), never an amount. On a moment where only the reverse square
+wins, `cell` is that reverse square and `reverseCell` is null.
 
 `GameState.activity` holds the newest 50; the hourly cron keeps the newest 200
 rows per game in D1.
 
+## Rules and prizes
+
+`GameFormat.rules: MomentRule[]` is the source of truth for who wins when. A
+`Moment` is `"score"` (every score change: entries `s1..sN`) or a fixed one
+(`q1`, `q2` = halftime, `q3`, `final`). Each rule names which squares win then:
+`square` (the score's last digits) and/or `reverse` (digits swapped), each a
+`Prize { amount: number | null, note: string }` or null. Canonical order:
+score, q1, q2, q3, final.
+
+```ts
+// The owner's example: every score -> the square, $50; each quarter-end -> the reverse square, $200.
+{ rules: [
+    { moment: "score", square: { amount: 50, note: "" }, reverse: null },
+    { moment: "q1", square: null, reverse: { amount: 200, note: "" } },
+    /* q2, q3 the same */
+    { moment: "final", square: null, reverse: { amount: 200, note: "Loser buys wings" } } ],
+  unit: "$", squarePrice: 10, justForFun: false, periods: "custom", reverse: true, boardSize: 100, freshNumbers: false }
+```
+
+- Validation (`formatError` strict for the API, `sanitizeFormat` lenient): 1–5
+  rules, unique known moments, each with a square or a reverse winner; amounts
+  null or a number above 0 up to 1,000,000 (rounded to cents), square price up
+  to 100,000; notes trimmed to 60 chars and checked by `validatePrizeNote`;
+  `unit` "$" or "pts"; `justForFun` boards carry no price or amount;
+  `freshNumbers` only with no every-score rule and a fixed moment. The server
+  stores `withRules(...)`: `periods` = the preset matching the moments (else
+  "custom"), `reverse` = some rule has a reverse winner.
+- Boards made before rules existed have no `rules`: `rulesOf(format,
+  legacyPrizes)` derives them from the preset + reverse and folds their
+  `game.prizes` notes in; they resolve exactly as before.
+- Presets make rules (`rulesForPreset`); the editor fine-tunes them (a "Custom"
+  state when they match no preset).
+- Lock rules for PATCH `format` (also in `src/features/rules/rulesModel.ts`):
+  amounts, notes, unit, square price and just-for-fun change any time, even
+  after the final. Which moments win and square/reverse change only until the
+  first score or host pick (409 "Scoring rules lock once the first score is in.
+  You can still change amounts and notes."); fresh numbers only until the draw;
+  the board size never.
+- In-app helpers: `formatAmount` ("$50", "$2.50", "$1,000", "50 pts"),
+  `prizeTotals(results)` (square + reverse amounts per player), `prizeLineup`
+  (the compact line players see before claiming).
+
 ## Game rules (implemented in `shared/`)
 
-- `shared/formats.ts`: presets → periods. quarters = Q1, Half (q2), Q3, Final;
-  halves = Half, Final; final = Final; every-score = no fixed periods, each score
-  entry `s1..sN` is a period. `reverse` adds a reverse winner per period. Board size
-  100 (10x10) or 25 (5x5, two digits per row/col). `freshNumbers` (quarters only)
-  draws one `NumberDraw` per quarter; otherwise a single draw under `"*"`.
+- `shared/formats.ts`: rules → periods. Fixed moments give Q1, Half (q2), Q3,
+  Final; a score rule makes each score entry `s1..sN` a period. Board size 100
+  (10x10) or 25 (5x5, two digits per row/col). `freshNumbers` draws one
+  `NumberDraw` per quarter; otherwise a single draw under `"*"`.
+- Boards that award every score and quarter-ends record both: score entries
+  and quarter-end scores (the live feed, and the host's score pad: "+ Score" or
+  "Q1" etc., prefilled from the latest entry). `boardPeriods` orders them by
+  game time: a quarter-end goes after the entries whose scores are both at or
+  below it. `resolveResults` uses each period's rule (the square only when
+  awarded, the reverse square only when it has one; a host pick replaces the
+  square, or the reverse square on a reverse-only moment) and reports
+  `amount`, `reverseAmount`, `prize` and `reversePrize`.
 - `shared/squares.ts`: drawing numbers, winning cell for a score (last digit of each
   team's score mapped to the row/col whose digit list contains it), reverse cell,
   `resolveResults(state)` → per-period results honoring `ManualWinner` overrides,

@@ -40,9 +40,26 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 
 ## Product rules
 
-- No money between players, no gambling language anywhere (copy, push, prize
-  notes). Prize notes are validated by `validatePrizeNote` in `shared/formats.ts`
-  (server rejects with 400; the UI can call it inline).
+- No money between players: JaxSquares never collects, holds, sends or tracks
+  payment between them. A host may show a square price and prize amounts as
+  display-only, structured fields (`GameFormat.squarePrice`, `Prize.amount`, in
+  "$" or points), or mark the board "Just for fun"; nothing is shown when the
+  host sets neither. Copy near those inputs says the app never collects or
+  sends money (`AMOUNTS_DISCLAIMER`).
+- No betting vocabulary anywhere (UI copy, push, errors): never "bet", "wager",
+  "pot", "payout", "buy-in", "jackpot", "odds", "stakes", "gamble". Say "square
+  price", "prize", "amount".
+- Amounts stay in the app: never in push notifications (`worker/push/copy.ts`
+  quotes notes only), link previews (`worker/og.ts`), invite/share text or
+  activity data. Show them on the board, rules sheet, results, winners, players.
+- Free-text notes stay validated: `validatePrizeNote` (`shared/formats.ts`)
+  rejects cash/payment-app/betting talk (`PRIZE_MONEY_ERROR`) and a currency
+  amount (`PRIZE_AMOUNT_ERROR`: it belongs in the amount box); board, team and
+  label text use `mentionsMoney` (`MONEY_ERRORS`). Server 400s; the UI checks inline.
+- Who wins when lives in `GameFormat.rules` (`rulesOf()` derives them for older
+  boards): never branch on `format.periods`. The host edits rules and prizes
+  any time (PATCH `format`); who wins locks at the first score, fresh numbers
+  at the draw, board size never (409).
 - The only payment is the creator paying to open a board (`docs/payments.md`).
 
 ## Conventions

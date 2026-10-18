@@ -15,14 +15,17 @@ export interface DisclosureProps {
   /** Verb on the closed row ("Change", "Edit"); the open row says "Done". */
   action: string;
   children: ReactNode;
+  /** data-testid for the row's button. */
+  testId?: string;
 }
 
-export function Disclosure({ open, onToggle, icon, title, subtitle, action, children }: DisclosureProps) {
+export function Disclosure({ open, onToggle, icon, title, subtitle, action, children, testId }: DisclosureProps) {
   const panelId = useId();
   return (
     <div>
       <button
         type="button"
+        data-testid={testId}
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => {

@@ -9,6 +9,9 @@
 // Deep links (from Home): ?checkout=1 opens the checkout for an unpaid board,
 // ?draw=1 opens the lock & draw confirm. Both are cleared once handled.
 //
+// Rules & prizes: the board's rules sheet asks through `rulesRequest` (its
+// "Edit" button); the sheet opens on the rules editor.
+//
 // Removing a player: the board's players list asks through `removeRequest`
 // (a public player id); the sheet opens on the "Remove Maya?" confirm.
 
@@ -39,6 +42,8 @@ export interface HostControlsProps {
   onInvite: () => void;
   /** A player (public id) the host tapped remove on, on the board's players list. */
   removeRequest?: string | null;
+  /** The board's rules sheet asked to edit the rules (a counter: each new value opens the editor). */
+  rulesRequest?: number;
   /** The request was taken (the confirm is open): clear it so the same player can be asked again. */
   onRemoveRequestHandled?: () => void;
 }
@@ -62,7 +67,7 @@ interface Reveal {
   state: GameState;
 }
 
-function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onRemoveRequestHandled }: HostControlsProps) {
+function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onRemoveRequestHandled, rulesRequest = 0 }: HostControlsProps) {
   const { game } = state;
   const toast = useToast();
   const navigate = useNavigate();
@@ -143,6 +148,11 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
     onRemoveRequestHandled?.();
     askRemoveRef.current(removeRequest, "board");
   }, [removeRequest, onRemoveRequestHandled]);
+
+  // "Edit rules & prizes" from the board's rules sheet.
+  useEffect(() => {
+    if (rulesRequest > 0) openSheet("rules");
+  }, [rulesRequest, openSheet]);
 
   const removed = (target: RemoveTarget, copy: RemoveCopy) => {
     toast.show({ id: "host-saved", tone: "success", title: copy.done, description: copy.doneDetail });

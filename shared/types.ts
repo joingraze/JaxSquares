@@ -1,10 +1,13 @@
 // Domain types shared between the Cloudflare Worker (API) and the React client.
 // Keeping a single source of truth avoids drift between server and UI.
 //
-// JaxSquares never handles money between players. There are no prices, pots,
-// buy-ins or payouts anywhere in this model; a creator may attach an optional
-// free-text "prize note" to a period (e.g. "Loser buys wings"). The only money
-// in the product is the creator paying JaxSquares to create a board.
+// JaxSquares never handles money between players: it never collects, holds,
+// sends or tracks a payment between them. A host may show a square price and
+// prize amounts (GameFormat.squarePrice, Prize.amount) as display-only,
+// structured fields in "$" or points, plus a free-text note per prize ("Loser
+// buys wings"). Amounts stay in the app: never in push notifications, link
+// previews or share text. The only money the product touches is the creator
+// paying JaxSquares to open a board.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
@@ -19,19 +22,64 @@ export type League = "nfl" | "ncaaf" | "custom";
  */
 export type GameStatus = "draft" | "open" | "locked" | "final";
 
-/** Which scoring moments win a square. */
-export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score";
+/**
+ * Which scoring moments win a square. "custom" = the rules' moments match no
+ * preset (e.g. every score plus the quarters).
+ */
+export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "custom";
 
 /** 100 = classic 10x10 (one digit per row/col); 25 = 5x5 (two digits per row/col). */
 export type BoardSize = 100 | 25;
 
+/** A moment a square can win at: every score change, or the score at the end of Q1 / halftime / Q3 / the game. */
+export type Moment = "score" | "q1" | "q2" | "q3" | "final";
+
+/**
+ * What a winning square gets. `amount` is display-only (in the board's unit):
+ * JaxSquares never collects or sends it. `note` is free text ("" when none),
+ * checked by validatePrizeNote.
+ */
+export interface Prize {
+  amount: number | null;
+  note: string;
+}
+
+/** Who wins at one moment. */
+export interface MomentRule {
+  moment: Moment;
+  /** The square matching the score's last digits; null = it doesn't win at this moment. */
+  square: Prize | null;
+  /** The square with the digits swapped; null = no reverse winner at this moment. */
+  reverse: Prize | null;
+}
+
+/** How amounts read: dollars ("$50") or points ("50 pts"). */
+export type AmountUnit = "$" | "pts";
+
 export interface GameFormat {
+  /** The preset matching the rules' moments, else "custom" (derived by the server from `rules`). */
   periods: PeriodsPreset;
-  /** Also award the "reverse" square (the two digits swapped) each period. */
+  /** Legacy/derived: some moment has a reverse winner. */
   reverse: boolean;
   boardSize: BoardSize;
-  /** Draw a fresh set of numbers for each quarter (quarters preset only). */
+  /** Draw a fresh set of numbers for each quarter (only with no every-score rule and at least one fixed moment). */
   freshNumbers: boolean;
+  /**
+   * Source of truth for who wins when (canonical order: score, q1, q2, q3,
+   * final). Absent on boards made before rules existed: rulesOf() derives them
+   * from `periods` + `reverse`.
+   */
+  rules?: MomentRule[];
+  /** Unit for every amount on the board (default "$"). */
+  unit?: AmountUnit;
+  /** Display-only square price, in `unit`; null/absent = none shown. */
+  squarePrice?: number | null;
+  /**
+   * The host said this board is just for fun: no square price or amounts
+   * (they're cleared), and players see a "Just for fun" badge. Not set and no
+   * amounts = the host chose nothing, and players see nothing about prizes.
+   */
+  justForFun?: boolean;
 }
 
 /** A scoring checkpoint that can win a square (e.g. end of each quarter). */
@@ -91,9 +139,13 @@ export interface Game {
   /** Team down the side (rows / y-axis numbers). */
   teamY: Team;
   format: GameFormat;
-  /** Fixed periods for this board (empty for every-score, whose periods come from scores). */
+  /** Fixed periods for this board (from the rules; every-score entries come from scores). */
   periods: Period[];
-  /** Optional free-text prize note per period key (max 60 chars each). Never money handling. */
+  /**
+   * Legacy free-text prize note per period key ("*" = every period without
+   * its own). Boards made since rules existed store {} and keep notes in
+   * `format.rules`; rulesOf() folds these into the rules for older boards.
+   */
   prizes: Record<string, string>;
   /** 0 means unlimited squares per player. Counted per device: with no accounts, one person can use more. */
   maxPerPlayer: number;
@@ -179,7 +231,8 @@ export type ActivityType =
   | "locked"
   | "score"
   | "winner"
-  | "final";
+  | "final"
+  | "rules";
 
 export interface Activity {
   id: string;
@@ -218,6 +271,12 @@ export interface ActivityData {
     manual?: true;
   };
   final: Record<string, never>;
+  /**
+   * The host edited the rules or prizes (PATCH format). `scoring` when who
+   * wins changed (moments, square/reverse, fresh numbers), not just amounts,
+   * notes, the unit or the square price. Never pushed.
+   */
+  rules: { scoring: boolean };
 }
 
 /**
@@ -307,8 +366,13 @@ export interface CreateGameInput {
   league: League;
   teamX: Team;
   teamY: Team;
+  /** With `rules` (current clients); a preset without rules is turned into rules. Notes inside are checked like prize notes. */
   format: GameFormat;
-  /** Free-text notes; rejected (400) if one mentions money (see validatePrizeNote). */
+  /**
+   * Legacy free-text notes from older clients (current ones send {} and put
+   * notes in the rules); folded into the rules. Rejected (400) if one mentions
+   * money (see validatePrizeNote).
+   */
   prizes: Record<string, string>;
   maxPerPlayer: number;
   /** Set when the board is linked to a real game from /api/schedule. */
@@ -350,9 +414,19 @@ export interface ManualWinnerInput {
 
 export interface UpdateGameInput {
   name?: string;
-  /** Free-text notes; rejected (400) if one mentions money (see validatePrizeNote). */
+  /**
+   * Legacy free-text notes from older clients; on a board with rules they're
+   * folded into the rules' notes. Rejected (400) if one mentions money (see validatePrizeNote).
+   */
   prizes?: Record<string, string>;
   maxPerPlayer?: number;
+  /**
+   * New rules and prizes (the whole format). Amounts, notes, the unit and the
+   * square price can change any time; which moments win and square/reverse
+   * only until the first score (or host pick) is in, fresh numbers only until
+   * the numbers are drawn (409 otherwise); the board size never.
+   */
+  format?: GameFormat;
 }
 
 /** An upcoming real game a board can be linked to. */

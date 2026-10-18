@@ -2,15 +2,18 @@
 // preset cards (each with a tiny game timeline showing when a square wins),
 // an Advanced list of switches, and a live "how this board works" summary with
 // a mini board. Card tags never change; the summary is the one place a
-// modifier's effect shows ("8 winners" with reverse on).
+// modifier's effect shows ("8 winners" with reverse on). Rules fine-tuned in
+// "Square price & prizes" (say, every score plus the quarters) show as a
+// "Custom rules" card; tapping a preset goes back to it, keeping amounts.
 
 import type { CSSProperties } from "react";
-import { BOARD_SIZE_INFO, PERIOD_PRESETS, PRESET_INFO } from "../../../shared/formats";
-import type { GameFormat, PeriodsPreset, Team } from "../../../shared/types";
+import { BOARD_SIZE_INFO, PERIOD_PRESETS, PRESET_INFO, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import type { GameFormat, MomentRule, Team } from "../../../shared/types";
 import { cx, Switch } from "../../components/ui";
 import { readableTeamColor } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
+import { allReverse, canUseFreshNumbers, presetOf, selectPreset, setReverseEverywhere } from "../rules/rulesModel";
 import { boardHeadlineParts, describeBoard, winnersTag } from "./model";
 import { useResolvedTheme } from "../../lib/theme";
 
@@ -23,7 +26,7 @@ export interface FormatPickerProps {
 }
 
 /** Where each preset's winners land on a 0..1 game timeline. */
-const MARKS: Record<PeriodsPreset, number[]> = {
+const MARKS: Record<FixedPreset, number[]> = {
   quarters: [0.25, 0.5, 0.75, 1],
   halves: [0.5, 1],
   final: [1],
@@ -37,11 +40,11 @@ const ADVANCED = {
 };
 
 export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerProps) {
-  const set = (patch: Partial<GameFormat>) => {
-    const next = { ...format, ...patch };
-    if (next.periods !== "quarters") next.freshNumbers = false;
-    onChange(next);
-  };
+  const rules = rulesOf(format);
+  const current = presetOf(rules);
+  // Canonical after every change: periods/reverse follow the rules, fresh numbers only where they apply.
+  const set = (patch: Partial<GameFormat>) => onChange(withRules({ ...format, ...patch }));
+  const setRules = (next: MomentRule[]) => set({ rules: next });
 
   return (
     <div className="flex flex-col gap-5">
@@ -50,13 +53,27 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
           <FormatCard
             key={preset}
             preset={preset}
-            selected={format.periods === preset}
+            selected={current === preset}
             onSelect={() => {
-              if (format.periods !== preset) void haptic("selection");
-              set({ periods: preset });
+              if (current !== preset) void haptic("selection");
+              setRules(selectPreset(rules, preset));
             }}
           />
         ))}
+        {current === null && (
+          <div
+            role="radio"
+            aria-checked
+            data-testid="format-custom"
+            className="col-span-2 flex items-center gap-3 rounded-card bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 p-3.5 ring-2 ring-inset ring-brand-line"
+          >
+            <FormatGlyph rules={rules} />
+            <span className="min-w-0">
+              <span className="block font-display text-headline font-extrabold leading-tight text-ink">{PRESET_INFO.custom.label}</span>
+              <span className="mt-0.5 block text-footnote font-semibold text-ink-brand">{rulesSummary(rules)}</span>
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
@@ -66,8 +83,8 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
             className="min-h-15 px-3.5 py-2.5"
             label={ADVANCED.reverse.label}
             description={ADVANCED.reverse.description}
-            checked={format.reverse}
-            onChange={(reverse) => set({ reverse })}
+            checked={allReverse(rules)}
+            onChange={(reverse) => setRules(setReverseEverywhere(rules, reverse))}
           />
           <Switch
             className="min-h-15 px-3.5 py-2.5"
@@ -76,7 +93,7 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
             checked={format.boardSize === 25}
             onChange={(small) => set({ boardSize: small ? 25 : 100 })}
           />
-          {format.periods === "quarters" && (
+          {canUseFreshNumbers(rules) && (
             <Switch
               className="min-h-15 px-3.5 py-2.5"
               label={ADVANCED.fresh.label}
@@ -93,23 +110,26 @@ export function FormatPicker({ format, onChange, teamX, teamY }: FormatPickerPro
   );
 }
 
-/** The preset's timeline as a small glyph, for the settings card's summary row. */
-export function FormatGlyph({ preset }: { preset: PeriodsPreset }) {
-  const marks = MARKS[preset];
-  const many = preset === "every-score";
+const FIXED_AT: Record<string, number> = { q1: 0.25, q2: 0.5, q3: 0.75, final: 1 };
+
+/** The rules' timeline as a small glyph (dots where squares win), for the settings card's summary row. */
+export function FormatGlyph({ rules }: { rules: readonly MomentRule[] }) {
+  const many = rules.some((r) => r.moment === "score");
+  const fixed = rules.filter((r) => r.moment !== "score").map((r) => FIXED_AT[r.moment]);
   return (
-    <svg aria-hidden viewBox="0 0 28 12" className="h-3 w-7 overflow-visible">
+    <svg aria-hidden viewBox="0 0 28 12" className="h-3 w-7 shrink-0 overflow-visible">
       {[0, 1, 2, 3].map((q) => (
         <rect key={q} x={q * 7 + 0.5} y={5} width={6} height={2} rx={1} className="fill-ink/20" />
       ))}
-      {marks.map((at, i) => (
-        <circle key={i} cx={Math.max(2, Math.min(26, at * 28))} cy={6} r={many ? 1.6 : 2.6} className="fill-gold-400" />
+      {many && MARKS["every-score"].map((at, i) => <circle key={`s${i}`} cx={Math.max(2, Math.min(26, at * 28))} cy={6} r={1.6} className="fill-gold-400" />)}
+      {fixed.map((at, i) => (
+        <circle key={i} cx={Math.max(2, Math.min(26, at * 28))} cy={6} r={many ? 2.2 : 2.6} className={many ? "fill-brand-300" : "fill-gold-400"} />
       ))}
     </svg>
   );
 }
 
-function FormatCard({ preset, selected, onSelect }: { preset: PeriodsPreset; selected: boolean; onSelect: () => void }) {
+function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selected: boolean; onSelect: () => void }) {
   const info = PRESET_INFO[preset];
   const marks = MARKS[preset];
   const many = preset === "every-score";

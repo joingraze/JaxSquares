@@ -1,12 +1,12 @@
 // The host sheet. Always titled "Host tools" with one line saying where the
 // board stands, and always in the same order: Now (open the board, fill + lock,
 // type the score, or watch the live feed), Winners, Board. Sub views (lock
-// confirm, edit, end, delete) slide in inside the same sheet. Saves are
-// confirmed in the sheet's own footer, never by a toast over its header.
+// confirm, rules & prizes, edit, end, delete) slide in inside the same sheet.
+// Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { periodPhrase } from "../../../shared/formats";
-import { resolveResults } from "../../../shared/squares";
+import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
+import { prizeTotals, resolveResults } from "../../../shared/squares";
 import type { GameState } from "../../../shared/types";
 import {
   CheckIcon,
@@ -14,6 +14,7 @@ import {
   ClockIcon,
   CrownIcon,
   FlagIcon,
+  GiftIcon,
   GridIcon,
   LinkIcon,
   LockIcon,
@@ -30,11 +31,13 @@ import {
   Badge,
   BottomSheet,
   Button,
+  Chip,
   IconButton,
   ListGroup,
   ListRow,
   ProgressRing,
   SegmentedControl,
+  Switch,
   cx,
 } from "../../components/ui";
 import { PUBLIC_ORIGIN } from "../../lib/api";
@@ -43,6 +46,20 @@ import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
 import { PlayersList } from "../board/PlayersList";
+import { RulesEditor } from "../rules/RulesEditor";
+import {
+  canUseFreshNumbers,
+  draftOf,
+  lockViolation,
+  noteProblems,
+  presetOf,
+  prizeLineup,
+  prizesSummary,
+  rulesLock,
+  rulesPatch,
+  selectPreset,
+  type RulesDraft,
+} from "../rules/rulesModel";
 import { EditBoard } from "./EditBoard";
 import "./host.css";
 import {
@@ -51,7 +68,9 @@ import {
   editDraftOf,
   editErrors,
   editPatch,
+  entriesOnly,
   gameStarted,
+  hasEntries,
   hostStatusLine,
   initialDraft,
   invitedAnyone,
@@ -75,7 +94,7 @@ import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
 import { useResolvedTheme } from "../../lib/theme";
 
-export type HostView = "home" | "lock" | "edit" | "end" | "delete" | "players" | "remove";
+export type HostView = "home" | "lock" | "edit" | "rules" | "end" | "delete" | "players" | "remove";
 
 /** The player the host asked to remove, as they were when asked; `from` is where the ask came from. */
 export interface RemoveTarget {
@@ -125,7 +144,9 @@ export function HostSheet(props: HostSheetProps) {
   const { state, open, view, onView, onClose, actions, me } = props;
   const { game } = state;
   const linked = isLinked(game);
-  const everyScore = game.format.periods === "every-score";
+  // Only score entries win (no quarter-ends); `entries`: every score wins (maybe with quarter-ends too).
+  const everyScore = entriesOnly(game);
+  const entries = hasEntries(game);
   const started = gameStarted(state);
 
   // ---- score entry (kept here so the footer can preview + save) ----
@@ -165,6 +186,13 @@ export function HostSheet(props: HostSheetProps) {
   useEffect(() => {
     if (view === "edit") setDraft(editDraftOf(game));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the edit view opens
+  }, [view]);
+
+  // ---- rules & prizes draft ----
+  const [rulesDraft, setRulesDraft] = useState<RulesDraft>(() => draftOf(game.format, game.prizes));
+  useEffect(() => {
+    if (view === "rules") setRulesDraft(draftOf(game.format, game.prizes));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the rules view opens
   }, [view]);
 
   const targets = useMemo(() => scoreTargets(state), [state]);
@@ -252,6 +280,16 @@ export function HostSheet(props: HostSheetProps) {
     onView("home");
   };
 
+  const saveRules = async () => {
+    const patch = rulesPatch(game, rulesDraft);
+    if (!patch) return onView("home");
+    const next = await actions.update(patch);
+    if (!next) return;
+    void haptic("success");
+    say({ tone: "neutral", title: "Rules & prizes updated", detail: "Everyone sees them now.", player: null });
+    onView("home");
+  };
+
   const endGame = async () => {
     const next = await actions.finish();
     if (next) props.onEnded();
@@ -322,12 +360,40 @@ export function HostSheet(props: HostSheetProps) {
         </Button>
       </div>
     );
+  } else if (view === "rules") {
+    const lock = rulesLock(state);
+    const violation = lockViolation(game, rulesDraft, lock);
+    const invalid = Object.keys(noteProblems(rulesDraft.rules)).length > 0 || !!violation;
+    const patch = rulesPatch(game, rulesDraft);
+    title = <>{back()}Rules & prizes</>;
+    description = "Change it any time. Who wins when locks once the first score is in.";
+    body = (
+      <RulesEditView
+        draft={rulesDraft}
+        onChange={setRulesDraft}
+        lock={lock}
+        violation={violation}
+      />
+    );
+    footer = (
+      <Button
+        data-testid="rules-save"
+        size="lg"
+        block
+        variant={invalid || !patch ? "secondary" : "primary"}
+        disabled={invalid || !patch}
+        loading={actions.busy === "edit"}
+        onClick={() => void saveRules()}
+      >
+        {patch ? "Save rules & prizes" : "No changes yet"}
+      </Button>
+    );
   } else if (view === "edit") {
     const errors = editErrors(draft);
-    const invalid = !!errors.name || Object.keys(errors.prizes).length > 0;
+    const invalid = !!errors.name;
     const patch = editPatch(game, draft);
     title = <>{back()}Edit board</>;
-    body = <EditBoard game={game} draft={draft} onChange={setDraft} />;
+    body = <EditBoard game={game} draft={draft} onChange={setDraft} onRules={() => onView("rules")} />;
     footer = (
       <Button
         size="lg"
@@ -418,7 +484,25 @@ export function HostSheet(props: HostSheetProps) {
 
           {scoring && (
             <section ref={scoreRef} aria-label="Score entry" className="flex scroll-mt-2 flex-col gap-3">
-              {!everyScore ? (
+              {entries && !everyScore ? (
+                // Every score and the quarter-ends: one tab adds (or fixes) a score change, the others mark a quarter-end.
+                <SegmentedControl
+                  aria-label="What you're scoring"
+                  size="sm"
+                  data-testid="score-moment"
+                  value={entry.key}
+                  onChange={(k) => entry.setKey(k)}
+                  options={[
+                    {
+                      value: everyScoreIndex(entry.key) !== null ? entry.key : NEXT_ENTRY,
+                      label: everyScoreIndex(entry.key) !== null ? label : "+ Score",
+                    },
+                    ...targets
+                      .filter((t) => t.key !== NEXT_ENTRY && everyScoreIndex(t.key) === null)
+                      .map((t) => ({ value: t.key, label: t.existing ? `${t.label} ✓` : t.label })),
+                  ]}
+                />
+              ) : !everyScore ? (
                 <SegmentedControl
                   aria-label="Period"
                   size="sm"
@@ -447,7 +531,7 @@ export function HostSheet(props: HostSheetProps) {
               )}
               <SuggestionChip entry={entry} teamX={game.teamX} teamY={game.teamY} />
               <ScoreTiles teamX={game.teamX} teamY={game.teamY} entry={entry} />
-              <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={everyScore} />
+              <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={entry.key === NEXT_ENTRY || everyScoreIndex(entry.key) !== null} />
               {(!typedBoard || target?.existing) && (
                 <div className="flex min-h-11 items-center justify-between gap-2 px-1">
                   {!typedBoard ? (
@@ -488,7 +572,7 @@ export function HostSheet(props: HostSheetProps) {
               onPick={props.onPickWinner}
               onUndoPick={(k, l) => void undoPick(k, l)}
               onEdit={
-                everyScore && scoring
+                entries && scoring
                   ? (k) => {
                       void haptic("selection");
                       entry.setKey(k);
@@ -497,14 +581,23 @@ export function HostSheet(props: HostSheetProps) {
                   : undefined
               }
             />
+            <PrizeTotals state={state} me={me} />
           </Section>
         )}
 
         <ListGroup title="Board">
           <ListRow
+            data-testid="host-rules"
+            leading={<RowIcon tone="gold"><GiftIcon size={18} /></RowIcon>}
+            title="Rules & prizes"
+            subtitle={prizeLineup(game.format) ? prizesSummary(game.format) : rulesSummary(rulesOf(game.format, game.prizes))}
+            chevron
+            onClick={() => onView("rules")}
+          />
+          <ListRow
             leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
             title="Edit board"
-            subtitle={game.status === "open" || game.status === "draft" ? "Name, prizes, squares per person" : "Name and prizes"}
+            subtitle={game.status === "open" || game.status === "draft" ? "Name, max squares per player" : "Name"}
             chevron
             onClick={() => onView("edit")}
           />
@@ -610,16 +703,95 @@ function NoticeLine({ notice }: { notice: SavedNotice }) {
   );
 }
 
-function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "danger" }) {
+function RowIcon({ children, tone = "default" }: { children: ReactNode; tone?: "default" | "danger" | "gold" }) {
   return (
     <span
       className={cx(
         "grid h-9 w-9 place-items-center rounded-xl",
-        tone === "danger" ? "bg-danger-500/15 text-ink-danger" : "bg-surface-4 text-ink",
+        tone === "danger" ? "bg-danger-500/15 text-ink-danger" : tone === "gold" ? "bg-gold-400/15 text-ink-gold" : "bg-surface-4 text-ink",
       )}
     >
       {children}
     </span>
+  );
+}
+
+// ---- Rules & prizes ----
+
+function RulesEditView({
+  draft,
+  onChange,
+  lock,
+  violation,
+}: {
+  draft: RulesDraft;
+  onChange: (draft: RulesDraft) => void;
+  lock: ReturnType<typeof rulesLock>;
+  violation: string | null;
+}) {
+  const preset = presetOf(draft.rules);
+  return (
+    <div className="flex flex-col gap-5 pb-2">
+      <section aria-label="Presets" className="flex flex-col gap-2">
+        <p className="eyebrow px-1 text-ink-subtle">When squares win</p>
+        <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5">
+          {PERIOD_PRESETS.map((p) => (
+            <Chip
+              key={p}
+              data-testid="rules-preset"
+              data-preset={p}
+              selected={preset === p}
+              disabled={!!lock.scoring && preset !== p}
+              onClick={() => onChange({ ...draft, rules: selectPreset(draft.rules, p) })}
+            >
+              {PRESET_INFO[p].short}
+            </Chip>
+          ))}
+          {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
+        </div>
+      </section>
+      <RulesEditor draft={draft} onChange={onChange} locked={lock.scoring} />
+      {canUseFreshNumbers(draft.rules) && (
+        <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
+          <Switch
+            className="min-h-12"
+            label="New numbers each quarter"
+            description={lock.fresh ?? "A fresh draw before every quarter."}
+            checked={draft.freshNumbers}
+            disabled={!!lock.fresh}
+            onChange={(freshNumbers) => onChange({ ...draft, freshNumbers })}
+          />
+        </div>
+      )}
+      {violation && (
+        <p className="rounded-2xl bg-danger-500/10 px-3.5 py-2.5 text-footnote font-semibold text-ink-danger ring-1 ring-inset ring-danger-500/30">{violation}</p>
+      )}
+    </div>
+  );
+}
+
+/** Each player's prize total (display-only), under Winners when the board has amounts. */
+function PrizeTotals({ state, me }: { state: GameState; me: string }) {
+  if (!hasPrizeAmounts(state.game.format)) return null;
+  const totals = Object.entries(prizeTotals(resolveResults(state))).sort((a, b) => b[1] - a[1]);
+  if (totals.length === 0) return null;
+  const unit = unitOf(state.game.format);
+  return (
+    <div data-testid="prize-totals" className="rounded-card bg-surface-3/60 px-3.5 py-3 ring-1 ring-inset ring-line">
+      <p className="eyebrow text-ink-subtle">Prize totals</p>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {totals.map(([id, total]) => {
+          const p = state.players.find((x) => x.id === id);
+          return (
+            <li key={id} className="flex items-center gap-2.5">
+              {p && <AvatarGroup size="xs" max={1} people={[{ id: p.id, name: p.name, color: p.color, emoji: p.emoji }]} />}
+              <span className="min-w-0 flex-1 truncate text-callout font-bold text-ink">{id === me ? "You" : (p?.name ?? "Someone")}</span>
+              <span className="font-display text-callout font-extrabold tabular-nums text-ink-gold">{formatAmount(total, unit)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -814,7 +986,7 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
 function LockConfirm({ state }: { state: GameState }) {
   const f = lockFacts(state);
   const low = lockReadiness(f) === "low";
-  const fresh = state.game.format.freshNumbers && state.game.format.periods === "quarters";
+  const fresh = drawKeys(state.game.format).length > 1;
   return (
     <ul className="flex flex-col gap-3.5 pb-2 pt-1">
       {low && (

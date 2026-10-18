@@ -4,8 +4,14 @@
 //
 // The host also gets a remove button on everyone else's row while squares are
 // being picked (`onRemove`); the confirm step lives in the host sheet.
+//
+// With a square price, each row says what their squares come to ("4 squares ·
+// $40"); with prize amounts, a winner's pill leads with their total. Both are
+// display-only (the app never collects or sends money).
 
 import { useState } from "react";
+import { formatAmount } from "../../../shared/formats";
+import type { AmountUnit } from "../../../shared/types";
 import { TrophyIcon, XIcon } from "../../components/icons";
 import { Avatar, Badge, cx, LiveDot } from "../../components/ui";
 import type { PlayerRow } from "./boardModel";
@@ -26,6 +32,8 @@ export interface PlayersListProps {
   onRemove?: (playerId: string) => void;
   /** Rows shown before "Show all" (default 5). */
   collapseAfter?: number;
+  /** The board's unit for square prices and prize totals (default "$"). */
+  unit?: AmountUnit;
 }
 
 export function PlayersList({
@@ -38,6 +46,7 @@ export function PlayersList({
   onSelect,
   onRemove,
   collapseAfter = COLLAPSED,
+  unit = "$",
 }: PlayersListProps) {
   const [all, setAll] = useState(false);
   if (rows.length === 0) return null;
@@ -46,7 +55,8 @@ export function PlayersList({
   return (
     <div className="overflow-hidden rounded-card bg-surface-2 shadow-card ring-1 ring-inset ring-line">
       <ul className="[&>li+li]:border-t [&>li+li]:border-line">
-        {shown.map(({ player, squares, wins, winLabels, isMe }) => {
+        {shown.map(({ player, squares, squaresValue, prizeTotal, wins, winLabels, isMe }) => {
+          const value = squaresValue && squares > 0 ? formatAmount(squaresValue, unit) : null;
           const leads = stage === "game" && leading?.playerId === player.id;
           const selected = selectedId === player.id;
           const removable = !!onRemove && player.id !== hostId && !isMe;
@@ -77,16 +87,22 @@ export function PlayersList({
                     {player.id === hostId && <Badge tone="outline">Host</Badge>}
                   </div>
                   {stage === "picking" ? (
-                    // Share of the board, as a slim bar.
-                    <div className="mt-1 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-ink/6">
-                      <div
-                        className="h-full rounded-full transition-[width] duration-700 ease-out-quint"
-                        style={{ width: `${(squares / maxSquares) * 100}%`, backgroundColor: player.color }}
-                      />
+                    // Share of the board, as a slim bar (and what their squares come to at the square price).
+                    <div className="mt-1 flex items-center gap-2">
+                      <div className="h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-ink/6">
+                        <div
+                          className="h-full rounded-full transition-[width] duration-700 ease-out-quint"
+                          style={{ width: `${(squares / maxSquares) * 100}%`, backgroundColor: player.color }}
+                        />
+                      </div>
+                      {value && <span data-testid="player-squares-value" className="shrink-0 text-caption font-bold tabular-nums text-ink-gold">{value}</span>}
                     </div>
                   ) : (
                     <p className="mt-0.5 flex items-center gap-1.5 text-caption text-ink-subtle">
-                      <span className="tabular-nums">{squares === 1 ? "1 square" : `${squares} squares`}</span>
+                      <span className="whitespace-nowrap tabular-nums">
+                        {squares === 1 ? "1 square" : `${squares} squares`}
+                        {value ? ` · ${value}` : ""}
+                      </span>
                       {leads && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-live-500/15 px-1.5 py-px text-[0.6875rem] font-extrabold text-ink-live">
                           <LiveDot />
@@ -106,7 +122,10 @@ export function PlayersList({
                 ) : wins > 0 ? (
                   <span className="flex max-w-[45%] shrink-0 items-center gap-1 rounded-full bg-gold-400/15 px-2 py-0.5 text-footnote font-extrabold text-ink-gold">
                     <TrophyIcon size={13} filled className="shrink-0" />
-                    <span className="truncate">{winLabels.join(" · ")}</span>
+                    <span className="truncate">
+                      {prizeTotal ? <span className="tabular-nums text-ink-gold">{formatAmount(prizeTotal, unit)} · </span> : null}
+                      {winLabels.join(" · ")}
+                    </span>
                   </span>
                 ) : (
                   <span className="shrink-0 text-caption font-semibold text-ink-subtle">No wins yet</span>

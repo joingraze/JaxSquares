@@ -14,6 +14,28 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `custom-matchup` | the "type your own teams" option |
 | `team-x-input`, `team-y-input` | custom matchup team inputs |
 | `format-option` | each format preset card (also `data-format=<preset>`) |
+| `format-custom` | the "Custom rules" card in the create page's rules, shown (selected) when the rules match no preset |
+| `prizes-open` | the create page's "Square price & prizes" row (opens the rules & prizes editor); its summary line is `prizes-summary` ("Square price: not set" until the host sets one) |
+| `rules-editor` | the rules & prizes editor (create page and the host sheet's Rules & prizes view) |
+| `rules-choice`, `rules-choice-option` | how prizes read: the three choices, each with `data-choice=$\|pts\|fun` (Dollars, Points, Just for fun) |
+| `rules-square-price` | the square price input (after picking Dollars or Points) |
+| `rule-row` | one row per moment (`data-moment=score\|q1\|q2\|q3\|final`, `data-on=true\|false`) |
+| `rule-toggle` | a moment's on/off switch (inside its `rule-row`; disabled once scoring has started) |
+| `rule-sides` | a moment's Square / Reverse / Both control (inside its `rule-row`) |
+| `rule-amount` | an amount input (`data-moment`, `data-side=square\|reverse`) |
+| `rule-note-add`, `rule-note` | "Note" / "Add note" on a moment, and its note input(s) (`data-moment`, `data-side`) |
+| `rules-copy` | "Same for every quarter" under a quarter-end (`data-moment`): copies its squares and amounts to the other quarter-ends |
+| `rules-preset` | the host edit view's preset chips (`data-preset=<preset>`) |
+| `rules-save` | "Save rules & prizes" in the host sheet's Rules & prizes view |
+| `host-rules` | the host sheet's "Rules & prizes" row (Board section) |
+| `prize-lineup` | the compact square price / prize line (open board, invite landing, join sheet); opens the rules sheet. Not rendered when the host set nothing |
+| `rules-open` | the "Rules & prizes" pill above the board's results; opens the rules sheet |
+| `rules-sheet`, `rules-line`, `rules-price` | the read-only rules sheet's body, one line per moment (`data-moment`), and its square price pill |
+| `rules-edit` | host only: "Edit rules & prizes" in the rules sheet (opens the host sheet's editor) |
+| `score-moment` | on boards that award every score and quarter-ends: the host score pad's "+ Score / Q1 / Half / Q3 / Final" control |
+| `result-card` | each period card in the results strip (`data-card=<period key>`) |
+| `prize-totals` | the host sheet's prize totals under Winners (boards with amounts) |
+| `player-squares-value` | what a player's squares come to at the square price, on the players list while squares are picked |
 | `create-submit` | the button that creates the board / opens checkout |
 | `pay-confirm` | the confirm button in the checkout sheet (live web checkout, and host controls opening an unpaid draft). Test mode and the App Store skip it: `create-submit` creates and opens the board in one tap |
 | `invite-share` | the share-invite button in the invite sheet |

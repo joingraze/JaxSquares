@@ -86,6 +86,34 @@ describe("buildDeliveries", () => {
       expect(bodyFor(buildDeliveries(both, players, event, NOW), "client-jax-001")).toBe("🎉 Your square hit at Half! 🏆 Winner picks the music");
     });
 
+    it("quotes a rule's note but never a square price or prize amount", () => {
+      const priced = makeGame({
+        format: {
+          periods: "custom",
+          reverse: true,
+          boardSize: 100,
+          freshNumbers: false,
+          unit: "$",
+          squarePrice: 20,
+          rules: [
+            { moment: "score", square: { amount: 50, note: "" }, reverse: null },
+            { moment: "q2", square: null, reverse: { amount: 200, note: "Loser buys wings" } },
+            { moment: "final", square: null, reverse: { amount: 1000, note: "" } },
+          ],
+        },
+      });
+      const half = buildDeliveries(priced, players, event, NOW);
+      expect(bodyFor(half, "client-jax-001")).toBe("🎉 Your square hit at Half! 🏆 Loser buys wings");
+      const every = buildDeliveries(priced, players, { ...event, periodKey: "s4", label: "Score 4" }, NOW);
+      const fin = buildDeliveries(priced, players, { ...event, periodKey: "final", label: "Final" }, NOW);
+      expect(bodyFor(fin, HOST)).toBe("🏁 Jax's square hit at the Final. See every winning square.");
+      const wrap = buildDeliveries(priced, players, { kind: "final" }, NOW);
+      for (const d of [...half, ...every, ...fin, ...wrap]) {
+        const text = `${d.content.title} ${d.content.body}`;
+        expect(text).not.toMatch(/\$|\b(20|50|200|1,?000)\b|pts?\b/);
+      }
+    });
+
     it("names both winners on a reverse board", () => {
       const ds = buildDeliveries(makeGame(), players, { ...event, periodKey: "q1", label: "Q1", playerIds: [pid("client-jax-001"), pid("client-sam-002")] }, NOW);
       expect(bodyFor(ds, HOST)).toBe("Jax and Sam hit in Q1.");

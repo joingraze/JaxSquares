@@ -7,7 +7,7 @@
 // Kept to two short rows so the whole grid still fits on the first screen.
 
 import type { ReactNode } from "react";
-import { periodPhrase } from "../../../shared/formats";
+import { formatAmount, periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
 import { FootballIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
@@ -87,7 +87,10 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
                 <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
               </span>
             </span>
-            <span className="mt-0.5 block text-footnote font-semibold leading-snug text-ink-muted">{nowSentence(now)}</span>
+            <span className="mt-0.5 block text-footnote font-semibold leading-snug text-ink-muted">
+              {nowSentence(now)}
+              {now.amount ? <b className="font-extrabold tabular-nums text-ink-gold"> · {formatAmount(now.amount, now.unit)}</b> : null}
+            </span>
           </span>
         </button>
       )}

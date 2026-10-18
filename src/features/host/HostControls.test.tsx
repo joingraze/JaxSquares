@@ -258,20 +258,47 @@ describe("HostControls", () => {
     expect(await screen.findByText("Slow down a sec and try again.")).toBeInTheDocument();
   });
 
-  it("blocks money in prize notes inline", async () => {
+  it("blocks money in prize notes inline (notes live under Rules & prizes)", async () => {
     identity.saveAdminToken("hst123", "tok");
     renderHost(makeState());
     fireEvent.click(screen.getByTestId("host-open"));
-    fireEvent.click(await screen.findByRole("button", { name: /Edit board/ }));
-    const q1 = await screen.findByLabelText("Q1");
-    expect(q1).toHaveAttribute("placeholder", "Loser buys wings");
-    fireEvent.change(q1, { target: { value: "Loser pays $20" } });
-    expect(await screen.findByText(/can't include money/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
-    fireEvent.change(q1, { target: { value: "Loser buys wings" } });
-    updateGame.mockResolvedValue({ state: makeState({ prizes: { q1: "Loser buys wings" } }) });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(updateGame).toHaveBeenCalledWith("hst123", { prizes: { q1: "Loser buys wings" } }));
+    fireEvent.click(await screen.findByTestId("host-rules"));
+    const q1 = (await screen.findAllByTestId("rule-row")).find((r) => r.getAttribute("data-moment") === "q1")!;
+    fireEvent.click(q1.querySelector('[data-testid="rule-note-add"]')!);
+    const note = await screen.findByPlaceholderText("Loser buys wings");
+    fireEvent.change(note, { target: { value: "Loser pays $20" } });
+    expect(await screen.findByText(/Put amounts in the amount box/)).toBeInTheDocument();
+    expect(screen.getByTestId("rules-save")).toBeDisabled();
+    fireEvent.change(note, { target: { value: "Loser buys wings" } });
+    updateGame.mockResolvedValue({ state: makeState() });
+    fireEvent.click(screen.getByTestId("rules-save"));
+    await waitFor(() => expect(updateGame).toHaveBeenCalled());
+    const [id, body] = updateGame.mock.calls[0];
+    expect(id).toBe("hst123");
+    expect(body.format.rules.find((r: { moment: string }) => r.moment === "q1").square.note).toBe("Loser buys wings");
+    expect(body.format.justForFun).toBe(false);
+  });
+
+  it("sets a square price and amounts, and locks who wins once a score is in", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const scored = makeState({ status: "locked", numbers: { "*": DRAW } }, { scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1 }] });
+    renderHost(scored);
+    fireEvent.click(screen.getByTestId("host-open"));
+    fireEvent.click(await screen.findByTestId("host-rules"));
+    expect(await screen.findByText(/Scoring rules lock once the first score is in/)).toBeInTheDocument();
+    // Moments and squares are shown, but locked.
+    for (const t of screen.getAllByTestId("rule-toggle")) expect(t).toBeDisabled();
+    // Amounts still change: pick dollars, a square price and a Q1 amount.
+    fireEvent.click(screen.getAllByTestId("rules-choice-option").find((b) => b.getAttribute("data-choice") === "$")!);
+    fireEvent.change(await screen.findByTestId("rules-square-price"), { target: { value: "10" } });
+    const amount = screen.getAllByTestId("rule-amount").find((i) => i.getAttribute("data-moment") === "q1")!;
+    fireEvent.change(amount, { target: { value: "200" } });
+    updateGame.mockResolvedValue({ state: scored });
+    fireEvent.click(screen.getByTestId("rules-save"));
+    await waitFor(() => expect(updateGame).toHaveBeenCalled());
+    const body = updateGame.mock.calls[0][1];
+    expect(body.format).toMatchObject({ unit: "$", squarePrice: 10, periods: "quarters" });
+    expect(body.format.rules[0]).toEqual({ moment: "q1", square: { amount: 200, note: "" }, reverse: null });
   });
 
   it("ends the game after a confirm", async () => {

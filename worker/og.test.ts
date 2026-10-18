@@ -108,6 +108,25 @@ describe("bootScript (the board's state embedded in the invite page)", () => {
     expect(JSON.parse(doc.getElementById("jx-boot")?.textContent ?? "null")).toEqual(hostile);
   });
 
+  it("never puts a square price or prize amount in a link preview", () => {
+    const format = {
+      periods: "custom" as const,
+      reverse: true,
+      boardSize: 100 as const,
+      freshNumbers: false,
+      unit: "$" as const,
+      squarePrice: 25,
+      rules: [
+        { moment: "score" as const, square: { amount: 50, note: "" }, reverse: null },
+        { moment: "final" as const, square: null, reverse: { amount: 400, note: "Loser buys wings" } },
+      ],
+    };
+    for (const status of ["draft", "open", "locked", "final"] as const) {
+      const m = inviteMeta(state({ format, status }, { scores: [{ periodKey: "final", scoreX: 27, scoreY: 24, source: "host", updatedAt: 0 }] }), "https://x");
+      expect(`${m.title} ${m.description}`).not.toMatch(/\$|\b(25|50|400)\b|pts?\b/);
+    }
+  });
+
   it("carries only the public GameState: public player ids, no clientId or admin token", () => {
     const html = bootScript(state());
     expect(html).not.toMatch(/clientId|client_id|adminToken|admin_token/);

@@ -7,9 +7,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { defaultFormat, PRESET_INFO, PRIZE_MONEY_ERROR } from "../../shared/formats";
+import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
 import type { Game, GameFormat, PaymentConfig, ScheduleEvent } from "../../shared/types";
-import { ArrowRightIcon, CheckIcon, SlidersIcon } from "../components/icons";
+import { ArrowRightIcon, CheckIcon, SlidersIcon, TrophyIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
   ActionBar,
@@ -49,16 +49,19 @@ import {
   boardHeadline,
   boardNameFor,
   buildCreateInput,
+  createFormat,
   detailsSummary,
   firstBlocker,
   inputSignature,
   matchupShortNames,
   matchupTeams,
-  prizeInputId,
+  rulesTitle,
   teamColorsFrom,
   type CreateBlocker,
   type Matchup,
 } from "../features/create/model";
+import { RulesEditor } from "../features/rules/RulesEditor";
+import { prizeLineup, prizesSummary, type PrizeChoice, type RulesDraft } from "../features/rules/rulesModel";
 import { useSchedule, type ScheduleLeague } from "../features/create/useSchedule";
 
 interface Draft extends CheckoutDraft {
@@ -92,12 +95,14 @@ export default function CreateGame() {
   /** Explicit picks per league (any week); without one, the soonest game is picked. */
   const [picked, setPicked] = useState<Partial<Record<ScheduleLeague, ScheduleEvent>>>({});
   const [custom, setCustom] = useState({ x: "", y: "" });
-  const [format, setFormat] = useState<GameFormat>(defaultFormat);
+  // Always with rules (notes and amounts live in them); the prize choice stays unset until the host picks one.
+  const [format, setFormat] = useState<GameFormat>(() => withRules(defaultFormat()));
+  const [prizeChoice, setPrizeChoice] = useState<PrizeChoice>(null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
   const [maxPerPlayer, setMaxPerPlayer] = useState(0);
-  const [prizes, setPrizes] = useState<Record<string, string>>({});
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [prizesOpen, setPrizesOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   // Ask for the host's name only when this device has never set one.
   const [needsName] = useState(() => !profile.name.trim());
@@ -163,7 +168,7 @@ export default function CreateGame() {
   const shortNames = matchupShortNames(matchup);
   const autoName = shortNames ? boardNameFor(shortNames[0], shortNames[1]) : "";
   const shownName = nameTouched ? name : autoName;
-  const blocker = firstBlocker({ matchup, hostName: needsName ? hostName : null, format, prizes });
+  const blocker = firstBlocker({ matchup, hostName: needsName ? hostName : null, format });
   const blockedLabel = showErrors && blocker ? blocker.label : null;
 
   const pickTab = (next: PickerTab) => {
@@ -175,7 +180,7 @@ export default function CreateGame() {
 
   /** Brings the first problem into view: focus its field, centered clear of both bars. */
   const showBlocker = (b: CreateBlocker) => {
-    if (b.field === "prize") setDetailsOpen(true);
+    if (b.field === "prize") setPrizesOpen(true);
     const id = blockerTarget(b);
     // Two frames: the details panel may be opening.
     requestAnimationFrame(() =>
@@ -223,9 +228,9 @@ export default function CreateGame() {
       matchup,
       colors,
       format,
+      prizeChoice,
       name: nameTouched ? name : "",
       maxPerPlayer,
-      prizes,
       host: { name: hostName, color: profile.color, emoji: profile.emoji },
     });
     if (!input) return;
@@ -302,8 +307,8 @@ export default function CreateGame() {
       toast.show({ title: "Payment received", description: message });
       return;
     }
-    if (err instanceof ApiError && err.status === 400 && message === PRIZE_MONEY_ERROR) {
-      setDetailsOpen(true);
+    if (err instanceof ApiError && err.status === 400 && isPrizeNoteError(message)) {
+      setPrizesOpen(true);
       toast.error("Keep prizes fun", message);
       return;
     }
@@ -325,9 +330,16 @@ export default function CreateGame() {
     setNotice("No charge. Your draft is saved on Home.");
   };
 
-  const rulesSubtitle = [boardHeadline(format), format.reverse && "Reverse", format.freshNumbers && format.periods === "quarters" && "New numbers each Q"]
-    .filter(Boolean)
-    .join(" · ");
+  const rules = rulesOf(format);
+  const rulesSubtitle = [boardHeadline(format), format.freshNumbers && "New numbers each Q"].filter(Boolean).join(" · ");
+  // What players will see about prizes, as the host has it now.
+  const shownFormat = createFormat(format, prizeChoice);
+  const prizesSet = prizeLineup(shownFormat) !== null;
+  const rulesDraft: RulesDraft = { rules, choice: prizeChoice, squarePrice: format.squarePrice ?? null, freshNumbers: format.freshNumbers };
+  const editRules = (d: RulesDraft) => {
+    setPrizeChoice(d.choice);
+    setFormat((f) => withRules({ ...f, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }));
+  };
 
   let label: string;
   let leading = null;
@@ -383,8 +395,8 @@ export default function CreateGame() {
           <Disclosure
             open={rulesOpen}
             onToggle={() => setRulesOpen((o) => !o)}
-            icon={<FormatGlyph preset={format.periods} />}
-            title={PRESET_INFO[format.periods].label}
+            icon={<FormatGlyph rules={rules} />}
+            title={rulesTitle(format)}
             subtitle={rulesSubtitle}
             action="Change"
           >
@@ -392,11 +404,32 @@ export default function CreateGame() {
           </Disclosure>
           <div aria-hidden className="mx-4 h-px bg-line" />
           <Disclosure
+            open={prizesOpen}
+            onToggle={() => setPrizesOpen((o) => !o)}
+            icon={<TrophyIcon size={18} className={prizesSet ? "text-ink-gold" : undefined} />}
+            title="Square price & prizes"
+            subtitle={
+              prizesSet ? (
+                <span data-testid="prizes-summary" className="text-ink-gold">{prizesSummary(shownFormat)}</span>
+              ) : (
+                <span data-testid="prizes-summary" className="inline-flex items-center gap-1.5">
+                  <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-gold-400" />
+                  {prizesSummary(shownFormat)}
+                </span>
+              )
+            }
+            action={prizesSet ? "Edit" : "Set"}
+            testId="prizes-open"
+          >
+            <RulesEditor draft={rulesDraft} onChange={editRules} />
+          </Disclosure>
+          <div aria-hidden className="mx-4 h-px bg-line" />
+          <Disclosure
             open={detailsOpen}
             onToggle={() => setDetailsOpen((o) => !o)}
             icon={<SlidersIcon size={18} />}
-            title={shownName || autoName || "Name, limits and prizes"}
-            subtitle={detailsSummary(format, maxPerPlayer, prizes)}
+            title={shownName || autoName || "Name and max squares"}
+            subtitle={detailsSummary(maxPerPlayer)}
             action="Edit"
           >
             <DetailsPanel
@@ -409,8 +442,6 @@ export default function CreateGame() {
               }}
               maxPerPlayer={maxPerPlayer}
               onMaxPerPlayer={setMaxPerPlayer}
-              prizes={prizes}
-              onPrize={(key, note) => setPrizes((p) => ({ ...p, [key]: note }))}
             />
           </Disclosure>
         </div>
@@ -456,6 +487,6 @@ function blockerTarget(b: CreateBlocker): string {
     case "host":
       return HOST_INPUT_ID;
     case "prize":
-      return prizeInputId(b.key);
+      return b.key;
   }
 }

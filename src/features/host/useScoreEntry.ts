@@ -3,6 +3,7 @@
 // the sheet (not the pad) so the sticky footer can preview and save.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { everyScoreIndex } from "../../../shared/formats";
 import type { GameState } from "../../../shared/types";
 import { haptic } from "../../lib/native";
 import {
@@ -81,7 +82,7 @@ export function useScoreEntry(state: GameState, initialKey: string): ScoreEntry 
   }, [key]);
 
   // An every-score entry being fixed was removed (here or on another device): back to a new entry.
-  const keyGone = state.game.format.periods === "every-score" && key !== NEXT_ENTRY && !state.scores.some((s) => s.periodKey === key);
+  const keyGone = everyScoreIndex(key) !== null && !state.scores.some((s) => s.periodKey === key);
   useEffect(() => {
     if (keyGone) setKey(NEXT_ENTRY);
   }, [keyGone, setKey]);

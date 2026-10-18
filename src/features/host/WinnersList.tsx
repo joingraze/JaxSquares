@@ -1,9 +1,13 @@
 // Winners by period for the host: who has each one, the score that decided
 // it, and one labelled button per thing the host can do about it ("Edit
 // score", "Pick winner", "Undo pick"). A score that lands on an empty square
-// says so in a plain sentence with the fix one tap away.
+// says so in a plain sentence with the fix one tap away. Amounts (display-only)
+// ride along: "KC 7 – 3 BUF · $200", "Reverse · $50: Maya". Where only the
+// reverse square wins a moment, the row is about the reverse square.
 
 import type { ReactNode } from "react";
+import { formatAmount, unitOf } from "../../../shared/formats";
+import { primaryAward } from "../../../shared/squares";
 import type { GameState, Player } from "../../../shared/types";
 import { PencilIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, Badge, cx } from "../../components/ui";
@@ -36,6 +40,8 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
   const player = (id: string | null): Player | null => (id ? (state.players.find((p) => p.id === id) ?? null) : null);
   const abbrX = game.teamX.abbr || game.teamX.name;
   const abbrY = game.teamY.abbr || game.teamY.name;
+  const unit = unitOf(game.format);
+  const money = (n: number | null) => (n ? formatAmount(n, unit) : null);
   if (rows.length === 0) {
     return (
       <p className="rounded-card bg-surface-3/60 px-4 py-3.5 text-subhead text-ink-muted ring-1 ring-inset ring-line">
@@ -47,12 +53,17 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
     <ul className="overflow-hidden rounded-card bg-surface-3/60 ring-1 ring-inset ring-line [&>li+li]:border-t [&>li+li]:border-line">
       {rows.map((row) => {
         const r = row.result;
-        const winner = player(r?.winnerPlayerId ?? null);
-        const reverse = r?.reverseCell && r.reverseWinnerPlayerId !== r.winnerPlayerId ? player(r.reverseWinnerPlayerId) : null;
+        const award = r ? primaryAward(r) : null;
+        const winner = player(award?.playerId ?? null);
+        const reverse =
+          r && !award?.reverse && r.reverseCell && r.reverseWinnerPlayerId !== r.winnerPlayerId ? player(r.reverseWinnerPlayerId) : null;
         const decided = !!r;
         const empty = decided && !winner && !row.manual;
         const mine = winner?.id === me;
-        const scoreLine = row.score ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}` : null;
+        const amount = money(award?.amount ?? null);
+        const scoreLine = row.score
+          ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
+          : null;
 
         const actions: RowAction[] = [];
         if (onEdit && row.score) {
@@ -126,7 +137,9 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
                 </span>
                 <span className="mt-0.5 block truncate text-footnote tabular-nums text-ink-subtle">{scoreLine ?? "No score yet"}</span>
                 {reverse && (
-                  <span className="block truncate text-footnote text-ink-subtle">Reverse: {reverse.id === me ? "You" : reverse.name}</span>
+                  <span className="block truncate text-footnote text-ink-subtle">
+                    Reverse{money(r?.reverseAmount ?? null) ? ` · ${money(r?.reverseAmount ?? null)}` : ""}: {reverse.id === me ? "You" : reverse.name}
+                  </span>
                 )}
               </span>
               {!ownLine && actions[0] && <ActionButton action={actions[0]} busy={busy} />}
