@@ -796,6 +796,7 @@ export async function listGamesForClient(
       format: game.format,
       isHost: r.host_client_id === clientId,
       joined: !!r.joined,
+      linked: game.linkedEvent !== null,
       // Public profile only: the host's public id, never their clientId.
       host: r.host_name !== null ? { id: game.hostPlayerId, name: r.host_name, color: r.host_color ?? "", emoji: r.host_emoji ?? "" } : null,
       mySquares: r.my_squares,

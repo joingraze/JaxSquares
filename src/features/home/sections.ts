@@ -186,8 +186,8 @@ export function cardModel(g: GameSummary, now: number): CardModel {
       return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
     default: {
       if (left === 0) {
-        // A playing card shows my squares there instead.
-        const meta = relation === "playing" ? null : "numbers drawn at kickoff";
+        // A playing card shows my squares there instead. Only a linked board draws on its own.
+        const meta = relation === "playing" ? null : g.linked ? "numbers drawn at kickoff" : "waiting on the host's draw";
         return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta, meter: true, buzz: false };
       }
       const soon = g.startsAt !== null && g.startsAt - now < DAY;

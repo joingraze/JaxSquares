@@ -275,6 +275,12 @@ describe("cardModel", () => {
     expect(cardModel(summary({ isHost: true, status: "draft" }), now)).toMatchObject({ status: "Not open yet", action: { label: "Finish setup" }, meter: false });
     expect(cardModel(summary({ mySquares: 5, claimed: 100 }), now)).toMatchObject({ status: "Board's full", action: null });
   });
+
+  it("says who draws on a full board I'm watching: the kickoff on a linked game, else the host", () => {
+    const full = { mySquares: 0, claimed: 100, joined: true };
+    expect(cardModel(summary({ ...full, linked: true }), now)).toMatchObject({ status: "Board's full", meta: "numbers drawn at kickoff" });
+    expect(cardModel(summary({ ...full, linked: false }), now)).toMatchObject({ status: "Board's full", meta: "waiting on the host's draw" });
+  });
 });
 
 describe("withState", () => {

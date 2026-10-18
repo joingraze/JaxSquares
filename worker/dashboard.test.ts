@@ -113,6 +113,8 @@ describe("dashboard summary: latest score and leader", () => {
     const s = await summaryFor(HOST, id);
     expect(s.latestScore).toBeNull();
     expect(s.leaderPlayerId).toBeNull();
+    // A custom board (no linked game): the host draws, nothing draws at kickoff on its own.
+    expect(s.linked).toBe(false);
   });
 
   it("names the last period's winner (another player) and its score", async () => {

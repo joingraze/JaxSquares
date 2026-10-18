@@ -357,6 +357,11 @@ export interface GameSummary {
   live: LiveStatus | null;
   /** Kickoff (Game.startsAt): the linked event's, or a custom board's host-set time; null = no set time. */
   startsAt: number | null;
+  /**
+   * Linked to a real game (live scores; locks itself at kickoff). A custom board
+   * waits for its host to draw. Always sent by `GET /api/me/games`.
+   */
+  linked?: boolean;
   /** Periods this device's squares have won so far. */
   myWins: { periodKey: string; label: string }[];
   lastActivityAt: number;
