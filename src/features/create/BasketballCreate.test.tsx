@@ -22,6 +22,10 @@ const { clearScheduleCache } = await import("./useSchedule");
 
 const TEST: PaymentConfig = { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.app.board" };
 const HOUR = 3_600_000;
+// Noon on a fixed day (local time), so "today's games" (a couple of hours out)
+// are still today and the day list's labels don't depend on when the suite runs.
+vi.useFakeTimers({ toFake: ["Date"] });
+vi.setSystemTime(new Date(2026, 9, 18, 12, 0, 0));
 const NOW = Date.now();
 
 function game(league: League, id: string, startsAt: number, away: [string, string], home: [string, string], extra: Partial<ScheduleEvent> = {}): ScheduleEvent {
