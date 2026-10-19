@@ -6,7 +6,7 @@
   "description": "Mobile-first web app for playing sports games with friends — starting with Super Bowl Squares.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run seo:pages",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b --noEmit",
@@ -16,6 +16,9 @@
     "db:migrate:remote": "wrangler d1 migrations apply jaxsquares --remote",
     "cf-typegen": "wrangler types",
     "brand": "node --experimental-strip-types scripts/brand/generate.ts",
+    "seo:pages": "node --experimental-strip-types scripts/seo/build.ts",
+    "seo:images": "node --experimental-strip-types scripts/seo/images.ts",
+    "seo:printables": "node --experimental-transform-types scripts/seo/printables.ts",
     "ios": "VITE_API_BASE=https://jaxsquares.com npm run build && cap sync ios && cap open ios"
   },
   "dependencies": {

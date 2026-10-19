@@ -59,6 +59,7 @@ export function HowItWorks() {
           </li>
         ))}
       </ol>
+      <a href="https://jaxsquares.com/how-to-play-football-squares" className="mt-3 inline-flex min-h-11 items-center text-footnote font-bold text-ink-brand underline-offset-2 hover:underline">Read the full rules guide</a>
     </section>
   );
 }

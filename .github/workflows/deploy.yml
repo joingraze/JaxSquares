@@ -83,4 +83,6 @@ jobs:
           curl -fsS "$URL/api/config" | head -c 300; echo
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/")" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/g/abc234")" = 200
+          # A landing page is its own static file, not the SPA fallback.
+          curl -fsS "$URL/football-squares" | grep -q 'rel="canonical" href="https://jaxsquares.com/football-squares"'
           echo "Live: $URL"

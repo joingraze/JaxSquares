@@ -118,7 +118,22 @@ src/             React app
   components/ui  Component kit (browse at /kit in dev)
   lib/           api client, identity, live (useGame), native bridges, push, checkout
 docs/            Architecture contract, payments, push, sign-in, iOS, App Store
+scripts/seo/     Static landing pages (/football-squares, ...) and printable PDFs
 ```
+
+## Landing pages and printables
+
+`/football-squares`, `/super-bowl-squares`, `/nfl-squares`,
+`/college-football-squares`, `/printable-football-squares` and
+`/how-to-play-football-squares` are static HTML written from
+`scripts/seo/content.ts` by `npm run build` (after `vite build`, into
+`dist/client` as `<slug>.html`, with `robots.txt`, `sitemap.xml` and the fonts),
+so a copy change ships with the next deploy. The asset server answers them
+before the SPA fallback; `/<slug>/` and `/<slug>.html` redirect to `/<slug>`.
+Their screenshots and the free PDFs need Chromium, so they're committed:
+`npm run seo:images` (WebP screenshots in `public/seo/shots/`) and
+`npm run seo:printables` (`public/printables/*.pdf` plus previews). The tests
+in `scripts/seo/seo.test.ts` check metadata, JSON-LD and the banned words.
 
 ## Local development
 
