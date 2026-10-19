@@ -1,5 +1,6 @@
 // Light rate limits on the endpoints worth abusing: creating boards, joining
-// them, claiming/releasing squares and signing in. Fixed windows counted in D1
+// them, claiming/releasing squares, signing in and the Host Pass checkout
+// (each call there can reach Stripe or Apple). Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -22,6 +23,7 @@ const TOO_MANY = {
   taps: "Whoa, that's a lot of taps. Give it a few seconds and try again.",
   changes: "Whoa, that's a lot of changes. Give it a few seconds and try again.",
   signIn: "That's a lot of sign-in attempts. Take a breather and try again a little later.",
+  checkout: "That's a lot of checkout attempts. Take a breather and try again a little later.",
 };
 
 export interface RateRule {
@@ -88,6 +90,20 @@ export const RATE_LIMITS = {
     limit: 60,
     windowMs: HOUR,
     message: TOO_MANY.signIn,
+  },
+  /** The Host Pass (worker/payments): starting, confirming or restoring a purchase, the test pass and Manage, per device. */
+  pass: {
+    name: "pass",
+    limit: 30,
+    windowMs: HOUR,
+    message: TOO_MANY.checkout,
+  },
+  /** Per network address: `pass` for everyone behind one address. */
+  passIp: {
+    name: "pass-ip",
+    limit: 120,
+    windowMs: HOUR,
+    message: TOO_MANY.checkout,
   },
   /**
    * New players joining one board, keyed by game id: clientIds are free to

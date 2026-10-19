@@ -1,7 +1,8 @@
 // Support page (App Store "Support URL": https://jaxsquares.com/support).
 // The contact address is a placeholder until the mailbox exists. The host fee
-// shows as this device shows it (useHostFee): inside the iOS app only the App
-// Store's price and Apple's billing, never the web price or Stripe.
+// and the Host Pass show as this device shows them (useHostFee,
+// useHostPassPrice): inside the iOS app only the App Store's price and Apple's
+// billing, never the web price or Stripe.
 import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import jaxJpg from "../assets/jax-portrait-512.jpg";
@@ -10,6 +11,7 @@ import { ChevronDownIcon, PawIcon } from "../components/icons";
 import { buttonStyles, Card, Jax, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
 import { platform } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
+import { useHostPassPrice } from "../lib/useHostPass";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
@@ -20,8 +22,8 @@ interface Faq {
 
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
-/** `price`: the host fee as this device shows it (null while loading); `inApp`: inside the iOS app. */
-function faqs(price: string | null, inApp: boolean): Faq[] {
+/** `price` / `passPrice`: the host fee and the Host Pass as this device shows them (null while loading); `inApp`: inside the iOS app. */
+function faqs(price: string | null, passPrice: string | null, inApp: boolean): Faq[] {
   return [
     {
       q: "How do my friends join a board?",
@@ -44,6 +46,10 @@ function faqs(price: string | null, inApp: boolean): Faq[] {
             {inApp
               ? "In the iPhone app it's an In-App Purchase billed by Apple."
               : "In the iPhone app it's an In-App Purchase billed by Apple. On the web it's charged through Stripe."}
+          </p>
+          <p>
+            Hosting a lot? The Host Pass ({passPrice ? `${passPrice} a year` : "yearly"}) covers the host fee on every board you host for a year, so
+            it pays for itself on your second board.
           </p>
           <p>
             JaxSquares never sells squares, and it never collects, holds, sends or tracks money between players. A square price or prize amount a
@@ -76,6 +82,31 @@ function faqs(price: string | null, inApp: boolean): Faq[] {
           </p>
           <p>
             Still stuck? Email us the board link. Refunds for App Store purchases are handled by Apple at{" "}
+            <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
+              reportaproblem.apple.com
+            </a>
+            .{inApp ? "" : " To ask about a refund for a web payment, email us."}
+          </p>
+        </>
+      ),
+    },
+    {
+      q: "How does the Host Pass work, and how do I cancel it?",
+      a: (
+        <>
+          <p>
+            The Host Pass is a yearly subscription{passPrice ? ` (${passPrice} a year)` : ""}. While it's active, drawing the numbers on any board you
+            host costs nothing more: tap Draw the numbers and you're done. Boards you drew while it was active stay drawn after it ends. Get it in
+            Profile › Host Pass, or when you draw a board's numbers.
+          </p>
+          <p>
+            It renews every year until you cancel, and canceling keeps it active until the end of the year you've paid for.{" "}
+            {inApp
+              ? "Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. On a new iPhone, tap Restore purchases in Profile › Host Pass."
+              : "Bought in the iPhone app? Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. Bought on the web? Cancel in Profile › Host Pass › Manage. Signing in keeps a web Host Pass with your account on every device."}
+          </p>
+          <p>
+            Refunds for App Store subscriptions are handled by Apple at{" "}
             <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
               reportaproblem.apple.com
             </a>
@@ -154,6 +185,7 @@ function MeetJax() {
 
 export default function Support() {
   const { price } = useHostFee();
+  const { price: passPrice } = useHostPassPrice();
   // Profile links here as /support#meet-jax.
   const { hash } = useLocation();
   const scrolled = useRef(false);
@@ -189,7 +221,7 @@ export default function Support() {
         <section>
           <h2 className="mb-3 px-1 font-display text-title-3 font-extrabold text-ink">Common questions</h2>
           <ListGroup>
-            {faqs(price, platform() === "ios").map((faq, i) => (
+            {faqs(price, passPrice, platform() === "ios").map((faq, i) => (
               <FaqItem key={faq.q} faq={faq} defaultOpen={i === 0} />
             ))}
           </ListGroup>

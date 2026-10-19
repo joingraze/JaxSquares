@@ -37,6 +37,31 @@ export interface AppStoreTransaction {
   appAccountToken?: string;
   revocationDate?: number;
   revocationReason?: number;
+  /** Auto-renewable subscriptions: when this period ends (epoch ms). */
+  expiresDate?: number;
+  /** When Apple signed it (epoch ms). */
+  signedDate?: number;
+}
+
+/** The fields of JWSRenewalInfoDecodedPayload we rely on. */
+export interface AppStoreRenewalInfo {
+  originalTransactionId?: string;
+  productId?: string;
+  /** 1 = renews at the end of the period, 0 = turned off. */
+  autoRenewStatus?: number;
+  /** In a billing grace period: access lasts until then (epoch ms). */
+  gracePeriodExpiresDate?: number;
+  isInBillingRetryPeriod?: boolean;
+  environment?: string;
+  signedDate?: number;
+}
+
+/** One subscription's state from the App Store Server API (Get All Subscription Statuses). */
+export interface AppStoreSubscriptionStatus {
+  /** 1 active, 2 expired, 3 billing retry, 4 billing grace period, 5 revoked. */
+  status: number;
+  transaction: AppStoreTransaction;
+  renewal: AppStoreRenewalInfo | null;
 }
 
 export class AppStoreApiError extends Error {
@@ -109,6 +134,49 @@ export async function fetchAppStoreTransaction(
     const data = (await res.json()) as { signedTransactionInfo?: string };
     if (!data.signedTransactionInfo) throw new AppStoreApiError("App Store response had no transaction", 502);
     return decodeJwsPayload<AppStoreTransaction>(data.signedTransactionInfo);
+  }
+  return null;
+}
+
+interface StatusResponse {
+  data?: {
+    lastTransactions?: { originalTransactionId?: string; status?: number; signedTransactionInfo?: string; signedRenewalInfo?: string }[];
+  }[];
+}
+
+/**
+ * The current state of an auto-renewable subscription (the Host Pass) by its
+ * originalTransactionId, from the environment the purchase was made in: its
+ * status, latest transaction (expiry, refund) and renewal info (auto-renew,
+ * grace period). Null when Apple doesn't know it there. Like the transaction
+ * lookup, it comes straight from Apple over TLS, so the JWS inside isn't
+ * re-verified.
+ * Docs: https://developer.apple.com/documentation/appstoreserverapi/get-all-subscription-statuses
+ */
+export async function fetchSubscriptionStatus(
+  creds: AppStoreCredentials,
+  originalTransactionId: string,
+  environment: string | undefined,
+): Promise<AppStoreSubscriptionStatus | null> {
+  const host = environment === "Sandbox" ? APP_STORE_HOSTS.sandbox : APP_STORE_HOSTS.production;
+  const res = await fetch(`${host}/inApps/v1/subscriptions/${encodeURIComponent(originalTransactionId)}`, {
+    headers: { authorization: `Bearer ${await appStoreJwt(creds)}` },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const detail = (await res.json().catch(() => null)) as { errorMessage?: string } | null;
+    throw new AppStoreApiError(detail?.errorMessage ?? `App Store request failed (${res.status})`, res.status);
+  }
+  const body = (await res.json()) as StatusResponse;
+  for (const group of body.data ?? []) {
+    for (const last of group.lastTransactions ?? []) {
+      if (String(last.originalTransactionId) !== originalTransactionId || !last.signedTransactionInfo) continue;
+      return {
+        status: Number(last.status),
+        transaction: decodeJwsPayload<AppStoreTransaction>(last.signedTransactionInfo),
+        renewal: last.signedRenewalInfo ? decodeJwsPayload<AppStoreRenewalInfo>(last.signedRenewalInfo) : null,
+      };
+    }
   }
   return null;
 }

@@ -198,6 +198,32 @@ describe("notify", () => {
     expect(sent.fcm).toHaveLength(2);
   });
 
+  it("leaves paying out of board-full when the host's Host Pass covers an unpaid linked board", async () => {
+    const linked = { provider: "espn" as const, league: "nfl" as const, eventId: "401", startsAt: Date.now() + 3_600_000, xIsHome: true };
+    db.game = makeGame({ status: "open", paid: false, linkedEvent: linked });
+    await notify(env, "abc234", { kind: "board-full" });
+    expect(sent.web.map((w) => w.payload.body)).toEqual(["🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."]);
+
+    t.migrate("migrations/0011_host_pass.sql");
+    const now = Date.now();
+    t.query(
+      `INSERT INTO host_passes (id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at)
+       VALUES ('hp_1', ?, 'iap', '2000000000000009', 'active', ?, 1, 1, ?, ?, ?)`,
+      HOST,
+      now + 86_400_000,
+      now,
+      now,
+      now,
+    );
+    sent.web = [];
+    await notify(env, "abc234", { kind: "board-full" });
+    expect(sent.web.map((w) => w.payload.body)).toEqual(["🔥 Your board is full. Draw numbers now, or they'll draw at kickoff."]);
+    // ...and "kickoff soon, draw the numbers" doesn't go out at all.
+    sent.web = [];
+    await notify(env, "abc234", { kind: "draw-reminder" });
+    expect(sent.web).toEqual([]);
+  });
+
   it("ignores draft boards", async () => {
     db.game = makeGame({ status: "draft" });
     await notify(env, "abc234", { kind: "board-full" });

@@ -7,6 +7,7 @@ import { loadHostTools } from "./features/host/hostTools";
 import { getAdminToken } from "./lib/identity";
 import { initNative, onAppResume, platform } from "./lib/native";
 import { onNotificationTap } from "./lib/push";
+import { setHostPassState } from "./lib/hostPassStore";
 import NotFound from "./pages/NotFound";
 import RouteError from "./pages/RouteError";
 
@@ -117,6 +118,8 @@ function LaunchHooks() {
             });
           },
           onUnused: (message) => toast.show({ title: "That purchase wasn't needed", description: message, duration: 0 }),
+          // A Host Pass purchase confirmed later, or a renewal: the pass as the server now has it.
+          onPass: (state) => setHostPassState(state),
         }),
       )
       .catch((err: unknown) => console.warn("App Store purchase watch failed", err));

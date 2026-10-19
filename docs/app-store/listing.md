@@ -7,7 +7,8 @@ screenshots are generated from the real app; see `docs/app-store/README.md`.
 **Hard rule for every field below:** no money between players. Don't use
 "bet", "wager", "gamble", "pot", "pool", "buy-in", "payout" or "odds", and don't
 show prices per square. JaxSquares is free to download. The only purchase is the
-host fee: a host pays once per board, when they draw its numbers.
+host fee: a host pays once per board, when they draw its numbers, or takes the
+optional yearly Host Pass that covers it on every board they host.
 
 **Trademark rule:** keep "Super Bowl", "NFL", and real team names and logos out
 of the name, subtitle, keywords, description and screenshots. The NFL enforces
@@ -27,6 +28,7 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 | Secondary category | **Entertainment** | |
 | Price | Free | |
 | In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). The host fee for one board, paid when the host draws its numbers; creating a board, joining and picking squares are free. | |
+| Subscription | `com.jaxsquares.app.hostpass.yearly`: Auto-renewable, group "Host Pass", 1 year, $9.99 (`docs/payments.md` → "Host Pass"). Covers the host fee on every board the subscriber hosts while it's active. | |
 | Copyright | `2026 JaxSquares` | |
 | Availability | United States to start. Add other countries once the copy is checked for each. | |
 | Devices | iPhone only, so no iPad screenshots are needed | |
@@ -84,7 +86,8 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 > FREE TO PLAY, AND NO MONEY BETWEEN FRIENDS
 > JaxSquares is free to download, and setting up a board, inviting friends and
 > joining are always free. The only purchase is the host fee for each board you
-> host, paid when you draw the numbers. Players never pay to join, squares are
+> host, paid when you draw the numbers, or the optional yearly Host Pass that
+> covers it on every board you host. Players never pay to join, squares are
 > never sold, and no money changes hands in the app. You play for fun and
 > bragging rights.
 >
@@ -167,11 +170,15 @@ accept whatever Apple computes; don't change the answers.
 
 > JaxSquares is a free-to-play football squares game for friends. There is no
 > gambling: players never pay to join, squares are never sold, and the app
-> never collects, holds or distributes money or prizes. The only purchase is a
-> consumable in-app purchase (com.jaxsquares.app.board): the host fee a host
+> never collects, holds or distributes money or prizes. The only purchases are
+> a consumable in-app purchase (com.jaxsquares.app.board): the host fee a host
 > pays when they draw the numbers on a board they made (making the board,
-> inviting and picking squares are free). It doesn't buy any chance to win
-> anything. A
+> inviting and picking squares are free), and an optional auto-renewable
+> subscription (com.jaxsquares.app.hostpass.yearly, the "Host Pass") that
+> covers that fee on every board the subscriber hosts for a year. Neither buys
+> any chance to win anything. The Host Pass is offered next to the board fee
+> when drawing, and in Profile → Host Pass, which also has Restore purchases
+> and Manage (Apple's subscription management). A
 > host may add an optional free-text note per period (e.g. "Loser buys
 > wings"); the server rejects notes that mention money, and the app takes no
 > part in them.
@@ -240,7 +247,7 @@ devices to an Apple or Google account.
 | Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works). | Shown only to you ("Signed in with Apple · email"). |
 | Identifiers → **User ID** | Only if you sign in: the account id Apple or Google assigns you. | Keeps your boards on every device you sign in on. |
 | User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color. | The game itself. |
-| Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock. | Opens the board you paid for and stops one purchase from being used twice. |
+| Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock, and for a Host Pass its original transaction id, status and renewal date. | Opens the board you paid for, stops one purchase from being used twice, and lets the Host Pass cover your boards. |
 
 **Not collected:**
 

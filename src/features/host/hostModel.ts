@@ -73,6 +73,8 @@ export interface HostSummary {
   slim: boolean;
   /** Drawing needs the host fee first: the draw action opens the checkout, then draws. */
   fee?: boolean;
+  /** The host fee would be due, but the host's Host Pass covers it: the draw just draws. */
+  covered?: boolean;
 }
 
 export function claimedOf(state: Pick<GameState, "game" | "squares">): { claimed: number; total: number } {
@@ -111,15 +113,22 @@ export function canPayAhead(game: Pick<Game, "status" | "paid" | "linkedEvent">,
   return needsHostFee(game) && game.linkedEvent !== null && game.linkedEvent.startsAt > now;
 }
 
-/** `price`: the host fee as this device shows it, for the draw action on a board whose fee is due. */
-export function hostSummary(state: GameState, price?: string | null, now = Date.now()): HostSummary {
+/**
+ * `price`: the host fee as this device shows it, for the draw action on a
+ * board whose fee is due. `pass`: the host's Host Pass is active, so that fee
+ * is covered: the draw reads "Draw the numbers" (with "Included with your
+ * Host Pass" beside it) and needs no checkout.
+ */
+export function hostSummary(state: GameState, price?: string | null, now = Date.now(), pass = false): HostSummary {
   const { game } = state;
   const { claimed, total } = claimedOf(state);
 
   if (isPicking(game)) {
     const left = Math.max(0, total - claimed);
     const full = left === 0;
-    const fee = needsHostFee(game);
+    const due = needsHostFee(game);
+    const covered = due && pass;
+    const fee = due && !covered;
     // A linked game under way that wasn't drawn at kickoff (its fee wasn't paid): drawing is the move.
     const late = claimed > 0 && isLinked(game) && gameStarted(state, now);
     // Getting people in stays the move until the board is (nearly) full; then it's locking.
@@ -131,9 +140,10 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
             ? "Board's full. Draw time!"
             : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
         progress: claimed / total,
-        action: { kind: "lock", label: fee ? payToDrawLabel(price) : "Lock & draw" },
+        action: { kind: "lock", label: fee ? payToDrawLabel(price) : covered ? "Draw the numbers" : "Lock & draw" },
         slim: false,
         fee,
+        covered,
       };
     }
     return {

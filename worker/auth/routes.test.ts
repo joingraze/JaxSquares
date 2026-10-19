@@ -6,7 +6,7 @@
 // Apple's and Google's keys are local test keys behind a mocked fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../../shared/playerId";
-import type { AppConfig, CreateGameResponse, GameState, GameSummary, MeResponse } from "../../shared/types";
+import type { AppConfig, CreateGameResponse, GameState, GameSummary, HostPassState, MeResponse } from "../../shared/types";
 import type { Env } from "../env";
 import worker from "../index";
 import { createTestD1, type TestD1 } from "../payments/testD1";
@@ -45,6 +45,7 @@ const MIGRATIONS = [
   "migrations/0008_custom_kickoff.sql",
   "migrations/0009_pay_at_draw.sql",
   "migrations/0010_accounts.sql",
+  "migrations/0011_host_pass.sql",
 ];
 
 let t: TestD1;
@@ -226,6 +227,7 @@ describe("first sign-in", () => {
       account: { provider: "google", email: "g-1@example.com", name: "Jordan Lee", since: expect.any(Number) },
       hostTokens: { [mine.id]: mine.admin },
       profile: { name: "Jordan", color: "#38b6ff", emoji: "🐐" },
+      hostPass: null,
     });
     const [account] = rows<{ id: string; canonical_client_id: string; email: string }>("SELECT * FROM accounts");
     expect(account).toMatchObject({ canonical_client_id: PHONE, email: "g-1@example.com" });
@@ -344,6 +346,37 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
+  it("merges its Host Pass rows into the account, keeping the account's too, so either device is covered", async () => {
+    // The phone (the account) has an ended pass, the laptop a test pass bought before signing in.
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    const now = Date.now();
+    rows(
+      `INSERT INTO host_passes (id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at)
+       VALUES ('hp_old', ?, 'iap', '2000000000000001', 'ended', ?, 0, 1, ?, ?, ?)`,
+      PHONE,
+      now - 1000,
+      now,
+      now,
+      now,
+    );
+    rows(`INSERT INTO stripe_customers (client_id, livemode, customer_id, created_at) VALUES (?, 0, 'cus_laptop', ?)`, LAPTOP, now);
+    expect((await call<HostPassState>("POST", "/payments/pass/test", { client: LAPTOP })).body.pass?.active).toBe(true);
+    expect((await call<HostPassState>("GET", "/payments/pass", { client: PHONE })).body.pass?.active).toBe(false);
+
+    expect((await signIn("google", LAPTOP, "g-1")).status).toBe(200);
+    expect(rows("SELECT provider, client_id FROM host_passes ORDER BY provider")).toEqual([
+      { provider: "iap", client_id: PHONE },
+      { provider: "test", client_id: PHONE },
+    ]);
+    expect(rows("SELECT client_id, customer_id FROM stripe_customers")).toEqual([{ client_id: PHONE, customer_id: "cus_laptop" }]);
+    for (const client of [PHONE, LAPTOP]) {
+      const res = await call<HostPassState>("GET", "/payments/pass", { client, headers: { "x-signed-in": "1" } });
+      expect(res.body.pass).toMatchObject({ active: true, provider: "test" });
+    }
+    expect((await call<MeResponse>("GET", "/me", { client: PHONE })).body.hostPass).toMatchObject({ active: true });
+    expectNoSecrets();
+  });
+
   it("can't sign in to a second account while signed in to one", async () => {
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const other = await signIn("google", PHONE, "g-2");
@@ -373,7 +406,7 @@ describe("sign-out", () => {
 
     // The laptop is just itself again (the app throws its clientId away anyway).
     const me = await call<MeResponse>("GET", "/me", { client: LAPTOP });
-    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null });
+    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null, hostPass: null });
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: LAPTOP })).body.games).toEqual([]);
     expect((await call<MeResponse>("GET", "/me", { client: PHONE })).body.account).not.toBeNull();
     // Signing out twice (or when never signed in) is fine.
@@ -423,6 +456,41 @@ describe("DELETE /api/account", () => {
     expect((await call<MeResponse>("GET", "/me", { client: LAPTOP })).body).toMatchObject({ playerId: pid(LAPTOP), account: null });
     expect((await call("DELETE", "/account", { client: LAPTOP })).status).toBe(404);
     expectNoSecrets();
+  });
+
+  it("stops a web Host Pass from renewing first, and deletes nothing if Stripe can't be reached", async () => {
+    env = { ...env, STRIPE_SECRET_KEY: "sk_test_1" };
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    const now = Date.now();
+    rows(
+      `INSERT INTO host_passes (id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at)
+       VALUES ('hp_web', ?, 'stripe', 'sub_1', 'active', ?, 1, 0, ?, ?, ?)`,
+      PHONE,
+      now + 100 * 86_400_000,
+      now,
+      now,
+      now,
+    );
+    const stripeCalls: { url: string; body: string }[] = [];
+    let stripeUp = false;
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.startsWith("https://api.stripe.com/")) return base(input, init);
+      if (!stripeUp) return new Response(JSON.stringify({ error: { message: "down" } }), { status: 500 });
+      stripeCalls.push({ url, body: String(init?.body) });
+      return json({ id: "sub_1", object: "subscription", status: "active", customer: "cus_1", current_period_end: Math.floor(now / 1000) + 8_640_000, cancel_at_period_end: true, livemode: false, metadata: { product: "host_pass" }, latest_invoice: null });
+    });
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const failed = await call<{ error: string }>("DELETE", "/account", { client: PHONE });
+    expect(failed.status).toBe(502);
+    expect(rows("SELECT * FROM accounts")).toHaveLength(1);
+
+    stripeUp = true;
+    expect((await call("DELETE", "/account", { client: PHONE })).status).toBe(200);
+    expect(stripeCalls).toEqual([{ url: "https://api.stripe.com/v1/subscriptions/sub_1", body: "cancel_at_period_end=true" }]);
+    expect(rows("SELECT status, auto_renew FROM host_passes")).toEqual([{ status: "active", auto_renew: 0 }]);
+    expect(rows("SELECT * FROM accounts")).toEqual([]);
   });
 
   it("skips Apple's token exchange and revocation quietly without the Sign in with Apple key", async () => {
@@ -490,7 +558,7 @@ describe("resolving a signed-in device", () => {
   });
 
   it("fails open to the device itself when the account tables aren't there yet", async () => {
-    t = await createTestD1(MIGRATIONS.slice(0, -1));
+    t = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0010") && !m.includes("0011")));
     env = { ...env, DB: t.d1 };
     const a = await boardBy(PHONE);
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: PHONE, headers: { "x-signed-in": "1" } })).body.games.map((g) => g.id)).toEqual([a.id]);

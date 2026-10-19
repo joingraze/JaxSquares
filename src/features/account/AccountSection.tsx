@@ -11,6 +11,7 @@ import { BottomSheet, Button, ListGroup, ListRow, cx, useToast } from "../../com
 import { errorMessage } from "../../lib/api";
 import { deleteAccount, PROVIDER_LABEL, signOut, useAuthSetup } from "../../lib/auth";
 import { useAccount } from "../../lib/identity";
+import { useHostPass } from "../../lib/useHostPass";
 import { useResolvedTheme } from "../../lib/theme";
 import { AppleLogo, GoogleLogo } from "./ProviderButtons";
 import { SignInButtons } from "./SignInButtons";
@@ -151,6 +152,10 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
     onClose,
   );
   const label = PROVIDER_LABEL[account.provider];
+  // A Host Pass on the account: a web one stops renewing (nobody could manage it
+  // afterwards); an App Store one is Apple's to cancel, and Restore purchases brings it back.
+  const { pass } = useHostPass(false);
+  const renewing = pass?.active && pass.autoRenew ? pass.provider : null;
   return (
     <BottomSheet
       open={open}
@@ -179,6 +184,7 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
             </Line>
             <Line>The link between your devices and your boards</Line>
             {account.provider === "apple" && <Line>JaxSquares' access to your Apple ID</Line>}
+            {renewing === "stripe" && <Line>Your Host Pass renewal. It won't be charged again.</Line>}
           </ul>
         </section>
         <section>
@@ -188,6 +194,12 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
               Your boards and squares, so your friends' games carry on. They won't be tied to you, and you won't be able to change them from any device.
             </Line>
             <Line kept>Playing. This device starts fresh, and no account is needed to keep going.</Line>
+            {renewing === "iap" && (
+              <Line kept>
+                Your Host Pass App Store subscription. It keeps renewing until you cancel it in Settings › your name › Subscriptions. Restore purchases
+                brings it back on any device.
+              </Line>
+            )}
           </ul>
         </section>
       </div>

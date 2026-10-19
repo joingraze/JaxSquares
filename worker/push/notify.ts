@@ -2,8 +2,10 @@
 // right players. Runs inside waitUntil, so it never throws; failures are logged.
 
 import type { VapidKeys } from "@block65/webcrypto-web-push";
-import { getGame, getMembers } from "../db";
+import type { Game } from "../../shared/types";
+import { getGame, getMembers, type Member } from "../db";
 import type { Env } from "../env";
+import { activePass } from "../payments/pass";
 import { coveredBySibling } from "./coalesce";
 import { buildDeliveries } from "./copy";
 import { parseServiceAccount, sendFcm, type ServiceAccount } from "./fcm";
@@ -80,6 +82,17 @@ export async function deliver(
   return tally;
 }
 
+/**
+ * Host-only pushes about an unpaid board's fee ("pay ahead", "kickoff soon")
+ * change when the host's Host Pass covers it. Looked up only for those, and
+ * only while the fee is unpaid.
+ */
+async function hostHasPass(env: Env, game: Game, members: Member[], event: NotifyEvent): Promise<boolean> {
+  if ((event.kind !== "board-full" && event.kind !== "draw-reminder") || game.paid !== false || game.status !== "open") return false;
+  const host = members.find((m) => m.isHost || m.id === game.hostPlayerId);
+  return host ? (await activePass(env.DB, [host.clientId])) !== null : false;
+}
+
 export async function notify(env: Env, gameId: string, event: NotifyEvent): Promise<void> {
   // Must run before the first await so a sibling event dispatched alongside sees it.
   const covered = coveredBySibling(gameId, event);
@@ -90,7 +103,7 @@ export async function notify(env: Env, gameId: string, event: NotifyEvent): Prom
 
     const [game, members] = await Promise.all([getGame(env.DB, gameId), getMembers(env.DB, gameId)]);
     if (!game || game.status === "draft") return;
-    const deliveries = buildDeliveries(game, members, event);
+    const deliveries = buildDeliveries(game, members, event, Date.now(), { hostHasPass: await hostHasPass(env, game, members, event) });
     if (deliveries.length === 0) return;
 
     const subs = await subscriptionsFor(env.DB, gameId, [...new Set(deliveries.map((d) => d.clientId))]);

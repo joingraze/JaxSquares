@@ -17,6 +17,7 @@ import {
 import type { Activity, ActivityType, GameState, LiveStatus, LiveUpdate, Score } from "../shared/types";
 import * as db from "./db";
 import type { Env } from "./env";
+import { activePass } from "./payments/pass";
 import { notify, type NotifyEvent } from "./push";
 
 export type Deliver = (state: GameState, activities: Activity[]) => Promise<void>;
@@ -87,7 +88,7 @@ export async function broadcast(env: Env, gameId: string, activity?: Activity): 
 export async function markPaid(
   env: Env,
   gameId: string,
-  purchase: { provider: "test" | "stripe" | "iap"; reference: string; amountCents: number },
+  purchase: { provider: "test" | "stripe" | "iap" | "pass"; reference: string; amountCents: number },
 ): Promise<GameState | null> {
   const current = await db.getGame(env.DB, gameId);
   if (!current) return null;
@@ -166,8 +167,8 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
  * entries when the total goes up (a touchdown and its conversion seen in one
  * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
  * when it's corrected down, lock at kickoff if the host hasn't (only once the
- * host fee is paid: an unpaid board stays open, still taking the feed's
- * scores, until its host pays and draws), and mark the board final when the
+ * host fee is paid or the host's Host Pass covers it: an unpaid board stays
+ * open, still taking the feed's scores, until its host pays and draws), and mark the board final when the
  * game ends. Pushes the new state and sends pushes.
  *
  * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
@@ -200,13 +201,22 @@ export async function applyLiveUpdate(
   }
 
   // Boards linked to a real game lock at kickoff so every period can be decided,
-  // once their host fee is paid; until then the host draws when they pay.
-  // (Not on a "post" that isn't final: that's a postponed/canceled game.)
+  // once their host fee is paid, or the host's Host Pass covers it (the board
+  // is marked paid through the pass in the same write); until then the host
+  // draws when they pay. (Not on a "post" that isn't final: that's a
+  // postponed/canceled game.)
   let numbers = game.numbers;
   let status = game.status;
-  if (status === "open" && game.paid && (live.state === "in" || update.isFinal)) {
+  const kickoff = live.state === "in" || update.isFinal;
+  let pass: { id: string } | null = null;
+  if (status === "open" && !game.paid && kickoff) {
+    const host = await db.hostClientIdOf(env.DB, gameId);
+    pass = host ? await activePass(env.DB, [host], now) : null;
+  }
+  if (status === "open" && (game.paid || pass) && kickoff) {
     numbers = drawNumbers(game.format);
     const locked = newActivity("locked", null, { auto: true }, now);
+    if (pass) writes.push(db.markPaid(env.DB, gameId, { provider: "pass", reference: pass.id, amountCents: 0 }, now));
     writes.push(db.lockGame(env.DB, gameId, numbers, now), db.insertActivityIfChanged(env.DB, gameId, locked));
     activities.push(locked);
     conditional.set(locked.id, { kind: "numbers-drawn" });

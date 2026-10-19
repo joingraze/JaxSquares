@@ -18,6 +18,9 @@ import { isClientId } from "../../shared/playerId";
 import type { AuthProvider, MeResponse } from "../../shared/types";
 import * as db from "../db";
 import type { Env } from "../env";
+import { hostPassOf } from "../payments/pass";
+import { endWebPassRenewals } from "../payments/passStripe";
+import * as paymentsStore from "../payments/store";
 import { playerIdOf } from "../playerIds";
 import * as pushStore from "../push/store";
 import { isFcmToken, isPushServiceEndpoint } from "../push/validate";
@@ -125,13 +128,14 @@ function appleRedirectUri(env: Env, v: unknown): string | null {
 
 /** Who this device is: GET /api/me and the sign-in response. */
 async function meFor(env: Env, canonical: string, accountId: string | null): Promise<MeResponse> {
-  const [account, hostTokens, profile, playerId] = await Promise.all([
+  const [account, hostTokens, profile, playerId, hostPass] = await Promise.all([
     accountId ? store.accountInfo(env.DB, accountId) : null,
     db.hostTokensFor(env.DB, canonical),
     db.latestProfileOf(env.DB, canonical),
     playerIdOf(canonical),
+    hostPassOf(env.DB, canonical),
   ]);
-  return { playerId, account, hostTokens, profile };
+  return { playerId, account, hostTokens, profile, hostPass };
 }
 
 type Outcome = { conflict: true } | { conflict: false; accountId: string; canonical: string; merged: string[] };
@@ -177,6 +181,7 @@ async function signInDevice(env: Env, s: SignIn): Promise<Outcome> {
                   s.now,
                 ),
                 ...pushStore.mergeClientStatements(env.DB, s.device, canonical),
+                ...paymentsStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
               ];
         const results = await store.linkDevice(env.DB, { ...touch, accountId, clientId: s.device }, merge);
         const merged = merge.length > 0 ? (results[0].results as { id: string }[]).map((r) => r.id) : [];
@@ -298,6 +303,15 @@ authRoutes.delete("/account", async (c) => {
   if (tooMany) return tooMany;
   const link = await linkOr503(c, device);
   if (!link) fail(404, "You're not signed in on this device.");
+  // A web Host Pass stops renewing first: nobody could manage it once the
+  // account is gone. (An App Store one is the person's to cancel in iPhone
+  // Settings; the delete sheet says so.)
+  try {
+    await endWebPassRenewals(c.env, link.canonical);
+  } catch (err) {
+    console.error("couldn't stop a web Host Pass renewing", err);
+    fail(502, "Couldn't stop your Host Pass from renewing, so nothing was deleted. Try again in a moment.");
+  }
   const doomed = await store.accountForDeletion(c.env.DB, link.accountId);
   // Revoke first: once the rows are gone there's no token left to revoke.
   const revoked = await Promise.all(

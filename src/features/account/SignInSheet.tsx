@@ -1,5 +1,5 @@
 // A bottom sheet with the sign-in buttons, for anywhere that needs an account
-// (Home's card, the welcome screen, and later the Host Pass purchase). Closes
+// (Home's card, the welcome screen, and the Host Pass purchase on the web). Closes
 // itself once signed in.
 
 import type { ReactNode } from "react";

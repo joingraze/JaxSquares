@@ -1,7 +1,7 @@
 // Profile (/me): who I am on the boards (name, sticker, color, with a live
 // preview square), my notifications (one card for every state), what each
 // board will ping about next (with per-board mutes), the optional account,
-// host links and About.
+// the Host Pass, host links and About.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -15,6 +15,7 @@ import { BoardPings } from "../features/notifications/profile/BoardPings";
 import { NotificationsCard } from "../features/notifications/profile/NotificationsCard";
 import { boardsToSync, lookChanged, statsOf, syncLook, tagline, type MyStats } from "../features/notifications/profile/profileSync";
 import { SquarePreview } from "../features/notifications/profile/SquarePreview";
+import { HostPassSection } from "../features/pass/HostPassSection";
 import { pushIsOn, usePushStatus } from "../features/notifications/usePushStatus";
 import { api } from "../lib/api";
 import { pluralize } from "../lib/format";
@@ -83,6 +84,8 @@ export default function Profile() {
         {pushIsOn(push) && games && <BoardPings games={games} />}
 
         <AccountSection />
+
+        <HostPassSection />
 
         <ListGroup title="Hosting">
           <ListRow

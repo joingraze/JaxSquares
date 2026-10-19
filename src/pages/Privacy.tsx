@@ -6,7 +6,7 @@ import { Link } from "react-router-dom";
 import { BellIcon, CheckIcon, GridIcon, InfoIcon, LockIcon, PencilIcon, RefreshIcon, TrashIcon, UserIcon, UsersIcon, XIcon } from "../components/icons";
 import { buttonStyles, Card, ListGroup, ListRow, TopBar } from "../components/ui";
 
-const UPDATED = "October 18, 2026";
+const UPDATED = "October 19, 2026";
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -93,6 +93,9 @@ export default function Privacy() {
             <Fact icon={<LockIcon />} title="Purchase records">
               When a host pays the host fee for a board (when they draw its numbers), we keep the transaction reference, amount and the board it paid for. Card and Apple Pay details go straight to Apple or Stripe.
             </Fact>
+            <Fact icon={<LockIcon />} title="A Host Pass (optional)">
+              If you get the yearly Host Pass, we keep its subscription reference (from the App Store or Stripe), whether it's active, when it renews or ends, and whether it renews, tied to your device ID or account. For a pass bought on the web, Stripe also keeps a customer record for it. We use this only to cover your boards' host fee and to show your pass.
+            </Fact>
             <Fact icon={<InfoIcon />} title="Basic server logs">
               Our hosting provider records technical details like IP address and request time to keep the service running and secure. We don't use them to work out where you are.
             </Fact>
@@ -106,7 +109,7 @@ export default function Privacy() {
               <Check>Showing boards and drawing numbers</Check>
               <Check>Recording scores and winning squares</Check>
               <Check>Sending the notifications you asked for</Check>
-              <Check>Letting hosts draw the numbers once a board is paid for</Check>
+              <Check>Letting hosts draw the numbers once a board is paid for, or covered by their Host Pass</Check>
               <Check>Keeping your boards on every device you sign in on</Check>
               <Check>Preventing abuse</Check>
             </ul>
@@ -121,10 +124,10 @@ export default function Privacy() {
         <Section title="Who processes it for us">
           <ListGroup footer="Each provider handles data under its own privacy terms, and only for these purposes.">
             <ListRow title="Cloudflare" subtitle="Hosting and database" />
-            <ListRow title="Apple" subtitle="In-App Purchase, push delivery, Sign in with Apple" />
+            <ListRow title="Apple" subtitle="In-App Purchase and subscriptions, push delivery, Sign in with Apple" />
             <ListRow title="Google" subtitle="Sign in with Google (optional)" />
             <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
-            <ListRow title="Stripe" subtitle="Web payments for the host fee" />
+            <ListRow title="Stripe" subtitle="Web payments for the host fee and the Host Pass" />
           </ListGroup>
         </Section>
 

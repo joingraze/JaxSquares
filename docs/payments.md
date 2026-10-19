@@ -1,9 +1,11 @@
 # Payments
 
 The only money in JaxSquares is the **host fee**: the host pays JaxSquares once
-per board, when they draw its numbers. Setting up a board, inviting friends and
-picking squares are free, and nothing ever moves between players. JaxSquares
-never sells squares; the fee is for creating and managing the board.
+per board, when they draw its numbers, or takes the yearly **Host Pass**, which
+covers that fee on every board they host (see "Host Pass" below). Setting up a
+board, inviting friends and picking squares are free, and nothing ever moves
+between players. JaxSquares never sells squares; the fee is for creating and
+managing the board.
 
 | Where the host is | How they pay | Server check |
 |---|---|---|
@@ -93,8 +95,10 @@ Do these steps in order. Payments stay in test mode until step 4.
 2. **Keys.** Go to Developers → API keys.
    - Copy the publishable key (`pk_live_…`) for `STRIPE_PUBLISHABLE_KEY`.
    - For `STRIPE_SECRET_KEY`, the safer choice is a restricted key (`rk_live_…`)
-     whose only permission is **PaymentIntents: Write**. The secret key
-     (`sk_live_…`) also works.
+     with only the permissions the app uses: **PaymentIntents: Write** (the
+     host fee), and for the Host Pass **Customers: Write**, **Subscriptions:
+     Write**, **Invoices: Read** and **Customer portal (Billing portal):
+     Write**. The secret key (`sk_live_…`) also works.
 3. **Payment methods.** Go to Settings → Payment methods and turn on Cards,
    Apple Pay and Google Pay. They're usually on by default. The PaymentIntent
    only allows methods that never redirect away from the page.
@@ -119,7 +123,10 @@ Do these steps in order. Payments stay in test mode until step 4.
    call this Workbench → Webhooks → Create an event destination, for events on
    "Your account".
    - URL: `https://jaxsquares.com/api/stripe/webhook`
-   - Events: `payment_intent.succeeded` and `payment_intent.canceled`
+   - Events: `payment_intent.succeeded` and `payment_intent.canceled` (the
+     host fee), plus `invoice.paid`, `customer.subscription.updated` and
+     `customer.subscription.deleted` (the Host Pass; adding
+     `customer.subscription.created` is harmless)
    - Payload style: **snapshot**, not thin, because the handler reads
      `data.object`.
    - Copy the signing secret (`whsec_…`) for `STRIPE_WEBHOOK_SECRET`.
@@ -322,18 +329,270 @@ board is already paid for. After paying, the host tools call `POST /lock`
 (`api.lock`); `isPaymentRequired(err)` (`src/lib/api.ts`) recognizes the 402, so
 a board an older copy said was paid opens the checkout instead of an error.
 
+## Host Pass
+
+A yearly subscription, the alternative to paying board by board: **$9.99 a
+year** on the web (`HOST_PASS_PRICE_CENTS`, 999), the App Store product's own
+localized price in the iOS app. It renews every year until canceled. While a
+host's pass is active, every board they host is covered: drawing the numbers
+costs nothing more. Boards drawn while it was active stay drawn after it ends.
+
+| Where | How it's sold | What makes it active |
+|---|---|---|
+| Web | Stripe Billing: a yearly Subscription, first payment with Express Checkout (Apple Pay / Google Pay, with Apple Pay's recurring payment request) or the card form. **Needs a signed-in account.** | The Subscription read back from Stripe (`/pass/stripe/confirm`), then signed webhooks |
+| iOS app | App Store auto-renewable subscription `com.jaxsquares.app.hostpass.yearly`, group "Host Pass", through `@capgo/native-purchases`. No sign-in needed; **Restore purchases** in Profile | App Store Server API (transaction, then subscription status), then App Store Server Notifications V2 |
+| Anywhere, while `PAYMENTS_MODE` isn't `live` | A no-charge **test pass** that lasts a year and doesn't renew (labeled "Test pass" in the app); no sign-in | The test route |
+
+In live mode the web sells the pass only once `STRIPE_HOST_PASS_PRICE_ID` is
+set (`PaymentConfig.hostPass.web`); until then Profile hides it on the web and
+the draw offers only the board fee. The iOS app never shows the web price or
+Stripe (guideline 3.1.1): prices come from StoreKit (`hostPassPrice`), and a
+pass bought on the web just says to manage it where it was bought.
+
+### Who holds it
+
+The pass belongs to the host's identity: the request's canonical clientId,
+`c.get("clientId")`, so a signed-in host's pass covers boards on every device
+of the account. Signing in on another device merges that device's passes and
+Stripe customer into the account (`mergeClientStatements` in
+`worker/payments/store.ts`, in the same batch as the rest of the sign-in merge;
+docs/auth.md). When both hold a pass, both rows are kept: the identity is
+covered while any row is active.
+
+**Why the web needs an account:** a web subscription tied only to one
+browser's clientId would be lost with it (sign-out or cleared site data starts
+a new device), and nobody could manage it. So the client's one gate,
+`startPassPurchase()` (`src/lib/useHostPass.ts`), sends a signed-out browser to
+the existing `SignInSheet` first and continues to the purchase after; and the
+server refuses to start one for a device with no account link: `POST
+/api/payments/pass/stripe` answers **409** `{ error, code: "account_required" }`
+(`ACCOUNT_REQUIRED_CODE`), checked with the auth module's `freshLink`. The iOS
+app needs no account: Apple keeps the subscription, and Restore purchases
+attaches it to whichever identity restores it. The test pass needs none either.
+
+### Drawing with it
+
+- `POST /api/games/:id/lock` on an unpaid board: when the caller (the identity
+  holding the admin token) or the board's host holds an active pass, the board
+  is marked paid through the pass (`payment_provider` `pass`,
+  `payment_amount_cents` 0, `payment_reference` = the pass id) in the same
+  write as the draw. Otherwise the 402 is unchanged. Nobody without the admin
+  token can draw, so nobody draws on someone else's pass.
+- A linked board whose host holds an active pass draws itself at kickoff like a
+  paid board, marked paid through the pass at that moment
+  (`applyLiveUpdate`).
+- The "kickoff soon, draw the numbers" reminder skips pass holders (the cron
+  filters them out with `holdersOfActivePass`), and the board-full push for a
+  pass holder's linked board says "Draw numbers now, or they'll draw at
+  kickoff" (no "pay ahead").
+- **Active** = status `active` and `current_period_end` in the future, plus a
+  24-hour grace window while it auto-renews (a renewal whose webhook is a
+  little late doesn't block a draw); a pass that won't renew ends exactly at
+  its period end. It's checked when the pass is used; webhooks and
+  notifications keep the rows current, so there's no cron.
+
+### Tables (`migrations/0011_host_pass.sql`, owned by `worker/payments/store.ts`)
+
+| Table | Columns |
+|---|---|
+| `host_passes` | `id` (`hp_…`, server-only), `client_id` (the holder), `provider` (`stripe` \| `iap` \| `test`), `external_id` UNIQUE (the Stripe subscription id, the Apple originalTransactionId, or `test:<uuid>`), `status` (`pending` \| `active` \| `past_due` \| `ended` \| `revoked`), `current_period_end`, `auto_renew`, `livemode`, `event_at` (provider time of the stored state), `created_at`, `updated_at` |
+| `stripe_customers` | `client_id` + `livemode` (PK) → `customer_id` UNIQUE: the Customer an identity's web subscriptions bill to and the Customer Portal opens for (test and live keys get separate customers) |
+
+`activePass(db, clientIds, now)` (`worker/payments/pass.ts`) is the lookup core
+uses; `passView` turns rows into what the API shows (`HostPass` in
+`shared/types.ts`: `{ active, status, provider, renewsAt, endsAt, autoRenew }`,
+never a clientId, the pass id or a provider reference).
+
+### Web flow (Stripe Billing, API version 2024-06-20 as pinned in `stripe.ts`)
+
+1. `POST /api/payments/pass/stripe` creates (or reuses) the account's Customer,
+   then a Subscription to `STRIPE_HOST_PASS_PRICE_ID` with
+   `payment_behavior=default_incomplete`,
+   `payment_settings[save_default_payment_method]=on_subscription`,
+   metadata `product=host_pass` and `pass_id`, expanding
+   `latest_invoice.payment_intent` (at this API version the first invoice's
+   PaymentIntent carries the client secret; from 2025-03-31 "basil" it's
+   `latest_invoice.confirmation_secret`, so move both together with
+   `STRIPE_API_VERSION`). It stores a `pending` pass and returns
+   `{ clientSecret, amountCents, currency }`. A subscription still waiting for
+   its first payment is reused, so retries never start a second one.
+2. The browser confirms that PaymentIntent with the same Express Checkout
+   Element / card form as the board fee.
+3. `POST /api/payments/pass/stripe/confirm` reads the Subscription back from
+   Stripe (the webhook may not have landed yet) and stores what Stripe says.
+   The client is never trusted to say it paid.
+4. The webhook (signature check unchanged) handles `invoice.paid`,
+   `customer.subscription.updated` and `.deleted` (and `.created`): each one
+   makes the server read the Subscription back from Stripe and store its
+   status, `current_period_end` and `cancel_at_period_end`, so events arriving
+   late or out of order can't roll a pass back. Only subscriptions with
+   `product=host_pass` that the server holds are read.
+5. Manage: `POST /api/payments/pass/portal` returns a Customer Portal session
+   URL (returning to `/me`).
+
+Statuses: `active`/`trialing` → active, `past_due` → past_due (not covering),
+`incomplete` → pending, anything else → ended. Deleting the account sets
+`cancel_at_period_end` on its web subscriptions first (nobody could manage them
+afterwards); if Stripe can't be reached, nothing is deleted (502).
+
+### iOS flow (App Store auto-renewable subscription)
+
+1. `buyPassWithIAP()` (`src/lib/checkout.ts`) buys the product in the App Store
+   sheet, then `POST /api/payments/pass/iap` with `{ transactionId, jws }`
+   (`jws` = StoreKit 2's `jwsRepresentation`). The server looks the transaction
+   up (`GET /inApps/v1/transactions/{id}`), checks the bundle and product, then
+   reads the subscription's status by originalTransactionId (`GET
+   /inApps/v1/subscriptions/{originalTransactionId}`, in the environment the
+   purchase was made in) for its expiry, grace period and auto-renew, and
+   attaches it to the identity. The transaction is finished only after that
+   (or after a settled 400/409); `watchIAPPurchases` also confirms pass
+   transactions that land later (Ask to Buy, renewals).
+2. Restore purchases: `restorePassPurchases()` syncs with the App Store, sends
+   this Apple ID's current pass transactions with their `jws`, and `POST
+   /api/payments/pass/iap/restore` attaches them to the requesting identity.
+3. **Moving a pass between identities needs proof.** A subscription another
+   identity already holds moves only when the request carries StoreKit's
+   signed transaction for it and that JWS verifies up to Apple's root (below);
+   a transaction id alone gets 409.
+4. `POST /api/payments/apple/notifications` takes App Store Server
+   Notifications V2 (`{ signedPayload }`): it verifies the payload, then the
+   `signedTransactionInfo` and `signedRenewalInfo` inside it, and stores the
+   new state: renewed, auto-renew off or on, billing retry (`past_due`), grace
+   period (still active until `gracePeriodExpiresDate`), expired, refunded or
+   revoked. A notification signed before the stored state (`event_at`) is late
+   and changes nothing. Other products (the board consumable), other apps and
+   subscriptions nobody holds yet are ignored (200); a bad signature is a 400.
+
+Apple status codes: 1 active, 2 expired → ended, 3 billing retry → past_due,
+4 grace period → active, 5 revoked; a transaction with a `revocationDate` is
+revoked.
+
+**What the Apple JWS check verifies** (`worker/payments/appleJws.ts`, WebCrypto
+plus a small DER reader in `x509.ts`), the same checks as Apple's App Store
+Server Library in offline mode:
+
+1. the header's `alg` is ES256 and `x5c` has exactly three certificates;
+2. the third is **Apple Root CA - G3**, byte for byte (SHA-256
+   `63343abf…653e9179`, pinned; published at apple.com/certificateauthority),
+   and the chain is unbroken: the intermediate's issuer equals the root's
+   subject and its signature verifies with the root's key, and the same for
+   the leaf against the intermediate;
+3. the intermediate is a CA (basicConstraints) with Apple's marker extension
+   `1.2.840.113635.100.6.2.1`, and the leaf has `1.2.840.113635.100.6.11.1`;
+4. all three certificates are valid at the payload's `signedDate`;
+5. the JWS signature verifies with the leaf's P-256 key.
+
+Not checked: OCSP revocation (Apple's library does it only in online mode).
+The caller then checks the bundle id and product. Responses from the App Store
+Server API itself come straight from Apple over TLS with our signed JWT, so
+their JWS isn't re-verified (as for the board purchase).
+
+### Routes (rate limited: `pass`, 30 per device per hour, and `pass-ip`, 120 per address per hour)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/payments/pass` | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer }` (`no-store`). `GET /api/me` carries `hostPass` too |
+| POST | `/api/payments/pass/test` | Test mode only (403 in live): a no-charge pass for a year; a no-op while one is active |
+| POST | `/api/payments/pass/test/end` | Test mode only: ends the test pass (to try again) |
+| POST | `/api/payments/pass/stripe` | `{ clientSecret, amountCents, currency }`; 409 `account_required` without an account link; 409 `{ error, pass, offer }` when one is already active; 503 while `STRIPE_HOST_PASS_PRICE_ID` or the key is unset; 502 when Stripe errors |
+| POST | `/api/payments/pass/stripe/confirm` | `HostPassState`, read back from Stripe |
+| POST | `/api/payments/pass/portal` | `{ url }` (Customer Portal); 404 with no web pass here |
+| POST | `/api/payments/pass/iap` | Body `{ transactionId, jws? }` → `HostPassState`; 400 (unknown, wrong product or app), 409 (held by another identity, no valid proof), 502 (Apple unreachable), 503 (no App Store key) |
+| POST | `/api/payments/pass/iap/restore` | Body `{ transactions: [{ transactionId, jws? }] }` (up to 20) → `HostPassState & { restored }`; 409 when the only ones found belong to another identity without proof |
+| POST | `/api/payments/apple/notifications` | App Store Server Notifications V2; `{ received: true, outcome: "updated" \| "ignored" }`; 400 on a bad signature |
+
+### Client
+
+- State: `useHostPass()` (`src/lib/useHostPass.ts`, next to `useHostFee`) over
+  a small store (`src/lib/hostPassStore.ts`) that `GET /api/me` primes at
+  startup and on sign-in, the pass routes update after a purchase, and
+  sign-out clears. `useHostPassPrice()` gives "$9.99" (or the App Store's
+  string); the UI says "$9.99/year".
+- Checkout sheet at the draw (an unpaid board, no pass): "This board · $4.99"
+  (the default) and "Host Pass · $9.99/year" ("Every board you host for a
+  year", "Pays for itself on your second board"), one tap to switch
+  (`plan-board`, `plan-pass`). The pass shows its subscription disclosure
+  (`pass-disclosure`: name, length, price per period, auto-renews until
+  canceled, how to cancel, Terms and Privacy). Bought at the draw, the host
+  tools draw right away (the server marks the board paid through the pass).
+- With an active pass the host bar, the Now card and the lock confirm read
+  "Draw the numbers" with "Included with your Host Pass" (`host-pass-note`),
+  no price, no pay-ahead; drawing just draws. If the server answers 402 (the
+  pass ended meanwhile) the checkout opens as usual.
+- Profile → Host Pass (`HostPassSection`): no pass: a pitch and Get (`pass-get`,
+  through `startPassPurchase`); active: "Active · renews Oct 19, 2027" or "Ends
+  Oct 19, 2027" (`pass-status`) and Manage (`pass-manage`: Apple's subscription
+  management in the iOS app, the Customer Portal on the web, "End test pass"
+  in test mode); iOS: Restore purchases (`pass-restore`).
+
+### Setup (Host Pass)
+
+Do these alongside the steps above. Every value below is a plain setting
+(`wrangler.jsonc` → `vars`) except where it says secret; no new secrets are
+needed. Never paste a secret in chat; `npx wrangler secret put NAME` prompts
+for it.
+
+**App Store Connect**
+
+1. Your app → Monetization → **Subscriptions** → create a subscription group
+   named **Host Pass**.
+2. In it, add an auto-renewable subscription: reference name `Host Pass
+   (yearly)`, product ID **`com.jaxsquares.app.hostpass.yearly`** (=
+   `IAP_HOST_PASS_PRODUCT_ID` in `wrangler.jsonc`), duration **1 year**, price
+   **$9.99**. Display name "Host Pass", description "Every board you host for a
+   year: draw the numbers with no host fee." Add the review screenshot; submit
+   it with an app version.
+3. App Information → **App Store Server Notifications** → Version 2, for both
+   Production and Sandbox: `https://jaxsquares.com/api/payments/apple/notifications`.
+4. The App Store Server API key (`APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`,
+   `APPLE_IAP_PRIVATE_KEY`, secrets) and `APPLE_BUNDLE_ID` are the ones the
+   board purchase already uses.
+
+**Stripe**
+
+1. Product catalog → add a product **Host Pass** with a **recurring** price,
+   **$9.99 per year**. Copy the price id (`price_…`) into
+   `STRIPE_HOST_PASS_PRICE_ID` in `wrangler.jsonc` → `vars` (it isn't a
+   secret), and keep `HOST_PASS_PRICE_CENTS` (999) equal to it: the app shows
+   that number on the web.
+2. Webhook: add `invoice.paid`, `customer.subscription.updated` and
+   `customer.subscription.deleted` to the existing endpoint (step 2.5 above).
+3. Restricted key: add Customers (Write), Subscriptions (Write), Invoices
+   (Read) and Customer portal (Write) to its permissions (step 2.2 above).
+4. Settings → Billing → **Customer portal**: turn it on; allow updating payment
+   methods, viewing invoices and **canceling subscriptions at the end of the
+   billing period**; set the default return URL to `https://jaxsquares.com/me`
+   and add the Terms and Privacy links.
+5. Settings → Billing → Subscriptions and emails: turn on receipt emails if you
+   want them, and let failed payments retry (Smart Retries) before canceling.
+
+Then `npm run deploy` (migration 0011 is applied by CI before the deploy, or
+run `npm run db:migrate:remote`). Check it:
+
+```bash
+curl -s https://jaxsquares.com/api/config | jq .payments.hostPass
+# { "priceCents": 999, "currency": "usd", "iapProductId": "com.jaxsquares.app.hostpass.yearly", "web": true }
+npx wrangler d1 execute jaxsquares --remote --command \
+  "SELECT provider, status, current_period_end, auto_renew, livemode FROM host_passes ORDER BY created_at DESC LIMIT 5"
+```
+
 ## Not covered yet
 
-- **Refunds don't undo a draw.** Refunding in Stripe or Apple leaves the board
-  paid (and drawn). Handle `charge.refunded` and Apple's App Store Server
-  Notifications V2 if that matters.
+- **Refunds don't undo a draw.** Refunding a board in Stripe or Apple leaves
+  it paid (and drawn); a refunded Host Pass stops covering new draws (Apple's
+  REFUND notification, or the subscription ending in Stripe) but boards it
+  covered stay drawn. Handle `charge.refunded` for board purchases if that
+  matters.
 - **Older app builds.** An app build from the pay-to-open flow creates boards
   that open right away (it reads `paymentRequired: false`), but it can't pay at
   the draw: its "Draw the numbers" shows the 402's message until it updates.
 - **Android app.** Google Play's payments policy will require Play Billing
-  before an Android build ships on the Play Store. Until then, Android uses
+  (for the board fee and the Host Pass) before an Android build ships on the
+  Play Store. Until then, Android uses
   the Stripe web flow, which is fine for the web or PWA but not for a Play
   Store build.
-- **Apple's JWS signature.** The server trusts `signedTransactionInfo` because
-  it came straight from Apple over TLS. It doesn't verify the JWS certificate
-  chain.
+- **Apple's JWS signature on API responses.** For the board purchase and the
+  pass's API lookups, the server trusts `signedTransactionInfo` because it came
+  straight from Apple over TLS. Signed data that reaches us any other way (Server
+  Notifications, a restore's proof) is verified up to Apple's root (see "What
+  the Apple JWS check verifies"); OCSP revocation isn't checked.

@@ -1,6 +1,8 @@
 // Stripe over plain fetch (no SDK in the Worker): PaymentIntents for a board's
-// host fee and webhook signature verification.
+// host fee, the Host Pass subscription (Stripe Billing) and webhook signature
+// verification.
 // Docs: https://docs.stripe.com/api/payment_intents
+//       https://docs.stripe.com/billing/subscriptions/build-subscriptions
 //       https://docs.stripe.com/webhooks#verify-manually
 
 import { bytesToHex, hexToBytes, timingSafeEqual, utf8 } from "./encoding";
@@ -34,11 +36,123 @@ export interface StripeEvent<T = unknown> {
   id: string;
   type: string;
   livemode: boolean;
+  /** When the event happened (seconds). */
+  created?: number;
   data: { object: T };
 }
 
 /** Metadata tag on every intent we create, so the webhook ignores anything else on the account. */
 export const BOARD_PRODUCT = "board";
+/** Metadata tag on every Host Pass subscription we create. */
+export const HOST_PASS_PRODUCT = "host_pass";
+
+// ---- Stripe Billing (the Host Pass), in the shapes of the pinned API version ----
+// At 2024-06-20 a Subscription carries current_period_end and its latest
+// Invoice carries the PaymentIntent that collects the first payment
+// (expand latest_invoice.payment_intent). Newer versions (2025-03-31 "basil")
+// moved these to the items and to latest_invoice.confirmation_secret; move
+// with STRIPE_API_VERSION, not before.
+
+export interface StripeInvoice {
+  id: string;
+  object: "invoice";
+  subscription: string | { id: string } | null;
+  payment_intent: string | PaymentIntent | null;
+  amount_due: number;
+  currency: string;
+  status: string | null;
+  livemode: boolean;
+}
+
+export interface StripeSubscription {
+  id: string;
+  object: "subscription";
+  /** active, trialing, past_due, incomplete, incomplete_expired, canceled, unpaid, paused */
+  status: string;
+  customer: string | { id: string };
+  /** Seconds. */
+  current_period_end: number;
+  cancel_at_period_end: boolean;
+  livemode: boolean;
+  metadata: Record<string, string>;
+  latest_invoice: string | StripeInvoice | null;
+}
+
+export interface StripeCustomer {
+  id: string;
+  object: "customer";
+  livemode: boolean;
+}
+
+/** Live keys (sk_live_ / rk_live_) bill for real; anything else is Stripe's test mode. */
+export function isLiveKey(secretKey: string): boolean {
+  return /^(sk|rk)_live_/.test(secretKey.trim());
+}
+
+export function createCustomer(secretKey: string): Promise<StripeCustomer> {
+  return stripeFetch<StripeCustomer>(secretKey, "POST", "/customers", {
+    description: "JaxSquares host",
+    metadata: { app: "jaxsquares" },
+  });
+}
+
+export interface HostPassSubscriptionInput {
+  customerId: string;
+  priceId: string;
+  /** Our pass id (host_passes.id), in the subscription's metadata. */
+  passId: string;
+  /** Same key => Stripe returns the same subscription instead of creating a second one. */
+  idempotencyKey: string;
+}
+
+/**
+ * A yearly Host Pass subscription waiting for its first payment: the browser
+ * confirms the latest invoice's PaymentIntent (Express Checkout or the card
+ * form), and the card is saved for the renewals.
+ */
+export function createHostPassSubscription(secretKey: string, input: HostPassSubscriptionInput): Promise<StripeSubscription> {
+  return stripeFetch<StripeSubscription>(
+    secretKey,
+    "POST",
+    "/subscriptions",
+    {
+      customer: input.customerId,
+      items: [{ price: input.priceId }],
+      payment_behavior: "default_incomplete",
+      payment_settings: { save_default_payment_method: "on_subscription" },
+      description: "JaxSquares Host Pass (yearly)",
+      metadata: { product: HOST_PASS_PRODUCT, pass_id: input.passId },
+      expand: ["latest_invoice.payment_intent"],
+    },
+    input.idempotencyKey,
+  );
+}
+
+export function retrieveSubscription(secretKey: string, id: string): Promise<StripeSubscription> {
+  return stripeFetch<StripeSubscription>(
+    secretKey,
+    "GET",
+    `/subscriptions/${encodeURIComponent(id)}?${encodeURIComponent("expand[]")}=latest_invoice.payment_intent`,
+  );
+}
+
+/** Stops the renewal: the pass runs to the end of the period it's paid for. */
+export function cancelSubscriptionAtPeriodEnd(secretKey: string, id: string): Promise<StripeSubscription> {
+  return stripeFetch<StripeSubscription>(secretKey, "POST", `/subscriptions/${encodeURIComponent(id)}`, { cancel_at_period_end: true });
+}
+
+/** Cancels a subscription now (one that never got its first payment). */
+export function cancelSubscriptionNow(secretKey: string, id: string): Promise<StripeSubscription> {
+  return stripeFetch<StripeSubscription>(secretKey, "DELETE", `/subscriptions/${encodeURIComponent(id)}`);
+}
+
+/** A Customer Portal session (Manage): update the card, see receipts, cancel. */
+export function createPortalSession(secretKey: string, input: { customerId: string; returnUrl: string }): Promise<{ id: string; url: string }> {
+  return stripeFetch<{ id: string; url: string }>(secretKey, "POST", "/billing_portal/sessions", {
+    customer: input.customerId,
+    return_url: input.returnUrl,
+  });
+}
 
 export class StripeApiError extends Error {
   constructor(
@@ -69,7 +183,7 @@ export function formEncode(params: Record<string, unknown>, prefix = ""): string
 
 async function stripeFetch<T>(
   secretKey: string,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   path: string,
   params?: Record<string, unknown>,
   idempotencyKey?: string,

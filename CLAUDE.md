@@ -91,7 +91,10 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   numbers: creating, inviting and picking squares are free, and `POST /lock`
   answers 402 (`PAYMENT_REQUIRED_CODE`) until `Game.paid`. Boards made before
   that count as paid; a linked board draws itself at kickoff only once paid
-  (`docs/payments.md`).
+  (`docs/payments.md`). The yearly Host Pass covers the fee: an active pass
+  (`activePass`, keyed by the canonical clientId) marks the board paid through
+  it at the draw or at kickoff. Its tables join the sign-in merge, and buying
+  it on the web needs a sign-in.
 
 ## Conventions
 

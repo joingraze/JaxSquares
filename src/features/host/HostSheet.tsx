@@ -99,6 +99,7 @@ import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
 import { useResolvedTheme } from "../../lib/theme";
+import { PassIncluded } from "../pass/PassParts";
 
 export type HostView = "home" | "lock" | "edit" | "rules" | "end" | "delete" | "players" | "remove";
 
@@ -120,8 +121,10 @@ export interface HostSheetProps {
   /** This device's public player id. */
   me: string;
   onInvite: () => void;
-  /** The host fee is due before the numbers can be drawn (needsHostFee). */
+  /** The host fee is due before the numbers can be drawn (needsHostFee, and no Host Pass covers it). */
   fee: boolean;
+  /** The fee would be due, but the host's Host Pass covers it: "Included with your Host Pass", and the draw just draws. */
+  covered?: boolean;
   /** The fee as this device shows it ("$4.99", or the App Store's price), null when it can't be said. */
   price: string | null;
   /** Linked boards whose fee is due: pay now so Jax draws the numbers at kickoff. */
@@ -351,7 +354,7 @@ export function HostSheet(props: HostSheetProps) {
     const f = lockFacts(state);
     const low = lockReadiness(f) === "low";
     title = <>{back()}{low ? `Lock with only ${f.claimed} in?` : "Lock & draw numbers?"}</>;
-    body = <LockConfirm state={state} fee={props.fee} price={props.price} />;
+    body = <LockConfirm state={state} fee={props.fee} covered={!!props.covered} price={props.price} />;
     footer = (
       <div className="flex flex-col gap-1">
         <Button
@@ -491,7 +494,15 @@ export function HostSheet(props: HostSheetProps) {
       <div className="flex flex-col gap-6 pb-2">
         <Section title="Now">
           {picking && (
-            <OpenHero state={state} onInvite={props.onInvite} onLock={() => onView("lock")} fee={props.fee} price={props.price} onPayAhead={props.onPayAhead} />
+            <OpenHero
+              state={state}
+              onInvite={props.onInvite}
+              onLock={() => onView("lock")}
+              fee={props.fee}
+              covered={!!props.covered}
+              price={props.price}
+              onPayAhead={props.onPayAhead}
+            />
           )}
           {game.status === "locked" && linked && !fixing && <AutoHero state={state} started={started} onFix={() => setFixing(true)} />}
           {game.status === "final" && !fixing && <FinalHero state={state} onFix={() => setFixing(true)} />}
@@ -821,6 +832,7 @@ function OpenHero({
   onInvite,
   onLock,
   fee,
+  covered,
   price,
   onPayAhead,
 }: {
@@ -828,6 +840,7 @@ function OpenHero({
   onInvite: () => void;
   onLock: () => void;
   fee: boolean;
+  covered: boolean;
   price: string | null;
   onPayAhead: () => void;
 }) {
@@ -853,14 +866,16 @@ function OpenHero({
       key="draw"
       data-testid="host-lock"
       variant={ready ? "primary" : "secondary"}
-      leading={fee ? <ShuffleIcon size={18} strokeWidth={2.4} /> : <LockIcon size={18} />}
+      leading={fee || covered ? <ShuffleIcon size={18} strokeWidth={2.4} /> : <LockIcon size={18} />}
       onClick={onLock}
       disabled={nobody}
       haptic="medium"
     >
-      {fee ? payToDrawLabel(price) : "Lock & draw"}
+      {fee ? payToDrawLabel(price) : covered ? "Draw the numbers" : "Lock & draw"}
     </Button>
   );
+  // Right under the draw: what a price would say on a board the Host Pass covers.
+  const passNote = covered ? <PassIncluded key="pass" className="-mt-1" /> : null;
   const hint = nobody
     ? fee
       ? "Drawing turns on once someone picks a square."
@@ -899,16 +914,18 @@ function OpenHero({
           )}
         </div>
       </div>
-      {fee ? (
-        // The draw carries its price, so each button gets the full width; the move to make goes first.
-        <div className="relative mt-4 flex flex-col gap-2.5">{ready ? [drawButton, inviteButton] : [inviteButton, drawButton]}</div>
+      {fee || covered ? (
+        // The draw carries its price (or the Host Pass), so each button gets the full width; the move to make goes first.
+        <div className="relative mt-4 flex flex-col gap-2.5">
+          {ready ? [drawButton, passNote, inviteButton] : [inviteButton, drawButton, passNote]}
+        </div>
       ) : (
         <div className="relative mt-4 grid grid-cols-2 gap-2.5">
           {inviteButton}
           {drawButton}
         </div>
       )}
-      {canPayAhead(game, now) && kickoff !== null && (
+      {fee && canPayAhead(game, now) && kickoff !== null && (
         <button
           type="button"
           data-testid="host-pay-ahead"
@@ -1040,7 +1057,7 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
   );
 }
 
-function LockConfirm({ state, fee, price }: { state: GameState; fee: boolean; price: string | null }) {
+function LockConfirm({ state, fee, covered, price }: { state: GameState; fee: boolean; covered: boolean; price: string | null }) {
   const f = lockFacts(state);
   const low = lockReadiness(f) === "low";
   const fresh = drawKeys(state.game.format).length > 1;
@@ -1049,6 +1066,11 @@ function LockConfirm({ state, fee, price }: { state: GameState; fee: boolean; pr
       {fee && (
         <Fact icon={<SparklesIcon size={16} />}>
           <b className="font-bold text-ink">{price ? `${price} host fee` : "The host fee"}, once for this board.</b> It's the only charge in JaxSquares. Setting up, inviting and picking squares are free.
+        </Fact>
+      )}
+      {covered && (
+        <Fact icon={<SparklesIcon size={16} />}>
+          <b className="font-bold text-ink">Included with your Host Pass.</b> No host fee for this board.
         </Fact>
       )}
       {low && (

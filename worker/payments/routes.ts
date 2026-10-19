@@ -5,16 +5,22 @@
 //   test   – no-charge checkout while PAYMENTS_MODE isn't live
 //   stripe – Apple Pay / Google Pay / card on the web, confirmed by webhook
 //   iap    – Apple In-App Purchase in the iOS app (App Store guideline 3.1.1)
+// The Host Pass (a yearly subscription that covers the fee on every board its
+// holder hosts) has its own routes in passRoutes.ts, mounted here; its Stripe
+// events arrive at the same webhook.
 
 import { Hono, type Context } from "hono";
 import type { Game } from "../../shared/types";
 import { getGame } from "../db";
 import type { Env } from "../env";
 import { isHost, loadState, markPaid } from "../service";
-import { fetchAppStoreTransaction, transactionProblem, type AppStoreCredentials, type AppStoreTransaction } from "./apple";
+import { fetchAppStoreTransaction, transactionProblem, type AppStoreTransaction } from "./apple";
 import { gameIdFromAccountToken } from "./boardToken";
 import { CURRENCY, boardPriceCents, getPaymentConfig, iapProductId } from "./config";
 import { milliunitsToMinor } from "./encoding";
+import { appStoreCredentials } from "./passApple";
+import { passRoutes } from "./passRoutes";
+import { handleStripePassEvent } from "./passStripe";
 import * as store from "./store";
 import {
   BOARD_PRODUCT,
@@ -31,6 +37,8 @@ import {
 type Ctx = Context<{ Bindings: Env }>;
 
 export const paymentsRoutes = new Hono<{ Bindings: Env }>();
+
+paymentsRoutes.route("/", passRoutes);
 
 /** The board when the caller is its host, otherwise the error response to send. */
 async function hostedGame(c: Ctx, gameId: string): Promise<Game | Response> {
@@ -193,6 +201,8 @@ paymentsRoutes.post("/stripe/webhook", async (c) => {
   } catch {
     return c.json({ error: "Invalid JSON" }, 400);
   }
+  // The Host Pass: subscription and invoice events (passStripe.ts).
+  if (await handleStripePassEvent(c.env, event as unknown as StripeEvent<Record<string, unknown>>)) return c.json({ received: true });
   const intent = event.data?.object;
   const gameId = intent?.object === "payment_intent" && intent.metadata?.product === BOARD_PRODUCT ? intent.metadata.game_id : null;
   if (!intent || !gameId) return c.json({ received: true });
@@ -215,14 +225,6 @@ paymentsRoutes.post("/stripe/webhook", async (c) => {
 });
 
 // ---- Apple In-App Purchase (iOS app) ----
-
-function appStoreCredentials(env: Env): AppStoreCredentials | null {
-  const keyId = env.APPLE_IAP_KEY_ID?.trim();
-  const issuerId = env.APPLE_IAP_ISSUER_ID?.trim();
-  const privateKeyPem = env.APPLE_IAP_PRIVATE_KEY?.trim();
-  const bundleId = env.APPLE_BUNDLE_ID?.trim();
-  return keyId && issuerId && privateKeyPem && bundleId ? { keyId, issuerId, privateKeyPem, bundleId } : null;
-}
 
 const usedElsewhere = (c: Ctx) => c.json({ error: "That purchase already paid for another board" }, 409);
 const boardDeleted = (c: Ctx) => c.json({ error: "This board was deleted" }, 410);

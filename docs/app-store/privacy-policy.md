@@ -34,6 +34,12 @@ are no ads and no tracking.
   draw its numbers), we keep the transaction reference, amount and the board it
   paid for. Card and Apple Pay
   details go straight to Apple or Stripe. We never see them.
+- **A Host Pass (optional).** If you get the yearly Host Pass, we keep its
+  subscription reference (from the App Store or Stripe), whether it's active,
+  when it renews or ends, and whether it renews, tied to your device ID or
+  account. For a pass bought on the web, Stripe also keeps a customer record
+  for it. We use this only to cover your boards' host fee and to show your
+  pass.
 - **Basic server logs.** When your device talks to our servers, our hosting
   provider records technical details like IP address and request time. We use
   them to keep the service running and secure. We don't use them to work out
@@ -50,7 +56,8 @@ We use it only to run JaxSquares:
 - drawing numbers
 - recording scores and winners
 - sending the notifications you asked for
-- letting hosts draw the numbers once a board is paid for
+- letting hosts draw the numbers once a board is paid for, or covered by their
+  Host Pass
 - keeping your boards on every device you sign in on
 - preventing abuse
 
@@ -62,10 +69,10 @@ other apps or websites.
 | Provider | What it does |
 |---|---|
 | Cloudflare | Hosting and database |
-| Apple | In-App Purchase, push notification delivery and Sign in with Apple |
+| Apple | In-App Purchase and subscriptions, push notification delivery and Sign in with Apple |
 | Google | Sign in with Google (optional) |
 | Google Firebase Cloud Messaging | Delivering push notifications to the app |
-| Stripe | Web payments for the host fee |
+| Stripe | Web payments for the host fee and the Host Pass |
 
 Each provider handles data under its own privacy terms, and only for these
 purposes.

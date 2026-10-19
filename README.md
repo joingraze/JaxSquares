@@ -9,8 +9,9 @@ open board within a second.
 **No money moves between players, ever.** There are no prices per square, pots,
 payouts or betting. A host can add a fun prize note per period ("Loser buys
 wings"), and notes that mention money are rejected. The only payment in the
-product is the host fee for a board, paid when the host draws its numbers:
-setting up, inviting and picking squares are free.
+product is the host fee for a board, paid when the host draws its numbers, or
+a yearly Host Pass that covers it on every board the host makes: setting up,
+inviting and picking squares are free.
 
 ## How the game works
 
@@ -21,10 +22,11 @@ setting up, inviting and picking squares are free.
    create it. It opens right away, free.
 2. **Share** the invite link (`https://jaxsquares.com/g/<id>`). Friends open it,
    pick a name, color and emoji, and tap empty squares to claim them.
-3. **Lock & draw**: the host pays the host fee and locks the board, which
-   randomly assigns the digits 0–9 to the rows and columns (a no-charge test
-   checkout until payments go live). Linked boards lock themselves at kickoff
-   once the fee is paid (the host can pay ahead).
+3. **Lock & draw**: the host pays the host fee (or has a Host Pass) and locks
+   the board, which randomly assigns the digits 0–9 to the rows and columns (a
+   no-charge test checkout until payments go live). Linked boards lock
+   themselves at kickoff once the fee is paid or a Host Pass covers it (the
+   host can pay ahead).
 4. **Score**: the winning square is where the last digit of each team's score
    meets. Linked boards score themselves from live data; the host can enter or
    correct scores and pick a winner by hand. Winners light up, get a push and see
@@ -150,7 +152,7 @@ working) until its values are set.
 
 | Area | Names | Guide |
 |---|---|---|
-| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID` | [docs/payments.md](docs/payments.md) |
+| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID`; the Host Pass: `HOST_PASS_PRICE_CENTS`, `STRIPE_HOST_PASS_PRICE_ID`, `IAP_HOST_PASS_PRODUCT_ID` | [docs/payments.md](docs/payments.md) |
 | Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `FCM_SERVICE_ACCOUNT` | [docs/push.md](docs/push.md) |
 | App links | `APPLE_TEAM_ID`, `APPLE_BUNDLE_ID`, `ANDROID_PACKAGE`, `ANDROID_SHA256_CERT_FINGERPRINTS` | [docs/ios.md](docs/ios.md) |
 | Sign-in (optional) | vars `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `APPLE_SERVICES_ID`; secrets `APPLE_KEY_ID`, `APPLE_SIGNIN_PRIVATE_KEY` (with `APPLE_TEAM_ID`) | [docs/auth.md](docs/auth.md) |

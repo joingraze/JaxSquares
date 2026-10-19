@@ -190,6 +190,28 @@ describe("buildDeliveries", () => {
       expect(ds[0].content.body).toBe("🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff.");
     });
 
+    it("board-full doesn't mention paying when the host's Host Pass covers the board (it draws at kickoff)", () => {
+      const game = makeGame({
+        status: "open",
+        paid: false,
+        linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: NOW + 3_600_000, xIsHome: true },
+      });
+      const ds = buildDeliveries(game, players, { kind: "board-full" }, NOW, { hostHasPass: true });
+      expect(recipients(ds)).toEqual([HOST]);
+      expect(ds[0].content.body).toBe("🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.");
+      expect(ds[0].content.body).not.toMatch(/pay/i);
+    });
+
+    it("draw-reminder skips a host whose Host Pass covers the board", () => {
+      const game = makeGame({
+        status: "open",
+        paid: false,
+        linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: NOW + 50 * 60_000, xIsHome: true },
+      });
+      expect(buildDeliveries(game, players, { kind: "draw-reminder" }, NOW, { hostHasPass: true })).toEqual([]);
+      expect(buildDeliveries(game, players, { kind: "draw-reminder" }, NOW)).toHaveLength(1);
+    });
+
     it("draw-reminder tells the host of an unpaid linked board how soon kickoff is", () => {
       const linked = (startsAt: number) => ({ provider: "espn" as const, league: "nfl" as const, eventId: "401", startsAt, xIsHome: true });
       const unpaid = (startsAt: number) => makeGame({ status: "open", paid: false, linkedEvent: linked(startsAt) });

@@ -21,6 +21,7 @@ import { hasProfileName, isSignedIn, saveAdminTokens, setProfile, setServerIdent
 import { resetMyGames } from "./live";
 import { platform, type Platform } from "./native";
 import { clearMutedCache, currentPushTarget, syncPush } from "./push";
+import { applyMePass, resetHostPass } from "./hostPassStore";
 
 export type { AuthProvider };
 
@@ -130,7 +131,8 @@ let epoch = 0;
  * host tools show), and its last profile on a device that has none. Refreshes
  * Home when anything changed. Returns whether it did.
  */
-export function applyMe(me: MeResponse): boolean {
+export function applyMe(me: MeResponse, requestedAt?: number): boolean {
+  applyMePass(me.hostPass, requestedAt);
   let changed = setServerIdentity(me.playerId, me.account);
   if (saveAdminTokens(me.hostTokens ?? {}) > 0) changed = true;
   if (me.profile?.name && !hasProfileName()) setProfile(me.profile);
@@ -140,9 +142,10 @@ export function applyMe(me: MeResponse): boolean {
 
 /** Signs in with what the provider handed back: the server links this device and merges its boards into the account. */
 export async function completeSignIn(provider: AuthProvider, input: SignInInput): Promise<MeResponse> {
+  const requestedAt = Date.now();
   const me = await api.signIn(provider, input);
   epoch++;
-  applyMe(me);
+  applyMe(me, requestedAt);
   return me;
 }
 
@@ -156,6 +159,7 @@ export async function refreshMe(): Promise<void> {
   const started = epoch;
   const wasSignedIn = isSignedIn();
   let me: MeResponse;
+  const requestedAt = Date.now();
   try {
     me = await api.me();
   } catch {
@@ -166,13 +170,14 @@ export async function refreshMe(): Promise<void> {
     startFresh();
     return;
   }
-  applyMe(me);
+  applyMe(me, requestedAt);
 }
 
 /** The device forgets who it was: a new clientId, no boards, no account; then push re-registers as the new self. */
 function startFresh(): void {
   epoch++;
   wipeIdentity();
+  resetHostPass();
   clearMutedCache();
   resetMyGames(true);
   void syncPush(true);

@@ -9,9 +9,9 @@
 
 import type { NativePurchasesPlugin, Transaction } from "@capgo/native-purchases";
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { Appearance, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
-import type { AppConfig, GameState, PaymentConfig } from "../../shared/types";
-import { getClientId } from "./identity";
+import type { Appearance, ClickResolveDetails, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
+import type { AppConfig, GameState, HostPassIntent, HostPassState, HostPassTransaction, PaymentConfig } from "../../shared/types";
+import { getClientId, isSignedIn } from "./identity";
 import { getResolvedTheme, type ResolvedTheme } from "./theme";
 
 export type CheckoutMethod = "test" | "iap" | "wallet" | "card";
@@ -34,6 +34,9 @@ export class CheckoutError extends Error {
     public status: number,
     public state?: GameState,
     public unused = false,
+    /** The server's `code` (e.g. ACCOUNT_REQUIRED_CODE), and its Host Pass state when it sent one. */
+    public code?: string,
+    public pass?: HostPassState,
   ) {
     super(message);
     this.name = "CheckoutError";
@@ -47,8 +50,10 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const gamePath = (gameId: string, rest: string) => `/games/${encodeURIComponent(gameId)}${rest}`;
 
 async function request<T>(method: "GET" | "POST", path: string, opts: { adminToken?: string; body?: unknown } = {}): Promise<T> {
-  // Same device id as every other call (identity.ts owns creating and storing it).
+  // Same device id as every other call (identity.ts owns creating and storing it), and the
+  // signed-in hint so a pass bought on the account is found right after a sign-in (api.ts identityHeaders).
   const headers: Record<string, string> = { "x-client-id": getClientId() };
+  if (isSignedIn()) headers["x-signed-in"] = "1";
   if (opts.adminToken) headers["x-admin-token"] = opts.adminToken;
   if (opts.body !== undefined) headers["content-type"] = "application/json";
   let res: Response;
@@ -61,8 +66,11 @@ async function request<T>(method: "GET" | "POST", path: string, opts: { adminTok
   } catch {
     throw new CheckoutError("You're offline. Check your connection and try again.", 0);
   }
-  const data = (await res.json().catch(() => ({}))) as { error?: string; state?: GameState; unused?: boolean };
-  if (!res.ok) throw new CheckoutError(data.error ?? `Request failed (${res.status})`, res.status, data.state, data.unused === true);
+  const data = (await res.json().catch(() => ({}))) as { error?: string; state?: GameState; unused?: boolean; code?: string } & Partial<HostPassState>;
+  if (!res.ok) {
+    const pass = data.offer ? { pass: data.pass ?? null, offer: data.offer } : undefined;
+    throw new CheckoutError(data.error ?? `Request failed (${res.status})`, res.status, data.state, data.unused === true, data.code, pass);
+  }
   return data as T;
 }
 
@@ -156,6 +164,34 @@ export function appStorePrice(platform: Platform, productId: string): Promise<st
     storePrices.set(productId, p);
   }
   return p;
+}
+
+// ---- The Host Pass: what's sold here, at what price ----
+
+/**
+ * How this device buys the Host Pass, or null when it isn't sold here: the
+ * no-charge test pass in test mode, the App Store subscription in the iOS app,
+ * Stripe on the web only once the server has a Stripe price for it.
+ */
+export function passCheckoutMethod(config: PaymentConfig, platform: Platform): CheckoutMethod | null {
+  const offer = config.hostPass;
+  if (!offer) return null;
+  if (config.mode === "test") return "test";
+  if (platform === "ios") return offer.iapProductId ? "iap" : null;
+  if (!offer.web) return null;
+  return hasWalletApi() ? "wallet" : "card";
+}
+
+/**
+ * The pass's yearly price as this device shows it ("$9.99"; the caller adds
+ * "/year"): the server's on the web (test mode too), only the App Store's own
+ * localized string in the iOS app (App Store guideline 3.1.1), else null.
+ */
+export async function hostPassPrice(config: PaymentConfig, platform: Platform): Promise<string | null> {
+  const offer = config.hostPass;
+  if (!offer) return null;
+  if (platform === "ios") return appStorePrice(platform, offer.iapProductId);
+  return formatPrice(offer.priceCents, offer.currency);
 }
 
 // ---- Test checkout ----
@@ -293,17 +329,29 @@ async function confirmTransaction(
   throw new UnconfirmedPurchaseError(UNCONFIRMED, last?.status ?? 0);
 }
 
-/** Confirms the board purchases among `transactions` that nothing else is handling. Returns the boards they paid for. */
+/**
+ * Confirms the purchases among `transactions` that nothing else is handling:
+ * board host fees (returns the boards they paid for) and Host Pass
+ * transactions (a purchase that landed later, or a renewal; `onPass` hears the
+ * pass's new state).
+ */
 async function redeemBoardPurchases(
   store: NativePurchasesPlugin,
   transactions: Transaction[],
   adminTokenFor: (gameId: string) => string | null,
   onUnused?: (message: string) => void,
+  onPass?: (state: HostPassState) => void,
 ): Promise<GameState[]> {
   if (transactions.length === 0) return [];
   const { payments } = await fetchAppConfig();
   const paid: GameState[] = [];
+  const passProduct = payments.hostPass?.iapProductId;
   for (const tx of transactions) {
+    if (passProduct && tx.productIdentifier === passProduct) {
+      if (passRedeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
+      await redeemPassTransaction(store, tx).then(onPass, () => {});
+      continue;
+    }
     const gameId = boardOf(tx, payments.iapProductId);
     if (!gameId || redeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
     try {
@@ -327,12 +375,13 @@ async function redeemBoardPurchases(
 export async function recoverIAPPurchases(
   adminTokenFor: (gameId: string) => string | null,
   onUnused?: (message: string) => void,
+  onPass?: (state: HostPassState) => void,
 ): Promise<GameState[]> {
   const { Capacitor } = await import("@capacitor/core");
   if (Capacitor.getPlatform() !== "ios") return [];
   const store = await nativePurchases();
   const { transactions } = await store.getUnfinishedTransactions();
-  return redeemBoardPurchases(store, transactions, adminTokenFor, onUnused);
+  return redeemBoardPurchases(store, transactions, adminTokenFor, onUnused, onPass);
 }
 
 export interface IAPWatchOptions {
@@ -341,6 +390,8 @@ export interface IAPWatchOptions {
   onPaid: (state: GameState) => void;
   /** A purchase was kept but paid for nothing (board already paid for, or deleted); the message says what to do. */
   onUnused?: (message: string) => void;
+  /** A Host Pass transaction (a purchase that landed later, or a renewal) is confirmed: the identity's pass now. */
+  onPass?: (state: HostPassState) => void;
   /** Subscribes to the app returning to the foreground (onAppResume in lib/native). */
   onResume?: (cb: () => void) => () => void;
 }
@@ -357,8 +408,9 @@ export function watchIAPPurchases(opts: IAPWatchOptions): () => void {
   let stopResume: (() => void) | null = null;
   const onUnused = (message: string) => !stopped && opts.onUnused?.(message);
   const report = (paid: GameState[]) => !stopped && paid.forEach((state) => opts.onPaid(state));
+  const onPass = (state: HostPassState) => !stopped && opts.onPass?.(state);
   const recover = () =>
-    recoverIAPPurchases(opts.adminTokenFor, onUnused).then(report, (err: unknown) => console.warn("App Store purchase recovery failed", err));
+    recoverIAPPurchases(opts.adminTokenFor, onUnused, onPass).then(report, (err: unknown) => console.warn("App Store purchase recovery failed", err));
 
   void (async () => {
     const { Capacitor } = await import("@capacitor/core");
@@ -368,7 +420,7 @@ export function watchIAPPurchases(opts: IAPWatchOptions): () => void {
     const handle = await store.addListener("transactionUpdated", (tx) => {
       // A refund arrives this way too; it pays for nothing (an unfinished one is settled by recovery).
       if (tx.revocationDate) return;
-      redeemBoardPurchases(store, [tx], opts.adminTokenFor, onUnused).then(report, () => {});
+      redeemBoardPurchases(store, [tx], opts.adminTokenFor, onUnused, onPass).then(report, () => {});
     });
     if (stopped) return void handle.remove();
     listener = handle;
@@ -482,6 +534,8 @@ export interface WalletButtonOptions {
   publishableKey?: string | null;
   /** 40–55 px. */
   buttonHeight?: number;
+  /** Apple Pay's recurring payment request, for the Host Pass (Apple shows the yearly billing in the sheet). */
+  applePay?: ClickResolveDetails["applePay"];
 }
 
 /** Mounts a single Apple Pay or Google Pay button (whichever the device has) into `el`. */
@@ -523,7 +577,7 @@ export async function mountWalletButton(el: HTMLElement, opts: WalletButtonOptio
     if (!m?.applePay && !m?.googlePay) opts.onUnavailable();
   });
   element.on("loaderror", () => opts.onUnavailable());
-  element.on("click", (e) => e.resolve({ lineItems: [{ name: opts.label, amount: opts.amountCents }] }));
+  element.on("click", (e) => e.resolve({ lineItems: [{ name: opts.label, amount: opts.amountCents }], ...(opts.applePay ? { applePay: opts.applePay } : {}) }));
   element.on("cancel", () => opts.onCancel?.());
   element.on("confirm", async (e) => {
     const result = await stripe.confirmPayment({ elements, clientSecret: opts.clientSecret, redirect: "if_required" });
@@ -569,6 +623,155 @@ export async function mountCardForm(el: HTMLElement, opts: CardFormOptions): Pro
       return { status: "paid", paymentIntentId: result.paymentIntent.id };
     },
   };
+}
+
+// ---- The Host Pass: buying, confirming, restoring, managing ----
+// One yearly subscription that covers the host fee of every board its holder
+// hosts. The server activates it only from Stripe's or Apple's own data.
+
+/** This identity's pass and how it's sold here. */
+export function fetchPassState(): Promise<HostPassState> {
+  return request<HostPassState>("GET", "/payments/pass");
+}
+
+/** Test mode: a no-charge pass that lasts a year. */
+export function startTestPass(): Promise<HostPassState> {
+  return request<HostPassState>("POST", "/payments/pass/test");
+}
+
+/** Test mode: ends the test pass (to try buying again). */
+export function endTestPass(): Promise<HostPassState> {
+  return request<HostPassState>("POST", "/payments/pass/test/end");
+}
+
+/**
+ * The web pass's first payment, to confirm with Stripe.js. A CheckoutError
+ * 409 with `code` ACCOUNT_REQUIRED_CODE means sign in first; a 409 with
+ * `pass` set means the identity already has an active one.
+ */
+export function createPassIntent(): Promise<HostPassIntent> {
+  return request<HostPassIntent>("POST", "/payments/pass/stripe");
+}
+
+/**
+ * Call after Stripe.js reports the payment: the server reads the subscription
+ * back from Stripe (the webhook may not have landed yet). Resolves with the
+ * pass once it's active, or the last state seen after a few seconds.
+ */
+export async function confirmPassPaid(): Promise<HostPassState | null> {
+  let last: HostPassState | null = null;
+  for (const delay of [0, 800, 1600, 3200]) {
+    if (delay) await sleep(delay);
+    try {
+      last = await request<HostPassState>("POST", "/payments/pass/stripe/confirm");
+      if (last.pass?.active) return last;
+    } catch (err) {
+      if (!(err instanceof CheckoutError) || (err.status > 0 && err.status < 500)) throw err;
+    }
+  }
+  return last;
+}
+
+/** Manage on the web: a Stripe Customer Portal page (update the card, receipts, cancel). */
+export async function passPortalUrl(): Promise<string> {
+  return (await request<{ url: string }>("POST", "/payments/pass/portal")).url;
+}
+
+/** Apple's subscription management, for when the plugin can't open it. */
+export const APPLE_SUBSCRIPTIONS_URL = "https://apps.apple.com/account/subscriptions";
+
+/** Manage in the iOS app: Apple's own subscription management. */
+export async function manageAppStoreSubscriptions(): Promise<void> {
+  try {
+    await (await nativePurchases()).manageSubscriptions();
+  } catch {
+    window.open(APPLE_SUBSCRIPTIONS_URL, "_blank");
+  }
+}
+
+export type PassPurchaseOutcome = { status: "active"; state: HostPassState } | { status: "cancelled" } | { status: "pending" };
+
+const PASS_UNCONFIRMED = "Your Host Pass went through but isn't confirmed yet. Open Profile in a moment, or tap Restore purchases. You won't be charged twice.";
+
+/** Pass confirmations in flight, by transaction id. */
+const passRedeeming = new Map<string, Promise<HostPassState>>();
+
+function redeemPassTransaction(store: NativePurchasesPlugin, tx: Pick<Transaction, "transactionId" | "jwsRepresentation">): Promise<HostPassState> {
+  let p = passRedeeming.get(tx.transactionId);
+  if (!p) {
+    p = confirmPassTransaction(store, tx).finally(() => passRedeeming.delete(tx.transactionId));
+    passRedeeming.set(tx.transactionId, p);
+  }
+  return p;
+}
+
+async function confirmPassTransaction(store: NativePurchasesPlugin, tx: Pick<Transaction, "transactionId" | "jwsRepresentation">): Promise<HostPassState> {
+  const finish = async () => {
+    settled.add(tx.transactionId);
+    await store.finishTransaction({ transactionId: tx.transactionId }).catch(() => {});
+  };
+  const body: HostPassTransaction = { transactionId: tx.transactionId, ...(tx.jwsRepresentation ? { jws: tx.jwsRepresentation } : {}) };
+  let last: CheckoutError | null = null;
+  for (const delay of [0, 1000, 3000]) {
+    if (delay) await sleep(delay);
+    try {
+      const state = await request<HostPassState>("POST", "/payments/pass/iap", { body });
+      await finish();
+      return state;
+    } catch (err) {
+      if (!(err instanceof CheckoutError)) throw err;
+      // Refused for good (not the pass, another app, held elsewhere): finish it, so StoreKit stops offering it.
+      if (err.status === 400 || err.status === 409) {
+        await finish();
+        throw err;
+      }
+      last = err;
+      if (err.status >= 400 && err.status < 500) break;
+    }
+  }
+  throw new UnconfirmedPurchaseError(PASS_UNCONFIRMED, last?.status ?? 0);
+}
+
+/**
+ * iOS: buys the yearly Host Pass in the App Store sheet (the App Store shows
+ * its own price and terms), has the server verify it with Apple, then
+ * finishes the transaction. No sign-in needed: Apple keeps the subscription,
+ * and Restore purchases brings it back.
+ */
+export async function buyPassWithIAP(productId?: string): Promise<PassPurchaseOutcome> {
+  const [store, productIdentifier] = await Promise.all([nativePurchases(), productId ?? fetchAppConfig().then((c) => c.payments.hostPass?.iapProductId ?? "")]);
+  if (!productIdentifier) throw new CheckoutError("The Host Pass isn't available right now.", 0);
+  let tx: Transaction;
+  try {
+    tx = await store.purchaseProduct({ productIdentifier, quantity: 1, autoAcknowledgePurchases: false });
+  } catch (err) {
+    const msg = errorMessage(err);
+    if (/cancel/i.test(msg)) return { status: "cancelled" };
+    if (/pending/i.test(msg)) return { status: "pending" };
+    throw new CheckoutError(msg || "The App Store couldn't complete the purchase", 0);
+  }
+  return { status: "active", state: await redeemPassTransaction(store, tx) };
+}
+
+/**
+ * iOS "Restore purchases" (App Store guideline 3.1.1): syncs with the App
+ * Store, then sends this Apple ID's current Host Pass transactions (with
+ * StoreKit's signed copy of each) for the server to verify and attach to
+ * this identity. `restored` is how many it attached.
+ */
+export async function restorePassPurchases(productId?: string): Promise<HostPassState & { restored: number }> {
+  const [store, productIdentifier] = await Promise.all([nativePurchases(), productId ?? fetchAppConfig().then((c) => c.payments.hostPass?.iapProductId ?? "")]);
+  await store.restorePurchases().catch(() => {});
+  let purchases: Transaction[] = [];
+  try {
+    ({ purchases } = await store.getPurchases({ onlyCurrentEntitlements: true }));
+  } catch {
+    throw new CheckoutError("The App Store isn't ready yet. Try again in a moment.", 0);
+  }
+  const transactions: HostPassTransaction[] = purchases
+    .filter((p) => p.productIdentifier === productIdentifier && !p.revocationDate)
+    .map((p) => ({ transactionId: p.transactionId, ...(p.jwsRepresentation ? { jws: p.jwsRepresentation } : {}) }));
+  return request<HostPassState & { restored: number }>("POST", "/payments/pass/iap/restore", { body: { transactions } });
 }
 
 // ---- Board <-> App Store purchase binding ----

@@ -196,10 +196,20 @@ Connect:
 3. Create sandbox testers (Users and Access → Sandbox). On the device, sign in
    under Settings → Developer → Sandbox Apple Account.
 4. Submit the IAP product together with the first app version.
+5. The Host Pass: a subscription group **Host Pass** with an auto-renewable
+   subscription `com.jaxsquares.app.hostpass.yearly` (1 year, $9.99; must
+   match `IAP_HOST_PASS_PRODUCT_ID`), and App Store Server Notifications V2 at
+   `https://jaxsquares.com/api/payments/apple/notifications`. Steps in
+   `docs/payments.md` → "Setup (Host Pass)". Sandbox subscriptions renew every
+   few minutes (a year lasts about an hour), which is handy for testing
+   renewals and expiry.
 
-The IAP is the only payment in the app: the host fee for a board, paid when
-the host draws its numbers (creating a board and picking squares are free).
-Players never pay each other or pay to join.
+These are the only payments in the app: the host fee for a board, paid when
+the host draws its numbers (creating a board and picking squares are free), or
+the yearly Host Pass that covers it on every board the host makes. The app
+shows only the App Store's prices, offers Restore purchases (Profile → Host
+Pass) and opens Apple's subscription management for Manage. Players never pay
+each other or pay to join.
 
 ## Universal links (`/g/*` opens the app)
 

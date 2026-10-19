@@ -41,7 +41,7 @@ import * as db from "./db";
 import type { Env } from "./env";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { inviteMeta, withInviteMeta } from "./og";
-import { getPaymentConfig, paymentsRoutes } from "./payments";
+import { activePass, getPaymentConfig, holdersOfActivePass, paymentsRoutes } from "./payments";
 import { playerIdOf } from "./playerIds";
 import { pushRoutes, type NotifyEvent } from "./push";
 import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLimit";
@@ -632,12 +632,21 @@ api.post("/games/:id/lock", requireClient, async (c) => {
   const state = await hostState(c, id);
   const { game } = state;
   if (game.status !== "open" && game.status !== "draft") fail(409, "Numbers are already drawn");
-  // The host fee is due at the draw (a legacy draft hasn't paid either; paying opens it).
-  if (!game.paid) return c.json({ error: DRAW_NEEDS_PAYMENT, code: PAYMENT_REQUIRED_CODE }, 402);
   const now = Date.now();
+  const writes: D1PreparedStatement[] = [];
+  // The host fee is due at the draw (a legacy draft hasn't paid either; paying
+  // opens it), unless a Host Pass covers it: the host's who's drawing (this
+  // identity, holding the admin token) or the board's host's. Then the board is
+  // marked paid through the pass in the same write as the draw.
+  if (!game.paid) {
+    const host = await db.hostClientIdOf(c.env.DB, id);
+    const pass = await activePass(c.env.DB, [c.get("clientId"), host ?? ""], now);
+    if (!pass) return c.json({ error: DRAW_NEEDS_PAYMENT, code: PAYMENT_REQUIRED_CODE }, 402);
+    writes.push(db.markPaid(c.env.DB, id, { provider: "pass", reference: pass.id, amountCents: 0 }, now));
+  }
   const me = c.get("playerId");
   const locked = newActivity("locked", me, {}, now);
-  const writes = [db.lockGame(c.env.DB, id, drawNumbers(game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked)];
+  writes.push(db.lockGame(c.env.DB, id, drawNumbers(game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked));
   // A linked game that ended before its host paid and drew: the room stopped
   // polling at the final whistle, so the board goes final with the draw.
   const over = !!game.linkedEvent && state.live?.state === "post" && liveLabel(state.live, game.status) === "Final";
@@ -932,11 +941,15 @@ async function wakeLinkedGames(env: Env, now: number): Promise<void> {
 
 /**
  * "Kickoff soon, draw the numbers" to the host of each linked board kicking
- * off within the hour with its host fee unpaid. Once per board (claimed in SQL).
+ * off within the hour with its host fee unpaid. Once per board (claimed in
+ * SQL). A host whose Host Pass covers the board isn't reminded: Jax draws it
+ * at kickoff.
  */
 async function remindUnpaidHosts(env: Env, now: number): Promise<void> {
-  const ids = await db.claimDrawReminders(env.DB, now, DRAW_REMINDER_LEAD_MS, DRAW_REMINDER_MIN_AGE_MS);
-  await Promise.all(ids.map((id) => notifyAll(env, id, [{ kind: "draw-reminder" }])));
+  const due = await db.claimDrawReminders(env.DB, now, DRAW_REMINDER_LEAD_MS, DRAW_REMINDER_MIN_AGE_MS);
+  if (due.length === 0) return;
+  const covered = await holdersOfActivePass(env.DB, due.map((d) => d.hostClientId), now);
+  await Promise.all(due.filter((d) => !covered.has(d.hostClientId)).map((d) => notifyAll(env, d.id, [{ kind: "draw-reminder" }])));
 }
 
 /** Hourly cleanup; a leftover draft it opens gets its new state pushed like any change. */

@@ -13,6 +13,8 @@
 # APPLE_IAP_PRIVATE_KEY=
 # APPLE_BUNDLE_ID=com.jaxsquares.app
 # APPLE_TEAM_ID=
+# The Host Pass on the web in live mode: the Stripe Price id (normally in wrangler.jsonc vars).
+# STRIPE_HOST_PASS_PRICE_ID=
 
 # Optional sign-in (docs/auth.md). The client ids are public and normally live in
 # wrangler.jsonc vars; set them here to try sign-in locally.

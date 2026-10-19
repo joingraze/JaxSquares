@@ -24,9 +24,11 @@ exception so far: the public-id rename below, which closed an impersonation hole
   buys wings") may be quoted in a push.
 - The only payment is the host paying JaxSquares the host fee for a board, due
   when they draw its numbers: one tap with Apple Pay / Google Pay (Stripe) on the
-  web, Apple In-App Purchase in the iOS app. Creating a board, inviting and
-  picking squares are free; JaxSquares never sells squares. With `PAYMENTS_MODE`
-  unset the app runs a clearly labeled no-charge test checkout. See
+  web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($9.99
+  a year, auto-renewing until canceled), which covers that fee on every board
+  its holder hosts while it's active. Creating a board, inviting and picking
+  squares are free; JaxSquares never sells squares. With `PAYMENTS_MODE` unset
+  the app runs a clearly labeled no-charge test checkout (and test pass). See
   docs/payments.md and "The host fee" below.
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
   Capacitor Preferences in the native app) sent as `x-client-id` on every request.
@@ -101,8 +103,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   work on the account, and every device of one account is one player with one
   public id.
 - Signing in on another device moves that device's rows (hosted boards,
-  players, squares, its public id in the feed, push registrations, mutes) to
-  the canonical clientId in one batch with its link, bumps the touched boards'
+  players, squares, its public id in the feed, push registrations, mutes, Host
+  Pass rows and its Stripe customer) to the canonical clientId in one batch with its link, bumps the touched boards'
   versions and broadcasts them. Its own clientId then works only through
   `client_links`.
 - `GET /api/me` and every sign-in return `MeResponse`: the (account's) public
@@ -111,9 +113,9 @@ Model, merge rules and setup: docs/auth.md. In short:
   (`jaxsquares.playerId`, tied to the clientId it was given for) so "mine"
   works offline at startup, and the tokens like the creator's device does.
 - Sign-out wipes the device (new clientId; player id, account, profile, boards,
-  admin tokens and seen list cleared). Deleting the account revokes the Apple
-  token and deletes the account rows; the boards and squares stay as anonymous
-  data under the canonical clientId.
+  admin tokens and seen list cleared). Deleting the account stops a web Host
+  Pass from renewing, revokes the Apple token and deletes the account rows; the
+  boards and squares stay as anonymous data under the canonical clientId.
 - Email and name never appear in a public object (Player, activity, push, OG);
   no response carries a clientId.
 
@@ -123,7 +125,7 @@ Model, merge rules and setup: docs/auth.md. In short:
   previews, and the React SPA via the `ASSETS` binding.
 - D1 (`DB`) is the source of truth. Core SQL lives in `worker/db.ts`; tables a
   module owns are queried only by that module's store file
-  (`worker/payments/store.ts`: `purchases`; `worker/push/store.ts`:
+  (`worker/payments/store.ts`: `purchases`, `host_passes`, `stripe_customers`; `worker/push/store.ts`:
   `push_subscriptions`, `game_mutes`; `worker/auth/store.ts`: `accounts`,
   `account_identities`, `client_links`). The sign-in merge runs statements
   built by each owner in one batch.
@@ -143,7 +145,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   no feed to poll, so the wake query and its index, migration 0008, skip them).
   Each minute it also sends the host of a linked board that kicks off within the
   hour with its host fee unpaid one `draw-reminder` push (`claimDrawReminders`,
-  stamped in `games.draw_reminder_at`, migration 0009). Once an hour (UTC minute
+  stamped in `games.draw_reminder_at`, migration 0009), unless the host's Host
+  Pass covers the board (`holdersOfActivePass`: Jax draws it at kickoff). Once an hour (UTC minute
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
@@ -162,7 +165,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden |
 | POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
-| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile? }` (`no-store`; reads the link fresh; 503 when it can't) |
+| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
@@ -175,7 +178,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); 400 for the host, 404 if not on the board, 409 once locked. They may join again |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
-| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers); **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
+| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers); **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
 | POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
 | DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
@@ -186,7 +189,15 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, marks the fee paid). A verified purchase that can't pay for the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already paid for (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
-| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused` |
+| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused`. `invoice.paid` and `customer.subscription.*` for a Host Pass make the server read the Subscription back from Stripe |
+| GET | `/api/payments/pass` | C | – | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer }` (`no-store`), for the request's canonical identity |
+| POST | `/api/payments/pass/test`, `/api/payments/pass/test/end` | C | – | `HostPassState`: a no-charge test pass for a year / end it. Test mode only (403 in live) |
+| POST | `/api/payments/pass/stripe` | C | – | `{ clientSecret, amountCents, currency }` (the pass's first invoice, Stripe Billing); **409** `{ error, code: "account_required" }` (`ACCOUNT_REQUIRED_CODE`) for a device with no account link; 409 with the state when one is active; 503 until `STRIPE_HOST_PASS_PRICE_ID` is set |
+| POST | `/api/payments/pass/stripe/confirm` | C | – | `HostPassState`, read back from Stripe |
+| POST | `/api/payments/pass/portal` | C | – | `{ url }` of a Stripe Customer Portal session (Manage); 404 with no web pass |
+| POST | `/api/payments/pass/iap` | C | `{ transactionId, jws? }` | `HostPassState`: verified with the App Store Server API (transaction, subscription status) and attached; 409 when another identity holds it and `jws` doesn't prove it's this Apple ID's |
+| POST | `/api/payments/pass/iap/restore` | C | `{ transactions: [{ transactionId, jws? }] }` | `HostPassState & { restored }` (Restore purchases) |
+| POST | `/api/payments/apple/notifications` | Apple | `{ signedPayload }` | App Store Server Notifications V2, verified up to Apple's root (`worker/payments/appleJws.ts`); `{ received: true, outcome }`; 400 on a bad signature |
 | POST | `/api/push/register` | C | `PushRegistration` | `{ ok: true }` |
 | POST | `/api/push/unregister` | C | `{ endpoint? , token? }` | `{ ok: true }` |
 | POST | `/api/push/test` | C | – | `{ ok: true, devices, sent, failed }` (sends "you're all set" to this device's registrations; a signed-in device's are its account's) |
@@ -213,6 +224,8 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `join-ip` | 120 per address per minute | what `join` counts, for every device behind one address |
 | `auth` | 20 per device per hour | sign-in attempts, sign-outs and account deletions (keyed by the device's own public id) |
 | `auth-ip` | 60 per address per hour | what `auth` counts, for every device behind one address |
+| `pass` | 30 per device per hour | Host Pass calls: test pass, starting or confirming a web purchase, App Store purchase and restore, Manage (keyed by the resolved public id) |
+| `pass-ip` | 120 per address per hour | what `pass` counts, for every device behind one address |
 
 Per-device rules count per account for a signed-in device (they're keyed by
 the resolved public id). `maxPerPlayer` (the board's squares-per-player cap)
@@ -615,8 +628,12 @@ score, q1, q2, q3, final.
 - `worker/scores/*` – ESPN schedule + live score provider and the `ScoreHub`
   Durable Object. Exports `scheduleRoutes` (Hono), `liveVia(env, event)`
   (live scores through the hub) and `fetchLiveForEvent(event)`.
-- `worker/payments/*` – Stripe + IAP + test checkout. Exports `paymentsRoutes`
-  (Hono) and `getPaymentConfig(env)`. Owns `worker/payments/store.ts` (its D1 tables).
+- `worker/payments/*` – Stripe + IAP + test checkout, and the Host Pass
+  (`pass.ts`, `passStripe.ts`, `passApple.ts`, `passRoutes.ts`; the App Store
+  JWS check in `appleJws.ts` / `x509.ts`). Exports `paymentsRoutes` (Hono),
+  `getPaymentConfig(env)`, `activePass`, `holdersOfActivePass`, `hostPassOf`,
+  `endWebPassRenewals` and `mergeClientStatements`. Owns
+  `worker/payments/store.ts` (its D1 tables).
 - `worker/push/*` – web push (VAPID) + FCM. Exports `pushRoutes` (Hono) and
   `notify(env, gameId, event)`. Owns `worker/push/store.ts` (its D1 tables).
 - `worker/auth/*` – optional sign-in (docs/auth.md): ID token verification
@@ -793,7 +810,23 @@ server's 402 decides).
   `/pay/*` endpoints. Its primary confirm is `data-testid="pay-confirm"`.
 - iOS recovery: `watchIAPPurchases({ onPaid })` (`src/App.tsx`) confirms an App
   Store purchase that landed later (app closed mid-purchase, Ask to Buy) and
-  toasts "Payment confirmed" with a Draw action (`?draw=1`).
+  toasts "Payment confirmed" with a Draw action (`?draw=1`); Host Pass
+  transactions (a late purchase, a renewal) go to `onPass`, which updates the
+  pass state.
+- The Host Pass (docs/payments.md "Host Pass"): `useHostPass()`
+  (`src/lib/useHostPass.ts`, over `src/lib/hostPassStore.ts`, primed by
+  `GET /api/me`). With an active pass, the host bar, the Now card and the lock
+  confirm read "Draw the numbers" with "Included with your Host Pass"
+  (`host-pass-note`), no price and no pay-ahead, and drawing just draws (the
+  server marks the board paid through the pass; a 402 meanwhile opens the
+  checkout). Without one, `CheckoutSheet` offers "This board · $4.99" (the
+  default) and "Host Pass · $9.99/year" (`plan-board` / `plan-pass`), the pass
+  with its subscription disclosure (`pass-disclosure`); buying the pass at the
+  draw then draws. On the web the pass needs an account: `startPassPurchase()`
+  opens `SignInSheet` first. Profile → Host Pass (`HostPassSection`): Get,
+  "Active · renews …" / "Ends …", Manage (Apple's subscription management in
+  the iOS app, a Stripe Customer Portal on the web), and Restore purchases in
+  the iOS app. Prices in the iOS app are only the App Store's.
 
 ## Cross-module function contracts
 
@@ -802,12 +835,12 @@ server's 402 decides).
 loadState(env: Env, gameId: string): Promise<GameState | null>
 /** Re-read state from D1 and push it to every socket in the game's room. */
 broadcast(env: Env, gameId: string, activity?: Activity): Promise<GameState | null>
-/** The board's host fee is paid (stamps games.paid_at; a legacy draft opens too). Idempotent. */
-markPaid(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "iap"; reference: string; amountCents: number }): Promise<GameState | null>
+/** The board's host fee is paid (stamps games.paid_at; a legacy draft opens too). Idempotent. Provider "pass": covered by a Host Pass (reference = the pass id, amount 0). */
+markPaid(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "iap" | "pass"; reference: string; amountCents: number }): Promise<GameState | null>
 /** The game was deleted: the room sends { type: "deleted" }, closes sockets with 4404, drops its storage. Never throws. */
 closeRoom(env: Env, gameId: string): Promise<void>
 isHost(env: Env, gameId: string, adminToken: string): Promise<boolean>
-/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid. */
+/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the host's Host Pass covers it: marked paid through the pass in the same write). */
 applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 ```
 `worker/db.ts` (core) keeps exporting `getGame(db, id)` and `getPlayers(db, gameId)`
@@ -823,8 +856,18 @@ getSchedule(league, week?): Promise<ScheduleResult | null>         // direct; wh
 ```
 `worker/payments/index.ts` (payments):
 ```ts
-paymentsRoutes: Hono<{ Bindings: Env }>          // /games/:id/pay/*, /stripe/webhook
+paymentsRoutes: Hono<{ Bindings: Env }>          // /games/:id/pay/*, /stripe/webhook, /payments/pass*, /payments/apple/notifications
 getPaymentConfig(env: Env): PaymentConfig
+/** The active Host Pass any of these (canonical) clientIds holds, or null. Missing table (0011 not applied) = none. */
+activePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<PassRow | null>
+/** Which of these clientIds hold an active pass (the cron's reminders skip them). */
+holdersOfActivePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<Set<string>>
+/** The identity's pass as the API shows it (GET /api/me). */
+hostPassOf(db: D1Database, clientId: string, now?: number): Promise<HostPass | null>
+/** Account deletion: the account's web passes stop renewing (throws when Stripe can't be reached). */
+endWebPassRenewals(env: Env, clientId: string): Promise<void>
+/** The sign-in merge: a device's passes and Stripe customer move to the canonical clientId. */
+mergeClientStatements(db: D1Database, from: string, to: string, now: number): D1PreparedStatement[]
 ```
 `worker/push/index.ts` (push):
 ```ts
@@ -834,7 +877,7 @@ type NotifyEvent = (
   | { kind: "winner"; periodKey: string; label: string; playerIds: string[] }   // public ids
   | { kind: "game-starting" }
   | { kind: "board-full" }
-  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid
+  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not sent to a Host Pass holder)
   | { kind: "player-joined"; name: string }
   | { kind: "final" }
 ) & {
@@ -847,7 +890,10 @@ Core passes `actor` on host actions: `numbers-drawn` from `POST /lock` (or
 `final`, when that draw also ends a linked game the feed already called Final),
 `final` from `POST /final` and from a typed-in board's Final score,
 `player-joined`, and `board-full` (whoever claimed the last square).
-`draw-reminder` comes from the cron (no actor) and goes to the host alone. `board-full` goes out once
+`draw-reminder` comes from the cron (no actor) and goes to the host alone,
+never to a host whose Host Pass covers the board; for such a host the
+board-full push on a linked board leaves out paying ahead (notify looks the
+pass up for those two host-only events). `board-full` goes out once
 per board: the claim that first fills it stamps `games.board_full_at` in the
 same transaction (`markBoardFull`, migration 0007), and only that claim pushes;
 giving a square back and taking one again doesn't announce it again. `winner` never has an actor (you hear about your own square even
@@ -860,7 +906,8 @@ core routes. Each module owns its own migration file: core `0002_*`,
 kickoff in `starts_at`; the cron's index covers linked boards only) and
 `0009_pay_at_draw.sql` (`games.paid_at`, grandfathering every board past
 `draft` as paid and opening drafts; `games.draw_reminder_at`), payments
-`0003_*` and `0006_*`, push `0004_*`, auth `0010_accounts.sql`.
+`0003_*`, `0006_*` and `0011_host_pass.sql` (`host_passes`,
+`stripe_customers`), push `0004_*`, auth `0010_accounts.sql`.
 
 `worker/auth/index.ts` (auth):
 ```ts
@@ -872,4 +919,10 @@ canonicalClientId(db: D1Database, clientId: string, opts?: { signedIn?: boolean 
 Core helpers it uses: `db.mergeClientStatements(db, from, to, now)`,
 `db.hostTokensFor(db, clientId)`, `db.latestProfileOf(db, clientId)`; push:
 `mergeClientStatements`, `deleteSubscriptionStatement`,
-`deleteClientSubscriptionsStatement` (`worker/push/store.ts`).
+`deleteClientSubscriptionsStatement` (`worker/push/store.ts`); payments:
+`mergeClientStatements` (`worker/payments/store.ts`), `hostPassOf`
+(`worker/payments/pass.ts`) and `endWebPassRenewals`
+(`worker/payments/passStripe.ts`), imported from those files directly. The
+payments module imports `canonicalClientId` and `freshLink` from
+`worker/auth/canonical.ts` (exported by `worker/auth/index.ts` too), which keeps
+the two routers free of an import cycle.

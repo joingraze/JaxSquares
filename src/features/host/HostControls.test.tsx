@@ -35,6 +35,7 @@ vi.mock("../../lib/native", async (orig) => {
 vi.mock("../../components/ui/confetti", () => ({ celebrate: vi.fn(), CELEBRATION_COLORS: [], prefersReducedMotion: () => true }));
 
 const { ApiError } = await import("../../lib/api");
+const passStore = await import("../../lib/hostPassStore");
 const identity = await import("../../lib/identity");
 const { ToastProvider } = await import("../../components/ui");
 const { HostControls } = await import("./HostControls");
@@ -116,13 +117,21 @@ function renderHost(state: GameState, props: Partial<Parameters<typeof HostContr
 const fillSquares = (n: number, owner = "maya") => Array.from({ length: n }, (_, i) => sq(Math.floor(i / 10), i % 10, owner));
 
 const CONFIG: AppConfig = {
-  payments: { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.board" },
+  payments: {
+    mode: "test",
+    priceCents: 499,
+    currency: "usd",
+    stripePublishableKey: null,
+    iapProductId: "com.jaxsquares.board",
+    hostPass: { priceCents: 999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true },
+  },
   vapidPublicKey: null,
 };
 
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  passStore.resetHostPass();
 });
 
 afterEach(() => {
@@ -493,6 +502,71 @@ describe("HostControls", () => {
       await waitFor(() => expect(apply).toHaveBeenCalledWith(paidFull()), { timeout: 3000 });
       expect(await screen.findByText("You're all set", {}, { timeout: 3000 })).toBeInTheDocument();
       expect(lock).not.toHaveBeenCalled();
+    });
+
+    describe("with the Host Pass", () => {
+      const OFFER = { priceCents: 999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
+      const ACTIVE = { active: true, status: "active" as const, provider: "test" as const, renewsAt: null, endsAt: Date.now() + 300 * 86_400_000, autoRenew: false };
+      const passServer = (pass: typeof ACTIVE | null) =>
+        vi.fn(async (url: string) => {
+          if (url.endsWith("/api/config")) return new Response(JSON.stringify({ ...CONFIG, payments: { ...CONFIG.payments, hostPass: OFFER } }), { status: 200 });
+          if (url.endsWith("/api/payments/pass")) return new Response(JSON.stringify({ pass, offer: OFFER }), { status: 200 });
+          if (url.endsWith("/api/payments/pass/test")) return new Response(JSON.stringify({ pass: ACTIVE, offer: OFFER }), { status: 200 });
+          return new Response("{}", { status: 404 });
+        });
+
+      it("says the draw is included, and draws in one tap with no checkout (host bar, Now card, lock confirm)", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        const fetchMock = passServer(ACTIVE);
+        vi.stubGlobal("fetch", fetchMock);
+        lock.mockResolvedValue({ state: lockedState() });
+        const { apply } = renderHost(unpaidFull());
+        const action = screen.getByTestId("host-bar-action");
+        await waitFor(() => expect(action).toHaveTextContent(/^Draw the numbers$/));
+        expect(screen.getByTestId("host-pass-note")).toHaveTextContent("Included with your Host Pass");
+        expect(screen.queryByText(/\$4\.99/)).toBeNull();
+        fireEvent.click(action);
+        const confirm = await screen.findByTestId("host-lock-confirm");
+        expect(confirm).toHaveTextContent(/^Draw the numbers$/);
+        expect(screen.getByText("Included with your Host Pass.")).toBeInTheDocument();
+        expect(screen.queryByText(/host fee, once for this board/)).toBeNull();
+        fireEvent.click(confirm);
+        await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"));
+        await waitFor(() => expect(apply).toHaveBeenCalledWith(lockedState()));
+        expect(screen.queryByTestId("pay-confirm")).toBeNull();
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/pay/"))).toBe(false);
+      });
+
+      it("shows it on the Now card and doesn't offer paying ahead on a linked board (Jax draws at kickoff)", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        vi.stubGlobal("fetch", passServer(ACTIVE));
+        const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
+        renderHost(makeState({ paid: false, linkedEvent }, { squares: fillSquares(30) }));
+        fireEvent.click(screen.getByTestId("host-open"));
+        await waitFor(() => expect(screen.getByTestId("host-lock")).toHaveTextContent(/^Draw the numbers$/));
+        expect(screen.getByTestId("host-pass-note")).toBeInTheDocument();
+        expect(screen.queryByTestId("host-pass-note")).toHaveTextContent("Included with your Host Pass");
+        expect(screen.queryByTestId("host-pay-ahead")).toBeNull();
+        expect(screen.getByText(/Jax draws the numbers at kickoff/)).toBeInTheDocument();
+      });
+
+      it("offers it at the draw beside this board's fee, and draws once it's bought", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        const fetchMock = passServer(null);
+        vi.stubGlobal("fetch", fetchMock);
+        lock.mockResolvedValue({ state: lockedState() });
+        renderHost(unpaidFull());
+        await waitFor(() => expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Draw the numbers · $4.99"));
+        fireEvent.click(screen.getByTestId("host-bar-action"));
+        fireEvent.click(await screen.findByTestId("host-lock-confirm"));
+        const pass = await screen.findByTestId("plan-pass", {}, { timeout: 3000 });
+        expect(screen.getByTestId("plan-board")).toHaveAttribute("aria-checked", "true");
+        fireEvent.click(pass);
+        fireEvent.click(await screen.findByRole("button", { name: "Start test pass" }));
+        await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"), { timeout: 3000 });
+        expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/pay/test"))).toBe(false);
+        expect(passStore.hasActivePass()).toBe(true);
+      });
     });
 
     it("doesn't offer paying ahead on a custom board, or once the fee is paid", async () => {

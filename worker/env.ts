@@ -3,6 +3,7 @@
 //
 // This file only declares names. Never put values here (it is committed):
 // - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE,
+//   HOST_PASS_PRICE_CENTS, STRIPE_HOST_PASS_PRICE_ID, IAP_HOST_PASS_PRODUCT_ID,
 //   the sign-in client ids) go in wrangler.jsonc "vars".
 // - Secrets (Stripe, Apple IAP key, Sign in with Apple key, VAPID private key,
 //   FCM service account) go in Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
@@ -39,6 +40,14 @@ export interface Env {
   /** Apple developer team id, for apple-app-site-association (universal links). */
   APPLE_TEAM_ID?: string;
   IAP_PRODUCT_ID?: string;
+
+  // ---- The Host Pass (a yearly subscription covering the host fee of every board its holder hosts) ----
+  /** The web price per year in cents (default 999). Must match the Stripe Price. */
+  HOST_PASS_PRICE_CENTS?: string;
+  /** The Stripe Price id of the yearly Host Pass (price_...). Unset: the web doesn't sell the pass in live mode. */
+  STRIPE_HOST_PASS_PRICE_ID?: string;
+  /** App Store product id of the auto-renewable subscription (default "com.jaxsquares.app.hostpass.yearly"). */
+  IAP_HOST_PASS_PRODUCT_ID?: string;
 
   // ---- Android app links (/.well-known/assetlinks.json) ----
   /** Android application id (default "com.jaxsquares.app"). */

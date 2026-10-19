@@ -61,13 +61,19 @@ function base(game: Game, kind: NotifyKind, over: Partial<PushContent> & Pick<Pu
   };
 }
 
+/** What notify() knows beyond the board itself. */
+export interface DeliveryContext {
+  /** The host's Host Pass covers this board's fee: Jax draws a linked board at kickoff, so no "pay" in the copy. */
+  hostHasPass?: boolean;
+}
+
 /**
  * Deliveries for one event, before mutes (the store applies those). `members`
  * are the board's players with their clientIds (worker/db.ts getMembers); events
  * name people by public player id. The actor never hears about their own
  * action; host-only events go to the host alone.
  */
-export function buildDeliveries(game: Game, members: Member[], event: NotifyEvent, now = Date.now()): Delivery[] {
+export function buildDeliveries(game: Game, members: Member[], event: NotifyEvent, now = Date.now(), context: DeliveryContext = {}): Delivery[] {
   const audience = members.filter((m) => m.clientId && m.id !== event.actor);
   const everyone = [...new Set(audience.map((m) => m.clientId))];
   const to = (ids: string[], content: PushContent): Delivery[] => ids.map((clientId) => ({ clientId, content }));
@@ -122,19 +128,20 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
     }
 
     case "board-full": {
-      // A linked board draws at kickoff on its own only once its host fee is paid.
+      // A linked board draws at kickoff on its own only once its host fee is
+      // paid, or the host's Host Pass covers it (then nothing to pay).
       const linkedOpen = game.linkedEvent !== null && game.status === "open";
       const body = !linkedOpen
         ? "🔥 Your board is full. Time to draw numbers."
-        : game.paid === false
+        : game.paid === false && !context.hostHasPass
           ? "🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."
           : "🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.";
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:full` }));
     }
 
     case "draw-reminder": {
-      // Paid or drawn since the reminder was due: nothing to remind.
-      if (game.status !== "open" || game.paid !== false || game.linkedEvent === null) return [];
+      // Paid or drawn since the reminder was due, or a Host Pass covers it: nothing to remind.
+      if (game.status !== "open" || game.paid !== false || game.linkedEvent === null || context.hostHasPass) return [];
       const mins = Math.round((game.linkedEvent.startsAt - now) / 60_000);
       const when = mins >= 45 ? "Kickoff in about an hour." : mins >= 2 ? `Kickoff in ${mins} minutes.` : "Kickoff's here.";
       const body = `⏰ ${when} Draw the numbers now, or pay ahead and Jax draws them at kickoff.`;

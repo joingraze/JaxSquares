@@ -1,5 +1,6 @@
-// D1 access for the purchases ledger (migrations/0003_purchases.sql, 0006). The table
-// belongs to the payments module, so its SQL lives here rather than in worker/db.ts.
+// D1 access for the purchases ledger (migrations/0003_purchases.sql, 0006) and the
+// Host Pass (0011: host_passes, stripe_customers). The tables belong to the
+// payments module, so their SQL lives here rather than in worker/db.ts.
 //
 // A board has at most one 'paid' purchase: recordPaid decides that inside one
 // transaction; any other verified charge for the board is kept as 'unused'.
@@ -155,4 +156,217 @@ export async function recordUnused(db: D1Database, p: NewPurchase, now = Date.no
 
 export async function markCanceled(db: D1Database, reference: string): Promise<void> {
   await db.prepare(`UPDATE purchases SET status = 'canceled' WHERE reference = ? AND status = 'pending'`).bind(reference).run();
+}
+
+// ---- The Host Pass (migrations/0011_host_pass.sql): host_passes, stripe_customers ----
+// Keyed by the holder's canonical clientId, which never leaves the server.
+
+export type PassProvider = "stripe" | "iap" | "test";
+export type PassStatus = "pending" | "active" | "past_due" | "ended" | "revoked";
+
+export interface PassRow {
+  /** "hp_<random>": the reference a board paid through this pass records. Server-only. */
+  id: string;
+  clientId: string;
+  provider: PassProvider;
+  /** Stripe subscription id, Apple originalTransactionId, or "test:<random>". */
+  externalId: string;
+  status: PassStatus;
+  /** Paid up until then (epoch ms); null while a Stripe subscription waits for its first payment. */
+  currentPeriodEnd: number | null;
+  autoRenew: boolean;
+  livemode: boolean;
+  /** Provider time of the stored state: older events don't overwrite it. */
+  eventAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** What a provider says about a subscription right now. */
+export interface PassState {
+  status: PassStatus;
+  currentPeriodEnd: number | null;
+  autoRenew: boolean;
+  livemode: boolean;
+  /** When the provider said it (a Stripe event's `created`, an App Store `signedDate`, or now for an API read). */
+  eventAt: number;
+}
+
+interface PassDbRow {
+  id: string;
+  client_id: string;
+  provider: PassProvider;
+  external_id: string;
+  status: PassStatus;
+  current_period_end: number | null;
+  auto_renew: number;
+  livemode: number;
+  event_at: number;
+  created_at: number;
+  updated_at: number;
+}
+
+const PASS_COLUMNS = "id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at";
+
+function passFromRow(r: PassDbRow): PassRow {
+  return {
+    id: r.id,
+    clientId: r.client_id,
+    provider: r.provider,
+    externalId: r.external_id,
+    status: r.status,
+    currentPeriodEnd: r.current_period_end,
+    autoRenew: r.auto_renew === 1,
+    livemode: r.livemode === 1,
+    eventAt: r.event_at,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/** D1 / SQLite says the table isn't there: migration 0011 isn't applied (yet). */
+export function isMissingTable(err: unknown): boolean {
+  return /no such table/i.test(String(err instanceof Error ? err.message : err));
+}
+
+export function newPassId(): string {
+  return `hp_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
+}
+
+/** D1 allows 100 bound parameters per statement. */
+const PASS_IN_CHUNK = 90;
+
+/** Every pass these identities hold, newest first. Throws when the table is missing (see isMissingTable). */
+export async function passesOf(db: D1Database, clientIds: readonly string[], opts: { activeOnly?: boolean } = {}): Promise<PassRow[]> {
+  const ids = [...new Set(clientIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += PASS_IN_CHUNK) chunks.push(ids.slice(i, i + PASS_IN_CHUNK));
+  const status = opts.activeOnly ? ` AND status = 'active'` : "";
+  const results = await db.batch<PassDbRow>(
+    chunks.map((chunk) =>
+      db
+        .prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE client_id IN (${chunk.map(() => "?").join(", ")})${status} ORDER BY created_at DESC`)
+        .bind(...chunk),
+    ),
+  );
+  return results.flatMap((r) => (r.results as PassDbRow[]).map(passFromRow)).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function passByExternalId(db: D1Database, externalId: string): Promise<PassRow | null> {
+  const row = await db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(externalId).first<PassDbRow>();
+  return row ? passFromRow(row) : null;
+}
+
+export interface NewPass extends PassState {
+  id?: string;
+  clientId: string;
+  provider: PassProvider;
+  externalId: string;
+}
+
+/**
+ * Stores a provider's word on a subscription and returns the row:
+ * - a subscription new to us becomes a pass of `clientId`;
+ * - one we know takes the new state unless it's older than what's stored
+ *   (event_at), and stays with its holder unless `moveTo` (a verified App
+ *   Store restore moves it to the identity that restored it).
+ */
+export async function upsertPass(db: D1Database, p: NewPass, opts: { moveTo?: boolean; now?: number } = {}): Promise<PassRow> {
+  const now = opts.now ?? Date.now();
+  const [, read] = await db.batch<PassDbRow>([
+    db
+      .prepare(
+        `INSERT INTO host_passes (${PASS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+         ON CONFLICT(external_id) DO UPDATE SET
+           status = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.status ELSE host_passes.status END,
+           current_period_end = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.current_period_end ELSE host_passes.current_period_end END,
+           auto_renew = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.auto_renew ELSE host_passes.auto_renew END,
+           livemode = excluded.livemode,
+           event_at = MAX(host_passes.event_at, excluded.event_at),
+           client_id = CASE WHEN ?11 = 1 THEN excluded.client_id ELSE host_passes.client_id END,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(
+        p.id ?? newPassId(),
+        p.clientId,
+        p.provider,
+        p.externalId,
+        p.status,
+        p.currentPeriodEnd,
+        p.autoRenew ? 1 : 0,
+        p.livemode ? 1 : 0,
+        Math.trunc(p.eventAt),
+        now,
+        opts.moveTo ? 1 : 0,
+      ),
+    db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(p.externalId),
+  ]);
+  return passFromRow(read.results[0]);
+}
+
+/** A provider's newer word on a subscription we know (webhooks, notifications); null when we don't know it. */
+export async function updatePass(db: D1Database, externalId: string, s: PassState, now = Date.now()): Promise<PassRow | null> {
+  const [, read] = await db.batch<PassDbRow>([
+    db
+      .prepare(
+        `UPDATE host_passes SET status = ?2, current_period_end = ?3, auto_renew = ?4, livemode = ?5, event_at = ?6, updated_at = ?7
+         WHERE external_id = ?1 AND event_at <= ?6`,
+      )
+      .bind(externalId, s.status, s.currentPeriodEnd, s.autoRenew ? 1 : 0, s.livemode ? 1 : 0, Math.trunc(s.eventAt), now),
+    db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(externalId),
+  ]);
+  const row = read.results[0];
+  return row ? passFromRow(row) : null;
+}
+
+/** Test mode's "End test pass": this identity's test passes end now. */
+export async function endTestPasses(db: D1Database, clientId: string, now = Date.now()): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE host_passes SET status = 'ended', current_period_end = ?2, auto_renew = 0, event_at = ?2, updated_at = ?2
+       WHERE client_id = ?1 AND provider = 'test' AND status = 'active'`,
+    )
+    .bind(clientId, now)
+    .run();
+}
+
+/** The Stripe Customer this identity's web subscriptions bill to, for these keys (live or test). */
+export async function stripeCustomerOf(db: D1Database, clientId: string, livemode: boolean): Promise<string | null> {
+  const row = await db
+    .prepare(`SELECT customer_id FROM stripe_customers WHERE client_id = ? AND livemode = ?`)
+    .bind(clientId, livemode ? 1 : 0)
+    .first<{ customer_id: string }>();
+  return row?.customer_id ?? null;
+}
+
+/** Keeps the identity's Stripe Customer; returns the one stored (an earlier one wins a race). */
+export async function saveStripeCustomer(db: D1Database, clientId: string, livemode: boolean, customerId: string, now = Date.now()): Promise<string> {
+  const [, read] = await db.batch<{ customer_id: string }>([
+    db
+      .prepare(`INSERT OR IGNORE INTO stripe_customers (client_id, livemode, customer_id, created_at) VALUES (?, ?, ?, ?)`)
+      .bind(clientId, livemode ? 1 : 0, customerId, now),
+    db.prepare(`SELECT customer_id FROM stripe_customers WHERE client_id = ? AND livemode = ?`).bind(clientId, livemode ? 1 : 0),
+  ]);
+  return read.results[0]?.customer_id ?? customerId;
+}
+
+// ---- Accounts (optional sign-in: worker/auth, docs/auth.md) ----
+
+/**
+ * A device signing in to an account: its passes move to the account's
+ * canonical clientId (the device's and the account's are both kept; the
+ * identity is covered while any of them is active), and so does its Stripe
+ * Customer, unless the account already has one for the same keys. That can't
+ * really happen: the web only sells the pass to a device signed in to an
+ * account, which already acts as the canonical clientId, so a device's own
+ * clientId never has a Customer to bring. For the same batch as the core and
+ * push rows and the link (worker/auth/store.ts linkDevice).
+ */
+export function mergeClientStatements(db: D1Database, from: string, to: string, now: number): D1PreparedStatement[] {
+  return [
+    db.prepare(`UPDATE host_passes SET client_id = ?2, updated_at = ?3 WHERE client_id = ?1`).bind(from, to, now),
+    db.prepare(`UPDATE OR IGNORE stripe_customers SET client_id = ?2 WHERE client_id = ?1`).bind(from, to),
+    db.prepare(`DELETE FROM stripe_customers WHERE client_id = ?`).bind(from),
+  ];
 }

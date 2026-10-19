@@ -279,6 +279,15 @@ export async function getPlayers(db: D1Database, gameId: string): Promise<Player
   return rows.map(rowToPlayer(ids, host));
 }
 
+/**
+ * The board's host's clientId (server-only, never sent anywhere): whose Host
+ * Pass can cover its fee when it's drawn (worker/payments/pass.ts).
+ */
+export async function hostClientIdOf(db: D1Database, gameId: string): Promise<string | null> {
+  const row = await db.prepare(`SELECT host_client_id FROM games WHERE id = ?`).bind(gameId).first<{ host_client_id: string }>();
+  return row?.host_client_id ?? null;
+}
+
 export async function getAdminToken(db: D1Database, gameId: string): Promise<string | null> {
   const row = await db.prepare(`SELECT admin_token FROM games WHERE id = ?`).bind(gameId).first<{ admin_token: string }>();
   return row?.admin_token ?? null;
@@ -587,8 +596,9 @@ export function lockGame(db: D1Database, gameId: string, numbers: Record<string,
 
 /**
  * Records the board's host fee: stamps paid_at with the purchase that paid
- * it (the ledger, worker/payments/store.ts, decides which one that is). A
- * legacy draft opens too. No-op once the board is paid.
+ * it (the ledger, worker/payments/store.ts, decides which one that is), or
+ * with the Host Pass that covered it (provider "pass", reference = the pass
+ * id, amount 0). A legacy draft opens too. No-op once the board is paid.
  */
 export function markPaid(
   db: D1Database,
@@ -965,17 +975,23 @@ export async function hitRateLimit(db: D1Database, key: string, windowMs: number
  * least `minAgeMs` ago (a host setting up right now doesn't need one), and
  * not reminded yet. Stamped in the same statement, so each board gets one.
  */
-export async function claimDrawReminders(db: D1Database, now: number, leadMs: number, minAgeMs: number): Promise<string[]> {
+export async function claimDrawReminders(
+  db: D1Database,
+  now: number,
+  leadMs: number,
+  minAgeMs: number,
+): Promise<{ id: string; hostClientId: string }[]> {
   const { results } = await db
     .prepare(
       `UPDATE games SET draw_reminder_at = ?1
        WHERE linked_event IS NOT NULL AND starts_at IS NOT NULL AND starts_at > ?1 AND starts_at <= ?2
          AND status = 'open' AND paid_at IS NULL AND draw_reminder_at IS NULL AND created_at <= ?3
-       RETURNING id`,
+       RETURNING id, host_client_id`,
     )
     .bind(now, now + leadMs, now - minAgeMs)
-    .all<{ id: string }>();
-  return results.map((r) => r.id);
+    .all<{ id: string; host_client_id: string }>();
+  // Server-only: the cron skips hosts whose Host Pass covers the board (worker/payments).
+  return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id }));
 }
 
 // ---- Housekeeping (cron) ----

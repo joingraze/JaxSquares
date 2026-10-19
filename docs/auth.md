@@ -65,6 +65,8 @@ owner):
 | `games.version` | bumped for every board touched; their rooms get the new state (up to 50, deferred) |
 | `push_subscriptions` | moved, so the account's pushes reach every signed-in device |
 | `game_mutes` | `INSERT OR IGNORE`, then the device's rows deleted (a mute is now the account's) |
+| `host_passes` | moved (payments, `worker/payments/store.ts`): the device's Host Pass rows join the account's, and both are kept; the account is covered while any is active |
+| `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
 | `client_links` | the device's link |
 
 `purchases` has no client column, and `rate_limits` are short-lived windows,
@@ -99,10 +101,12 @@ interface MeResponse {
   account: { provider: "apple" | "google"; email: string | null; name: string | null; since: number } | null;
   hostTokens: Record<string, string>;
   profile?: { name: string; color: string; emoji: string } | null; // last board profile, for a new device
+  hostPass?: HostPass | null;      // the identity's Host Pass (docs/payments.md), null when it never had one
 }
 ```
 
-It's an object so the Host Pass can add a field. It always reads the link
+The app primes its Host Pass state from `hostPass` (`src/lib/hostPassStore.ts`).
+It always reads the link
 fresh (503 when it can't, so the app never mistakes an error for "signed
 out"). The app calls it on start (`refreshMe` in `src/lib/auth.ts`, deferred a
 second) and gets the same shape back from every sign-in.
@@ -132,13 +136,19 @@ second) and gets the same shape back from every sign-in.
 
 `DELETE /api/account` (from any signed-in device):
 
-1. Revokes each Apple refresh token at `https://appleid.apple.com/auth/revoke`
+1. Stops the account's web Host Pass from renewing (Stripe
+   `cancel_at_period_end`; one still waiting for its first payment is
+   canceled), since nobody could manage it afterwards. If Stripe can't be
+   reached, nothing is deleted (502). An App Store Host Pass is Apple's to
+   cancel: the confirm sheet says it keeps renewing until canceled in Settings,
+   and Restore purchases brings it back on any device.
+2. Revokes each Apple refresh token at `https://appleid.apple.com/auth/revoke`
    (skipped, with a log, when the Sign in with Apple key isn't configured or the
    identity has no refresh token).
-2. Deletes the account, its identities and every device link, and the push
+3. Deletes the account, its identities and every device link, and the push
    registrations under the canonical clientId (each device re-registers as
    itself).
-3. **The boards and squares stay** as anonymous data under the canonical
+4. **The boards and squares stay** as anonymous data under the canonical
    clientId, so friends' games carry on. Every signed-in device starts fresh
    (this one now, the others on their next start), so nobody can change them
    from a device any more. The confirm sheet says what's deleted and what stays.
@@ -176,11 +186,16 @@ up before the iOS app with sign-in ships** (App Store guideline 5.1.1(v)).
 `auth` (20 per device per hour) and `auth-ip` (60 per address per hour) count
 sign-in attempts, sign-outs and deletions (`worker/rateLimit.ts`).
 
-### The Host Pass seam
+### The Host Pass
 
-Later: add a field to `MeResponse` (e.g. `hostPass: { until } | null`) read
-from a table keyed by `accounts.id`, and require `SignInSheet`
-(`src/features/account`) before the purchase.
+Built (docs/payments.md "Host Pass"): the pass is keyed by the canonical
+clientId (`host_passes`, owned by the payments module), so it's the account's
+on every device and joins the merge above. `MeResponse.hostPass` carries it.
+Buying one on the web requires `SignInSheet` first (`startPassPurchase()` in
+`src/lib/useHostPass.ts`), and the server refuses a web subscription for a
+device with no account link (409 `account_required`, checked with
+`freshLink`, which `worker/auth/index.ts` exports). The iOS app and the test
+pass need no account.
 
 ## Setup checklist (owner)
 

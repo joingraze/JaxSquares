@@ -8,7 +8,8 @@
 // structured fields in "$" or points, plus a free-text note per prize ("Loser
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the host
-// paying JaxSquares a fee for a board, due when they draw its numbers.
+// paying JaxSquares a fee for a board, due when they draw its numbers, or a
+// yearly Host Pass that covers that fee on every board they host.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
@@ -583,7 +584,75 @@ export interface PaymentConfig {
   currency: string;
   stripePublishableKey: string | null;
   iapProductId: string;
+  /** How the Host Pass is sold here. Always sent; optional only so older fixtures type-check. */
+  hostPass?: HostPassOffer;
 }
+
+// ---- The Host Pass (docs/payments.md "Host Pass") ----
+// A yearly subscription, an alternative to paying the host fee board by board:
+// while it's active, drawing the numbers on any board its holder hosts costs
+// nothing more. It belongs to the holder's identity (the account's, when signed
+// in). Like the host fee, it's paid to JaxSquares; nothing moves between players.
+
+/** Where a pass was bought: the web (Stripe), the iOS app (App Store), or the no-charge test checkout. */
+export type HostPassProvider = "stripe" | "iap" | "test";
+
+/**
+ * active   – covers the host fee now
+ * past_due – a renewal payment failed and is being retried; doesn't cover boards meanwhile
+ * ended    – canceled or expired
+ * revoked  – refunded
+ */
+export type HostPassStatus = "active" | "past_due" | "ended" | "revoked";
+
+/** How the pass is sold. The iOS app shows the App Store's own price, never `priceCents` (App Store guideline 3.1.1). */
+export interface HostPassOffer {
+  /** The web price per year, in minor units of `currency` (999 = "$9.99/year"). */
+  priceCents: number;
+  currency: string;
+  /** App Store product id of the yearly auto-renewable subscription. */
+  iapProductId: string;
+  /** The web sells it: test mode (a no-charge test pass), or live mode once the Stripe price is set. */
+  web: boolean;
+}
+
+/** An identity's Host Pass as the API reports it: never a clientId or a payment reference. */
+export interface HostPass {
+  /** Covers the host fee right now. */
+  active: boolean;
+  status: HostPassStatus;
+  provider: HostPassProvider;
+  /** Renews on this date (epoch ms) while it auto-renews and is paid up; else null. */
+  renewsAt: number | null;
+  /** Ends (or ended) on this date (epoch ms) when it won't renew; else null. */
+  endsAt: number | null;
+  autoRenew: boolean;
+}
+
+/** GET /api/payments/pass (and every pass route's answer): this identity's pass (null when it never had one) and the offer. */
+export interface HostPassState {
+  pass: HostPass | null;
+  offer: HostPassOffer;
+}
+
+/** POST /api/payments/pass/stripe: the first invoice's payment to confirm with Stripe.js, and what it charges. */
+export interface HostPassIntent {
+  clientSecret: string;
+  amountCents: number;
+  currency: string;
+}
+
+/** An App Store transaction for the pass, as StoreKit hands it over (`jws`: StoreKit 2's signed `jwsRepresentation`). */
+export interface HostPassTransaction {
+  transactionId: string;
+  jws?: string;
+}
+
+/**
+ * 409 `code` from POST /api/payments/pass/stripe for a device with no account:
+ * a web subscription needs a sign-in first, or it would be lost with the browser.
+ */
+export const ACCOUNT_REQUIRED_CODE = "account_required";
 
 export interface AppConfig {
   payments: PaymentConfig;
@@ -655,6 +724,8 @@ export interface MeResponse {
   hostTokens: Record<string, string>;
   /** The name, color and emoji this identity last joined a board with, if any (public on that board already). */
   profile?: { name: string; color: string; emoji: string } | null;
+  /** This identity's Host Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  hostPass?: HostPass | null;
 }
 
 export type PushRegistration =
