@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>JaxSquares Launch Calendar</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -332,6 +333,10 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
     return { video: `assets/${it.asset}.mp4`, cover: `assets/${it.asset}-cover.jpg` };
   };
 
+  // ---------- state ----------
+  let openId = null; // item shown in the detail sheet
+  let doneBtn = null; // that sheet's "Mark as posted" button
+
   // ---------- posted state: shared db, else this device ----------
   const done = new Map();
   let db = null;
@@ -550,7 +555,6 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
   }
 
   // ---------- sheet ----------
-  let openId = null;
   function openSheet(id) { openId = id; renderSheet(); }
   function closeSheet() { openId = null; renderSheet(); }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openId) closeSheet(); });
@@ -621,7 +625,6 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
     $(".close", root).focus();
   }
 
-  let doneBtn = null;
   function updateDoneBtn() {
     if (!doneBtn || !openId) return;
     const isDone = done.has(openId);

@@ -17,6 +17,7 @@ interface Msg {
 
 export interface ChatVariant {
   chatName: string;
+  icon: string;
   members: string;
   hook: string;
   boardName: string;
@@ -50,6 +51,7 @@ const SUNDAY_CALM: Msg[] = [
 
 export const SUNDAY_CHAT: ChatVariant = {
   chatName: "Sunday Crew",
+  icon: "🏈",
   members: "14 people",
   hook: "Every squares pool|group chat:",
   boardName: "Sunday Squares 🏈",
@@ -60,7 +62,8 @@ export const SUNDAY_CHAT: ChatVariant = {
 };
 
 export const FAMILY_CHAT: ChatVariant = {
-  chatName: "Family 🦃",
+  chatName: "Family",
+  icon: "🦃",
   members: "23 people",
   hook: "Every Thanksgiving|family group chat:",
   boardName: "Thanksgiving Squares 🦃",
@@ -132,9 +135,9 @@ export function makeGroupChat(v: ChatVariant) {
                 : undefined,
           }}
         >
-          <div className="flex items-center gap-2 border-b border-white/5 px-4 py-2.5">
+          <div className="relative z-10 flex items-center gap-2 border-b border-white/5 bg-[#0d1322] px-4 py-2.5">
             <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500/20 text-base">
-              🏈
+              {v.icon}
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-bold">{v.chatName}</div>
@@ -147,7 +150,7 @@ export function makeGroupChat(v: ChatVariant) {
             )}
           </div>
           <div
-            className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 px-3 pb-3"
+            className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 overflow-hidden px-3 pb-3"
             style={{ top: 52, justifyContent: "flex-end" }}
           >
             {!chaos && <LinkBubble frame={frame} boardName={v.boardName} />}
