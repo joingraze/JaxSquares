@@ -115,6 +115,8 @@ function renderHost(state: GameState, props: Partial<Parameters<typeof HostContr
 }
 
 const fillSquares = (n: number, owner = "maya") => Array.from({ length: n }, (_, i) => sq(Math.floor(i / 10), i % 10, owner));
+/** `n` squares dealt round to `owners` players: past 5, the draw needs the host fee. */
+const crowdSquares = (n: number, owners = 6) => Array.from({ length: n }, (_, i) => sq(Math.floor(i / 10), i % 10, i % owners === 0 ? "maya" : `p${i % owners}`));
 
 const CONFIG: AppConfig = {
   payments: {
@@ -123,7 +125,7 @@ const CONFIG: AppConfig = {
     currency: "usd",
     stripePublishableKey: null,
     iapProductId: "com.jaxsquares.board",
-    hostPass: { priceCents: 999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true },
+    hostPass: { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true },
   },
   vapidPublicKey: null,
 };
@@ -425,7 +427,7 @@ describe("HostControls", () => {
   });
 
   describe("the host fee, due at the draw", () => {
-    const unpaidFull = () => makeState({ paid: false }, { squares: fillSquares(100) });
+    const unpaidFull = () => makeState({ paid: false }, { squares: crowdSquares(100) });
     const paidFull = () => makeState({ paid: true }, { squares: fillSquares(100), version: 2 });
     const lockedState = () => makeState({ status: "locked", paid: true, numbers: { "*": DRAW } }, { squares: fillSquares(100), version: 3 });
     const server = () =>
@@ -492,7 +494,7 @@ describe("HostControls", () => {
       identity.saveAdminToken("hst123", "tok");
       vi.stubGlobal("fetch", server());
       const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
-      const { apply } = renderHost(makeState({ paid: false, linkedEvent }, { squares: fillSquares(30) }));
+      const { apply } = renderHost(makeState({ paid: false, linkedEvent }, { squares: crowdSquares(30) }));
       fireEvent.click(screen.getByTestId("host-open"));
       const ahead = await screen.findByTestId("host-pay-ahead");
       expect(ahead).toHaveTextContent("Pay now and Jax draws the numbers at kickoff");
@@ -504,8 +506,81 @@ describe("HostControls", () => {
       expect(lock).not.toHaveBeenCalled();
     });
 
+    describe("on a board of 5 or fewer players (free)", () => {
+      const freeFull = () => makeState({ paid: false }, { squares: crowdSquares(100, 5) });
+
+      it("says the draw is free (host bar, Now card, lock confirm) and draws in one tap with no checkout", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        const fetchMock = server();
+        vi.stubGlobal("fetch", fetchMock);
+        lock.mockResolvedValue({ state: lockedState() });
+        const { apply } = renderHost(freeFull());
+        const action = screen.getByTestId("host-bar-action");
+        expect(action).toHaveTextContent("Draw the numbers · Free");
+        expect(screen.getByTestId("host-free-note")).toHaveTextContent("Free for up to 5 players");
+        expect(screen.queryByText(/\$4\.99/)).toBeNull();
+        fireEvent.click(screen.getByTestId("host-open"));
+        expect(await screen.findByTestId("host-lock")).toHaveTextContent("Draw the numbers · Free");
+        expect(screen.getByText(/Lock when everyone's in\. Boards with up to 5 players are free\./)).toBeInTheDocument();
+        expect(screen.queryByTestId("host-pay-ahead")).toBeNull();
+        fireEvent.click(screen.getByTestId("host-lock"));
+        const confirm = await screen.findByTestId("host-lock-confirm");
+        expect(confirm).toHaveTextContent("Draw the numbers · Free");
+        expect(screen.getByText("No host fee.")).toBeInTheDocument();
+        expect(screen.getByText(/5 players hold squares here\./)).toBeInTheDocument();
+        expect(screen.queryByText(/host fee, once for this board/)).toBeNull();
+        fireEvent.click(confirm);
+        await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"));
+        await waitFor(() => expect(apply).toHaveBeenCalledWith(lockedState()));
+        expect(screen.queryByTestId("pay-confirm")).toBeNull();
+        expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/pay/"))).toBe(false);
+      });
+
+      it("shows the price again with a 6th player, and says boards with up to 5 players are free", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        vi.stubGlobal("fetch", server());
+        const { rerender } = renderHost(freeFull());
+        expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Draw the numbers · Free");
+        rerender(
+          <MemoryRouter initialEntries={["/g/hst123"]}>
+            <ToastProvider>
+              <HostControls state={unpaidFull()} apply={vi.fn()} pickCell={vi.fn(async () => null)} onInvite={vi.fn()} />
+            </ToastProvider>
+          </MemoryRouter>,
+        );
+        await waitFor(() => expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Draw the numbers · $4.99"));
+        expect(screen.queryByTestId("host-free-note")).toBeNull();
+        fireEvent.click(screen.getByTestId("host-open"));
+        expect(await screen.findByText("Boards with up to 5 players are free. Bigger ones pay when you draw the numbers.")).toBeInTheDocument();
+      });
+
+      it("opens the checkout when a 6th player got in before the draw (the server's 402)", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        vi.stubGlobal("fetch", server());
+        lock.mockRejectedValue(new ApiError("Draw the numbers once the board's paid for.", 402, { error: "Draw the numbers once the board's paid for.", code: "payment_required" }));
+        renderHost(freeFull());
+        fireEvent.click(screen.getByTestId("host-bar-action"));
+        fireEvent.click(await screen.findByTestId("host-lock-confirm"));
+        await waitFor(() => expect(lock).toHaveBeenCalled());
+        expect(await screen.findByTestId("pay-confirm", {}, { timeout: 3000 })).toBeInTheDocument();
+      });
+
+      it("is free for a pass holder too: the free note, not the pass's", async () => {
+        identity.saveAdminToken("hst123", "tok");
+        passStore.setHostPassState({
+          pass: { active: true, status: "active", provider: "test", renewsAt: null, endsAt: Date.now() + 86_400_000, autoRenew: false },
+          offer: CONFIG.payments.hostPass!,
+        });
+        vi.stubGlobal("fetch", server());
+        renderHost(freeFull());
+        expect(screen.getByTestId("host-bar-action")).toHaveTextContent("Draw the numbers · Free");
+        expect(screen.getByTestId("host-free-note")).toBeInTheDocument();
+        expect(screen.queryByTestId("host-pass-note")).toBeNull();
+      });
+    });
+
     describe("with the Host Pass", () => {
-      const OFFER = { priceCents: 999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
+      const OFFER = { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
       const ACTIVE = { active: true, status: "active" as const, provider: "test" as const, renewsAt: null, endsAt: Date.now() + 300 * 86_400_000, autoRenew: false };
       const passServer = (pass: typeof ACTIVE | null) =>
         vi.fn(async (url: string) => {
@@ -541,7 +616,7 @@ describe("HostControls", () => {
         identity.saveAdminToken("hst123", "tok");
         vi.stubGlobal("fetch", passServer(ACTIVE));
         const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
-        renderHost(makeState({ paid: false, linkedEvent }, { squares: fillSquares(30) }));
+        renderHost(makeState({ paid: false, linkedEvent }, { squares: crowdSquares(30) }));
         fireEvent.click(screen.getByTestId("host-open"));
         await waitFor(() => expect(screen.getByTestId("host-lock")).toHaveTextContent(/^Draw the numbers$/));
         expect(screen.getByTestId("host-pass-note")).toBeInTheDocument();
@@ -573,7 +648,7 @@ describe("HostControls", () => {
       identity.saveAdminToken("hst123", "tok");
       vi.stubGlobal("fetch", server());
       const linkedEvent = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: Date.now() + 3 * 3_600_000, xIsHome: true };
-      const { unmount } = renderHost(makeState({ paid: false }, { squares: fillSquares(30) }));
+      const { unmount } = renderHost(makeState({ paid: false }, { squares: crowdSquares(30) }));
       fireEvent.click(screen.getByTestId("host-open"));
       expect(await screen.findByTestId("host-lock")).toHaveTextContent("Draw the numbers");
       expect(screen.queryByTestId("host-pay-ahead")).toBeNull();

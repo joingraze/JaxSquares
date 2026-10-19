@@ -1,12 +1,14 @@
 // The host sheet. Always titled "Host tools" with one line saying where the
 // board stands, and always in the same order: Now (fill + lock, type the
 // score, or watch the live feed), Winners, Board. While the host fee is due
-// the draw says its price, and a linked board offers paying ahead. Sub views (lock
-// confirm, rules & prizes, edit, end, delete) slide in inside the same sheet.
+// the draw says its price (or "Free" on a board of 5 or fewer players), and a
+// linked board offers paying ahead. Sub views (lock confirm, rules & prizes,
+// edit, end, delete) slide in inside the same sheet.
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
+import { squareHolders } from "../../../shared/hostFee";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
 import type { BoardSize, GameState } from "../../../shared/types";
 import {
@@ -63,8 +65,11 @@ import {
   type RulesDraft,
 } from "../rules/rulesModel";
 import { EditBoard } from "./EditBoard";
+import { FreeDrawNote } from "./FreeDrawNote";
 import "./host.css";
 import {
+  FREE_DRAW_LABEL,
+  FREE_TIER_LINE,
   NEXT_ENTRY,
   canPayAhead,
   defaultTargetKey,
@@ -121,10 +126,12 @@ export interface HostSheetProps {
   /** This device's public player id. */
   me: string;
   onInvite: () => void;
-  /** The host fee is due before the numbers can be drawn (needsHostFee, and no Host Pass covers it). */
+  /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
   fee: boolean;
   /** The fee would be due, but the host's Host Pass covers it: "Included with your Host Pass", and the draw just draws. */
   covered?: boolean;
+  /** The fee would be due, but 5 or fewer players hold squares (drawIsFree): "Draw the numbers · Free", and the draw just draws. */
+  free?: boolean;
   /** The fee as this device shows it ("$4.99", or the App Store's price), null when it can't be said. */
   price: string | null;
   /** Linked boards whose fee is due: pay now so Jax draws the numbers at kickoff. */
@@ -354,7 +361,7 @@ export function HostSheet(props: HostSheetProps) {
     const f = lockFacts(state);
     const low = lockReadiness(f) === "low";
     title = <>{back()}{low ? `Lock with only ${f.claimed} in?` : "Lock & draw numbers?"}</>;
-    body = <LockConfirm state={state} fee={props.fee} covered={!!props.covered} price={props.price} />;
+    body = <LockConfirm state={state} fee={props.fee} covered={!!props.covered} free={!!props.free} price={props.price} />;
     footer = (
       <div className="flex flex-col gap-1">
         <Button
@@ -366,8 +373,19 @@ export function HostSheet(props: HostSheetProps) {
           onClick={props.onLock}
           loading={actions.busy === "lock"}
         >
-          {props.fee ? (low ? `Lock & draw anyway${props.price ? ` · ${props.price}` : ""}` : payToDrawLabel(props.price)) : low ? "Lock & draw anyway" : "Draw the numbers"}
+          {props.fee
+            ? low
+              ? `Lock & draw anyway${props.price ? ` · ${props.price}` : ""}`
+              : payToDrawLabel(props.price)
+            : props.free
+              ? low
+                ? "Lock & draw anyway · Free"
+                : FREE_DRAW_LABEL
+              : low
+                ? "Lock & draw anyway"
+                : "Draw the numbers"}
         </Button>
+        {props.free && <FreeDrawNote className="py-1" />}
         <Button variant="ghost" block onClick={low ? props.onInvite : () => onView("home")}>
           {low ? "Keep inviting" : "Not yet"}
         </Button>
@@ -500,6 +518,7 @@ export function HostSheet(props: HostSheetProps) {
               onLock={() => onView("lock")}
               fee={props.fee}
               covered={!!props.covered}
+              free={!!props.free}
               price={props.price}
               onPayAhead={props.onPayAhead}
             />
@@ -833,6 +852,7 @@ function OpenHero({
   onLock,
   fee,
   covered,
+  free,
   price,
   onPayAhead,
 }: {
@@ -841,6 +861,7 @@ function OpenHero({
   onLock: () => void;
   fee: boolean;
   covered: boolean;
+  free: boolean;
   price: string | null;
   onPayAhead: () => void;
 }) {
@@ -866,31 +887,34 @@ function OpenHero({
       key="draw"
       data-testid="host-lock"
       variant={ready ? "primary" : "secondary"}
-      leading={fee || covered ? <ShuffleIcon size={18} strokeWidth={2.4} /> : <LockIcon size={18} />}
+      leading={fee || covered || free ? <ShuffleIcon size={18} strokeWidth={2.4} /> : <LockIcon size={18} />}
       onClick={onLock}
       disabled={nobody}
       haptic="medium"
     >
-      {fee ? payToDrawLabel(price) : covered ? "Draw the numbers" : "Lock & draw"}
+      {fee ? payToDrawLabel(price) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw"}
     </Button>
   );
-  // Right under the draw: what a price would say on a board the Host Pass covers.
-  const passNote = covered ? <PassIncluded key="pass" className="-mt-1" /> : null;
+  // Right under the draw: what a price would say on a free board, or one the Host Pass covers.
+  const drawNote = free ? <FreeDrawNote key="note" className="-mt-1" /> : covered ? <PassIncluded key="note" className="-mt-1" /> : null;
+  // Until it's paid for, the hint says boards with up to 5 players are free.
   const hint = nobody
-    ? fee
-      ? "Drawing turns on once someone picks a square."
+    ? fee || free
+      ? `Drawing turns on once someone picks a square.${free ? ` ${FREE_TIER_LINE}` : ""}`
       : "Lock & draw turns on once someone picks a square."
-    : fee
-      ? late
-        ? "Kickoff's passed, so the numbers weren't drawn. Draw them whenever you're ready."
-        : planned
-          ? `${kicksOffLabel(planned)}. Setting up and inviting are free; you pay when you draw.`
-          : "Setting up and inviting are free. You pay when you draw the numbers."
-      : kickoff
-        ? `Jax draws the numbers at kickoff (${kickoffLabel(kickoff)}) if you don't.`
-        : planned
-          ? `${kicksOffLabel(planned)}. Lock when everyone's in.`
-          : "Lock when everyone's in. The numbers get drawn live.";
+    : late && (fee || free)
+      ? "Kickoff's passed, so the numbers weren't drawn. Draw them whenever you're ready."
+      : fee
+        ? planned
+          ? `${kicksOffLabel(planned)}. ${FREE_TIER_LINE} Bigger ones pay when you draw.`
+          : `${FREE_TIER_LINE} Bigger ones pay when you draw the numbers.`
+        : kickoff
+          ? `Jax draws the numbers at kickoff (${kickoffLabel(kickoff)}) if you don't.${free ? ` ${FREE_TIER_LINE}` : ""}`
+          : planned
+            ? `${kicksOffLabel(planned)}. Lock when everyone's in.${free ? ` ${FREE_TIER_LINE}` : ""}`
+            : free
+              ? `Lock when everyone's in. ${FREE_TIER_LINE}`
+              : "Lock when everyone's in. The numbers get drawn live.";
   return (
     <div className="relative overflow-hidden rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
       <div
@@ -914,10 +938,10 @@ function OpenHero({
           )}
         </div>
       </div>
-      {fee || covered ? (
-        // The draw carries its price (or the Host Pass), so each button gets the full width; the move to make goes first.
+      {fee || covered || free ? (
+        // The draw carries its price (or "Free", or the Host Pass), so each button gets the full width; the move to make goes first.
         <div className="relative mt-4 flex flex-col gap-2.5">
-          {ready ? [drawButton, passNote, inviteButton] : [inviteButton, drawButton, passNote]}
+          {ready ? [drawButton, drawNote, inviteButton] : [inviteButton, drawButton, drawNote]}
         </div>
       ) : (
         <div className="relative mt-4 grid grid-cols-2 gap-2.5">
@@ -1057,15 +1081,21 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
   );
 }
 
-function LockConfirm({ state, fee, covered, price }: { state: GameState; fee: boolean; covered: boolean; price: string | null }) {
+function LockConfirm({ state, fee, covered, free, price }: { state: GameState; fee: boolean; covered: boolean; free: boolean; price: string | null }) {
   const f = lockFacts(state);
   const low = lockReadiness(f) === "low";
   const fresh = drawKeys(state.game.format).length > 1;
+  const holders = squareHolders(state.squares);
   return (
     <ul className="flex flex-col gap-3.5 pb-2 pt-1">
       {fee && (
         <Fact icon={<SparklesIcon size={16} />}>
-          <b className="font-bold text-ink">{price ? `${price} host fee` : "The host fee"}, once for this board.</b> It's the only charge in JaxSquares. Setting up, inviting and picking squares are free.
+          <b className="font-bold text-ink">{price ? `${price} host fee` : "The host fee"}, once for this board.</b> {FREE_TIER_LINE} This one has {holders}. Setting up, inviting and picking squares are always free.
+        </Fact>
+      )}
+      {free && (
+        <Fact icon={<SparklesIcon size={16} />}>
+          <b className="font-bold text-ink">No host fee.</b> {FREE_TIER_LINE} {holders === 1 ? "1 player holds" : `${holders} players hold`} squares here.
         </Fact>
       )}
       {covered && (

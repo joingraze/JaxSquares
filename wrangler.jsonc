@@ -47,7 +47,7 @@
     "IAP_PRODUCT_ID": "com.jaxsquares.app.board",
     // The Host Pass, yearly (docs/payments.md "Host Pass"). In live mode the web
     // sells it only once STRIPE_HOST_PASS_PRICE_ID names the Stripe Price.
-    "HOST_PASS_PRICE_CENTS": "999",
+    "HOST_PASS_PRICE_CENTS": "1999",
     "STRIPE_HOST_PASS_PRICE_ID": "",
     "IAP_HOST_PASS_PRODUCT_ID": "com.jaxsquares.app.hostpass.yearly",
     // Optional sign-in (docs/auth.md). Public OAuth client ids, not secrets;

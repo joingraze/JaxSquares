@@ -11,7 +11,8 @@ payouts or betting. A host can add a fun prize note per period ("Loser buys
 wings"), and notes that mention money are rejected. The only payment in the
 product is the host fee for a board, paid when the host draws its numbers, or
 a yearly Host Pass that covers it on every board the host makes: setting up,
-inviting and picking squares are free.
+inviting and picking squares are free, and so is drawing a board whose squares
+5 or fewer players hold.
 
 ## How the game works
 
@@ -22,10 +23,11 @@ inviting and picking squares are free.
    create it. It opens right away, free.
 2. **Share** the invite link (`https://jaxsquares.com/g/<id>`). Friends open it,
    pick a name, color and emoji, and tap empty squares to claim them.
-3. **Lock & draw**: the host pays the host fee (or has a Host Pass) and locks
-   the board, which randomly assigns the digits 0–9 to the rows and columns (a
+3. **Lock & draw**: the host locks the board, which randomly assigns the
+   digits 0–9 to the rows and columns. It's free with up to 5 players holding
+   squares; a bigger board needs the host fee first (or a Host Pass; a
    no-charge test checkout until payments go live). Linked boards lock
-   themselves at kickoff once the fee is paid or a Host Pass covers it (the
+   themselves at kickoff once they're free, paid or covered by a Host Pass (the
    host can pay ahead).
 4. **Score**: the winning square is where the last digit of each team's score
    meets. Linked boards score themselves from live data; the host can enter or
@@ -52,7 +54,9 @@ periods the same way (`periodPhrase` in `shared/formats.ts`: "Q1", "Half",
 - **Guided create**: five steps that each start filled in (the soonest real
   game is pre-picked), so picking the game, Next three times and Create makes
   a properly set-up board, and Create opens it, free. The host fee comes at
-  the draw: Apple Pay / Google Pay on the web, In-App Purchase in the iPhone app.
+  the draw, and only for boards of 6 or more players: Apple Pay / Google Pay
+  on the web, In-App Purchase in the iPhone app ($4.99 a board, or the Host
+  Pass at $19.99 a year).
 - **Live board**: every claim, draw and score lands on every open phone within
   a second, with a scorebug, a "right now" winner, toasts and haptics, and a
   "N watching" count.

@@ -109,7 +109,7 @@ export default function Privacy() {
               <Check>Showing boards and drawing numbers</Check>
               <Check>Recording scores and winning squares</Check>
               <Check>Sending the notifications you asked for</Check>
-              <Check>Letting hosts draw the numbers once a board is paid for, or covered by their Host Pass</Check>
+              <Check>Letting hosts draw the numbers once a board is paid for, covered by their Host Pass, or free (5 or fewer players hold squares)</Check>
               <Check>Keeping your boards on every device you sign in on</Check>
               <Check>Preventing abuse</Check>
             </ul>

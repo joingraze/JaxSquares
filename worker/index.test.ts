@@ -5,6 +5,7 @@
 // Only the GameRoom (sockets) and push delivery are faked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MONEY_ERRORS, PRIZE_AMOUNT_ERROR, PRIZE_MONEY_ERROR, REST_MOMENT_ERROR, REST_PRICE_ERROR } from "../shared/formats";
+import { FREE_PLAYER_LIMIT } from "../shared/hostFee";
 import { KICKOFF_ERRORS } from "../shared/kickoff";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { MAX_PLAYERS, resolveResults } from "../shared/squares";
@@ -1213,6 +1214,15 @@ describe("the host fee is due at the draw", () => {
   const stateOf = async (id: string) => (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
   const notified = (id: string, kind: string) => vi.mocked(notify).mock.calls.filter(([, g, e]) => g === id && e.kind === kind);
   const everySquare = Array.from({ length: 25 }, (_, i) => ({ row: Math.floor(i / 5), col: i % 5 }));
+  /** Six friends pick a square each (row 0 and the start of row 1): past the free tier, so the draw needs the fee. */
+  async function crowd(id: string, n = FREE_PLAYER_LIMIT + 1): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      const client = `crowd-player-${i}-of-${id}`;
+      expect((await call("POST", `/games/${id}/join`, { client, body: profile(`Friend ${i}`) })).status).toBe(200);
+      const claim = await call<{ claimed: number }>("POST", `/games/${id}/claim`, { client, body: { cells: [everySquare[i]] } });
+      expect(claim.body.claimed).toBe(1);
+    }
+  }
 
   it("opens a new board right away: friends join and pick squares before anything is paid", async () => {
     const { id, res } = await create();
@@ -1227,8 +1237,9 @@ describe("the host fee is due at the draw", () => {
     expect(t.query(`SELECT COUNT(*) AS n FROM purchases`)).toEqual([{ n: 0 }]);
   });
 
-  it("refuses to draw an unpaid board with a 402 the app recognizes", async () => {
+  it("refuses to draw an unpaid board of 6 players with a 402 the app recognizes", async () => {
     const { id, admin } = await create();
+    await crowd(id);
     const res = await call<{ error: string; code: string }>("POST", `/games/${id}/lock`, { admin });
     expect(res.status).toBe(402);
     expect(res.body).toEqual({ error: "Draw the numbers once the board's paid for.", code: PAYMENT_REQUIRED_CODE });
@@ -1319,8 +1330,9 @@ describe("the host fee is due at the draw", () => {
     expect(legacy.query(`SELECT COUNT(*) AS n FROM purchases`)).toEqual([{ n: 0 }]);
   });
 
-  it("a linked board left unpaid doesn't draw itself at kickoff; the host can pay and draw any time", async () => {
+  it("a 6-player linked board left unpaid doesn't draw itself at kickoff; the host can pay and draw any time", async () => {
     const { id, admin } = await create({ league: "nfl", linkedEvent: linkedEvent(Date.now() + 5 * MIN) });
+    await crowd(id);
     await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") });
     await applyLiveUpdate(env, id, feed("in"), async () => {});
     const kicked = await stateOf(id);
@@ -1350,6 +1362,8 @@ describe("the host fee is due at the draw", () => {
 
   it("drawing after the linked game ended ends the board too, with the scores the feed recorded", async () => {
     const { id, admin } = await create({ league: "nfl", linkedEvent: linkedEvent(Date.now() + 5 * MIN) });
+    // Ana holds every square the six friends don't, so the board is full and needs the fee.
+    await crowd(id);
     await call("POST", `/games/${id}/join`, { client: ANA, body: profile("Ana") });
     await call("POST", `/games/${id}/claim`, { client: ANA, body: { cells: everySquare } });
     await applyLiveUpdate(env, id, feed("in"), async () => {});
@@ -1363,21 +1377,27 @@ describe("the host fee is due at the draw", () => {
     expect(drawn.status).toBe(200);
     expect(drawn.body.state.game.status).toBe("final");
     expect(drawn.body.state.game.numbers).not.toBeNull();
-    // Ana holds every square, so she takes all four.
-    expect(resolveResults(drawn.body.state).map((r) => r.winnerPlayerId)).toEqual([pid(ANA), pid(ANA), pid(ANA), pid(ANA)]);
+    // Every square is taken, so all four periods have a winner.
+    const winners = resolveResults(drawn.body.state).map((r) => r.winnerPlayerId);
+    expect(winners).toHaveLength(4);
+    expect(winners.every((w) => w !== null)).toBe(true);
     // One wrap-up push instead of "numbers are in" and "that's a wrap" back to back.
     expect(vi.mocked(notify).mock.calls.map(([, , e]) => e)).toEqual([{ kind: "final", actor: pid(HOST) }]);
   });
 
-  it("reminds the host of an unpaid linked board within the hour before kickoff, once", async () => {
+  it("reminds the host of an unpaid 6-player linked board within the hour before kickoff, once", async () => {
     const now = Date.now();
     const soon = now + 50 * MIN;
     const due = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    await crowd(due.id);
     const paid = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    await crowd(paid.id);
     await call("POST", `/games/${paid.id}/pay/test`, { admin: paid.admin });
-    await create({ league: "nfl", linkedEvent: linkedEvent(now + 3 * 60 * MIN) }); // kicks off later
+    const later = await create({ league: "nfl", linkedEvent: linkedEvent(now + 3 * 60 * MIN) }); // kicks off later
+    await crowd(later.id);
     await create({ startsAt: soon }); // custom: draws when the host says, no reminder
     const fresh = await create({ league: "nfl", linkedEvent: linkedEvent(soon) });
+    await crowd(fresh.id);
     // All but `fresh` were made a while ago (a host setting up right now doesn't need a nudge).
     t.query(`UPDATE games SET created_at = ? WHERE id <> ?`, now - 30 * MIN, fresh.id);
     const tick = () => worker.scheduled({ scheduledTime: Date.UTC(2026, 9, 16, 3, 1), cron: "* * * * *", noRetry: () => {} } as ScheduledController, env);

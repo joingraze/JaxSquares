@@ -200,8 +200,10 @@ export interface Game {
    * The host fee for this board is paid: the host can draw the numbers
    * (POST /lock answers 402 with PAYMENT_REQUIRED_CODE until then), and a
    * linked board draws its own at kickoff. Boards made before the fee moved
-   * to the draw count as paid. Always sent by the API; optional only so
-   * older fixtures type-check (absent reads as paid).
+   * to the draw count as paid. A board held by FREE_PLAYER_LIMIT (5) or fewer
+   * players (shared/hostFee.ts `isFreeDraw`) draws without it, and reads as
+   * paid once drawn. Always sent by the API; optional only so older fixtures
+   * type-check (absent reads as paid).
    */
   paid?: boolean;
 }
@@ -389,6 +391,12 @@ export interface GameSummary {
   linked?: boolean;
   /** Game.paid: the host fee is paid. Always sent by `GET /api/me/games`; absent reads as paid. */
   paid?: boolean;
+  /**
+   * Drawing would be free right now: FREE_PLAYER_LIMIT (5) or fewer players
+   * hold squares (shared/hostFee.ts), so an unpaid linked board still draws
+   * itself at kickoff. Sent by `GET /api/me/games`; absent reads as false.
+   */
+  freeDraw?: boolean;
   /** Periods this device's squares have won so far. */
   myWins: { periodKey: string; label: string }[];
   lastActivityAt: number;
@@ -476,8 +484,8 @@ export interface CreateGameResponse {
 
 /**
  * `code` of the 402 that POST /api/games/:id/lock answers on a board whose
- * host fee isn't paid yet (`{ error, code }`): the app opens the checkout,
- * then draws.
+ * host fee isn't paid yet and that more than FREE_PLAYER_LIMIT players hold
+ * squares on (`{ error, code }`): the app opens the checkout, then draws.
  */
 export const PAYMENT_REQUIRED_CODE = "payment_required";
 
@@ -607,7 +615,7 @@ export type HostPassStatus = "active" | "past_due" | "ended" | "revoked";
 
 /** How the pass is sold. The iOS app shows the App Store's own price, never `priceCents` (App Store guideline 3.1.1). */
 export interface HostPassOffer {
-  /** The web price per year, in minor units of `currency` (999 = "$9.99/year"). */
+  /** The web price per year, in minor units of `currency` (1999 = "$19.99/year"). */
   priceCents: number;
   currency: string;
   /** App Store product id of the yearly auto-renewable subscription. */

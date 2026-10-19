@@ -1,7 +1,7 @@
 // @vitest-environment node
 // End to end through notify(): real D1 SQL (node:sqlite), real VAPID signing and
 // encryption, a real RS256 service account; only the network and core's
-// getGame/getMembers are faked.
+// getGame/getMembers/squareHolderCount are faked.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Game } from "../../shared/types";
 import type { Member } from "../db";
@@ -13,13 +13,14 @@ import { notify } from "./notify";
 import { setMuted, upsertSubscription } from "./store";
 import { HOST, decryptWebPush, makeBrowserSubscription, makeGame, makePlayer, makeServiceAccount, makeVapidKeys, pid } from "./testFixtures";
 
-const db = vi.hoisted(() => ({ game: null as Game | null, players: [] as Member[], fail: false }));
+const db = vi.hoisted(() => ({ game: null as Game | null, players: [] as Member[], holders: 6, fail: false }));
 vi.mock("../db", () => ({
   getGame: vi.fn(async () => {
     if (db.fail) throw new Error("D1 is down");
     return db.game;
   }),
   getMembers: vi.fn(async () => db.players),
+  squareHolderCount: vi.fn(async () => db.holders),
 }));
 
 const JAX = "client-jax-001";
@@ -63,6 +64,7 @@ beforeEach(async () => {
   } as Env;
   db.game = makeGame();
   db.players = [makePlayer(HOST, "Jordan"), makePlayer(JAX, "Jax"), makePlayer(SAM, "Sam"), makePlayer(LEE, "Lee")];
+  db.holders = 6;
   db.fail = false;
   sent = { web: [], fcm: [] };
   fcmReply = () => Response.json({ name: "projects/jaxsquares-test/messages/1" });
@@ -222,6 +224,21 @@ describe("notify", () => {
     sent.web = [];
     await notify(env, "abc234", { kind: "draw-reminder" });
     expect(sent.web).toEqual([]);
+  });
+
+  it("leaves paying out of board-full, and skips the kickoff reminder, on a free board (5 or fewer players)", async () => {
+    const linked = { provider: "espn" as const, league: "nfl" as const, eventId: "401", startsAt: Date.now() + 3_600_000, xIsHome: true };
+    db.game = makeGame({ status: "open", paid: false, linkedEvent: linked });
+    db.holders = 5;
+    await notify(env, "abc234", { kind: "board-full" });
+    expect(sent.web.map((w) => w.payload.body)).toEqual(["🔥 Your board is full. Draw numbers now, or they'll draw at kickoff."]);
+    sent.web = [];
+    await notify(env, "abc234", { kind: "draw-reminder" });
+    expect(sent.web).toEqual([]);
+    // A 6th player: the fee is back, and so is the "pay ahead" line.
+    db.holders = 6;
+    await notify(env, "abc234", { kind: "board-full" });
+    expect(sent.web.map((w) => w.payload.body)).toEqual(["🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."]);
   });
 
   it("ignores draft boards", async () => {

@@ -197,7 +197,7 @@ Connect:
    under Settings → Developer → Sandbox Apple Account.
 4. Submit the IAP product together with the first app version.
 5. The Host Pass: a subscription group **Host Pass** with an auto-renewable
-   subscription `com.jaxsquares.app.hostpass.yearly` (1 year, $9.99; must
+   subscription `com.jaxsquares.app.hostpass.yearly` (1 year, $19.99; must
    match `IAP_HOST_PASS_PRODUCT_ID`), and App Store Server Notifications V2 at
    `https://jaxsquares.com/api/payments/apple/notifications`. Steps in
    `docs/payments.md` → "Setup (Host Pass)". Sandbox subscriptions renew every
@@ -205,8 +205,10 @@ Connect:
    renewals and expiry.
 
 These are the only payments in the app: the host fee for a board, paid when
-the host draws its numbers (creating a board and picking squares are free), or
-the yearly Host Pass that covers it on every board the host makes. The app
+the host draws its numbers (creating a board, picking squares and drawing a
+board that 5 or fewer players hold squares on are free), or the yearly Host
+Pass that covers it on every board the host makes. To test the purchase,
+draw a board that 6 or more players (devices) hold squares on. The app
 shows only the App Store's prices, offers Restore purchases (Profile → Host
 Pass) and opens Apple's subscription management for Manage. Players never pay
 each other or pay to join.

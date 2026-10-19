@@ -33,6 +33,7 @@ import {
   type PeriodResult,
   type ScorePlay,
 } from "../../../shared/squares";
+import { FREE_PLAYER_LIMIT, isFreeDraw } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
@@ -75,6 +76,8 @@ export interface HostSummary {
   fee?: boolean;
   /** The host fee would be due, but the host's Host Pass covers it: the draw just draws. */
   covered?: boolean;
+  /** The host fee would be due, but 5 or fewer players hold squares: "Draw the numbers · Free", and the draw just draws. */
+  free?: boolean;
 }
 
 export function claimedOf(state: Pick<GameState, "game" | "squares">): { claimed: number; total: number } {
@@ -106,6 +109,23 @@ export function payToDrawLabel(price: string | null | undefined): string {
 }
 
 /**
+ * The fee would be due, but 5 or fewer players hold squares (the free tier,
+ * shared/hostFee.ts): drawing costs nothing and needs no checkout. The server
+ * counts again as it draws; a 6th player who got in meanwhile brings back the
+ * 402, and with it the checkout.
+ */
+export function drawIsFree(state: Pick<GameState, "game" | "squares">): boolean {
+  return needsHostFee(state.game) && isFreeDraw(state);
+}
+
+/** The draw action on a free board. */
+export const FREE_DRAW_LABEL = "Draw the numbers · Free";
+/** The small note beside it. */
+export const FREE_DRAW_NOTE = `Free for up to ${FREE_PLAYER_LIMIT} players`;
+/** The free tier in one line, where the host reads about the draw before it. */
+export const FREE_TIER_LINE = `Boards with up to ${FREE_PLAYER_LIMIT} players are free.`;
+
+/**
  * A linked board can be paid ahead so Jax draws the numbers at kickoff: its
  * fee is due and kickoff hasn't come yet.
  */
@@ -115,9 +135,12 @@ export function canPayAhead(game: Pick<Game, "status" | "paid" | "linkedEvent">,
 
 /**
  * `price`: the host fee as this device shows it, for the draw action on a
- * board whose fee is due. `pass`: the host's Host Pass is active, so that fee
- * is covered: the draw reads "Draw the numbers" (with "Included with your
- * Host Pass" beside it) and needs no checkout.
+ * board whose fee is due. A board with 5 or fewer players holding squares
+ * draws for free: "Draw the numbers · Free" ("Free for up to 5 players"
+ * beside it), no checkout, whatever the pass. `pass`: the host's Host Pass is
+ * active, so a bigger board's fee is covered: the draw reads "Draw the
+ * numbers" (with "Included with your Host Pass" beside it) and needs no
+ * checkout.
  */
 export function hostSummary(state: GameState, price?: string | null, now = Date.now(), pass = false): HostSummary {
   const { game } = state;
@@ -127,8 +150,9 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
     const left = Math.max(0, total - claimed);
     const full = left === 0;
     const due = needsHostFee(game);
-    const covered = due && pass;
-    const fee = due && !covered;
+    const free = drawIsFree(state);
+    const covered = due && !free && pass;
+    const fee = due && !free && !covered;
     // A linked game under way that wasn't drawn at kickoff (its fee wasn't paid): drawing is the move.
     const late = claimed > 0 && isLinked(game) && gameStarted(state, now);
     // Getting people in stays the move until the board is (nearly) full; then it's locking.
@@ -140,10 +164,11 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
             ? "Board's full. Draw time!"
             : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
         progress: claimed / total,
-        action: { kind: "lock", label: fee ? payToDrawLabel(price) : covered ? "Draw the numbers" : "Lock & draw" },
+        action: { kind: "lock", label: fee ? payToDrawLabel(price) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw" },
         slim: false,
         fee,
         covered,
+        free,
       };
     }
     return {

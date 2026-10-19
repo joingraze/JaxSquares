@@ -10,7 +10,7 @@ import { Link } from "react-router-dom";
 import { CheckIcon, CrownIcon, SparklesIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
 import type { CheckoutMethod } from "../../lib/checkout";
-import { perYear } from "./passText";
+import { paysForItself, perYear } from "./passText";
 
 export type CheckoutPlan = "board" | "pass";
 
@@ -65,18 +65,24 @@ function PlanOption({
   );
 }
 
-/** The two ways to pay at the draw: this board once, or the yearly Host Pass. One tap switches. */
+/**
+ * The two ways to pay at the draw: this board once, or the yearly Host Pass.
+ * One tap switches. `paysOffAt`: the board the pass pays for itself on
+ * (passPaysOffAt, from the prices this device shows); null hides that line.
+ */
 export function PlanPicker({
   plan,
   onChange,
   boardPrice,
   passPrice,
+  paysOffAt,
   disabled,
 }: {
   plan: CheckoutPlan;
   onChange: (plan: CheckoutPlan) => void;
   boardPrice: string | null;
   passPrice: string | null;
+  paysOffAt: number | null;
   disabled?: boolean;
 }) {
   return (
@@ -93,7 +99,7 @@ export function PlanPicker({
         selected={plan === "pass"}
         title={`Host Pass · ${perYear(passPrice)}`}
         detail="Every board you host for a year"
-        extra="Pays for itself on your second board"
+        extra={paysOffAt ? <span data-testid="pass-pays-off">{paysForItself(paysOffAt)}</span> : undefined}
         onSelect={onChange}
       />
     </div>
@@ -113,7 +119,8 @@ function Perk({ children }: { children: ReactNode }) {
   );
 }
 
-export function PassCard({ price, test }: { price: string | null; test?: boolean }) {
+/** `paysOffAt`: as PlanPicker's (null leaves that perk out). */
+export function PassCard({ price, test, paysOffAt = null }: { price: string | null; test?: boolean; paysOffAt?: number | null }) {
   return (
     <div data-testid="pass-card" className="relative overflow-hidden rounded-card bg-surface-3 p-4 ring-1 ring-inset ring-gold-line/40">
       <div aria-hidden className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-[radial-gradient(closest-side,rgb(255_194_51/0.22),transparent)]" />
@@ -129,7 +136,7 @@ export function PassCard({ price, test }: { price: string | null; test?: boolean
       <ul className="relative mt-3.5 flex flex-col gap-2 text-subhead text-ink">
         <Perk>Every board you host for a year</Perk>
         <Perk>Draw the numbers with no host fee</Perk>
-        <Perk>Pays for itself on your second board</Perk>
+        {paysOffAt ? <Perk>{paysForItself(paysOffAt)}</Perk> : null}
       </ul>
     </div>
   );

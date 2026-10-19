@@ -9,9 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppConfig, Game, HostPass, HostPassOffer, PaymentConfig } from "../../../shared/types";
 
 const env = vi.hoisted(() => ({ platform: "web" as "web" | "ios" }));
-const getProduct = vi.fn(async ({ productIdentifier }: { productIdentifier: string }) => ({
-  product: { identifier: productIdentifier, priceString: productIdentifier.includes("hostpass") ? "10,99 €" : "5,49 €" },
-}));
+/** StoreKit's products: the pass at 21,99 €, a board at 5,49 €. */
+const storeProduct = async ({ productIdentifier }: { productIdentifier: string }) => ({
+  product: productIdentifier.includes("hostpass")
+    ? { identifier: productIdentifier, priceString: "21,99 €", price: 21.99, currencyCode: "EUR" }
+    : { identifier: productIdentifier, priceString: "5,49 €", price: 5.49, currencyCode: "EUR" },
+});
+const getProduct = vi.fn(storeProduct);
 const manageSubscriptions = vi.fn(async () => {});
 vi.mock("@capgo/native-purchases", () => ({
   NativePurchases: {
@@ -37,8 +41,9 @@ const identity = await import("../../lib/identity");
 const { ToastProvider } = await import("../../components/ui");
 const { CheckoutSheet } = await import("../create/CheckoutSheet");
 const { HostPassSection } = await import("./HostPassSection");
+const { ordinal, passPaysOffAt, paysForItself } = await import("./passText");
 
-const OFFER: HostPassOffer = { priceCents: 999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
+const OFFER: HostPassOffer = { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
 const TEST: PaymentConfig = { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.app.board", hostPass: OFFER };
 const LIVE: PaymentConfig = { ...TEST, mode: "live", stripePublishableKey: "pk_test_123" };
 const LIVE_NO_WEB_PASS: PaymentConfig = { ...LIVE, hostPass: { ...OFFER, web: false } };
@@ -69,6 +74,7 @@ let clock = Date.UTC(2026, 9, 19, 12);
 beforeEach(() => {
   localStorage.clear();
   env.platform = "web";
+  getProduct.mockImplementation(storeProduct);
   passStore.resetHostPass();
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => new Response("{}", { status: 404 }));
@@ -102,9 +108,9 @@ describe("startPassPurchase (the one gate every purchase goes through)", () => {
 
 describe("hostPassPrice", () => {
   it("is the server's price on the web and only the App Store's own string in the iOS app", async () => {
-    expect(await hostPassPrice(LIVE, "web")).toBe("$9.99");
-    expect(await hostPassPrice(TEST, "web")).toBe("$9.99");
-    expect(await hostPassPrice(LIVE, "ios")).toBe("10,99 €");
+    expect(await hostPassPrice(LIVE, "web")).toBe("$19.99");
+    expect(await hostPassPrice(TEST, "web")).toBe("$19.99");
+    expect(await hostPassPrice(LIVE, "ios")).toBe("21,99 €");
     getProduct.mockRejectedValueOnce(new Error("StoreKit isn't ready"));
     expect(await hostPassPrice({ ...LIVE, hostPass: { ...OFFER, iapProductId: "com.jaxsquares.app.hostpass.missing" } }, "ios")).toBeNull();
   });
@@ -126,9 +132,9 @@ describe("the checkout sheet at the draw: this board or the Host Pass", () => {
     expect(screen.getByRole("radiogroup", { name: "How to pay" })).toBeInTheDocument();
     expect(board).toHaveTextContent("This board · $4.99");
     expect(board).toHaveAttribute("aria-checked", "true");
-    expect(pass).toHaveTextContent("Host Pass · $9.99/year");
+    expect(pass).toHaveTextContent("Host Pass · $19.99/year");
     expect(pass).toHaveTextContent("Every board you host for a year");
-    expect(pass).toHaveTextContent("Pays for itself on your second board");
+    expect(pass).toHaveTextContent("Pays for itself by your fifth board");
     expect(pass).toHaveAttribute("aria-checked", "false");
     expect(screen.getByRole("button", { name: "Draw the numbers" })).toHaveAttribute("data-testid", "pay-confirm");
     expect(screen.queryByTestId("pass-disclosure")).toBeNull();
@@ -175,7 +181,7 @@ describe("the web sign-in gate", () => {
     expect(screen.getByText("Your Host Pass stays with your account on every device.")).toBeInTheDocument();
     // The disclosure Apple asks for sits beside the button (on the web too): name, length, price per period, renewal, cancel, links.
     const disclosure = screen.getByTestId("pass-disclosure");
-    expect(disclosure).toHaveTextContent("Host Pass, 1 year, $9.99 a year. It renews automatically each year until you cancel. Cancel any time in Profile › Host Pass › Manage.");
+    expect(disclosure).toHaveTextContent("Host Pass, 1 year, $19.99 a year. It renews automatically each year until you cancel. Cancel any time in Profile › Host Pass › Manage.");
     expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms#host-pass");
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
     fireEvent.click(signInButton);
@@ -188,13 +194,13 @@ describe("the web sign-in gate", () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/payments/pass/stripe")) {
         expect((init?.headers as Record<string, string>)["x-signed-in"]).toBe("1");
-        return Response.json({ clientSecret: "pi_sub_secret", amountCents: 999, currency: "usd" });
+        return Response.json({ clientSecret: "pi_sub_secret", amountCents: 1999, currency: "usd" });
       }
       if (url.endsWith("/pay/stripe")) return Response.json({ clientSecret: "pi_board_secret", amountCents: 499, currency: "usd" });
       return new Response("{}", { status: 404 });
     });
     sheet({ payments: LIVE, initialPlan: "pass" });
-    expect(await screen.findByRole("button", { name: "Subscribe · $9.99/year" })).toHaveAttribute("data-testid", "pay-confirm");
+    expect(await screen.findByRole("button", { name: "Subscribe · $19.99/year" })).toHaveAttribute("data-testid", "pay-confirm");
     expect(screen.queryByTestId("pass-signin")).toBeNull();
   });
 });
@@ -203,17 +209,66 @@ describe("in the iOS app", () => {
   it("shows the App Store's own prices and Apple's subscription terms, never the web price", async () => {
     env.platform = "ios";
     sheet({ payments: LIVE });
-    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Host Pass · 10,99 €/year"));
+    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Host Pass · 21,99 €/year"));
     expect(screen.getByTestId("plan-board")).toHaveTextContent("This board · 5,49 €");
     fireEvent.click(screen.getByTestId("plan-pass"));
     expect(await screen.findByRole("button", { name: "Subscribe" })).toHaveAttribute("data-testid", "pay-confirm");
     const disclosure = screen.getByTestId("pass-disclosure");
-    expect(disclosure).toHaveTextContent("Host Pass, 1 year, 10,99 € a year. Charged to your Apple ID when you confirm.");
+    expect(disclosure).toHaveTextContent("Host Pass, 1 year, 21,99 € a year. Charged to your Apple ID when you confirm.");
     expect(disclosure).toHaveTextContent("renews automatically each year unless you cancel at least 24 hours before it renews");
     expect(disclosure).toHaveTextContent("Cancel any time in Settings › your name › Subscriptions.");
-    expect(document.body.textContent).not.toMatch(/\$9\.99|\$4\.99|Stripe/);
+    expect(document.body.textContent).not.toMatch(/\$19\.99|\$4\.99|Stripe/);
     // No sign-in needed: Apple keeps the subscription.
     expect(screen.queryByTestId("pass-signin")).toBeNull();
+  });
+
+  it("works out when the pass pays for itself from the App Store's prices (21,99 € ÷ 5,49 €: the fifth board)", async () => {
+    env.platform = "ios";
+    sheet({ payments: LIVE });
+    expect(await screen.findByTestId("pass-pays-off")).toHaveTextContent("Pays for itself by your fifth board");
+  });
+
+  it("hides that line when StoreKit can't give both prices", async () => {
+    env.platform = "ios";
+    const board = { ...LIVE, iapProductId: "com.jaxsquares.app.board.noprice" };
+    getProduct.mockImplementation(async ({ productIdentifier }: { productIdentifier: string }) => ({
+      product: productIdentifier.endsWith("noprice")
+        ? ({ identifier: productIdentifier, priceString: "5,49 €" } as never)
+        : { identifier: productIdentifier, priceString: "21,99 €", price: 21.99, currencyCode: "EUR" },
+    }));
+    sheet({ payments: board });
+    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Host Pass · 21,99 €/year"));
+    expect(screen.getByTestId("plan-board")).toHaveTextContent("This board · 5,49 €");
+    expect(screen.queryByTestId("pass-pays-off")).toBeNull();
+    expect(screen.getByTestId("plan-pass")).not.toHaveTextContent(/Pays for itself/);
+  });
+});
+
+describe("when the pass pays for itself", () => {
+  const usd = (amount: number) => ({ amount, currency: "USD" });
+
+  it("is ceil(pass ÷ board) in whole cents: the first board count whose fees reach the pass", () => {
+    // 4 × $4.99 = $19.96 is short of $19.99: the fifth board.
+    expect(passPaysOffAt(usd(1999), usd(499))).toBe(5);
+    // Exactly four boards' worth: the fourth.
+    expect(passPaysOffAt(usd(1996), usd(499))).toBe(4);
+    expect(passPaysOffAt(usd(999), usd(499))).toBe(3);
+    expect(passPaysOffAt({ amount: 21.99, currency: "EUR" }, { amount: 5.49, currency: "EUR" })).toBe(5);
+    // Floating point doesn't push an exact multiple up a board.
+    expect(passPaysOffAt(usd(14.97), usd(4.99))).toBe(3);
+  });
+
+  it("isn't said when a price is unknown, the currencies differ, or the pass costs about one board", () => {
+    expect(passPaysOffAt(null, usd(499))).toBeNull();
+    expect(passPaysOffAt(usd(1999), null)).toBeNull();
+    expect(passPaysOffAt(usd(1999), { amount: 499, currency: "EUR" })).toBeNull();
+    expect(passPaysOffAt(usd(499), usd(499))).toBeNull();
+    expect(passPaysOffAt(usd(0), usd(499))).toBeNull();
+  });
+
+  it("reads as words, then numbers", () => {
+    expect(paysForItself(4)).toBe("Pays for itself by your fourth board");
+    expect([2, 3, 10, 11, 12, 13, 21, 22, 23, 101].map(ordinal)).toEqual(["second", "third", "tenth", "11th", "12th", "13th", "21st", "22nd", "23rd", "101st"]);
   });
 });
 
@@ -246,7 +301,7 @@ describe("Profile → Host Pass", () => {
     const section = await screen.findByTestId("host-pass-section");
     expect(section).toHaveAttribute("data-state", "none");
     expect(section).toHaveTextContent("Every board you host, for a year");
-    expect(section).toHaveTextContent("Pays for itself on your second board");
+    expect(section).toHaveTextContent("Pays for itself by your fifth board");
     expect(await screen.findByTestId("pass-get")).toHaveTextContent("Get a test pass · no charge");
     expect(screen.queryByTestId("pass-restore")).toBeNull();
   });
@@ -277,7 +332,7 @@ describe("Profile → Host Pass", () => {
     env.platform = "ios";
     serve(LIVE, null);
     const { unmount } = profile();
-    expect(await screen.findByTestId("pass-get")).toHaveTextContent("Get the Host Pass · 10,99 €/year");
+    expect(await screen.findByTestId("pass-get")).toHaveTextContent("Get the Host Pass · 21,99 €/year");
     expect(screen.getByTestId("pass-restore")).toHaveTextContent("Restore purchases");
     unmount();
     passStore.resetHostPass();

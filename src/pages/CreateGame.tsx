@@ -22,8 +22,9 @@
 //
 // Creating is free: one tap makes the board and opens it ("Setting up your
 // board" to "You're live!" with confetti, then /g/<id>?invite=1 with its
-// invite sheet up). Setting up, inviting and picking squares cost nothing; the
-// host fee is due when the host draws the numbers (Review says so, with the
+// invite sheet up). Setting up, inviting and picking squares cost nothing;
+// drawing is free with up to 5 players, and bigger boards pay the host fee
+// when the host draws the numbers (Review says so, createFeeLine, with the
 // price this device shows: the App Store's in the iOS app). Opening the board
 // first rewinds the flow's steps, so Back from the board goes where the host
 // started, not into a finished flow.
@@ -63,6 +64,7 @@ import { KICKOFF_INPUT_ID, KickoffPicker } from "../features/create/KickoffPicke
 import {
   boardNameFor,
   buildCreateInput,
+  createFeeLine,
   createFormat,
   matchupShortNames,
   matchupTeams,
@@ -134,7 +136,7 @@ export default function CreateGame() {
   const [shake, setShake] = useState(0);
 
   // ---- create ----
-  // The host fee, for Review's line (due at the draw, not now).
+  // The host fee, for Review's line (due at the draw of a board of 6 or more, not now).
   const { price } = useHostFee();
   const [phase, setPhase] = useState<Phase>("idle");
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -555,7 +557,7 @@ export default function CreateGame() {
         </div>
         {step === "review" && (
           <p data-testid="create-fee" className="mt-2 text-center text-caption text-ink-subtle">
-            {price ? `Free to set up and invite. ${price} when you draw the numbers.` : "Free to set up and invite. The host fee is due when you draw the numbers."}
+            {createFeeLine(price)}
           </p>
         )}
       </ActionBar>

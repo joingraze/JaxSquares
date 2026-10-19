@@ -5,6 +5,7 @@ import {
   boardHeadline,
   boardNameFor,
   buildCreateInput,
+  createFeeLine,
   createFormat,
   detailsSummary,
   rulesTitle,
@@ -302,4 +303,18 @@ describe("buildCreateInput", () => {
     expect(createFormat(owner, "fun").rules?.every((r) => !r.square?.amount && !r.reverse?.amount)).toBe(true);
   });
 
+});
+
+describe("createFeeLine (Review's line under Create)", () => {
+  it("says setting up is free, drawing is free with up to 5 players, and the price for bigger boards", () => {
+    expect(createFeeLine("$4.99")).toBe("Free to set up and invite. Free to draw with up to 5 players, $4.99 for bigger boards.");
+    // The iOS app passes only the App Store's own string.
+    expect(createFeeLine("4,99 €")).toBe("Free to set up and invite. Free to draw with up to 5 players, 4,99 € for bigger boards.");
+  });
+
+  it("leaves the amount out when the price can't be said (never a guessed or web price)", () => {
+    const line = createFeeLine(null);
+    expect(line).toBe("Free to set up and invite. Free to draw with up to 5 players; bigger boards have a host fee when you draw.");
+    expect(line).not.toMatch(/\$|€/);
+  });
 });

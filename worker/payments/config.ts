@@ -8,8 +8,8 @@ import type { Env } from "../env";
 
 export const DEFAULT_PRICE_CENTS = 499;
 export const DEFAULT_IAP_PRODUCT_ID = "com.jaxsquares.app.board";
-/** The Host Pass: $9.99 a year on the web; the App Store sets its own localized price. */
-export const DEFAULT_HOST_PASS_PRICE_CENTS = 999;
+/** The Host Pass: $19.99 a year on the web (wrangler.jsonc HOST_PASS_PRICE_CENTS sets it); the App Store sets its own localized price. */
+export const DEFAULT_HOST_PASS_PRICE_CENTS = 1999;
 export const DEFAULT_IAP_HOST_PASS_PRODUCT_ID = "com.jaxsquares.app.hostpass.yearly";
 export const CURRENCY = "usd";
 /** Stripe's minimum charge for USD. */

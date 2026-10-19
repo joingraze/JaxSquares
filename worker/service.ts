@@ -2,6 +2,7 @@
 // payments/push modules. See docs/ARCHITECTURE.md "Cross-module function contracts".
 
 import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
+import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
 import {
   drawNumbers,
   liveChanged,
@@ -167,9 +168,10 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
  * entries when the total goes up (a touchdown and its conversion seen in one
  * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
  * when it's corrected down, lock at kickoff if the host hasn't (only once the
- * host fee is paid or the host's Host Pass covers it: an unpaid board stays
- * open, still taking the feed's scores, until its host pays and draws), and mark the board final when the
- * game ends. Pushes the new state and sends pushes.
+ * host fee is paid, the board is free (5 or fewer players hold squares), or
+ * the host's Host Pass covers it: an unpaid board stays open, still taking the
+ * feed's scores, until its host pays and draws), and mark the board final
+ * when the game ends. Pushes the new state and sends pushes.
  *
  * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
  * own sockets directly instead of fetching itself.
@@ -180,19 +182,48 @@ export async function applyLiveUpdate(
   update: LiveUpdate,
   deliver: Deliver = (state, activities) => pushToRoom(env, gameId, state, activities),
 ): Promise<void> {
-  const prev = await loadState(env, gameId);
+  let prev = await loadState(env, gameId);
   if (!prev || !prev.game.linkedEvent) return;
-  const { game } = prev;
-  if (game.status === "draft") return;
+  if (prev.game.status === "draft") return;
 
   const now = Date.now();
   const live: LiveStatus = { ...update.live, updatedAt: update.live.updatedAt || now };
+  const kickoff = live.state === "in" || update.isFinal;
   const writes: D1PreparedStatement[] = [];
   const activities: Activity[] = [];
   const notifications: NotifyEvent[] = [];
   // Activities whose insert is conditional on their write applying (lock/final);
   // their notification is only sent if the activity was actually recorded.
   const conditional = new Map<string, NotifyEvent>();
+
+  // A free board (FREE_PLAYER_LIMIT or fewer players hold squares) draws at
+  // kickoff with no fee: marked paid ("free") and locked in a batch of its
+  // own, which counts the holders again. A 6th player whose claim landed
+  // after the read makes it a no-op, and the board is decided below with
+  // them counted. Its own batch, so the scores below go against the numbers
+  // that were really drawn (or none).
+  let drewFree = false;
+  if (prev.game.status === "open" && !prev.game.paid && kickoff && isFreeDraw(prev)) {
+    const locked = newActivity("locked", null, { auto: true }, now);
+    const { state } = await db.commit(
+      env.DB,
+      gameId,
+      [
+        db.markFreeDraw(env.DB, gameId, FREE_PLAYER_LIMIT, now),
+        db.lockGame(env.DB, gameId, drawNumbers(prev.game.format), now),
+        db.insertActivityIfChanged(env.DB, gameId, locked),
+      ],
+      now,
+    );
+    if (!state) return;
+    if (state.activity.some((a) => a.id === locked.id)) {
+      drewFree = true;
+      activities.push(locked);
+      conditional.set(locked.id, { kind: "numbers-drawn" });
+    }
+    prev = state;
+  }
+  const { game } = prev;
 
   if (liveChanged(prev.live, live)) writes.push(db.upsertLive(env.DB, gameId, live));
 
@@ -207,7 +238,6 @@ export async function applyLiveUpdate(
   // postponed/canceled game.)
   let numbers = game.numbers;
   let status = game.status;
-  const kickoff = live.state === "in" || update.isFinal;
   let pass: { id: string } | null = null;
   if (status === "open" && !game.paid && kickoff) {
     const host = await db.hostClientIdOf(env.DB, gameId);
@@ -261,10 +291,11 @@ export async function applyLiveUpdate(
     conditional.set(final.id, { kind: "final" });
   }
 
-  if (writes.length === 0) return;
   for (const a of activities) if (!conditional.has(a.id)) writes.push(db.insertActivity(env.DB, gameId, a));
+  if (writes.length === 0 && !drewFree) return;
 
-  const { state } = await db.commit(env.DB, gameId, writes, now);
+  // Nothing more to write after a free draw: its batch already read the state.
+  const state = writes.length > 0 ? (await db.commit(env.DB, gameId, writes, now)).state : prev;
   if (!state) return;
   const recorded = new Set(state.activity.map((a) => a.id));
   for (const [id, event] of conditional) if (recorded.has(id)) notifications.push(event);

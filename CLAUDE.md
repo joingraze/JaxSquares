@@ -88,8 +88,10 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   amounts (`suggestPrizes`) fill the create flow until the host types one.
   Read amounts through `PeriodResult` / `prizeAmount`, not `rule.square.amount`.
 - The only payment is the host fee for a board, due when the host draws the
-  numbers: creating, inviting and picking squares are free, and `POST /lock`
-  answers 402 (`PAYMENT_REQUIRED_CODE`) until `Game.paid`. Boards made before
+  numbers: creating, inviting and picking squares are free, so is drawing a
+  board 5 or fewer players hold squares on (`isFreeDraw`, `shared/hostFee.ts`;
+  marked paid `"free"` in the draw's batch), and `POST /lock` answers 402
+  (`PAYMENT_REQUIRED_CODE`) until `Game.paid`. Boards made before
   that count as paid; a linked board draws itself at kickoff only once paid
   (`docs/payments.md`). The yearly Host Pass covers the fee: an active pass
   (`activePass`, keyed by the canonical clientId) marks the board paid through

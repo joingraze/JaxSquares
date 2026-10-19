@@ -9,9 +9,12 @@
 // The host fee is due when the numbers are drawn: on a board whose fee isn't
 // paid the draw reads "Draw the numbers · $4.99" and opens the checkout sheet
 // first (this board, or the yearly Host Pass), then draws. A linked board can
-// be paid ahead ("Pay now and Jax draws the numbers at kickoff"). With an
-// active Host Pass the draw reads "Draw the numbers", "Included with your Host
-// Pass", and just draws. Setting up, inviting and picking squares are free.
+// be paid ahead ("Pay now and Jax draws the numbers at kickoff"). A board with
+// 5 or fewer players holding squares is free: "Draw the numbers · Free", "Free
+// for up to 5 players", and it just draws (no pay-ahead: Jax draws a free
+// linked board at kickoff anyway). With an active Host Pass a bigger board's
+// draw reads "Draw the numbers", "Included with your Host Pass", and just
+// draws. Setting up, inviting and picking squares are free.
 //
 // Deep link (from Home): ?draw=1 opens the lock & draw confirm. Cleared once handled.
 //
@@ -36,7 +39,8 @@ import { useHostPass } from "../../lib/useHostPass";
 import type { CheckoutPlan, CheckoutPurpose } from "../create/CheckoutSheet";
 import { PassIncluded } from "../pass/PassParts";
 import "./host.css";
-import { claimedOf, hostSummary, isPicking, needsHostFee, revealDraw, type HostSummary, type RemoveCopy } from "./hostModel";
+import { FreeDrawNote } from "./FreeDrawNote";
+import { claimedOf, drawIsFree, hostSummary, isPicking, needsHostFee, revealDraw, type HostSummary, type RemoveCopy } from "./hostModel";
 import { HostSheet, type HostView, type RemoveTarget } from "./HostSheet";
 import { NumberReveal } from "./NumberReveal";
 import { PAY_FIRST, useHostActions } from "./useHostActions";
@@ -105,12 +109,16 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms));
 
   const adminToken = getAdminToken(game.id);
-  // The host fee is due at the draw, unless the host's Host Pass covers it: then
-  // drawing just draws (the server marks the board paid through the pass).
+  // The host fee is due at the draw, unless 5 or fewer players hold squares
+  // (free: the server marks the board paid "free" as it draws) or the host's
+  // Host Pass covers it (the server marks it paid through the pass). Either
+  // way drawing just draws; a 402 meanwhile (a 6th player got in, the pass
+  // ended) opens the checkout.
   const unpaid = needsHostFee(game);
+  const free = drawIsFree(state);
   const hostPass = useHostPass(unpaid);
-  const covered = unpaid && hostPass.active;
-  const fee = unpaid && !covered;
+  const covered = unpaid && !free && hostPass.active;
+  const fee = unpaid && !free && !covered;
   // Have the price (and the checkout config) ready while the fee is due.
   const { price, payments } = useHostFee(fee);
   const summary = hostSummary(state, price, Date.now(), hostPass.active);
@@ -369,6 +377,7 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
         }}
         fee={fee}
         covered={covered}
+        free={free}
         price={price}
         onPayAhead={() => openCheckout("ahead")}
         onLock={lock}
@@ -450,9 +459,10 @@ function Crown({ size }: { size: "sm" | "md" }) {
 function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: () => void; onAction: () => void }) {
   const kind = summary.action.kind;
 
-  // Time to draw and the host fee is due (or the Host Pass covers it): the draw,
-  // with its price or "Included with your Host Pass", gets the full width.
-  if (kind === "lock" && (summary.fee || summary.covered)) {
+  // Time to draw and the host fee is due (or the board is free, or the Host
+  // Pass covers it): the draw, with its price, "Free for up to 5 players" or
+  // "Included with your Host Pass", gets the full width.
+  if (kind === "lock" && (summary.fee || summary.free || summary.covered)) {
     return (
       <div className="hx-bar hx-bar-fee flex flex-col gap-2.5 rounded-card p-3">
         <button
@@ -480,6 +490,7 @@ function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: 
           <ShuffleIcon size={18} strokeWidth={2.4} />
           {summary.action.label}
         </button>
+        {summary.free && <FreeDrawNote className="-mt-0.5" />}
         {summary.covered && <PassIncluded className="-mt-0.5" />}
       </div>
     );

@@ -3,7 +3,10 @@ import { MONEY_ERRORS } from "../../../shared/formats";
 import { KICKOFF_ERRORS } from "../../../shared/kickoff";
 import type { GameState, NumberDraw, Player, Score, Square } from "../../../shared/types";
 import {
+  FREE_DRAW_NOTE,
+  FREE_TIER_LINE,
   NEXT_ENTRY,
+  drawIsFree,
   addPoints,
   canSaveScore,
   cleanTyped,
@@ -171,8 +174,11 @@ describe("hostSummary", () => {
     expect(hostSummary(locked({ game: { status: "final" } })).action.kind).toBe("final");
   });
 
-  it("puts the host fee on the draw while it's due, and only then", () => {
-    const full = Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, MAYA));
+  /** Every square, spread over `owners` players. */
+  const fullBoard = (owners: number) => Array.from({ length: 100 }, (_, i) => sq(Math.floor(i / 10), i % 10, i % owners === 0 ? MAYA : `p${i % owners}`));
+
+  it("puts the host fee on the draw of a 6-player board while it's due, and only then", () => {
+    const full = fullBoard(6);
     const unpaid = hostSummary(makeState({ game: { paid: false }, squares: full }), "$4.99");
     expect(unpaid.action).toEqual({ kind: "lock", label: "Draw the numbers · $4.99" });
     expect(unpaid.fee).toBe(true);
@@ -188,12 +194,39 @@ describe("hostSummary", () => {
     expect(hostSummary(makeState({ game: { status: "draft", paid: false }, squares: full }), "$4.99").action.label).toBe("Draw the numbers · $4.99");
   });
 
+  it("draws a board of 5 or fewer players for free: no price, no checkout, whatever the pass", () => {
+    const five = hostSummary(makeState({ game: { paid: false }, squares: fullBoard(5) }), "$4.99");
+    expect(five.action).toEqual({ kind: "lock", label: "Draw the numbers · Free" });
+    expect(five).toMatchObject({ free: true, fee: false, covered: false });
+    // A pass holder's small board is free too: the pass isn't what covers it.
+    expect(hostSummary(makeState({ game: { paid: false }, squares: fullBoard(1) }), "$4.99", Date.now(), true)).toMatchObject({
+      action: { label: "Draw the numbers · Free" },
+      free: true,
+      covered: false,
+    });
+    // A 6th player brings the fee back, or the pass.
+    expect(hostSummary(makeState({ game: { paid: false }, squares: fullBoard(6) }), "$4.99", Date.now(), true)).toMatchObject({
+      action: { label: "Draw the numbers" },
+      free: false,
+      covered: true,
+      fee: false,
+    });
+    // Paid boards and older copies (no `paid`) aren't "free": they just draw.
+    expect(hostSummary(makeState({ game: { paid: true }, squares: fullBoard(2) }), "$4.99")).toMatchObject({ action: { label: "Lock & draw" }, free: false });
+    expect(drawIsFree(makeState({ squares: fullBoard(2) }))).toBe(false);
+    expect(drawIsFree(makeState({ game: { paid: false }, squares: fullBoard(5) }))).toBe(true);
+    expect(drawIsFree(makeState({ game: { paid: false }, squares: fullBoard(6) }))).toBe(false);
+    expect(FREE_DRAW_NOTE).toBe("Free for up to 5 players");
+    expect(FREE_TIER_LINE).toBe("Boards with up to 5 players are free.");
+  });
+
   it("makes drawing the move once a linked game kicked off without its numbers", () => {
     const linkedAt = { provider: "espn" as const, league: "nfl" as const, eventId: "1", startsAt: 1_000, xIsHome: true };
-    const s = hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: [sq(0, 0, MAYA)] }), "$4.99", 2_000);
+    const six = fullBoard(6).slice(0, 6);
+    const s = hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: six }), "$4.99", 2_000);
     expect(s).toMatchObject({ status: "Kicked off · numbers not drawn yet", action: { kind: "lock", label: "Draw the numbers · $4.99" }, fee: true });
     // Before kickoff it's still about filling the board.
-    expect(hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: [sq(0, 0, MAYA)] }), "$4.99", 500).action.kind).toBe("invite");
+    expect(hostSummary(makeState({ game: { paid: false, linkedEvent: linkedAt }, squares: six }), "$4.99", 500).action.kind).toBe("invite");
   });
 
   it("knows when the fee is due, and when a linked board can be paid ahead", () => {

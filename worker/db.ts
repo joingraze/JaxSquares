@@ -14,6 +14,7 @@
 // trip per mutation, and the state it returns is exactly what was written.
 
 import { upgradeFormat } from "../shared/formats";
+import { isFreeHolderCount } from "../shared/hostFee";
 import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
@@ -594,6 +595,10 @@ export function lockGame(db: D1Database, gameId: string, numbers: Record<string,
     .bind(JSON.stringify(numbers), now, gameId);
 }
 
+const MARK_PAID = `UPDATE games SET paid_at = ?1, payment_provider = ?2, payment_reference = ?3, payment_amount_cents = ?4,
+         activated_at = COALESCE(activated_at, ?1), status = CASE WHEN status = 'draft' THEN 'open' ELSE status END
+       WHERE id = ?5 AND paid_at IS NULL`;
+
 /**
  * Records the board's host fee: stamps paid_at with the purchase that paid
  * it (the ledger, worker/payments/store.ts, decides which one that is), or
@@ -606,13 +611,32 @@ export function markPaid(
   purchase: { provider: string; reference: string; amountCents: number },
   now: number,
 ): D1PreparedStatement {
+  return db.prepare(MARK_PAID).bind(now, purchase.provider, purchase.reference, Math.trunc(purchase.amountCents) || 0, gameId);
+}
+
+/** `games.payment_provider`, and `payment_reference`, of a board drawn for free (amount 0). */
+export const FREE_PROVIDER = "free";
+
+/**
+ * The free tier (shared/hostFee.ts): marks the board paid with provider
+ * "free" (reference "free", amount 0), but only while `maxHolders` or fewer
+ * distinct players hold its squares, counted inside this statement. Put it in
+ * the same batch as lockGame, which needs paid_at: D1 runs each batch as one
+ * transaction, one at a time, so a 6th player whose claim committed after the
+ * route read the board makes both writes no-ops, and a claim that comes after
+ * the draw finds the board locked (claimSquares re-checks it's open). A legacy
+ * draft opens too, like any payment. No-op once the board is paid.
+ */
+export function markFreeDraw(db: D1Database, gameId: string, maxHolders: number, now: number): D1PreparedStatement {
   return db
-    .prepare(
-      `UPDATE games SET paid_at = ?1, payment_provider = ?2, payment_reference = ?3, payment_amount_cents = ?4,
-         activated_at = COALESCE(activated_at, ?1), status = CASE WHEN status = 'draft' THEN 'open' ELSE status END
-       WHERE id = ?5 AND paid_at IS NULL`,
-    )
-    .bind(now, purchase.provider, purchase.reference, Math.trunc(purchase.amountCents) || 0, gameId);
+    .prepare(`${MARK_PAID} AND (SELECT COUNT(DISTINCT client_id) FROM squares WHERE game_id = ?5) <= ?6`)
+    .bind(now, FREE_PROVIDER, FREE_PROVIDER, 0, gameId, maxHolders);
+}
+
+/** How many different players hold squares on the board (the free tier's count, server side). */
+export async function squareHolderCount(db: D1Database, gameId: string): Promise<number> {
+  const row = await db.prepare(`SELECT COUNT(DISTINCT client_id) AS n FROM squares WHERE game_id = ?`).bind(gameId).first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
 export function setFinal(db: D1Database, gameId: string): D1PreparedStatement {
@@ -736,6 +760,8 @@ interface DashboardRow extends GameRow {
   claimed: number;
   my_squares: number;
   player_count: number;
+  /** Players holding at least one square (the free tier's count). */
+  holders: number;
   joined: number;
   /** The host's player row (null when there is none). */
   host_name: string | null;
@@ -761,6 +787,7 @@ export async function listGamesForClient(
          (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id) AS claimed,
          (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id AND s.client_id = ?1) AS my_squares,
          (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) AS player_count,
+         (SELECT COUNT(DISTINCT s.client_id) FROM squares s WHERE s.game_id = g.id) AS holders,
          EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.client_id = ?1) AS joined,
          hp.name AS host_name, hp.color AS host_color, hp.emoji AS host_emoji
        FROM games g
@@ -826,6 +853,7 @@ export async function listGamesForClient(
       joined: !!r.joined,
       linked: game.linkedEvent !== null,
       paid: game.paid,
+      freeDraw: isFreeHolderCount(r.holders),
       // Public profile only: the host's public id, never their clientId.
       host: r.host_name !== null ? { id: game.hostPlayerId, name: r.host_name, color: r.host_color ?? "", emoji: r.host_emoji ?? "" } : null,
       mySquares: r.my_squares,
@@ -971,24 +999,29 @@ export async function hitRateLimit(db: D1Database, key: string, windowMs: number
 
 /**
  * Claims the linked boards due a "kickoff soon, draw the numbers" reminder:
- * still open with the host fee unpaid, kicking off within `leadMs`, made at
- * least `minAgeMs` ago (a host setting up right now doesn't need one), and
- * not reminded yet. Stamped in the same statement, so each board gets one.
+ * still open with the host fee unpaid and more than `freeHolders` players
+ * holding squares (a free board draws itself at kickoff; it isn't stamped,
+ * so it's reminded if it grows past that before kickoff), kicking off within
+ * `leadMs`, made at least `minAgeMs` ago (a host setting up right now doesn't
+ * need one), and not reminded yet. Stamped in the same statement, so each
+ * board gets one.
  */
 export async function claimDrawReminders(
   db: D1Database,
   now: number,
   leadMs: number,
   minAgeMs: number,
+  freeHolders: number,
 ): Promise<{ id: string; hostClientId: string }[]> {
   const { results } = await db
     .prepare(
       `UPDATE games SET draw_reminder_at = ?1
        WHERE linked_event IS NOT NULL AND starts_at IS NOT NULL AND starts_at > ?1 AND starts_at <= ?2
          AND status = 'open' AND paid_at IS NULL AND draw_reminder_at IS NULL AND created_at <= ?3
+         AND (SELECT COUNT(DISTINCT s.client_id) FROM squares s WHERE s.game_id = games.id) > ?4
        RETURNING id, host_client_id`,
     )
-    .bind(now, now + leadMs, now - minAgeMs)
+    .bind(now, now + leadMs, now - minAgeMs, freeHolders)
     .all<{ id: string; host_client_id: string }>();
   // Server-only: the cron skips hosts whose Host Pass covers the board (worker/payments).
   return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id }));

@@ -3,9 +3,16 @@
 The only money in JaxSquares is the **host fee**: the host pays JaxSquares once
 per board, when they draw its numbers, or takes the yearly **Host Pass**, which
 covers that fee on every board they host (see "Host Pass" below). Setting up a
-board, inviting friends and picking squares are free, and nothing ever moves
-between players. JaxSquares never sells squares; the fee is for creating and
-managing the board.
+board, inviting friends and picking squares are free, and so is drawing a
+**small board**: one whose squares 5 or fewer players hold (see "The free
+tier" below). Nothing ever moves between players. JaxSquares never sells
+squares; the fee is for creating and managing the board.
+
+| | Price | Where it's set |
+|---|---|---|
+| A board held by 5 or fewer players | Free | `FREE_PLAYER_LIMIT` (`shared/hostFee.ts`) |
+| A bigger board, once | $4.99 | `BOARD_PRICE_CENTS` (499) on the web, the App Store product's price in the iOS app |
+| Host Pass, every board for a year | $19.99 a year | `HOST_PASS_PRICE_CENTS` (1999) on the web, the App Store subscription's price in the iOS app |
 
 | Where the host is | How they pay | Server check |
 |---|---|---|
@@ -26,10 +33,12 @@ Support pages leave out Stripe and the web price there too.
 1. **Create (free).** `POST /api/games` makes the board `open` right away
    (`paymentRequired` is always `false`), with `Game.paid` = `false`. Friends
    join and pick squares; nothing is charged.
-2. **Draw = pay.** `POST /api/games/:id/lock` on a board whose fee isn't paid
-   answers **402** `{ error: "Draw the numbers once the board's paid for.",
-   code: "payment_required" }` (`PAYMENT_REQUIRED_CODE` in `shared/types.ts`).
-   The host's "Draw the numbers · $4.99" opens the checkout sheet first; once a
+2. **Draw = pay, for a board of 6 or more.** `POST /api/games/:id/lock` on a
+   board whose fee isn't paid draws it for free when 5 or fewer players hold
+   its squares (below). Otherwise, unless a Host Pass covers it, it answers
+   **402** `{ error: "Draw the numbers once the board's paid for.", code:
+   "payment_required" }` (`PAYMENT_REQUIRED_CODE` in `shared/types.ts`). The
+   host's "Draw the numbers · $4.99" opens the checkout sheet first; once a
    `/pay/*` call (or the Stripe webhook) records the fee, the app calls `/lock`
    again and plays the number reveal. Only the host (the board's admin token)
    can pay or draw.
@@ -40,6 +49,51 @@ Support pages leave out Stripe and the web price there too.
    `payment_reference` and `payment_amount_cents`. Paying never draws by
    itself. `db.lockGame` also refuses an unpaid board in SQL, so a race can't
    draw one.
+
+### The free tier
+
+A board whose squares are held by **5 or fewer distinct players** when the
+numbers are drawn costs nothing to draw (`FREE_PLAYER_LIMIT` and the pure
+`isFreeDraw(state)` in `shared/hostFee.ts`, used by the Worker and the app
+alike). Only players holding at least one square count: someone who joined
+and picked nothing doesn't, and the host counts like anyone else once they
+hold a square. Nobody can add squares for someone else (`POST /claim` only
+ever claims for the caller's own identity), and the sign-in merge can only
+lower the count (two devices of one account become one player).
+
+- **The draw.** `POST /lock` on an unpaid free board marks it paid with
+  `payment_provider` **`free`**, `payment_reference` `free` and
+  `payment_amount_cents` 0, in the same batch as the draw, before it looks
+  for a Host Pass or answers 402. No `purchases` row is written: nothing was
+  charged. A pass holder's small board is drawn free too (not through the
+  pass). Once drawn it reads `Game.paid: true` like any drawn board.
+- **Race-safe.** The route decides from the board it read, but the mark
+  (`db.markFreeDraw`) counts the holders again inside its own `UPDATE`
+  (`... AND (SELECT COUNT(DISTINCT client_id) FROM squares WHERE game_id = ?) <= 5`),
+  and `db.lockGame` only locks a board whose `paid_at` is set. D1 runs each
+  batch as one transaction, one at a time, so a 6th player's claim either
+  commits first (then the count sees 6, the mark changes nothing and neither
+  does the lock) or commits after (then `claimSquares`, which re-checks
+  `status = 'open'` in SQL, finds the board locked and inserts nothing). When
+  the mark loses that race, the route decides once more with the board its
+  batch read back (6 or more holders): the host's Host Pass, or the 402. The
+  app then opens the checkout as for any 402.
+- **Kickoff.** A free linked board draws itself at kickoff like a paid one
+  (`applyLiveUpdate`): the mark and the lock go in a batch of their own, with
+  the same SQL count, before the live score's writes, so the scores always go
+  against numbers that were really drawn. If a 6th player won that race, the
+  board is decided again with them counted (the pass, or it waits for the
+  host).
+- **Pushes.** A free board gets no "kickoff soon" reminder (`claimDrawReminders`
+  leaves it out in SQL and doesn't stamp it, so it's reminded if it grows past
+  5 before kickoff; `notify` checks again), and its "board full" push says
+  "Draw numbers now, or they'll draw at kickoff", never "pay".
+- **The app.** The host bar, the Now card and the lock confirm read "Draw the
+  numbers · Free" with "Free for up to 5 players" (`host-free-note`), no
+  price, no pay-ahead; drawing just draws (a 402 meanwhile opens the
+  checkout). The pre-draw hint says "Boards with up to 5 players are free.",
+  and on a bigger board the lock confirm adds "This one has 7." Home's full
+  linked board says "numbers drawn at kickoff" when `GameSummary.freeDraw`.
 
 **Grandfathered boards.** Migration `0009_pay_at_draw.sql` adds `games.paid_at`
 and stamps every board past `draft` as paid (they were paid for under the old
@@ -53,7 +107,8 @@ before it deploys): a payment-opened board counts as paid, a draft opens.
 only.
 
 **Linked boards** (tied to an ESPN game) draw their own numbers at kickoff only
-once the fee is paid (`applyLiveUpdate`, `worker/service.ts`). The host can pay
+once the fee is paid, the board is free (5 or fewer players) or a Host Pass
+covers it (`applyLiveUpdate`, `worker/service.ts`). The host of a bigger board can pay
 ahead ("Pay now and Jax draws the numbers at kickoff", `purpose="ahead"` on the
 checkout sheet), and then Jax draws at kickoff unless the host draws first. An
 unpaid linked board stays `open` at kickoff: the feed keeps recording the live
@@ -64,14 +119,16 @@ already over when they do, the draw also ends the board (`final`), with one
 
 **Reminders** (host-only pushes, never an amount; `worker/push/copy.ts`):
 
-- *Board full* (once per board): on an unpaid linked board, "Draw the numbers
-  now, or pay ahead and Jax draws them at kickoff."
+- *Board full* (once per board): on an unpaid linked board of 6 or more
+  players, "Draw the numbers now, or pay ahead and Jax draws them at kickoff."
+  (A free board, or one a Host Pass covers: "Draw numbers now, or they'll draw
+  at kickoff.")
 - *Kickoff soon* (`draw-reminder`): the cron (every minute) claims linked boards
-  that kick off within the hour, are still `open` with the fee unpaid, were
-  made at least 15 minutes ago and weren't reminded yet
-  (`games.draw_reminder_at`, `db.claimDrawReminders`), and tells their host
-  "Kickoff in about an hour. Draw the numbers now, or pay ahead and Jax draws
-  them at kickoff."
+  that kick off within the hour, are still `open` with the fee unpaid, are held
+  by more than 5 players, were made at least 15 minutes ago and weren't
+  reminded yet (`games.draw_reminder_at`, `db.claimDrawReminders`), and tells
+  their host "Kickoff in about an hour. Draw the numbers now, or pay ahead and
+  Jax draws them at kickoff."
 - *Kickoff* on an undrawn board: the host hears "Draw the numbers to get your
   board going", everyone else "Waiting on the host to draw the numbers".
 
@@ -87,6 +144,11 @@ Do these steps in order. Payments stay in test mode until step 4.
 - Set the App Store price for the IAP product to the same amount (step 3). Apple
   keeps 15% of IAP revenue (Small Business Program) or 30%. The `purchases`
   ledger records the gross amount the customer paid.
+- The free tier (boards of 5 or fewer players) is `FREE_PLAYER_LIMIT` in
+  `shared/hostFee.ts`, not a setting: the Worker and the app must agree on it,
+  so change it there and ship both together.
+- The Host Pass price is `HOST_PASS_PRICE_CENTS` (`1999`, $19.99 a year); see
+  "Setup (Host Pass)".
 
 ### 2. Stripe (web)
 
@@ -233,8 +295,9 @@ curl -s https://jaxsquares.com/api/config | jq .payments
 # { "mode": "live", "priceCents": 499, "currency": "usd", "stripePublishableKey": "pk_live_…", "iapProductId": "com.jaxsquares.app.board" }
 ```
 
-Then create a board in Safari, claim a square, tap "Draw the numbers · $4.99",
-pay with Apple Pay, and look at the ledger:
+Then create a board in Safari and have 6 or more players claim a square (other
+devices or private windows: with 5 or fewer the draw is free), tap "Draw the
+numbers · $4.99", pay with Apple Pay, and look at the ledger:
 
 ```bash
 npx wrangler d1 execute jaxsquares --remote --command \
@@ -291,11 +354,21 @@ SELECT provider, COUNT(*) AS boards, SUM(amount_cents) / 100.0 AS usd
 FROM purchases WHERE status = 'paid' AND livemode = 1 GROUP BY provider;
 ```
 
+What paid for a drawn board is on the board itself, `games.payment_provider`:
+`test`, `stripe` or `iap` (a purchase in this ledger, by its reference),
+`pass` (a Host Pass, reference = the pass id, amount 0) or `free` (the free
+tier, reference `free`, amount 0, no ledger row).
+
+```sql
+-- How boards got drawn: free, through a pass, or paid
+SELECT payment_provider, COUNT(*) AS boards FROM games WHERE paid_at IS NOT NULL GROUP BY payment_provider;
+```
+
 ## API
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/games/:id/lock` (core) | Host only. Draws the numbers. **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
+| POST | `/api/games/:id/lock` (core) | Host only. Draws the numbers: free (marked paid `free`) while 5 or fewer players hold squares, through an active Host Pass on a bigger board, else **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
 | POST | `/api/games/:id/pay/test` | Host only. Only works in test mode. Returns `{ state }` (the board paid, not drawn; a no-op on a board already paid for). |
 | POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already paid for it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and marks it paid on the spot. |
 | POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already paid for another board; or, with `unused: true` and `state`, the board was already paid for so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
@@ -331,11 +404,20 @@ a board an older copy said was paid opens the checkout instead of an error.
 
 ## Host Pass
 
-A yearly subscription, the alternative to paying board by board: **$9.99 a
-year** on the web (`HOST_PASS_PRICE_CENTS`, 999), the App Store product's own
-localized price in the iOS app. It renews every year until canceled. While a
-host's pass is active, every board they host is covered: drawing the numbers
-costs nothing more. Boards drawn while it was active stay drawn after it ends.
+A yearly subscription, the alternative to paying board by board: **$19.99 a
+year** on the web (`HOST_PASS_PRICE_CENTS`, 1999; it was $9.99 until October
+2026), the App Store product's own localized price in the iOS app. It renews
+every year until canceled. While a host's pass is active, every board they
+host is covered: drawing the numbers costs nothing more. Boards drawn while it
+was active stay drawn after it ends. (Boards of 5 or fewer players are free
+for everyone, so the pass only ever covers bigger ones.)
+
+**Passes people already hold are unaffected by a price change.** A web pass
+renews at the Stripe Price its subscription was created with, and an App Store
+subscription at the price Apple keeps for it (Apple preserves the current
+price for existing subscribers unless you choose otherwise in App Store
+Connect). Pointing `STRIPE_HOST_PASS_PRICE_ID` at a new Price only affects
+subscriptions created after the change.
 
 | Where | How it's sold | What makes it active |
 |---|---|---|
@@ -372,15 +454,16 @@ attaches it to whichever identity restores it. The test pass needs none either.
 
 ### Drawing with it
 
-- `POST /api/games/:id/lock` on an unpaid board: when the caller (the identity
+- `POST /api/games/:id/lock` on an unpaid board of 6 or more players (a
+  smaller one is free, "The free tier"): when the caller (the identity
   holding the admin token) or the board's host holds an active pass, the board
   is marked paid through the pass (`payment_provider` `pass`,
   `payment_amount_cents` 0, `payment_reference` = the pass id) in the same
   write as the draw. Otherwise the 402 is unchanged. Nobody without the admin
   token can draw, so nobody draws on someone else's pass.
-- A linked board whose host holds an active pass draws itself at kickoff like a
-  paid board, marked paid through the pass at that moment
-  (`applyLiveUpdate`).
+- A linked board of 6 or more players whose host holds an active pass draws
+  itself at kickoff like a paid board, marked paid through the pass at that
+  moment (`applyLiveUpdate`).
 - The "kickoff soon, draw the numbers" reminder skips pass holders (the cron
   filters them out with `holdersOfActivePass`), and the board-full push for a
   pass holder's linked board says "Draw numbers now, or they'll draw at
@@ -506,12 +589,19 @@ their JWS isn't re-verified (as for the board purchase).
 - State: `useHostPass()` (`src/lib/useHostPass.ts`, next to `useHostFee`) over
   a small store (`src/lib/hostPassStore.ts`) that `GET /api/me` primes at
   startup and on sign-in, the pass routes update after a purchase, and
-  sign-out clears. `useHostPassPrice()` gives "$9.99" (or the App Store's
-  string); the UI says "$9.99/year".
-- Checkout sheet at the draw (an unpaid board, no pass): "This board · $4.99"
-  (the default) and "Host Pass · $9.99/year" ("Every board you host for a
-  year", "Pays for itself on your second board"), one tap to switch
-  (`plan-board`, `plan-pass`). The pass shows its subscription disclosure
+  sign-out clears. `useHostPassPrice()` gives "$19.99" (or the App Store's
+  string); the UI says "$19.99/year".
+- Checkout sheet at the draw (an unpaid board of 6 or more players, no pass):
+  "This board · $4.99" (the default) and "Host Pass · $19.99/year" ("Every
+  board you host for a year", "Pays for itself by your fifth board"), one
+  tap to switch (`plan-board`, `plan-pass`). The "pays for itself" board is
+  worked out from the two prices this device shows (`passPaysOffAt`,
+  `src/features/pass/passText.ts`, via `useHostPrices`/`hostPrices`):
+  ceil(pass ÷ board) in whole cents, the first board count whose fees reach
+  the pass (4 × $4.99 = $19.96 is short of $19.99, so the fifth). On the web that's the two server prices; in the iOS app
+  StoreKit's `price` for both products, and the line is hidden unless
+  StoreKit gives both (in one currency). The same line is on Profile's pass
+  card and pitch and in Support. The pass shows its subscription disclosure
   (`pass-disclosure`: name, length, price per period, auto-renews until
   canceled, how to cancel, Terms and Privacy). Bought at the draw, the host
   tools draw right away (the server marks the board paid through the pass).
@@ -539,9 +629,13 @@ for it.
 2. In it, add an auto-renewable subscription: reference name `Host Pass
    (yearly)`, product ID **`com.jaxsquares.app.hostpass.yearly`** (=
    `IAP_HOST_PASS_PRODUCT_ID` in `wrangler.jsonc`), duration **1 year**, price
-   **$9.99**. Display name "Host Pass", description "Every board you host for a
+   **$19.99**. Display name "Host Pass", description "Every board you host for a
    year: draw the numbers with no host fee." Add the review screenshot; submit
    it with an app version.
+   - **Already set up at $9.99?** Subscription → Subscription Prices → Plan a
+     price change → $19.99, and choose to keep the current price for existing
+     subscribers, so passes people already hold renew as they are. (Raising it
+     for them too means Apple asks each one to agree first.)
 3. App Information → **App Store Server Notifications** → Version 2, for both
    Production and Sandbox: `https://jaxsquares.com/api/payments/apple/notifications`.
 4. The App Store Server API key (`APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`,
@@ -551,10 +645,18 @@ for it.
 **Stripe**
 
 1. Product catalog → add a product **Host Pass** with a **recurring** price,
-   **$9.99 per year**. Copy the price id (`price_…`) into
+   **$19.99 per year**. Copy the price id (`price_…`) into
    `STRIPE_HOST_PASS_PRICE_ID` in `wrangler.jsonc` → `vars` (it isn't a
-   secret), and keep `HOST_PASS_PRICE_CENTS` (999) equal to it: the app shows
-   that number on the web.
+   secret), and keep `HOST_PASS_PRICE_CENTS` (1999) equal to it: the app shows
+   that number on the web, and it's the only place the web price is set.
+   - **Already set up at $9.99?** Stripe Prices can't be edited: add a new
+     $19.99/year Price to the same Host Pass product, put its id in
+     `STRIPE_HOST_PASS_PRICE_ID` and set `HOST_PASS_PRICE_CENTS` to 1999 in the
+     same deploy. **Changing the Price ID only affects new subscriptions:**
+     every existing subscription keeps renewing at the $9.99 Price it was
+     created with (leave that Price active; archiving it only stops new
+     sign-ups on it). Moving existing subscribers would be a separate,
+     deliberate migration in Stripe, with notice to them first.
 2. Webhook: add `invoice.paid`, `customer.subscription.updated` and
    `customer.subscription.deleted` to the existing endpoint (step 2.5 above).
 3. Restricted key: add Customers (Write), Subscriptions (Write), Invoices
@@ -571,7 +673,7 @@ run `npm run db:migrate:remote`). Check it:
 
 ```bash
 curl -s https://jaxsquares.com/api/config | jq .payments.hostPass
-# { "priceCents": 999, "currency": "usd", "iapProductId": "com.jaxsquares.app.hostpass.yearly", "web": true }
+# { "priceCents": 1999, "currency": "usd", "iapProductId": "com.jaxsquares.app.hostpass.yearly", "web": true }
 npx wrangler d1 execute jaxsquares --remote --command \
   "SELECT provider, status, current_period_end, auto_renew, livemode FROM host_passes ORDER BY created_at DESC LIMIT 5"
 ```

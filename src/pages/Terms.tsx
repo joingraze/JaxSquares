@@ -1,12 +1,14 @@
 // Terms of use (https://jaxsquares.com/terms). Plain language on purpose; have it
 // reviewed before launch. The product rule it encodes: no money between players.
-// The only charge is the host fee, due when the host draws a board's numbers,
-// or the yearly Host Pass that covers it. Prices show as this device shows
+// The only charge is the host fee, due when the host draws the numbers of a
+// board more than 5 players hold squares on (smaller boards draw free), or the
+// yearly Host Pass that covers it. Prices show as this device shows
 // them (useHostFee, useHostPassPrice): inside the iOS app only the App Store's
 // price and Apple's billing, never the web price or Stripe (App Store
 // guideline 3.1.1). /terms#host-pass is linked from the subscription disclosure.
 import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { FREE_PLAYER_LIMIT } from "../../shared/hostFee";
 import { CheckIcon, GiftIcon, UsersIcon, XIcon } from "../components/icons";
 import { Card, ListGroup, TopBar } from "../components/ui";
 import { platform } from "../lib/native";
@@ -70,6 +72,7 @@ export default function Terms() {
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">JaxSquares is a free-to-play game board for friends.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
             <Point>Setting up a board, inviting friends and picking squares are free.</Point>
+            <Point>Drawing the numbers is free with up to {FREE_PLAYER_LIMIT} players; bigger boards have a host fee.</Point>
             <Point no>No wagering, ever.</Point>
             <Point no>No money handled between players.</Point>
             <Point>A square price or prize a host shows is just information.</Point>
@@ -119,8 +122,9 @@ export default function Terms() {
         <Section n={4} title="The host fee">
           <p>
             The only charge in JaxSquares is the host fee for creating and managing a board: {price ? `${price} per board` : "once per board"},
-            charged when the host draws the numbers, unless the host's Host Pass covers it (section 5). Setting up a board, inviting friends and
-            picking squares are free.
+            charged when the host draws the numbers of a board whose squares are held by more than {FREE_PLAYER_LIMIT} players, unless the host's
+            Host Pass covers it (section 5). Drawing the numbers of a board held by {FREE_PLAYER_LIMIT} or fewer players is free, and so are setting
+            up a board, inviting friends and picking squares.
           </p>
           <p>
             {inApp ? "In the iPhone app, the fee is an In-App Purchase billed by Apple." : "In the iPhone app, the fee is an In-App Purchase billed by Apple. On the web, it's charged through Stripe."}{" "}

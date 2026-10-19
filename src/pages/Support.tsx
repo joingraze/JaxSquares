@@ -5,13 +5,15 @@
 // billing, never the web price or Stripe.
 import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
+import { FREE_PLAYER_LIMIT } from "../../shared/hostFee";
 import jaxJpg from "../assets/jax-portrait-512.jpg";
 import jaxWebp from "../assets/jax-portrait-512.webp";
 import { ChevronDownIcon, PawIcon } from "../components/icons";
 import { buttonStyles, Card, Jax, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
 import { platform } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
-import { useHostPassPrice } from "../lib/useHostPass";
+import { useHostPassPrice, useHostPrices } from "../lib/useHostPass";
+import { ordinal, passPaysOffAt } from "../features/pass/passText";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
 
@@ -22,8 +24,12 @@ interface Faq {
 
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
-/** `price` / `passPrice`: the host fee and the Host Pass as this device shows them (null while loading); `inApp`: inside the iOS app. */
-function faqs(price: string | null, passPrice: string | null, inApp: boolean): Faq[] {
+/**
+ * `price` / `passPrice`: the host fee and the Host Pass as this device shows
+ * them (null while loading); `paysOffAt`: the board the pass pays for itself
+ * on (passPaysOffAt; null leaves it out); `inApp`: inside the iOS app.
+ */
+function faqs(price: string | null, passPrice: string | null, paysOffAt: number | null, inApp: boolean): Faq[] {
   return [
     {
       q: "How do my friends join a board?",
@@ -39,8 +45,10 @@ function faqs(price: string | null, passPrice: string | null, inApp: boolean): F
       a: (
         <>
           <p>
-            Setting up a board, inviting friends and picking squares are free. The only charge is the host fee for creating and managing a board:{" "}
-            {price ? `${price} per board` : "once per board"}, charged when the host draws the numbers.
+            Setting up a board, inviting friends and picking squares are free, and so is drawing the numbers on a board with up to{" "}
+            {FREE_PLAYER_LIMIT} players. The only charge is the host fee for creating and managing a bigger board:{" "}
+            {price ? `${price} per board` : "once per board"}, charged when the host draws the numbers of a board more than {FREE_PLAYER_LIMIT}{" "}
+            players hold squares on.
           </p>
           <p>
             {inApp
@@ -48,8 +56,8 @@ function faqs(price: string | null, passPrice: string | null, inApp: boolean): F
               : "In the iPhone app it's an In-App Purchase billed by Apple. On the web it's charged through Stripe."}
           </p>
           <p>
-            Hosting a lot? The Host Pass ({passPrice ? `${passPrice} a year` : "yearly"}) covers the host fee on every board you host for a year, so
-            it pays for itself on your second board.
+            Hosting a lot? The Host Pass ({passPrice ? `${passPrice} a year` : "yearly"}) covers the host fee on every board you host for a year
+            {paysOffAt ? `, so it pays for itself by your ${ordinal(paysOffAt)} board.` : "."}
           </p>
           <p>
             JaxSquares never sells squares, and it never collects, holds, sends or tracks money between players. A square price or prize amount a
@@ -186,6 +194,7 @@ function MeetJax() {
 export default function Support() {
   const { price } = useHostFee();
   const { price: passPrice } = useHostPassPrice();
+  const amounts = useHostPrices();
   // Profile links here as /support#meet-jax.
   const { hash } = useLocation();
   const scrolled = useRef(false);
@@ -221,7 +230,7 @@ export default function Support() {
         <section>
           <h2 className="mb-3 px-1 font-display text-title-3 font-extrabold text-ink">Common questions</h2>
           <ListGroup>
-            {faqs(price, passPrice, platform() === "ios").map((faq, i) => (
+            {faqs(price, passPrice, passPaysOffAt(amounts.pass, amounts.board), platform() === "ios").map((faq, i) => (
               <FaqItem key={faq.q} faq={faq} defaultOpen={i === 0} />
             ))}
           </ListGroup>

@@ -1,6 +1,7 @@
 // Creating a board is free: Create makes the board and opens it in one tap, with
-// no checkout (the host fee is due when the host draws the numbers). Review's
-// line says so with the price this device shows: the server's on the web, only
+// no checkout (drawing is free with up to 5 players; bigger boards pay the host
+// fee when the host draws the numbers). Review's line says so with the price
+// this device shows: the server's on the web, only
 // the App Store's own string in the iOS app. End to end through the real
 // lib/checkout with the server and StoreKit faked; the board is set up through
 // the guided steps (custom teams, then Next to Review).
@@ -105,7 +106,7 @@ describe("creating a board", () => {
   it("makes and opens the board in one tap, with no checkout", async () => {
     device.platform = "web";
     await renderPage(LIVE);
-    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. $4.99 when you draw the numbers."));
+    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. Free to draw with up to 5 players, $4.99 for bigger boards."));
     await create();
     expect(await screen.findByText("Board page", undefined, { timeout: 3000 })).toBeInTheDocument();
     expect(requests.filter((r) => r.method === "POST").map((r) => r.url)).toEqual(["/api/games"]);
@@ -116,7 +117,7 @@ describe("creating a board", () => {
   it("shows only the App Store's price in the iOS app, and buys nothing to create", async () => {
     device.platform = "ios";
     await renderPage(LIVE);
-    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. 4,99 € when you draw the numbers."));
+    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("Free to set up and invite. Free to draw with up to 5 players, 4,99 € for bigger boards."));
     expect(screen.queryByText(/\$4\.99/)).toBeNull();
     await create();
     expect(await screen.findByText("Board page", undefined, { timeout: 3000 })).toBeInTheDocument();
@@ -129,7 +130,7 @@ describe("creating a board", () => {
     await renderPage({ ...LIVE, iapProductId: "com.jaxsquares.app.board.unlisted" });
     const line = screen.getByTestId("create-fee");
     await waitFor(() => expect(native.getProduct).toHaveBeenCalled());
-    expect(line).toHaveTextContent("Free to set up and invite. The host fee is due when you draw the numbers.");
+    expect(line).toHaveTextContent("Free to set up and invite. Free to draw with up to 5 players; bigger boards have a host fee when you draw.");
     expect(line.textContent).not.toMatch(/\$/);
   });
 });

@@ -202,6 +202,23 @@ describe("buildDeliveries", () => {
       expect(ds[0].content.body).not.toMatch(/pay/i);
     });
 
+    it("board-full and draw-reminder don't mention paying on a free board (5 or fewer players: it draws at kickoff)", () => {
+      const game = makeGame({
+        status: "open",
+        paid: false,
+        linkedEvent: { provider: "espn", league: "nfl", eventId: "401", startsAt: NOW + 50 * 60_000, xIsHome: true },
+      });
+      const full = buildDeliveries(game, players, { kind: "board-full" }, NOW, { freeDraw: true });
+      expect(recipients(full)).toEqual([HOST]);
+      expect(full[0].content.body).toBe("🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.");
+      expect(full[0].content.body).not.toMatch(/pay/i);
+      expect(buildDeliveries(game, players, { kind: "draw-reminder" }, NOW, { freeDraw: true })).toEqual([]);
+      // A custom board's full push never mentioned paying.
+      expect(buildDeliveries(makeGame({ status: "open", paid: false }), players, { kind: "board-full" }, NOW, { freeDraw: true })[0].content.body).toBe(
+        "🔥 Your board is full. Time to draw numbers.",
+      );
+    });
+
     it("draw-reminder skips a host whose Host Pass covers the board", () => {
       const game = makeGame({
         status: "open",

@@ -1,6 +1,7 @@
 // Pure helpers for the create-board flow: team names, the auto board name,
 // plain-language format copy and the request body. No React, no IO.
 
+import { FREE_PLAYER_LIMIT } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
 import {
   BOARD_SIZE_INFO,
@@ -284,6 +285,16 @@ export function rulesTitle(format: GameFormat): string {
 /** The details row's second line: "No max per player" or "Up to 5 squares each". */
 export function detailsSummary(maxPerPlayer: number): string {
   return capLine(maxPerPlayer) ?? "No max per player";
+}
+
+/**
+ * The line under Review's Create button: what the host pays, and when.
+ * `price` is the host fee as this device shows it (the App Store's in the iOS
+ * app, never the web price there); null leaves the amount out.
+ */
+export function createFeeLine(price: string | null): string {
+  const free = `Free to set up and invite. Free to draw with up to ${FREE_PLAYER_LIMIT} players`;
+  return price ? `${free}, ${price} for bigger boards.` : `${free}; bigger boards have a host fee when you draw.`;
 }
 
 /** The first rule note (in game order) that mentions money, with the message to show. */

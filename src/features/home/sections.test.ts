@@ -286,7 +286,11 @@ describe("cardModel", () => {
     expect(cardModel(summary({ ...full, linked: true, paid: true }), now)).toMatchObject({ status: "Board's full", meta: "numbers drawn at kickoff" });
     // Its host fee isn't paid: it won't draw itself at kickoff.
     expect(cardModel(summary({ ...full, linked: true, paid: false }), now)).toMatchObject({ status: "Board's full", meta: "waiting on the host's draw" });
+    expect(cardModel(summary({ ...full, linked: true, paid: false, freeDraw: false }), now)).toMatchObject({ meta: "waiting on the host's draw" });
+    // ...unless 5 or fewer players hold its squares: free, so it draws at kickoff anyway.
+    expect(cardModel(summary({ ...full, linked: true, paid: false, freeDraw: true }), now)).toMatchObject({ status: "Board's full", meta: "numbers drawn at kickoff" });
     expect(cardModel(summary({ ...full, linked: false }), now)).toMatchObject({ status: "Board's full", meta: "waiting on the host's draw" });
+    expect(cardModel(summary({ ...full, linked: false, paid: false, freeDraw: true }), now)).toMatchObject({ meta: "waiting on the host's draw" });
   });
 });
 

@@ -31,7 +31,7 @@ describe("getPaymentConfig", () => {
       stripePublishableKey: "pk_live_x",
       iapProductId: DEFAULT_IAP_PRODUCT_ID,
       // No Stripe price for the Host Pass yet: the web doesn't sell it in live mode.
-      hostPass: { priceCents: 999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: false },
+      hostPass: { priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: false },
     });
     expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: " LIVE " })).mode).toBe("live");
   });
@@ -59,17 +59,17 @@ describe("getPaymentConfig", () => {
 
 describe("the Host Pass offer", () => {
   it("sells the pass on the web in test mode, and in live mode only once the Stripe price is set", () => {
-    expect(getPaymentConfig(env({})).hostPass).toEqual({ priceCents: 999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: true });
+    expect(getPaymentConfig(env({})).hostPass).toEqual({ priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: true });
     const live = env({ ...LIVE_KEYS, PAYMENTS_MODE: "live" });
     expect(getPaymentConfig(live).hostPass?.web).toBe(false);
     expect(getPaymentConfig({ ...live, STRIPE_HOST_PASS_PRICE_ID: " price_123 " }).hostPass?.web).toBe(true);
     expect(getPaymentConfig(env({ IAP_HOST_PASS_PRODUCT_ID: "com.example.pass" })).hostPass?.iapProductId).toBe("com.example.pass");
   });
 
-  it("reads HOST_PASS_PRICE_CENTS, falling back to $9.99", () => {
+  it("reads HOST_PASS_PRICE_CENTS, falling back to $19.99", () => {
     expect(hostPassPriceCents(env({ HOST_PASS_PRICE_CENTS: "1299" }))).toBe(1299);
-    expect(hostPassPriceCents(env({}))).toBe(999);
-    expect(hostPassPriceCents(env({ HOST_PASS_PRICE_CENTS: "9.99" }))).toBe(999);
+    expect(hostPassPriceCents(env({}))).toBe(1999);
+    expect(hostPassPriceCents(env({ HOST_PASS_PRICE_CENTS: "19.99" }))).toBe(1999);
   });
 });
 

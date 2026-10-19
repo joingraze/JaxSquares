@@ -8,7 +8,8 @@ screenshots are generated from the real app; see `docs/app-store/README.md`.
 "bet", "wager", "gamble", "pot", "pool", "buy-in", "payout" or "odds", and don't
 show prices per square. JaxSquares is free to download. The only purchase is the
 host fee: a host pays once per board, when they draw its numbers, or takes the
-optional yearly Host Pass that covers it on every board they host.
+optional yearly Host Pass that covers it on every board they host. Drawing is
+free on a board whose squares 5 or fewer players hold.
 
 **Trademark rule:** keep "Super Bowl", "NFL", and real team names and logos out
 of the name, subtitle, keywords, description and screenshots. The NFL enforces
@@ -27,8 +28,8 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 | Primary category | **Sports** | |
 | Secondary category | **Entertainment** | |
 | Price | Free | |
-| In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). The host fee for one board, paid when the host draws its numbers; creating a board, joining and picking squares are free. | |
-| Subscription | `com.jaxsquares.app.hostpass.yearly`: Auto-renewable, group "Host Pass", 1 year, $9.99 (`docs/payments.md` → "Host Pass"). Covers the host fee on every board the subscriber hosts while it's active. | |
+| In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). The host fee for one board, paid when the host draws its numbers on a board 6 or more players hold squares on; creating a board, joining, picking squares and drawing a board of up to 5 players are free. | |
+| Subscription | `com.jaxsquares.app.hostpass.yearly`: Auto-renewable, group "Host Pass", 1 year, $19.99 (`docs/payments.md` → "Host Pass"). Covers the host fee on every board the subscriber hosts while it's active. | |
 | Copyright | `2026 JaxSquares` | |
 | Availability | United States to start. Add other countries once the copy is checked for each. | |
 | Devices | iPhone only, so no iPad screenshots are needed | |
@@ -85,9 +86,10 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 >
 > FREE TO PLAY, AND NO MONEY BETWEEN FRIENDS
 > JaxSquares is free to download, and setting up a board, inviting friends and
-> joining are always free. The only purchase is the host fee for each board you
-> host, paid when you draw the numbers, or the optional yearly Host Pass that
-> covers it on every board you host. Players never pay to join, squares are
+> joining are always free, and so is drawing the numbers with up to 5 players.
+> The only purchase is the host fee for a bigger board you host, paid when you
+> draw the numbers, or the optional yearly Host Pass that covers it on every
+> board you host. Players never pay to join, squares are
 > never sold, and no money changes hands in the app. You play for fun and
 > bragging rights.
 >
@@ -172,8 +174,9 @@ accept whatever Apple computes; don't change the answers.
 > gambling: players never pay to join, squares are never sold, and the app
 > never collects, holds or distributes money or prizes. The only purchases are
 > a consumable in-app purchase (com.jaxsquares.app.board): the host fee a host
-> pays when they draw the numbers on a board they made (making the board,
-> inviting and picking squares are free), and an optional auto-renewable
+> pays when they draw the numbers on a board they made that 6 or more players
+> hold squares on (making the board, inviting, picking squares and drawing a
+> board of up to 5 players are free), and an optional auto-renewable
 > subscription (com.jaxsquares.app.hostpass.yearly, the "Host Pass") that
 > covers that fee on every board the subscriber hosts for a year. Neither buys
 > any chance to win anything. The Host Pass is offered next to the board fee
@@ -195,20 +198,29 @@ accept whatever Apple computes; don't change the answers.
 > activity inbox. To run that board as its host from this device, open
 > https://jaxsquares.com/g/<DEMO_ID>#host=<DEMO_HOST_TOKEN>.
 >
-> FULL FLOW (sandbox purchase):
+> FULL FLOW (no purchase needed):
 > 1) Tap "New board". Tap "Custom" and type any two teams (scores are then
-> entered by hand), or keep the pre-picked real game. Tap "Create board" and
-> complete the purchase with the sandbox account. The board opens with its
-> invite sheet.
+> entered by hand), or keep the pre-picked real game. Tap "Create board": it's
+> free, and the board opens with its invite sheet.
 > 2) "Text your crew" opens the share sheet. "Same room? Show code" shows a QR
 > code and a six-character code. Open the link on a second device to join as a
 > friend (it works in Safari with no install), or close the sheet, tap a few
 > empty squares and tap "Claim".
-> 3) Tap "Host tools", then "Lock & draw", then "Draw the numbers" (or "Lock &
-> draw anyway" with only a few squares taken). The digits land on every open
-> phone.
+> 3) Tap "Host tools", then "Draw the numbers · Free" (drawing is free while 5
+> or fewer players hold squares), then "Draw the numbers · Free" again (or
+> "Lock & draw anyway · Free" with only a few squares taken). The digits land
+> on every open phone.
 > 4) Tap the host bar's score button ("Q1 score"), enter a score and save. The
 > winning square lights up and its owner gets a notification.
+>
+> THE PURCHASES (sandbox): open
+> https://jaxsquares.com/g/<FEE_DEMO_ID>#host=<FEE_DEMO_HOST_TOKEN>, a board
+> seven players hold squares on, numbers not drawn yet. Tap "Host tools", then
+> "Draw the numbers · $4.99" (the App Store's price) and "Draw the numbers"
+> again: the sheet offers "This board" (the consumable) or "Host Pass" (the
+> subscription). Complete either with the sandbox account, and the numbers
+> are drawn. The Host Pass is also in Profile → Host Pass, with Restore
+> purchases.
 >
 > Notifications are sent for numbers drawn, kickoff, a winning square, a full
 > board and the final. Allow them when asked to see them.
@@ -228,6 +240,11 @@ Before you submit, make the demo board on production:
 4. On the host's phone, open Host tools → "Host from another phone" and copy
    the token from that link over `<DEMO_HOST_TOKEN>`. Anyone with the link can
    run the board, so use it only in these notes.
+5. Make a second board for the purchases and leave it undrawn: at least 6
+   players (seven is safest) must hold squares on it, or drawing is free and
+   App Review never sees the purchase sheet. Paste its id over `<FEE_DEMO_ID>`
+   and its host token over `<FEE_DEMO_HOST_TOKEN>`. A purchase draws it, so
+   make a fresh one before each submission.
 
 ## App Privacy ("nutrition label")
 

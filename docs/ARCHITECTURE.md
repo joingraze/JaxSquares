@@ -24,10 +24,12 @@ exception so far: the public-id rename below, which closed an impersonation hole
   buys wings") may be quoted in a push.
 - The only payment is the host paying JaxSquares the host fee for a board, due
   when they draw its numbers: one tap with Apple Pay / Google Pay (Stripe) on the
-  web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($9.99
+  web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($19.99
   a year, auto-renewing until canceled), which covers that fee on every board
   its holder hosts while it's active. Creating a board, inviting and picking
-  squares are free; JaxSquares never sells squares. With `PAYMENTS_MODE` unset
+  squares are free, and so is drawing a board whose squares 5 or fewer players
+  hold (the free tier: `FREE_PLAYER_LIMIT` / `isFreeDraw` in
+  `shared/hostFee.ts`); JaxSquares never sells squares. With `PAYMENTS_MODE` unset
   the app runs a clearly labeled no-charge test checkout (and test pass). See
   docs/payments.md and "The host fee" below.
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
@@ -145,8 +147,10 @@ Model, merge rules and setup: docs/auth.md. In short:
   no feed to poll, so the wake query and its index, migration 0008, skip them).
   Each minute it also sends the host of a linked board that kicks off within the
   hour with its host fee unpaid one `draw-reminder` push (`claimDrawReminders`,
-  stamped in `games.draw_reminder_at`, migration 0009), unless the host's Host
-  Pass covers the board (`holdersOfActivePass`: Jax draws it at kickoff). Once an hour (UTC minute
+  stamped in `games.draw_reminder_at`, migration 0009), unless the board is
+  free (5 or fewer players hold squares; left out in SQL, unstamped) or the
+  host's Host Pass covers it (`holdersOfActivePass`): Jax draws those at
+  kickoff. Once an hour (UTC minute
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
@@ -178,7 +182,7 @@ friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); 400 for the host, 404 if not on the board, 409 once locked. They may join again |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
-| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers); **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
+| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
 | POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
 | DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
@@ -342,8 +346,11 @@ missing, final, or now joined.
 
 - `joined: boolean`: this device has a player row on the board.
 - `paid: boolean`: the board's host fee is paid (`Game.paid`); a linked board
-  draws its own numbers at kickoff only then. Boards made before the fee moved
-  to the draw count as paid.
+  draws its own numbers at kickoff only then (or when it's free). Boards made
+  before the fee moved to the draw count as paid.
+- `freeDraw: boolean`: 5 or fewer players hold squares (`isFreeHolderCount`,
+  `shared/hostFee.ts`), so drawing is free and an unpaid linked board still
+  draws itself at kickoff.
 - `host: { id, name, color, emoji } | null`: the host's public player profile
   ("Maya invited you"), `id` being the public player id (= `Game.hostPlayerId`);
   null when the host has no player row.
@@ -402,7 +409,7 @@ play is fetched once the same way (again when its `version` moves on).
 | `joined` | `{ name }` |
 | `claimed` | `{ count, cells: {row, col}[] }` (only what this request actually got) |
 | `released` | `{ count, cells }` |
-| `locked` | `{}` host draw, `{ auto: true }` at kickoff (actor null; only once the host fee is paid) |
+| `locked` | `{}` host draw, `{ auto: true }` at kickoff (actor null; only once the host fee is paid, the board is free, or a Host Pass covers it) |
 | `score` | `{ periodKey, label, scoreX, scoreY, source: "live" \| "host" }` |
 | `winner` | `{ periodKey, label, playerIds, cell, reverseCell?, prize, manual? }` |
 | `final` | `{}` |
@@ -621,7 +628,7 @@ score, q1, q2, q3, final.
 
 ## Module ownership (one owner per file)
 
-- `shared/*` – game rules + types (`playerId.ts` = public id derivation).
+- `shared/*` – game rules + types (`playerId.ts` = public id derivation, `hostFee.ts` = the free tier: `FREE_PLAYER_LIMIT`, `isFreeDraw`).
   `worker/db.ts`, `worker/index.ts`, `worker/service.ts`, `worker/room.ts`
   (GameRoom DO), `worker/playerIds.ts`, `worker/rateLimit.ts`,
   `worker/housekeeping.ts`, `migrations/*` – core API.
@@ -695,8 +702,9 @@ in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
   "kickoff" push: nothing confirms the game started (no feed), and the host
   draws the numbers when everyone's in. `game-starting` stays a linked-board
   push, sent when the feed goes live; it never carries an amount. A linked
-  board locks itself at kickoff only once its host fee is paid; unpaid, it
-  stays `open` (the feed still records scores) and the kickoff push asks the
+  board locks itself at kickoff only once its host fee is paid, it's free (5
+  or fewer players hold squares) or the host's Host Pass covers it; otherwise
+  it stays `open` (the feed still records scores) and the kickoff push asks the
   host to draw and tells everyone else they're waiting on the host.
 - Shown as "Kicks off Sun 1:00 PM PDT" (`kicksOffLabel` in `src/lib/format.ts`,
   the device's zone labeled at the kickoff itself, so a November date reads
@@ -741,9 +749,9 @@ Next x3, Create.
   shows the lineup players will see.
 - Creating is free: Create makes the board and opens it in one tap, with no
   checkout. Review's line under the button says "Free to set up and invite.
-  $4.99 when you draw the numbers." (`data-testid="create-fee"`; the price from
-  `useHostFee`: the App Store's in the iOS app, a priceless line when it can't
-  say). Opening the board first rewinds the flow's entries
+  Free to draw with up to 5 players, $4.99 for bigger boards."
+  (`data-testid="create-fee"`, `createFeeLine`; the price from `useHostFee`: the
+  App Store's in the iOS app, a priceless line when it can't say). Opening the board first rewinds the flow's entries
   (`history.go(-wizardDepth)`), then replaces the first one with
   `/g/<id>?invite=1`, so Back from the board goes where the host started, not
   into a finished flow.
@@ -756,7 +764,7 @@ then removed from the URL (`replace`), so back/refresh doesn't repeat it.
 | Flag | From | Handled by | Does |
 |---|---|---|---|
 | `?invite=1` | create flow, after the board is made | `GameView` | opens the invite sheet, if this device holds the admin token |
-| `?draw=1` | Home card "Draw numbers", inbox "Your board is full", the "Payment confirmed" toast | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet. With the host fee due the confirm reads "Draw the numbers · $4.99" and pays first |
+| `?draw=1` | Home card "Draw numbers", inbox "Your board is full", the "Payment confirmed" toast | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet. With the host fee due the confirm reads "Draw the numbers · $4.99" and pays first ("Draw the numbers · Free" on a board of 5 or fewer players) |
 | `#host=<adminToken>` (fragment; the older `?host=` still works) | a host link ("Host from another phone", `hostLinkUrl`) | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar. The fragment is never sent, so the token stays out of the Worker's request logs. Only a real board code (`[a-z0-9]{4,16}`, lowercased) counts; a malformed one is ignored. A token the device already holds is never overwritten (anyone with the invite can craft `#host=x`, and the server never re-issues it): a different one is kept aside in memory, tried by the API client only after the held one gets a 403, and adopted once it works. A device holding none uses the token at once and checks it (`GET /api/games/:id/host-check`); one the server refuses is dropped again. Opened while `hydrateIdentity` is still reading the native store, the capture waits for it. The board treats this device as the host, not a newcomer (no invite hero, no join sheet on the first tap) |
 
 Removing a player (client): on the host's device (holding the admin token),
@@ -776,7 +784,15 @@ the board locks meanwhile.
 The fee is due when the host draws the numbers (`needsHostFee(game)` in
 `src/features/host/hostModel.ts`: a board still being picked whose `paid` is
 `false`; an absent `paid`, from an older cached state, reads as paid and the
-server's 402 decides).
+server's 402 decides), unless 5 or fewer players hold squares
+(`drawIsFree(state)`, over `isFreeDraw` in `shared/hostFee.ts`).
+
+- Free boards: the host bar, the Now card and the lock confirm read "Draw the
+  numbers · Free" with "Free for up to 5 players" (`host-free-note`), whatever
+  the pass; no price, no pay-ahead, no checkout. The Now card's hint (and the
+  priced board's) says "Boards with up to 5 players are free."; the lock
+  confirm says "No host fee." and how many hold squares. A 402 (a 6th player
+  got in first) opens the checkout like any 402.
 
 - Price: `useHostFee()` (`src/lib/useHostFee.ts`) / `hostFeePrice(config,
   platform)`: the server's price on the web (test mode too; the checkout says
@@ -801,7 +817,7 @@ server's 402 decides).
 - Players: on an open board that's full, or a linked game on without its
   numbers, the board hint says "Waiting on the host to draw the numbers."
   (`board-waiting`); Home's full-board meta says "numbers drawn at kickoff" only
-  for a paid linked board (`GameSummary.paid`). Home puts the host's undrawn
+  for a paid or free linked board (`GameSummary.paid`, `GameSummary.freeDraw`). Home puts the host's undrawn
   board in play under Needs you with "Draw numbers".
 - `CheckoutSheet` (`src/features/create/CheckoutSheet.tsx`) is self-contained:
   given the board (`GET /api/games/:id`), the saved admin token and
@@ -820,8 +836,11 @@ server's 402 decides).
   (`host-pass-note`), no price and no pay-ahead, and drawing just draws (the
   server marks the board paid through the pass; a 402 meanwhile opens the
   checkout). Without one, `CheckoutSheet` offers "This board · $4.99" (the
-  default) and "Host Pass · $9.99/year" (`plan-board` / `plan-pass`), the pass
-  with its subscription disclosure (`pass-disclosure`); buying the pass at the
+  default) and "Host Pass · $19.99/year" (`plan-board` / `plan-pass`) with
+  "Pays for itself by your fifth board" (`pass-pays-off`, `passPaysOffAt`
+  from the two prices this device shows, StoreKit's in the iOS app; hidden
+  when either is unknown), the pass with its subscription disclosure
+  (`pass-disclosure`); buying the pass at the
   draw then draws. On the web the pass needs an account: `startPassPurchase()`
   opens `SignInSheet` first. Profile → Host Pass (`HostPassSection`): Get,
   "Active · renews …" / "Ends …", Manage (Apple's subscription management in
@@ -837,10 +856,11 @@ loadState(env: Env, gameId: string): Promise<GameState | null>
 broadcast(env: Env, gameId: string, activity?: Activity): Promise<GameState | null>
 /** The board's host fee is paid (stamps games.paid_at; a legacy draft opens too). Idempotent. Provider "pass": covered by a Host Pass (reference = the pass id, amount 0). */
 markPaid(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "iap" | "pass"; reference: string; amountCents: number }): Promise<GameState | null>
+// (A free board is never marked through markPaid: POST /lock and applyLiveUpdate stamp provider "free" with db.markFreeDraw in the draw's own batch.)
 /** The game was deleted: the room sends { type: "deleted" }, closes sockets with 4404, drops its storage. Never throws. */
 closeRoom(env: Env, gameId: string): Promise<void>
 isHost(env: Env, gameId: string, adminToken: string): Promise<boolean>
-/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the host's Host Pass covers it: marked paid through the pass in the same write). */
+/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the board is free: marked paid "free" and locked in a batch of its own that re-counts the holders, before the scores; or the host's Host Pass covers it: marked paid through the pass in the same write). */
 applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 ```
 `worker/db.ts` (core) keeps exporting `getGame(db, id)` and `getPlayers(db, gameId)`
@@ -877,7 +897,7 @@ type NotifyEvent = (
   | { kind: "winner"; periodKey: string; label: string; playerIds: string[] }   // public ids
   | { kind: "game-starting" }
   | { kind: "board-full" }
-  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not sent to a Host Pass holder)
+  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not for a free board, or a Host Pass holder)
   | { kind: "player-joined"; name: string }
   | { kind: "final" }
 ) & {
@@ -891,9 +911,10 @@ Core passes `actor` on host actions: `numbers-drawn` from `POST /lock` (or
 `final` from `POST /final` and from a typed-in board's Final score,
 `player-joined`, and `board-full` (whoever claimed the last square).
 `draw-reminder` comes from the cron (no actor) and goes to the host alone,
-never to a host whose Host Pass covers the board; for such a host the
-board-full push on a linked board leaves out paying ahead (notify looks the
-pass up for those two host-only events). `board-full` goes out once
+never for a free board (5 or fewer players hold squares) or to a host whose
+Host Pass covers the board; for those the board-full push on a linked board
+leaves out paying ahead (notify counts the holders, then looks the pass up,
+for those two host-only events). `board-full` goes out once
 per board: the claim that first fills it stamps `games.board_full_at` in the
 same transaction (`markBoardFull`, migration 0007), and only that claim pushes;
 giving a square back and taking one again doesn't announce it again. `winner` never has an actor (you hear about your own square even

@@ -4,12 +4,12 @@
 // hostPassStore.ts: GET /api/me primes it at startup and on sign-in, the pass
 // routes answer with the new state after a purchase, and sign-out clears it.
 //
-// Prices: the server's on the web ("$9.99/year"), only the App Store's own
+// Prices: the server's on the web ("$19.99/year"), only the App Store's own
 // localized string in the iOS app (App Store guideline 3.1.1), never the web price.
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { HostPass, HostPassOffer, PaymentConfig } from "../../shared/types";
-import { fetchAppConfig, fetchPassState, hostPassPrice, passCheckoutMethod, type CheckoutMethod, type Platform } from "./checkout";
+import { fetchAppConfig, fetchPassState, hostPassPrice, hostPrices, passCheckoutMethod, type CheckoutMethod, type Platform, type PriceAmount } from "./checkout";
 import { getHostPassSnapshot, hostPassGeneration, setHostPassState, subscribeHostPass } from "./hostPassStore";
 import { platform } from "./native";
 
@@ -50,7 +50,7 @@ export function useHostPass(enabled = true): HostPassView {
   return { pass: s.pass, offer: s.offer, active: s.pass?.active === true, loaded: s.loaded, refresh: refreshHostPass };
 }
 
-/** The pass's yearly price on this device ("$9.99", or the App Store's string), null while loading or when it can't be said. */
+/** The pass's yearly price on this device ("$19.99", or the App Store's string), null while loading or when it can't be said. */
 export function useHostPassPrice(enabled = true): { price: string | null; payments: PaymentConfig | null } {
   const [payments, setPayments] = useState<PaymentConfig | null>(null);
   const [price, setPrice] = useState<string | null>(null);
@@ -70,6 +70,29 @@ export function useHostPassPrice(enabled = true): { price: string | null; paymen
     };
   }, [enabled]);
   return { price, payments };
+}
+
+/**
+ * The board fee and the pass as amounts this device can compare (for "Pays
+ * for itself by your fifth board", passPaysOffAt): the two web prices, or in
+ * the iOS app the App Store's (StoreKit) prices. Each is null while loading or
+ * when it can't be said. `payments`: the config when the caller has it
+ * already (else it's loaded).
+ */
+export function useHostPrices(enabled = true, payments?: PaymentConfig | null): { board: PriceAmount | null; pass: PriceAmount | null } {
+  const [prices, setPrices] = useState<{ board: PriceAmount | null; pass: PriceAmount | null }>({ board: null, pass: null });
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    (payments ? Promise.resolve(payments) : fetchAppConfig().then((c) => c.payments))
+      .then((config) => hostPrices(config, platform()))
+      .then((p) => live && setPrices(p))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [enabled, payments]);
+  return prices;
 }
 
 // ---- The purchase gate ----

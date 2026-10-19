@@ -1,13 +1,16 @@
 // Pays a board's host fee: the only payment in JaxSquares, due when the host
-// draws the numbers (setting up, inviting and picking squares are free). The
-// host tools open it from "Draw the numbers · $4.99" (then draw and play the
-// reveal), or, on a linked board, to pay ahead so Jax draws at kickoff. It is
-// self-contained: the board (GET /api/games/:id) and the saved admin token
-// are all it needs.
+// draws the numbers of a board more than 5 players hold squares on (setting
+// up, inviting and picking squares are free, and so is drawing a smaller
+// board). The host tools open it from "Draw the numbers · $4.99" (then draw
+// and play the reveal), or, on a linked board, to pay ahead so Jax draws at
+// kickoff. It is self-contained: the board (GET /api/games/:id) and the saved
+// admin token are all it needs.
 //
 // It also sells the Host Pass, the yearly alternative: at the draw the host
-// picks "This board · $4.99" (the default) or "Host Pass · $9.99/year" with one
-// tap, and Profile opens it in pass mode (purpose "pass", no board). The pass
+// picks "This board · $4.99" (the default) or "Host Pass · $19.99/year"
+// ("Pays for itself by your fifth board", worked out from the two prices
+// this device shows) with one tap, and Profile opens it in pass mode
+// (purpose "pass", no board). The pass
 // has its subscription disclosure beside its button. On the web it needs an
 // account first: the sheet asks the parent to sign in (onSignInForPass), then
 // it's reopened on the pass. Drawing after buying the pass needs no payment:
@@ -49,8 +52,9 @@ import { setHostPassState } from "../../lib/hostPassStore";
 import { useAccount } from "../../lib/identity";
 import { haptic, platform } from "../../lib/native";
 import { useResolvedTheme } from "../../lib/theme";
+import { useHostPrices } from "../../lib/useHostPass";
 import { PassCard, PassDisclosure, PlanPicker, type CheckoutPlan } from "../pass/PassParts";
-import { perYear } from "../pass/passText";
+import { passPaysOffAt, perYear } from "../pass/passText";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
 import { formatLine } from "./model";
 import { VsBadge } from "./VsBadge";
@@ -194,6 +198,7 @@ export function CheckoutSheet({
   // The pass is offered where it's sold and the caller takes it; Profile's sheet is the pass alone.
   const passMethod = payments ? passCheckoutMethod(payments, on) : null;
   const passOffered = !!onPassActive && passMethod !== null;
+  const amounts = useHostPrices(open && (passOffered || purpose === "pass"), payments);
   const forPass = purpose === "pass" || (passOffered && plan === "pass");
   const copy = forPass ? PASS_COPY[purpose] : COPY[purpose === "ahead" ? "ahead" : "draw"];
   const wantedMethod = payments ? (forPass ? passMethod : checkoutMethod(payments, on)) : null;
@@ -442,6 +447,8 @@ export function CheckoutSheet({
   const passPrice =
     on === "ios" ? storePassPrice : forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments?.hostPass ? formatPrice(payments.hostPass.priceCents, payments.hostPass.currency) : null;
   const price = forPass ? passPrice : boardPrice;
+  // "Pays for itself by your fifth board", from the same two prices (StoreKit's in the iOS app); hidden when either is unknown.
+  const paysOffAt = passPaysOffAt(amounts.pass, amounts.board);
 
   let action: ReactNode;
   if (!payments) {
@@ -561,9 +568,9 @@ export function CheckoutSheet({
       }
     >
       {board && purpose !== "pass" && <Ticket game={board.game} />}
-      {purpose === "pass" && <PassCard price={passPrice} test={passMethod === "test"} />}
+      {purpose === "pass" && <PassCard price={passPrice} test={passMethod === "test"} paysOffAt={paysOffAt} />}
       {passOffered && purpose !== "pass" && (
-        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} disabled={busy} />
+        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} paysOffAt={paysOffAt} disabled={busy} />
       )}
       {method === "card" && !needsSignIn && !(error && !cardReady) && (
         <div className="relative mt-4 min-h-40">

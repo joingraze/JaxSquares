@@ -15,8 +15,8 @@ import { CheckoutError, endTestPass, manageAppStoreSubscriptions, passPortalUrl,
 import { setHostPassState } from "../../lib/hostPassStore";
 import { useAccount } from "../../lib/identity";
 import { platform } from "../../lib/native";
-import { startPassPurchase, useHostPass, useHostPassPrice } from "../../lib/useHostPass";
-import { passStatusLine, perYear } from "./passText";
+import { startPassPurchase, useHostPass, useHostPassPrice, useHostPrices } from "../../lib/useHostPass";
+import { passPaysOffAt, passStatusLine, paysForItself, perYear } from "./passText";
 
 const CheckoutSheet = lazy(() => import("../create/CheckoutSheet").then((m) => ({ default: m.CheckoutSheet })));
 const SignInSheet = lazy(() => import("../account/SignInSheet").then((m) => ({ default: m.SignInSheet })));
@@ -35,6 +35,9 @@ export function HostPassSection() {
   const toast = useToast();
   const { pass, loaded } = useHostPass();
   const { price, payments } = useHostPassPrice();
+  // "Pays for itself by your fifth board": from the two prices this device shows (hidden when either is unknown).
+  const amounts = useHostPrices(payments !== null, payments);
+  const paysOffAt = passPaysOffAt(amounts.pass, amounts.board);
   const signedIn = useAccount() !== null;
   const on = platform();
   const [buyOpen, setBuyOpen] = useState(false);
@@ -114,7 +117,9 @@ export function HostPassSection() {
               <PassMark />
               <div className="min-w-0 flex-1">
                 <p className="text-callout font-bold text-ink">Every board you host, for a year</p>
-                <p className="mt-1 text-subhead text-ink-muted">Draw the numbers with no host fee. Pays for itself on your second board.</p>
+                <p className="mt-1 text-subhead text-ink-muted">
+                  Draw the numbers with no host fee.{paysOffAt ? ` ${paysForItself(paysOffAt)}.` : ""}
+                </p>
                 {pass && (
                   <p data-testid="pass-status" className="mt-1.5 text-footnote font-semibold text-ink-subtle">
                     {passStatusLine(pass)}

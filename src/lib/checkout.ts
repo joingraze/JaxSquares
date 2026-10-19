@@ -143,27 +143,72 @@ export async function hostFeePrice(config: PaymentConfig, platform: Platform): P
   return formatPrice(config.priceCents, config.currency);
 }
 
-const storePrices = new Map<string, Promise<string | null>>();
+/** A price to compare with another one in the same currency: cents on the web, StoreKit's decimal amount in the iOS app. */
+export interface PriceAmount {
+  amount: number;
+  currency: string;
+}
+
+/** A StoreKit product's price: its localized string, and its amount when StoreKit gives one. */
+export interface StorePrice {
+  label: string;
+  amount: PriceAmount | null;
+}
+
+const storePrices = new Map<string, Promise<StorePrice | null>>();
 
 /**
- * The App Store's localized price for the board product (StoreKit's
- * `priceString`, e.g. "$4.99" or "4,99 €"). Null off iOS or when the product
- * can't be loaded. Cached per product, and never queried concurrently (the
- * plugin's getProduct isn't safe to run in parallel).
+ * The App Store's price for a product (StoreKit's `priceString`, e.g. "$4.99"
+ * or "4,99 €", and its `price` in `currencyCode`). Null off iOS or when the
+ * product can't be loaded. Cached per product, and never queried
+ * concurrently (the plugin's getProduct isn't safe to run in parallel).
  */
-export function appStorePrice(platform: Platform, productId: string): Promise<string | null> {
+export function appStoreProduct(platform: Platform, productId: string): Promise<StorePrice | null> {
   if (platform !== "ios" || !productId) return Promise.resolve(null);
   let p = storePrices.get(productId);
   if (!p) {
     p = nativePurchases()
       .then((store) => store.getProduct({ productIdentifier: productId }))
-      .then(({ product }) => product.priceString?.trim() || null)
+      .then(({ product }): StorePrice | null => {
+        const label = product.priceString?.trim();
+        if (!label) return null;
+        const ok = typeof product.price === "number" && Number.isFinite(product.price) && product.price > 0 && !!product.currencyCode;
+        return { label, amount: ok ? { amount: product.price, currency: product.currencyCode.toUpperCase() } : null };
+      })
       .catch(() => null);
     // A failure (offline, StoreKit not ready) is retried on the next ask.
     void p.then((price) => price === null && storePrices.get(productId) === p && storePrices.delete(productId));
     storePrices.set(productId, p);
   }
   return p;
+}
+
+/**
+ * The App Store's localized price string for a product (the board's, or the
+ * pass's), e.g. "$4.99" or "4,99 €". Null off iOS or when StoreKit can't say.
+ */
+export function appStorePrice(platform: Platform, productId: string): Promise<string | null> {
+  return appStoreProduct(platform, productId).then((p) => p?.label ?? null);
+}
+
+/**
+ * The board fee and the Host Pass as amounts this device can compare (for
+ * "Pays for itself by your fifth board"): the server's prices on the web,
+ * only the App Store's in the iOS app (never the web price there). Either is
+ * null when it can't be said.
+ */
+export async function hostPrices(config: PaymentConfig, platform: Platform): Promise<{ board: PriceAmount | null; pass: PriceAmount | null }> {
+  const offer = config.hostPass;
+  if (platform === "ios") {
+    // One after the other: the plugin's getProduct isn't made for parallel calls.
+    const board = await appStoreProduct(platform, config.iapProductId);
+    const pass = offer ? await appStoreProduct(platform, offer.iapProductId) : null;
+    return { board: board?.amount ?? null, pass: pass?.amount ?? null };
+  }
+  return {
+    board: { amount: config.priceCents, currency: config.currency.toUpperCase() },
+    pass: offer ? { amount: offer.priceCents, currency: offer.currency.toUpperCase() } : null,
+  };
 }
 
 // ---- The Host Pass: what's sold here, at what price ----
@@ -183,7 +228,7 @@ export function passCheckoutMethod(config: PaymentConfig, platform: Platform): C
 }
 
 /**
- * The pass's yearly price as this device shows it ("$9.99"; the caller adds
+ * The pass's yearly price as this device shows it ("$19.99"; the caller adds
  * "/year"): the server's on the web (test mode too), only the App Store's own
  * localized string in the iOS app (App Store guideline 3.1.1), else null.
  */

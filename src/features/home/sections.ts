@@ -192,8 +192,8 @@ export function cardModel(g: GameSummary, now: number): CardModel {
       return { ...base, status: `${left} left`, statusTone: "brand", statusIsLeft: true, meta: kickoff ?? mine, meter: true, buzz: true };
     default: {
       if (left === 0) {
-        // A playing card shows my squares there instead. Only a linked board whose host fee is paid draws on its own.
-        const meta = relation === "playing" ? null : g.linked && g.paid !== false ? "numbers drawn at kickoff" : "waiting on the host's draw";
+        // A playing card shows my squares there instead. Only a linked board whose host fee is paid (or that 5 or fewer players hold: free) draws on its own.
+        const meta = relation === "playing" ? null : g.linked && (g.paid !== false || g.freeDraw === true) ? "numbers drawn at kickoff" : "waiting on the host's draw";
         return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta, meter: true, buzz: false };
       }
       const soon = g.startsAt !== null && g.startsAt - now < DAY;
