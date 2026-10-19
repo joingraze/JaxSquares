@@ -63,24 +63,28 @@ if ! ok "$attached"; then
 fi
 
 echo "== www.$DOMAIN -> $DOMAIN"
-# A proxied placeholder record so www reaches Cloudflare, then a 301 rule.
-www=$(api "$CF/zones/$zone_id/dns_records?name=www.$DOMAIN")
-if ok "$www" && [ "$(echo "$www" | jq '.result | length')" = "0" ]; then
-  api -X POST "$CF/zones/$zone_id/dns_records" \
-    -d "{\"type\":\"AAAA\",\"name\":\"www\",\"content\":\"100::\",\"proxied\":true,\"comment\":\"Redirected to $DOMAIN by a redirect rule\"}" \
-    | jq -c '{www_record: .success, errors}'
-fi
-rule="{\"description\":\"www to $DOMAIN\",\"expression\":\"(http.host eq \\\"www.$DOMAIN\\\")\",\"action\":\"redirect\",\"action_parameters\":{\"from_value\":{\"status_code\":301,\"preserve_query_string\":true,\"target_url\":{\"expression\":\"concat(\\\"https://$DOMAIN\\\", http.request.uri.path)\"}}}}"
-phase="$CF/zones/$zone_id/rulesets/phases/http_request_dynamic_redirect/entrypoint"
-current=$(api "$phase")
-if ok "$current" && echo "$current" | jq -e --arg d "www to $DOMAIN" '.result.rules // [] | any(.description == $d)' >/dev/null; then
-  echo "www redirect: already there"
+www_now=$(curl -s -m 10 -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.$DOMAIN/some/path?q=1" || echo unreachable)
+if echo "$www_now" | grep -q "^30[18] https://$DOMAIN/some/path?q=1"; then
+  echo "www redirect: working ($www_now)"
 else
-  rules=$( (echo "$current" | jq -c '.result.rules // []' 2>/dev/null || echo '[]') | jq -c --argjson r "$rule" '[.[] | {description, expression, action, action_parameters, enabled} | with_entries(select(.value != null))] + [$r]')
-  api -X PUT "$phase" -d "{\"rules\":$rules}" | jq -c '{www_redirect: .success, errors}'
+  # A proxied placeholder record so www reaches Cloudflare, then a 301 rule.
+  www=$(api "$CF/zones/$zone_id/dns_records?name=www.$DOMAIN")
+  if ok "$www" && [ "$(echo "$www" | jq '.result | length')" = "0" ]; then
+    api -X POST "$CF/zones/$zone_id/dns_records" \
+      -d "{\"type\":\"AAAA\",\"name\":\"www\",\"content\":\"100::\",\"proxied\":true,\"comment\":\"Redirected to $DOMAIN by a redirect rule\"}" \
+      | jq -c '{www_record: .success, errors}'
+  fi
+  rule="{\"description\":\"www to $DOMAIN\",\"expression\":\"(http.host eq \\\"www.$DOMAIN\\\")\",\"action\":\"redirect\",\"action_parameters\":{\"from_value\":{\"status_code\":301,\"preserve_query_string\":true,\"target_url\":{\"expression\":\"concat(\\\"https://$DOMAIN\\\", http.request.uri.path)\"}}}}"
+  phase="$CF/zones/$zone_id/rulesets/phases/http_request_dynamic_redirect/entrypoint"
+  current=$(api "$phase")
+  if ok "$current" && echo "$current" | jq -e --arg d "www to $DOMAIN" '.result.rules // [] | any(.description == $d)' >/dev/null; then
+    echo "www redirect: already there"
+  else
+    rules=$( (echo "$current" | jq -c '.result.rules // []' 2>/dev/null || echo '[]') | jq -c --argjson r "$rule" '[.[] | {description, expression, action, action_parameters, enabled} | with_entries(select(.value != null))] + [$r]')
+    api -X PUT "$phase" -d "{\"rules\":$rules}" | jq -c '{www_redirect: .success, errors}'
+  fi
+  echo "www check: $(curl -s -m 10 -o /dev/null -w '%{http_code} -> %{redirect_url}' "https://www.$DOMAIN/some/path?q=1" || echo unreachable)"
 fi
-
-echo "www check: $(curl -s -m 10 -o /dev/null -w '%{http_code} -> %{redirect_url}' "https://www.$DOMAIN/some/path?q=1" || echo unreachable)"
 
 for _ in $(seq 1 18); do
   if curl -fsS "https://$DOMAIN/api/health" | grep -q '"ok":true'; then
