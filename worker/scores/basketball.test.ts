@@ -67,12 +67,12 @@ describe("basketball URLs", () => {
     expect(url.searchParams.has("week")).toBe(false);
   });
 
-  it("asks for all of Division I men's college basketball", () => {
+  it("asks for all of Division I college basketball, men's and women's", () => {
     const url = new URL(scoreboardUrl("ncaab", Date.UTC(2026, 2, 20)));
     expect(url.searchParams.get("groups")).toBe("50");
     expect(Number(url.searchParams.get("limit"))).toBeGreaterThanOrEqual(300);
     const women = new URL(scoreboardUrl("ncaaw", Date.UTC(2026, 2, 20)));
-    expect(women.searchParams.has("groups")).toBe(false);
+    expect(women.searchParams.get("groups")).toBe("50");
     expect(Number(women.searchParams.get("limit"))).toBeGreaterThanOrEqual(300);
   });
 

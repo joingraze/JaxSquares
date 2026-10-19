@@ -29,12 +29,13 @@ const LEAGUE_PATH: Record<LinkedLeague, string> = {
 /**
  * Query params a league's scoreboard always takes. Without `groups`, ESPN's
  * college scoreboards return only a featured subset: 80 is FBS football, 50
- * Division I men's basketball; `limit` lifts the default page size.
+ * Division I basketball, men's and women's (the probe saw 1 women's game on a
+ * busy Saturday without it, 121 with it); `limit` lifts the default page size.
  */
 const LEAGUE_PARAMS: Partial<Record<LinkedLeague, Record<string, string>>> = {
   ncaaf: { groups: "80", limit: "300" },
   ncaab: { groups: "50", limit: "400" },
-  ncaaw: { limit: "400" },
+  ncaaw: { groups: "50", limit: "400" },
 };
 
 // ---- Raw response shapes (only the fields we read) ----
