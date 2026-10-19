@@ -50,6 +50,10 @@
     "HOST_PASS_PRICE_CENTS": "1999",
     "STRIPE_HOST_PASS_PRICE_ID": "",
     "IAP_HOST_PASS_PRODUCT_ID": "com.jaxsquares.app.hostpass.yearly",
+    // The Club Pass, yearly, web only (docs/payments.md "Club Pass"). In live
+    // mode the web sells it only once STRIPE_CLUB_PASS_PRICE_ID names its Price.
+    "CLUB_PASS_PRICE_CENTS": "4900",
+    "STRIPE_CLUB_PASS_PRICE_ID": "",
     // Optional sign-in (docs/auth.md). Public OAuth client ids, not secrets;
     // empty = that provider is hidden in the app. Native Sign in with Apple
     // uses APPLE_BUNDLE_ID (default com.jaxsquares.app, the Capacitor appId).

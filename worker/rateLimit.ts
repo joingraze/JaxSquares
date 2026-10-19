@@ -1,7 +1,8 @@
 // Light rate limits on the endpoints worth abusing: creating boards, joining
 // them, claiming/releasing squares, co-host links, signing in, the Host
-// Pass checkout (each call there can reach Stripe or Apple) and email
-// notices (each sign-up sends an email to an address someone typed). Fixed windows counted in D1
+// Pass checkout (each call there can reach Stripe or Apple), email
+// notices (each sign-up sends an email to an address someone typed) and the
+// Club Pass's logo uploads, TV links and players CSV. Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -27,6 +28,9 @@ const TOO_MANY = {
   checkout: "That's a lot of checkout attempts. Take a breather and try again a little later.",
   cohost: "That's a lot of co-host links for one hour. Take a breather and try again a little later.",
   email: "That's a lot of email changes for one hour. Try again a little later.",
+  club: "That's a lot of club changes for one hour. Take a breather and try again a little later.",
+  clubTv: "That's a lot of new TV links for one hour. Try again a little later.",
+  download: "That's a lot of downloads for one hour. Try again a little later.",
 };
 
 export interface RateRule {
@@ -173,6 +177,59 @@ export const RATE_LIMITS = {
     limit: 60,
     windowMs: MINUTE,
     message: "That's a lot of clicks. Give it a minute and try again.",
+  },
+  /** The Club Pass (worker/clubs): the club's name and logo (uploading or removing it), per device. */
+  clubBrand: {
+    name: "club-brand",
+    limit: 30,
+    windowMs: HOUR,
+    message: TOO_MANY.club,
+  },
+  /** Per network address: `clubBrand` for everyone behind one address. */
+  clubBrandIp: {
+    name: "club-brand-ip",
+    limit: 90,
+    windowMs: HOUR,
+    message: TOO_MANY.club,
+  },
+  /** POST /api/clubs/mine/tv (a new club TV link, cutting off the old one), per device. */
+  clubTv: {
+    name: "club-tv",
+    limit: 10,
+    windowMs: HOUR,
+    message: TOO_MANY.clubTv,
+  },
+  /** Per network address: `clubTv` for everyone behind one address. */
+  clubTvIp: {
+    name: "club-tv-ip",
+    limit: 30,
+    windowMs: HOUR,
+    message: TOO_MANY.clubTv,
+  },
+  /**
+   * GET /api/clubs/:id/tv, per network address: a venue's TVs poll it (a bar
+   * can have a few on one address), counted before the link's token is
+   * checked so tokens can't be tried at speed.
+   */
+  clubTvViewIp: {
+    name: "club-tv-view-ip",
+    limit: 120,
+    windowMs: MINUTE,
+    message: "That's a lot of requests. Give it a minute and try again.",
+  },
+  /** GET /api/games/:id/export.csv (a Club Pass board's players), per device. */
+  clubExport: {
+    name: "club-export",
+    limit: 30,
+    windowMs: HOUR,
+    message: TOO_MANY.download,
+  },
+  /** Per network address: `clubExport` for everyone behind one address. */
+  clubExportIp: {
+    name: "club-export-ip",
+    limit: 120,
+    windowMs: HOUR,
+    message: TOO_MANY.download,
   },
   /**
    * New players joining one board, keyed by game id: clientIds are free to

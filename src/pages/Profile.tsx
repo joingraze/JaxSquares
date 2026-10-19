@@ -1,7 +1,7 @@
 // Profile (/me): who I am on the boards (name, sticker, color, with a live
 // preview square), my notifications (one card for every state), what each
 // board will ping about next (with per-board mutes), the optional account,
-// the Host Pass, host links and About.
+// the Host Pass, the Club Pass, host links and About.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -16,6 +16,7 @@ import { NotificationsCard } from "../features/notifications/profile/Notificatio
 import { boardsToSync, lookChanged, statsOf, syncLook, tagline, type MyStats } from "../features/notifications/profile/profileSync";
 import { SquarePreview } from "../features/notifications/profile/SquarePreview";
 import { HostPassSection } from "../features/pass/HostPassSection";
+import { ClubSection } from "../features/club/ClubSection";
 import { pushIsOn, usePushStatus } from "../features/notifications/usePushStatus";
 import { api } from "../lib/api";
 import { pluralize } from "../lib/format";
@@ -86,6 +87,9 @@ export default function Profile() {
         <AccountSection />
 
         <HostPassSection />
+
+        {/* The Club Pass (src/features/club): a holder's club settings; a one-line pitch on the web; nothing to buy in the iOS app. */}
+        <ClubSection />
 
         <ListGroup title="Hosting">
           <ListRow

@@ -3,7 +3,7 @@
 // (Stripe on the web, Apple IAP in the iOS app); anything less runs the clearly
 // labeled no-charge test checkout.
 
-import type { HostPassOffer, PaymentConfig } from "../../shared/types";
+import type { ClubPassOffer, HostPassOffer, PaymentConfig } from "../../shared/types";
 import type { Env } from "../env";
 
 export const DEFAULT_PRICE_CENTS = 499;
@@ -11,6 +11,8 @@ export const DEFAULT_IAP_PRODUCT_ID = "com.jaxsquares.app.board";
 /** The Host Pass: $19.99 a year on the web (wrangler.jsonc HOST_PASS_PRICE_CENTS sets it); the App Store sets its own localized price. */
 export const DEFAULT_HOST_PASS_PRICE_CENTS = 1999;
 export const DEFAULT_IAP_HOST_PASS_PRODUCT_ID = "com.jaxsquares.app.hostpass.yearly";
+/** The Club Pass: $49 a year, on the web only (wrangler.jsonc CLUB_PASS_PRICE_CENTS sets it). */
+export const DEFAULT_CLUB_PASS_PRICE_CENTS = 4900;
 export const CURRENCY = "usd";
 /** Stripe's minimum charge for USD. */
 const MIN_PRICE_CENTS = 50;
@@ -57,6 +59,25 @@ export function stripeHostPassPriceId(env: Env): string | null {
   return env.STRIPE_HOST_PASS_PRICE_ID?.trim() || null;
 }
 
+export function clubPassPriceCents(env: Env): number {
+  const n = Number(env.CLUB_PASS_PRICE_CENTS);
+  return Number.isInteger(n) && n >= MIN_PRICE_CENTS ? n : DEFAULT_CLUB_PASS_PRICE_CENTS;
+}
+
+/** The Stripe Price of the yearly Club Pass, or null while the owner hasn't set one. */
+export function stripeClubPassPriceId(env: Env): string | null {
+  return env.STRIPE_CLUB_PASS_PRICE_ID?.trim() || null;
+}
+
+/**
+ * How the Club Pass is sold: on the web only (the iOS app never offers it),
+ * as a no-charge test pass in test mode and in live mode once
+ * STRIPE_CLUB_PASS_PRICE_ID is set.
+ */
+export function clubPassOffer(env: Env, live: boolean): ClubPassOffer {
+  return { priceCents: clubPassPriceCents(env), currency: CURRENCY, web: !live || stripeClubPassPriceId(env) !== null };
+}
+
 /**
  * How the Host Pass is sold here. The web sells it in test mode (a no-charge
  * test pass) and in live mode once STRIPE_HOST_PASS_PRICE_ID is set; the iOS
@@ -87,5 +108,6 @@ export function getPaymentConfig(env: Env): PaymentConfig {
     stripePublishableKey: live ? env.STRIPE_PUBLISHABLE_KEY!.trim() : null,
     iapProductId: iapProductId(env),
     hostPass: hostPassOffer(env, live),
+    clubPass: clubPassOffer(env, live),
   };
 }

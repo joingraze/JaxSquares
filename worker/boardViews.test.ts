@@ -34,6 +34,7 @@ const MIGRATIONS = [
   "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
+  "migrations/0016_club.sql",
 ];
 const INDEX_HTML = "<html><head><title>JaxSquares</title></head><body><div id=\"root\"></div></body></html>";
 

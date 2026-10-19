@@ -16,10 +16,12 @@ import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { isClientId } from "../../shared/playerId";
 import type { AuthProvider, MeResponse } from "../../shared/types";
+import { forgetClubBrand } from "../clubs/brand";
+import * as clubStore from "../clubs/store";
 import * as db from "../db";
 import * as emailStore from "../email/store";
 import type { Env } from "../env";
-import { hostPassOf } from "../payments/pass";
+import { clubPassOf, hostPassOf } from "../payments/pass";
 import { endWebPassRenewals } from "../payments/passStripe";
 import * as paymentsStore from "../payments/store";
 import { playerIdOf } from "../playerIds";
@@ -129,15 +131,16 @@ function appleRedirectUri(env: Env, v: unknown): string | null {
 
 /** Who this device is: GET /api/me and the sign-in response. Co-hosted boards come as ids only: a co-host has no token. */
 async function meFor(env: Env, canonical: string, accountId: string | null): Promise<MeResponse> {
-  const [account, hostTokens, profile, playerId, hostPass, cohostGames] = await Promise.all([
+  const [account, hostTokens, profile, playerId, hostPass, clubPass, cohostGames] = await Promise.all([
     accountId ? store.accountInfo(env.DB, accountId) : null,
     db.hostTokensFor(env.DB, canonical),
     db.latestProfileOf(env.DB, canonical),
     playerIdOf(canonical),
     hostPassOf(env.DB, canonical),
+    clubPassOf(env.DB, canonical),
     db.cohostGamesFor(env.DB, canonical),
   ]);
-  return { playerId, account, hostTokens, profile, hostPass, cohostGames };
+  return { playerId, account, hostTokens, profile, hostPass, clubPass, cohostGames };
 }
 
 type Outcome = { conflict: true } | { conflict: false; accountId: string; canonical: string; merged: string[] };
@@ -185,6 +188,7 @@ async function signInDevice(env: Env, s: SignIn): Promise<Outcome> {
                 ...pushStore.mergeClientStatements(env.DB, s.device, canonical),
                 ...paymentsStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
                 ...emailStore.mergeClientStatements(env.DB, s.device, canonical),
+                ...clubStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
               ];
         const results = await store.linkDevice(env.DB, { ...touch, accountId, clientId: s.device }, merge);
         const merged = merge.length > 0 ? (results[0].results as { id: string }[]).map((r) => r.id) : [];
@@ -240,6 +244,8 @@ async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
   });
   if (outcome.conflict) fail(409, SIGNED_OUT_FIRST);
   rememberLink(device, outcome.canonical, now);
+  // A Club Pass (and its club) the device brought now brands the account's boards.
+  if (outcome.canonical !== device) forgetClubBrand(c.env.DB, outcome.canonical);
 
   // Boards open on any phone show the device's squares under the account right away.
   if (outcome.merged.length > 0) {
@@ -328,11 +334,13 @@ authRoutes.delete("/account", async (c) => {
   if (doomed.unrevocable > 0) console.log(`account deleted with ${doomed.unrevocable} Apple sign-in(s) that had no refresh token to revoke`);
   if (revoked.some((ok) => !ok)) console.log("account deleted; an Apple token couldn't be revoked (see above)");
   // The boards and squares stay as anonymous data under the canonical clientId.
-  // Email addresses for notices go: nobody could manage them afterwards.
+  // Email addresses for notices go: nobody could manage them afterwards. So
+  // does a Club Pass holder's club (its name, logo and TV link).
   await c.env.DB.batch([
     ...store.deleteAccountStatements(c.env.DB, link.accountId),
     pushStore.deleteClientSubscriptionsStatement(c.env.DB, link.canonical),
     emailStore.deleteClientSubscriptionsStatement(c.env.DB, link.canonical),
+    clubStore.deleteOwnerStatement(c.env.DB, link.canonical),
   ]);
   forgetClients([device, ...doomed.clients]);
   return c.json({ ok: true });

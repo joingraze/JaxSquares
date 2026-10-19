@@ -43,6 +43,7 @@ const MIGRATIONS = [
   "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
+  "migrations/0016_club.sql",
 ];
 
 let t: TestD1;

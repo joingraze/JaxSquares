@@ -10,7 +10,7 @@
 import type { NativePurchasesPlugin, Transaction } from "@capgo/native-purchases";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { Appearance, ClickResolveDetails, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
-import type { AppConfig, GameState, HostPassIntent, HostPassState, HostPassTransaction, PaymentConfig } from "../../shared/types";
+import type { AppConfig, GameState, HostPassIntent, HostPassState, HostPassTransaction, PassPlan, PaymentConfig } from "../../shared/types";
 import { getClientId, isSignedIn } from "./identity";
 import { getResolvedTheme, type ResolvedTheme } from "./theme";
 
@@ -68,7 +68,7 @@ async function request<T>(method: "GET" | "POST", path: string, opts: { adminTok
   }
   const data = (await res.json().catch(() => ({}))) as { error?: string; state?: GameState; unused?: boolean; code?: string } & Partial<HostPassState>;
   if (!res.ok) {
-    const pass = data.offer ? { pass: data.pass ?? null, offer: data.offer } : undefined;
+    const pass = data.offer ? { pass: data.pass ?? null, offer: data.offer, club: data.club ?? null, clubOffer: data.clubOffer } : undefined;
     throw new CheckoutError(data.error ?? `Request failed (${res.status})`, res.status, data.state, data.unused === true, data.code, pass);
   }
   return data as T;
@@ -225,6 +225,28 @@ export function passCheckoutMethod(config: PaymentConfig, platform: Platform): C
   if (platform === "ios") return offer.iapProductId ? "iap" : null;
   if (!offer.web) return null;
   return hasWalletApi() ? "wallet" : "card";
+}
+
+/**
+ * How this device buys the Club Pass, or null when it isn't sold here: never
+ * in the iOS app (it may unlock what was bought on the web, but never offers
+ * or points to buying it: App Store guidelines 3.1.1 and 3.1.3(b)); the
+ * no-charge test pass in test mode; Stripe on the web once the server has the
+ * club Price.
+ */
+export function clubCheckoutMethod(config: PaymentConfig, platform: Platform): CheckoutMethod | null {
+  const offer = config.clubPass;
+  if (!offer || platform === "ios") return null;
+  if (config.mode === "test") return "test";
+  if (!offer.web) return null;
+  return hasWalletApi() ? "wallet" : "card";
+}
+
+/** The Club Pass's yearly price on the web ("$49"); null in the iOS app, which never shows it. */
+export function clubPassPrice(config: PaymentConfig, platform: Platform): string | null {
+  const offer = config.clubPass;
+  if (!offer || platform === "ios") return null;
+  return formatPrice(offer.priceCents, offer.currency);
 }
 
 /**
@@ -680,14 +702,17 @@ export function fetchPassState(): Promise<HostPassState> {
   return request<HostPassState>("GET", "/payments/pass");
 }
 
-/** Test mode: a no-charge pass that lasts a year. */
-export function startTestPass(): Promise<HostPassState> {
-  return request<HostPassState>("POST", "/payments/pass/test");
+/** What the purchase routes take for a plan: nothing for the Host Pass (as before), `{ plan: "club" }` for the Club Pass. */
+const planBody = (plan: PassPlan) => (plan === "club" ? { body: { plan } } : {});
+
+/** Test mode: a no-charge pass that lasts a year (the Club Pass with `plan` "club"). */
+export function startTestPass(plan: PassPlan = "host"): Promise<HostPassState> {
+  return request<HostPassState>("POST", "/payments/pass/test", planBody(plan));
 }
 
 /** Test mode: ends the test pass (to try buying again). */
-export function endTestPass(): Promise<HostPassState> {
-  return request<HostPassState>("POST", "/payments/pass/test/end");
+export function endTestPass(plan: PassPlan = "host"): Promise<HostPassState> {
+  return request<HostPassState>("POST", "/payments/pass/test/end", planBody(plan));
 }
 
 /**
@@ -695,8 +720,8 @@ export function endTestPass(): Promise<HostPassState> {
  * 409 with `code` ACCOUNT_REQUIRED_CODE means sign in first; a 409 with
  * `pass` set means the identity already has an active one.
  */
-export function createPassIntent(): Promise<HostPassIntent> {
-  return request<HostPassIntent>("POST", "/payments/pass/stripe");
+export function createPassIntent(plan: PassPlan = "host"): Promise<HostPassIntent> {
+  return request<HostPassIntent>("POST", "/payments/pass/stripe", planBody(plan));
 }
 
 /**
@@ -704,13 +729,13 @@ export function createPassIntent(): Promise<HostPassIntent> {
  * back from Stripe (the webhook may not have landed yet). Resolves with the
  * pass once it's active, or the last state seen after a few seconds.
  */
-export async function confirmPassPaid(): Promise<HostPassState | null> {
+export async function confirmPassPaid(plan: PassPlan = "host"): Promise<HostPassState | null> {
   let last: HostPassState | null = null;
   for (const delay of [0, 800, 1600, 3200]) {
     if (delay) await sleep(delay);
     try {
-      last = await request<HostPassState>("POST", "/payments/pass/stripe/confirm");
-      if (last.pass?.active) return last;
+      last = await request<HostPassState>("POST", "/payments/pass/stripe/confirm", planBody(plan));
+      if ((plan === "club" ? last.club : last.pass)?.active) return last;
     } catch (err) {
       if (!(err instanceof CheckoutError) || (err.status > 0 && err.status < 500)) throw err;
     }

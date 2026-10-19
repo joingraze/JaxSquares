@@ -1,9 +1,12 @@
 // D1 access for the purchases ledger (migrations/0003_purchases.sql, 0006) and the
-// Host Pass (0011: host_passes, stripe_customers). The tables belong to the
-// payments module, so their SQL lives here rather than in worker/db.ts.
+// Host Pass (0011: host_passes, stripe_customers; 0016: host_passes.plan, which
+// makes a row the Club Pass). The tables belong to the payments module, so
+// their SQL lives here rather than in worker/db.ts.
 //
 // A board has at most one 'paid' purchase: recordPaid decides that inside one
 // transaction; any other verified charge for the board is kept as 'unused'.
+
+import type { PassPlan } from "../../shared/types";
 
 export type PurchaseProvider = "test" | "stripe" | "iap";
 /** "unused": charged, but it paid for nothing (board already paid for, or deleted first); for refund follow-up. */
@@ -159,16 +162,22 @@ export async function markCanceled(db: D1Database, reference: string): Promise<v
 }
 
 // ---- The Host Pass (migrations/0011_host_pass.sql): host_passes, stripe_customers ----
-// Keyed by the holder's canonical clientId, which never leaves the server.
+// Keyed by the holder's canonical clientId, which never leaves the server. A
+// row's plan (migrations/0016_club.sql) says whether it's the Host Pass or the
+// Club Pass; both cover the host fee.
 
 export type PassProvider = "stripe" | "iap" | "test";
 export type PassStatus = "pending" | "active" | "past_due" | "ended" | "revoked";
+/** Which pass a row is (migrations/0016_club.sql): the Host Pass, or the Club Pass (web only). */
+export type { PassPlan };
 
 export interface PassRow {
   /** "hp_<random>": the reference a board paid through this pass records. Server-only. */
   id: string;
   clientId: string;
   provider: PassProvider;
+  /** 'host' or 'club'. Both cover the host fee; a Club Pass adds the club features. */
+  plan: PassPlan;
   /** Stripe subscription id, Apple originalTransactionId, or "test:<random>". */
   externalId: string;
   status: PassStatus;
@@ -184,6 +193,8 @@ export interface PassRow {
 
 /** What a provider says about a subscription right now. */
 export interface PassState {
+  /** Which pass it is, when the provider says (a Stripe subscription's Price); absent keeps what's stored ('host' for a new row). */
+  plan?: PassPlan;
   status: PassStatus;
   currentPeriodEnd: number | null;
   autoRenew: boolean;
@@ -196,6 +207,7 @@ interface PassDbRow {
   id: string;
   client_id: string;
   provider: PassProvider;
+  plan: PassPlan | null;
   external_id: string;
   status: PassStatus;
   current_period_end: number | null;
@@ -207,12 +219,15 @@ interface PassDbRow {
 }
 
 const PASS_COLUMNS = "id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at";
+/** PASS_COLUMNS plus the plan (migration 0016), for reads. */
+const PASS_READ = `${PASS_COLUMNS}, plan`;
 
 function passFromRow(r: PassDbRow): PassRow {
   return {
     id: r.id,
     clientId: r.client_id,
     provider: r.provider,
+    plan: r.plan === "club" ? "club" : "host",
     externalId: r.external_id,
     status: r.status,
     currentPeriodEnd: r.current_period_end,
@@ -246,7 +261,7 @@ export async function passesOf(db: D1Database, clientIds: readonly string[], opt
   const results = await db.batch<PassDbRow>(
     chunks.map((chunk) =>
       db
-        .prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE client_id IN (${chunk.map(() => "?").join(", ")})${status} ORDER BY created_at DESC`)
+        .prepare(`SELECT ${PASS_READ} FROM host_passes WHERE client_id IN (${chunk.map(() => "?").join(", ")})${status} ORDER BY created_at DESC`)
         .bind(...chunk),
     ),
   );
@@ -254,7 +269,7 @@ export async function passesOf(db: D1Database, clientIds: readonly string[], opt
 }
 
 export async function passByExternalId(db: D1Database, externalId: string): Promise<PassRow | null> {
-  const row = await db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(externalId).first<PassDbRow>();
+  const row = await db.prepare(`SELECT ${PASS_READ} FROM host_passes WHERE external_id = ?`).bind(externalId).first<PassDbRow>();
   return row ? passFromRow(row) : null;
 }
 
@@ -267,7 +282,8 @@ export interface NewPass extends PassState {
 
 /**
  * Stores a provider's word on a subscription and returns the row:
- * - a subscription new to us becomes a pass of `clientId`;
+ * - a subscription new to us becomes a pass of `clientId` (plan 'host' unless
+ *   the provider says otherwise);
  * - one we know takes the new state unless it's older than what's stored
  *   (event_at), and stays with its holder unless `moveTo` (a verified App
  *   Store restore moves it to the identity that restored it).
@@ -277,8 +293,9 @@ export async function upsertPass(db: D1Database, p: NewPass, opts: { moveTo?: bo
   const [, read] = await db.batch<PassDbRow>([
     db
       .prepare(
-        `INSERT INTO host_passes (${PASS_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+        `INSERT INTO host_passes (${PASS_COLUMNS}, plan) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, COALESCE(?12, 'host'))
          ON CONFLICT(external_id) DO UPDATE SET
+           plan = CASE WHEN ?12 IS NOT NULL AND excluded.event_at >= host_passes.event_at THEN ?12 ELSE host_passes.plan END,
            status = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.status ELSE host_passes.status END,
            current_period_end = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.current_period_end ELSE host_passes.current_period_end END,
            auto_renew = CASE WHEN excluded.event_at >= host_passes.event_at THEN excluded.auto_renew ELSE host_passes.auto_renew END,
@@ -299,8 +316,9 @@ export async function upsertPass(db: D1Database, p: NewPass, opts: { moveTo?: bo
         Math.trunc(p.eventAt),
         now,
         opts.moveTo ? 1 : 0,
+        p.plan ?? null,
       ),
-    db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(p.externalId),
+    db.prepare(`SELECT ${PASS_READ} FROM host_passes WHERE external_id = ?`).bind(p.externalId),
   ]);
   return passFromRow(read.results[0]);
 }
@@ -310,24 +328,25 @@ export async function updatePass(db: D1Database, externalId: string, s: PassStat
   const [, read] = await db.batch<PassDbRow>([
     db
       .prepare(
-        `UPDATE host_passes SET status = ?2, current_period_end = ?3, auto_renew = ?4, livemode = ?5, event_at = ?6, updated_at = ?7
+        `UPDATE host_passes SET status = ?2, current_period_end = ?3, auto_renew = ?4, livemode = ?5, event_at = ?6, updated_at = ?7,
+           plan = COALESCE(?8, plan)
          WHERE external_id = ?1 AND event_at <= ?6`,
       )
-      .bind(externalId, s.status, s.currentPeriodEnd, s.autoRenew ? 1 : 0, s.livemode ? 1 : 0, Math.trunc(s.eventAt), now),
-    db.prepare(`SELECT ${PASS_COLUMNS} FROM host_passes WHERE external_id = ?`).bind(externalId),
+      .bind(externalId, s.status, s.currentPeriodEnd, s.autoRenew ? 1 : 0, s.livemode ? 1 : 0, Math.trunc(s.eventAt), now, s.plan ?? null),
+    db.prepare(`SELECT ${PASS_READ} FROM host_passes WHERE external_id = ?`).bind(externalId),
   ]);
   const row = read.results[0];
   return row ? passFromRow(row) : null;
 }
 
-/** Test mode's "End test pass": this identity's test passes end now. */
-export async function endTestPasses(db: D1Database, clientId: string, now = Date.now()): Promise<void> {
+/** Test mode's "End test pass": this identity's test passes of that plan end now. */
+export async function endTestPasses(db: D1Database, clientId: string, now = Date.now(), plan: PassPlan = "host"): Promise<void> {
   await db
     .prepare(
       `UPDATE host_passes SET status = 'ended', current_period_end = ?2, auto_renew = 0, event_at = ?2, updated_at = ?2
-       WHERE client_id = ?1 AND provider = 'test' AND status = 'active'`,
+       WHERE client_id = ?1 AND provider = 'test' AND status = 'active' AND plan = ?3`,
     )
-    .bind(clientId, now)
+    .bind(clientId, now, plan)
     .run();
 }
 

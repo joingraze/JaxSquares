@@ -43,14 +43,20 @@ are no ads and no tracking.
   account. For a pass bought on the web, Stripe also keeps a customer record
   for it. We use this only to cover your boards' host fee and to show your
   pass.
+- **A Club Pass and its club (optional).** If you get the yearly Club Pass, we
+  keep it like a Host Pass, plus your club: the name and logo you give it (the
+  logo is resized on your device before it's uploaded) and a scrambled
+  fingerprint of its TV link, never the link itself. The club's name and logo
+  are public on the boards you host, their TV view, printout and link
+  previews. They're deleted with your account.
 - **Basic server logs.** When your device talks to our servers, our hosting
   provider records technical details like IP address and request time. We use
   them to keep the service running and secure. We don't use them to work out
   where you are.
 
-We don't collect your phone number, contacts, photos, location or health
-data, or your email unless you sign in and share it or ask for email about a
-board. We don't use analytics or advertising SDKs.
+We don't collect your phone number, contacts, photos (other than a club logo
+a Club Pass holder chooses to upload), location or health data, or your email
+unless you sign in and share it or ask for email about a board. We don't use analytics or advertising SDKs.
 
 ## How we use it
 
@@ -61,7 +67,9 @@ We use it only to run JaxSquares:
 - recording scores and winners
 - sending the notifications and emails you asked for
 - letting hosts draw the numbers once a board is paid for, or covered by their
-  Host Pass
+  Host Pass or Club Pass
+- showing a Club Pass holder's club on their boards, and a players list (names,
+  squares and when each joined) to the board's host and co-hosts
 - keeping your boards on every device you sign in on
 - preventing abuse
 
@@ -76,7 +84,7 @@ other apps or websites.
 | Apple | In-App Purchase and subscriptions, push notification delivery and Sign in with Apple |
 | Google | Sign in with Google (optional) |
 | Google Firebase Cloud Messaging | Delivering push notifications to the app |
-| Stripe | Web payments for the host fee and the Host Pass |
+| Stripe | Web payments for the host fee, the Host Pass and the Club Pass |
 | Resend | Sending the board emails you ask for |
 
 Each provider handles data under its own privacy terms, and only for these
@@ -98,6 +106,8 @@ Only share links with people you want to play with.
 - **Boards and their data.** We keep these until the host deletes the board.
 - **Your account.** We keep it until you delete it. Your boards and squares
   stay on their boards afterwards, no longer tied to you.
+- **A club's name and logo.** We keep them until you change them or delete
+  your account. They stop showing on your boards when the Club Pass ends.
 - **Purchase records.** We keep these as long as tax and accounting law
   requires.
 - **Push tokens.** We delete a token when you turn notifications off, or when

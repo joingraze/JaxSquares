@@ -9,7 +9,7 @@
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the host
 // paying JaxSquares a fee for a board, due when they draw its numbers, or a
-// yearly Host Pass that covers that fee on every board they host.
+// yearly Host Pass (or Club Pass) that covers that fee on every board they host.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
@@ -213,6 +213,25 @@ export interface Game {
    * type-check (absent reads as paid).
    */
   paid?: boolean;
+  /**
+   * The host holds an active Club Pass (docs/payments.md "Club Pass"): the
+   * club's public branding (its name shows only once the holder names it:
+   * `shownClub` in shared/clubs.ts), and the board takes up to
+   * CLUB_MAX_COHOSTS co-hosts (`cohostLimitOf`). null/absent on every other
+   * board. Never says who owns the club beyond the host's public id.
+   */
+  club?: ClubBrand | null;
+}
+
+/** A club's branding as every one of its boards shows it. Public. */
+export interface ClubBrand {
+  /** The club's own random id (its logo and TV URLs), never tied to a clientId. */
+  id: string;
+  /** "" until the holder names the club: then the boards show no branding. */
+  name: string;
+  hasLogo: boolean;
+  /** Changes with every new logo (the ETag; cache-busts /api/clubs/:id/logo?v=); null with no logo. */
+  logoVersion: string | null;
 }
 
 /**
@@ -648,6 +667,8 @@ export interface PaymentConfig {
   iapProductId: string;
   /** How the Host Pass is sold here. Always sent; optional only so older fixtures type-check. */
   hostPass?: HostPassOffer;
+  /** How the Club Pass is sold (the web only). Always sent; optional only so older fixtures type-check. */
+  clubPass?: ClubPassOffer;
 }
 
 // ---- The Host Pass (docs/payments.md "Host Pass") ----
@@ -695,6 +716,69 @@ export interface HostPass {
 export interface HostPassState {
   pass: HostPass | null;
   offer: HostPassOffer;
+  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  club?: HostPass | null;
+  /** How the Club Pass is sold here. Always sent; optional so older fixtures type-check. */
+  clubOffer?: ClubPassOffer;
+}
+
+// ---- The Club Pass (docs/payments.md "Club Pass") ----
+// A yearly plan for bars, booster clubs, offices and fundraisers: everything
+// the Host Pass does, plus the club's branding on the holder's boards, up to
+// 10 co-hosts, a players CSV and a TV link that rotates the club's boards.
+// Sold on the web only (Stripe Billing, signed in); the iOS app never offers
+// it or links to buying it, but a holder's features work there. A row of
+// host_passes with plan 'club': `HostPass` reads it the same way.
+
+/** Which pass a host_passes row is. */
+export type PassPlan = "host" | "club";
+
+/** How the Club Pass is sold: on the web only, never in the iOS app. */
+export interface ClubPassOffer {
+  /** The price per year, in minor units of `currency` (4900 = "$49/year"). */
+  priceCents: number;
+  currency: string;
+  /** The web sells it: test mode (a no-charge test pass), or live mode once its Stripe Price is set. */
+  web: boolean;
+}
+
+/** One of the club's open or live boards, as the holder's club settings list them. */
+export interface ClubBoard {
+  id: string;
+  name: string;
+  status: GameStatus;
+  squaresLeft: number;
+  totalSquares: number;
+  startsAt: number | null;
+}
+
+/** GET /api/clubs/mine (and every club settings route's answer): the holder's club. 404 without an active Club Pass. */
+export interface ClubSettings {
+  club: ClubBrand;
+  /**
+   * The current TV link's fingerprint (the first 8 hex of its token's hash),
+   * null before there's one. Only a token's hash is kept, so the link itself
+   * comes back once, when it's made (POST /api/clubs/mine/tv); a device keeps
+   * it and shows it while this still matches.
+   */
+  tvKey: string | null;
+  /** The club's open and live boards (what its TV goes round), newest kickoff last. */
+  boards: ClubBoard[];
+}
+
+/** POST /api/clubs/mine/tv: a new TV link (the old one stops working). */
+export interface ClubTvLink extends ClubSettings {
+  /** `<origin>/club/<id>/tv#k=<token>`. */
+  tvUrl: string;
+}
+
+/** GET /api/clubs/:id/tv (the TV link's token in x-club-tv-token): the club and its boards' public states. 404 for a wrong token. */
+export interface ClubTvState {
+  club: ClubBrand;
+  /** The Club Pass is active; when it isn't, `boards` is empty. */
+  active: boolean;
+  /** Up to CLUB_TV_MAX_BOARDS of the club's open and live boards: live ones first, then by kickoff. */
+  boards: GameState[];
 }
 
 /** POST /api/payments/pass/stripe: the first invoice's payment to confirm with Stripe.js, and what it charges. */
@@ -812,6 +896,8 @@ export interface MeResponse {
   profile?: { name: string; color: string; emoji: string } | null;
   /** This identity's Host Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
   hostPass?: HostPass | null;
+  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  clubPass?: HostPass | null;
   /**
    * Ids of the boards this identity co-hosts (newest 200). No token: a co-host
    * is authorized by its clientId, so host tools show on every signed-in

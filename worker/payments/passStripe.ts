@@ -1,4 +1,5 @@
-// The Host Pass on the web: a yearly Stripe Billing subscription. The server
+// The Host Pass (and the Club Pass, the same flow at its own Price) on the
+// web: a yearly Stripe Billing subscription. The server
 // creates (or reuses) the identity's Customer and an incomplete Subscription,
 // the browser confirms its first invoice's PaymentIntent with Express Checkout
 // or the card form, and the pass turns active only from Stripe's own data: a
@@ -6,9 +7,10 @@
 // (invoice.paid, customer.subscription.updated / .deleted). The client is
 // never trusted to say it paid.
 
-import type { HostPassIntent } from "../../shared/types";
+import type { HostPassIntent, PassPlan } from "../../shared/types";
+import { forgetClubBrand } from "../clubs/brand";
 import type { Env } from "../env";
-import { stripeHostPassPriceId } from "./config";
+import { stripeClubPassPriceId, stripeHostPassPriceId } from "./config";
 import { bestActive, stripePassStatus } from "./pass";
 import * as store from "./store";
 import {
@@ -34,10 +36,28 @@ export function stripeSecret(env: Env): string | null {
   return env.STRIPE_SECRET_KEY?.trim() || null;
 }
 
-/** What a Subscription says about the pass, as of `eventAt`. */
-export function stripePassState(sub: StripeSubscription, eventAt: number): store.PassState {
+/**
+ * Which pass a Subscription is, from the Price it bills (re-read on every
+ * webhook, so a plan change made in Stripe lands here): the Club Pass's Price
+ * (STRIPE_CLUB_PASS_PRICE_ID) or the Host Pass's. A Price this deployment no
+ * longer names (an older price kept by subscriptions made before a price
+ * change) says nothing: the stored plan stays.
+ */
+export function planOfSubscription(env: Env, sub: StripeSubscription): PassPlan | undefined {
+  const prices = (sub.items?.data ?? []).map((item) => item?.price?.id).filter((id): id is string => typeof id === "string");
+  const club = stripeClubPassPriceId(env);
+  const host = stripeHostPassPriceId(env);
+  if (club && prices.includes(club)) return "club";
+  if (host && prices.includes(host)) return "host";
+  return undefined;
+}
+
+/** What a Subscription says about the pass, as of `eventAt` (with its plan, when its Price says: planOfSubscription). */
+export function stripePassState(sub: StripeSubscription, eventAt: number, env?: Env): store.PassState {
   const status = stripePassStatus(sub.status);
+  const plan = env ? planOfSubscription(env, sub) : undefined;
   return {
+    ...(plan ? { plan } : {}),
     status,
     currentPeriodEnd: Number.isFinite(sub.current_period_end) ? sub.current_period_end * 1000 : null,
     autoRenew: !sub.cancel_at_period_end && (status === "active" || status === "past_due" || status === "pending"),
@@ -68,10 +88,12 @@ async function retrieveOrNull(secretKey: string, id: string): Promise<StripeSubs
 /** Reads a stored subscription back from Stripe and stores what it says now. */
 export async function syncStripePass(env: Env, secretKey: string, row: store.PassRow, now = Date.now()): Promise<store.PassRow | null> {
   const sub = await retrieveOrNull(secretKey, row.externalId);
-  if (!sub) {
-    return store.updatePass(env.DB, row.externalId, { status: "ended", currentPeriodEnd: row.currentPeriodEnd, autoRenew: false, livemode: row.livemode, eventAt: now }, now);
-  }
-  return store.updatePass(env.DB, sub.id, stripePassState(sub, now), now);
+  const next = sub
+    ? await store.updatePass(env.DB, sub.id, stripePassState(sub, now, env), now)
+    : await store.updatePass(env.DB, row.externalId, { status: "ended", currentPeriodEnd: row.currentPeriodEnd, autoRenew: false, livemode: row.livemode, eventAt: now }, now);
+  // A Club Pass starting, ending or changing plan changes the holder's boards' branding.
+  forgetClubBrand(env.DB, row.clientId);
+  return next;
 }
 
 export type StartOutcome =
@@ -82,22 +104,26 @@ export type StartOutcome =
 
 /**
  * The first payment of a new web pass for `clientId` (the account's canonical
- * clientId: the route checks the account link first). Reuses a subscription
- * still waiting for its first payment, so retries and reloads never start a
- * second one. Throws StripeApiError when Stripe refuses.
+ * clientId: the route checks the account link first): the Host Pass, or with
+ * `plan` "club" the Club Pass. Reuses a subscription of that plan still
+ * waiting for its first payment, so retries and reloads never start a second
+ * one. A Host Pass isn't sold to an identity a Club Pass already covers; a
+ * Club Pass is sold to a Host Pass holder (it adds the club features). Throws
+ * StripeApiError when Stripe refuses.
  */
-export async function startStripePass(env: Env, clientId: string, now = Date.now()): Promise<StartOutcome> {
+export async function startStripePass(env: Env, clientId: string, now = Date.now(), plan: PassPlan = "host"): Promise<StartOutcome> {
   const secretKey = stripeSecret(env);
-  const priceId = stripeHostPassPriceId(env);
+  const priceId = plan === "club" ? stripeClubPassPriceId(env) : stripeHostPassPriceId(env);
   if (!secretKey || !priceId) return { kind: "unavailable" };
-  const rows = await store.passesOf(env.DB, [clientId]);
-  if (bestActive(rows, now)) return { kind: "active" };
+  const all = await store.passesOf(env.DB, [clientId]);
+  if (bestActive(plan === "club" ? all.filter((p) => p.plan === "club") : all, now)) return { kind: "active" };
+  const rows = all.filter((p) => p.plan === plan);
 
   const pending = rows.find((p) => p.provider === "stripe" && p.status === "pending");
   if (pending) {
     const sub = await retrieveOrNull(secretKey, pending.externalId);
     if (sub) {
-      await store.updatePass(env.DB, sub.id, stripePassState(sub, now), now);
+      await store.updatePass(env.DB, sub.id, stripePassState(sub, now, env), now);
       if (stripePassStatus(sub.status) === "active") return { kind: "active" };
       const pi = intentOf(sub);
       if (sub.status === "incomplete" && pi && PAYABLE.has(pi.status) && pi.client_secret) {
@@ -120,21 +146,23 @@ export async function startStripePass(env: Env, clientId: string, now = Date.now
     customerId,
     priceId,
     passId,
-    idempotencyKey: `hostpass-${customerId}-${priceId}-${attempt}`,
+    plan,
+    idempotencyKey: `${plan === "club" ? "clubpass" : "hostpass"}-${customerId}-${priceId}-${attempt}`,
   });
-  await store.upsertPass(env.DB, { id: passId, clientId, provider: "stripe", externalId: sub.id, ...stripePassState(sub, now) }, { now });
+  const state = stripePassState(sub, now, env);
+  await store.upsertPass(env.DB, { id: passId, clientId, provider: "stripe", externalId: sub.id, ...state, plan: state.plan ?? plan }, { now });
   if (stripePassStatus(sub.status) === "active") return { kind: "active" };
   const pi = intentOf(sub);
   if (!pi?.client_secret) throw new StripeApiError("Subscription had no payment to confirm", 502);
   return { kind: "intent", intent: { clientSecret: pi.client_secret, amountCents: invoiceOf(sub)?.amount_due ?? pi.amount, currency: pi.currency } };
 }
 
-/** After the browser paid: read the identity's newest web pass back from Stripe (the webhook may not have landed yet). */
-export async function confirmStripePass(env: Env, clientId: string, now = Date.now()): Promise<void> {
+/** After the browser paid: read the identity's newest web pass of that plan back from Stripe (the webhook may not have landed yet). */
+export async function confirmStripePass(env: Env, clientId: string, now = Date.now(), plan: PassPlan = "host"): Promise<void> {
   const secretKey = stripeSecret(env);
   if (!secretKey) return;
   const rows = await store.passesOf(env.DB, [clientId]);
-  const latest = rows.find((p) => p.provider === "stripe" && (p.status === "pending" || p.status === "active" || p.status === "past_due"));
+  const latest = rows.find((p) => p.plan === plan && p.provider === "stripe" && (p.status === "pending" || p.status === "active" || p.status === "past_due"));
   if (latest) await syncStripePass(env, secretKey, latest, now);
 }
 
@@ -168,7 +196,7 @@ export async function endWebPassRenewals(env: Env, clientId: string, now = Date.
   for (const p of renewing) {
     try {
       const sub = p.status === "pending" ? await cancelSubscriptionNow(secretKey, p.externalId) : await cancelSubscriptionAtPeriodEnd(secretKey, p.externalId);
-      await store.updatePass(env.DB, sub.id, stripePassState(sub, now), now);
+      await store.updatePass(env.DB, sub.id, stripePassState(sub, now, env), now);
     } catch (err) {
       // Already gone at Stripe: nothing left to renew.
       if (err instanceof StripeApiError && err.status === 404) continue;

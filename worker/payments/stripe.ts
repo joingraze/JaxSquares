@@ -76,6 +76,8 @@ export interface StripeSubscription {
   livemode: boolean;
   metadata: Record<string, string>;
   latest_invoice: string | StripeInvoice | null;
+  /** What it bills for: the Price says which pass it is (the Host Pass or the Club Pass). Sent by default. */
+  items?: { data?: { price?: { id?: string } | null }[] };
 }
 
 export interface StripeCustomer {
@@ -101,6 +103,8 @@ export interface HostPassSubscriptionInput {
   priceId: string;
   /** Our pass id (host_passes.id), in the subscription's metadata. */
   passId: string;
+  /** Which pass: the Host Pass (default) or the Club Pass. Only its description and metadata; its Price decides. */
+  plan?: "host" | "club";
   /** Same key => Stripe returns the same subscription instead of creating a second one. */
   idempotencyKey: string;
 }
@@ -120,8 +124,9 @@ export function createHostPassSubscription(secretKey: string, input: HostPassSub
       items: [{ price: input.priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
-      description: "JaxSquares Host Pass (yearly)",
-      metadata: { product: HOST_PASS_PRODUCT, pass_id: input.passId },
+      description: input.plan === "club" ? "JaxSquares Club Pass (yearly)" : "JaxSquares Host Pass (yearly)",
+      // Both passes carry product=host_pass (the webhook's "ours" check); plan is informational.
+      metadata: { product: HOST_PASS_PRODUCT, pass_id: input.passId, plan: input.plan ?? "host" },
       expand: ["latest_invoice.payment_intent"],
     },
     input.idempotencyKey,

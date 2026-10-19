@@ -7,10 +7,26 @@
 import type { Game } from "./types";
 
 /**
- * Most co-hosts a board can have, for everyone. The one place the limit lives,
- * so a future plan can raise it.
+ * Most co-hosts a board can have: the default, for every board whose host
+ * doesn't hold the Club Pass.
  */
 export const MAX_COHOSTS = 3;
+
+/** Most co-hosts on a Club Pass holder's board (docs/payments.md "Club Pass"). */
+export const CLUB_MAX_COHOSTS = 10;
+
+/** The host's plan, as far as co-hosts go: a Club Pass, or anything else. */
+export type CohostPlan = "club" | null;
+
+/** Most co-hosts a board can have under its host's plan. The one place the limits live. */
+export function cohostLimit(plan: CohostPlan): number {
+  return plan === "club" ? CLUB_MAX_COHOSTS : MAX_COHOSTS;
+}
+
+/** The board's co-host limit: `Game.club` is there while its host holds an active Club Pass. */
+export function cohostLimitOf(game: Pick<Game, "club">): number {
+  return cohostLimit(game.club ? "club" : null);
+}
 
 /** How long a co-host invite link works. Each link works once. */
 export const COHOST_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -38,9 +54,9 @@ export function isCohostOf(game: Pick<Game, "cohostIds">, playerId: string): boo
   return !!playerId && cohostIdsOf(game).includes(playerId);
 }
 
-/** Whether the host can invite another co-host (the board has fewer than MAX_COHOSTS). */
-export function hasCohostRoom(game: Pick<Game, "cohostIds">): boolean {
-  return cohostIdsOf(game).length < MAX_COHOSTS;
+/** Whether the host can invite another co-host (the board has fewer than its plan allows: cohostLimitOf). */
+export function hasCohostRoom(game: Pick<Game, "cohostIds" | "club">): boolean {
+  return cohostIdsOf(game).length < cohostLimitOf(game);
 }
 
 /**

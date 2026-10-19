@@ -6,6 +6,9 @@
 // them (useHostFee, useHostPassPrice): inside the iOS app only the App Store's
 // price and Apple's billing, never the web price or Stripe (App Store
 // guideline 3.1.1). /terms#host-pass is linked from the subscription disclosure.
+// The Club Pass (section 6, /terms#club-pass) is sold on the web only: in the
+// iOS app this section describes what it unlocks and never its price or how to
+// buy it (App Store guidelines 3.1.1 / 3.1.3(b)).
 import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FREE_PLAYER_LIMIT } from "../../shared/hostFee";
@@ -13,7 +16,7 @@ import { CheckIcon, GiftIcon, UsersIcon, XIcon } from "../components/icons";
 import { Card, ListGroup, TopBar } from "../components/ui";
 import { platform } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
-import { useHostPassPrice } from "../lib/useHostPass";
+import { useClubPassPrice, useHostPassPrice } from "../lib/useHostPass";
 
 const UPDATED = "October 19, 2026";
 const SUPPORT_EMAIL = "support@jaxsquares.com";
@@ -55,12 +58,13 @@ const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 export default function Terms() {
   const { price } = useHostFee();
   const { price: passPrice } = useHostPassPrice();
+  const clubPrice = useClubPassPrice();
   const inApp = platform() === "ios";
-  // The subscription disclosure links here as /terms#host-pass.
+  // The subscription disclosures link here as /terms#host-pass and /terms#club-pass.
   const { hash } = useLocation();
   useEffect(() => {
-    if (hash !== "#host-pass") return;
-    const t = setTimeout(() => document.getElementById("host-pass")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    if (hash !== "#host-pass" && hash !== "#club-pass") return;
+    const t = setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
     return () => clearTimeout(t);
   }, [hash]);
   return (
@@ -181,21 +185,60 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section n={6} title="Hosts">
+        <Section n={6} title="The Club Pass" id="club-pass">
+          {inApp ? (
+            <p>
+              The Club Pass is a yearly plan for bars, booster clubs, offices and fundraisers. If your account has one, it covers the host fee like
+              the Host Pass, and its club features work in the app too: your club's name and logo on the boards you host, up to 10 co-hosts per
+              board, each board's players list, and a TV link that rotates your boards. Questions about it? Contact{" "}
+              <Link to="/support" className={link}>
+                Support
+              </Link>
+              .
+            </p>
+          ) : (
+            <>
+              <p>
+                The Club Pass is an optional yearly subscription for bars, booster clubs, offices and fundraisers:{" "}
+                {clubPrice ? `${clubPrice} a year` : "a yearly price shown before you buy"}, sold on the web and billed through Stripe. It needs a
+                signed-in account. While it's active it covers the host fee on every board you host, like the Host Pass, and adds your club's name
+                and logo on those boards (their TV view, printout, invite and link previews), up to 10 co-hosts per board, a download of each
+                board's players list (names, squares, numbers and when they joined; never who paid), and a TV link that rotates your open and live
+                boards. Boards you drew while it was active stay drawn after it ends; the club features stop when it ends.
+              </p>
+              <p>
+                It renews automatically every year until you cancel. Cancel any time in Profile › Club Pass › Manage, before it renews to avoid the
+                next charge; it stays active until the end of the year you've paid for. Except where the law requires a refund, it isn't refundable.
+                To ask about a refund, contact{" "}
+                <Link to="/support" className={link}>
+                  Support
+                </Link>
+                .
+              </p>
+            </>
+          )}
+          <p>
+            Your club's name and logo must be yours to use: don't upload someone else's logo or trademark. Like board names, a club name can't
+            mention money. Anyone with your club's TV link can watch the boards it shows, so share it only with your own screens; making a new link
+            stops the old one.
+          </p>
+        </Section>
+
+        <Section n={7} title="Hosts">
           <p>
             The host runs the board: they draw the numbers, enter or correct scores, pick a winning square when a result needs fixing, and can
             delete the board at any time. Host controls live on the device that created the board, so keep your host link somewhere safe.
           </p>
         </Section>
 
-        <Section n={7} title="Scores and results">
+        <Section n={8} title="Scores and results">
           <p>
             Live scores come from a third-party sports data provider and can be late or wrong. Hosts can correct them. Results in JaxSquares are for
             fun and aren't official.
           </p>
         </Section>
 
-        <Section n={8} title="Be a good sport">
+        <Section n={9} title="Be a good sport">
           <ListGroup>
             <div className="flex gap-3 px-4 py-3.5">
               <UsersIcon size={20} className="mt-0.5 shrink-0 text-ink-accent" />
@@ -208,13 +251,13 @@ export default function Terms() {
           <p>We may remove boards or content that break these rules.</p>
         </Section>
 
-        <Section n={9} title="Not affiliated">
+        <Section n={10} title="Not affiliated">
           <p>
             JaxSquares isn't affiliated with or endorsed by any league, team or broadcaster. Team names appear only to describe the matchup.
           </p>
         </Section>
 
-        <Section n={10} title="The service">
+        <Section n={11} title="The service">
           <p>
             We work hard to keep JaxSquares running, but we provide it “as is”, without warranties. To the extent the law allows, we aren't liable
             for indirect losses, and our total liability is limited to what you paid us in the last 12 months.
@@ -225,7 +268,7 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section n={11} title="Contact">
+        <Section n={12} title="Contact">
           <p>
             Questions? Email{" "}
             <a href={`mailto:${SUPPORT_EMAIL}`} className={link}>

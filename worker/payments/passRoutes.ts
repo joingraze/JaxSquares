@@ -3,7 +3,7 @@
 // account's when signed in; worker/auth/canonical.ts), never answers with a
 // clientId or a payment reference, and returns the identity's HostPassState.
 //
-//   GET  /payments/pass                 HostPassState
+//   GET  /payments/pass                 HostPassState (the Host Pass and the Club Pass)
 //   POST /payments/pass/test            the no-charge test pass (test mode only)
 //   POST /payments/pass/test/end        ends the test pass (test mode only)
 //   POST /payments/pass/stripe          HostPassIntent (web; needs a signed-in account: 409 account_required)
@@ -13,20 +13,25 @@
 //   POST /payments/pass/iap/restore     HostPassState & { restored } (iOS: { transactions: [{ transactionId, jws? }] })
 //   POST /payments/apple/notifications  App Store Server Notifications V2 ({ signedPayload })
 //
+// test, test/end, stripe and stripe/confirm take { plan: "club" } for the Club
+// Pass (web only: the iOS app never sells it); without it they're the Host
+// Pass's, as before. The portal is the same for both (one Stripe Customer).
+//
 // Rate limited per device (by its resolved public id) and per address, like
 // the other endpoints worth abusing (worker/rateLimit.ts).
 
 import { Hono, type Context } from "hono";
 import { isClientId } from "../../shared/playerId";
-import { ACCOUNT_REQUIRED_CODE, type HostPassState, type HostPassTransaction } from "../../shared/types";
+import { ACCOUNT_REQUIRED_CODE, type HostPassState, type HostPassTransaction, type PassPlan } from "../../shared/types";
 import { canonicalClientId, freshLink, SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
+import { forgetClubBrand } from "../clubs/brand";
 import type { Env } from "../env";
 import { playerIdOf } from "../playerIds";
 import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "../rateLimit";
 import { AppStoreApiError } from "./apple";
 import { AppleJwsError } from "./appleJws";
 import { getPaymentConfig } from "./config";
-import { activePass, passState } from "./pass";
+import { activeClubPass, activePass, passState } from "./pass";
 import { appStoreCredentials, attachAppleTransaction, handleAppleNotification } from "./passApple";
 import { confirmStripePass, portalUrl, startStripePass } from "./passStripe";
 import * as store from "./store";
@@ -42,6 +47,8 @@ const MAX_JWS_LENGTH = 16 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
 
 const SIGN_IN_FIRST = "Sign in first, so your Host Pass stays with your account on every device.";
+const SIGN_IN_FIRST_CLUB = "Sign in first, so your Club Pass stays with your account on every device.";
+const PASS_NAME: Record<PassPlan, string> = { host: "Host Pass", club: "Club Pass" };
 
 /** The device's own x-client-id, or null when missing or malformed. */
 function deviceOf(c: Ctx): string | null {
@@ -89,6 +96,11 @@ async function readBody(c: Ctx): Promise<Record<string, unknown>> {
   return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
+/** Which pass a purchase route is for: `{ plan: "club" }` is the Club Pass, anything else the Host Pass. */
+async function planOf(c: Ctx): Promise<PassPlan> {
+  return (await readBody(c)).plan === "club" ? "club" : "host";
+}
+
 function transactionOf(v: unknown): HostPassTransaction | null {
   if (!v || typeof v !== "object") return null;
   const t = v as Record<string, unknown>;
@@ -111,12 +123,16 @@ passRoutes.get("/payments/pass", async (c) => {
 passRoutes.post("/payments/pass/test", (c) =>
   asIdentity(c, async (clientId) => {
     if (getPaymentConfig(c.env).mode !== "test") return c.json({ error: "Test checkout is off" }, 403);
+    const plan = await planOf(c);
     const now = Date.now();
-    if (!(await activePass(c.env.DB, [clientId], now))) {
+    // A Club Pass test pass is given to a Host Pass holder too (it adds the club features).
+    const held = plan === "club" ? await activeClubPass(c.env.DB, clientId, now) : await activePass(c.env.DB, [clientId], now);
+    if (!held) {
       await store.upsertPass(
         c.env.DB,
         {
           clientId,
+          plan,
           provider: "test",
           externalId: `test:${crypto.randomUUID()}`,
           status: "active",
@@ -127,6 +143,8 @@ passRoutes.post("/payments/pass/test", (c) =>
         },
         { now },
       );
+      // A new Club Pass brands the holder's boards.
+      forgetClubBrand(c.env.DB, clientId);
     }
     return stateResponse(c, clientId);
   }),
@@ -135,7 +153,8 @@ passRoutes.post("/payments/pass/test", (c) =>
 passRoutes.post("/payments/pass/test/end", (c) =>
   asIdentity(c, async (clientId) => {
     if (getPaymentConfig(c.env).mode !== "test") return c.json({ error: "Test checkout is off" }, 403);
-    await store.endTestPasses(c.env.DB, clientId);
+    await store.endTestPasses(c.env.DB, clientId, Date.now(), await planOf(c));
+    forgetClubBrand(c.env.DB, clientId);
     return stateResponse(c, clientId);
   }),
 );
@@ -145,6 +164,7 @@ passRoutes.post("/payments/pass/test/end", (c) =>
 passRoutes.post("/payments/pass/stripe", async (c) => {
   const device = deviceOf(c);
   if (!device) return missingClient(c);
+  const plan = await planOf(c);
   // A web subscription needs an account, or it would be lost with the browser
   // (sign-out or cleared data starts a new device). The app signs in first.
   let link: Awaited<ReturnType<typeof freshLink>>;
@@ -154,14 +174,22 @@ passRoutes.post("/payments/pass/stripe", async (c) => {
     console.error("account link lookup failed", err);
     return c.json({ error: "Couldn't check your sign-in. Try again in a moment." }, 503);
   }
-  if (!link) return c.json({ error: SIGN_IN_FIRST, code: ACCOUNT_REQUIRED_CODE }, 409);
+  if (!link) return c.json({ error: plan === "club" ? SIGN_IN_FIRST_CLUB : SIGN_IN_FIRST, code: ACCOUNT_REQUIRED_CODE }, 409);
   const clientId = link.canonical;
   const tooMany = await limited(c, clientId);
   if (tooMany) return tooMany;
   try {
-    const outcome = await startStripePass(c.env, clientId);
-    if (outcome.kind === "unavailable") return c.json({ error: "The Host Pass isn't on sale here yet." }, 503);
-    if (outcome.kind === "active") return stateResponse(c, clientId, { error: "You already have a Host Pass." }, 409);
+    const outcome = await startStripePass(c.env, clientId, Date.now(), plan);
+    if (outcome.kind === "unavailable") return c.json({ error: `The ${PASS_NAME[plan]} isn't on sale here yet.` }, 503);
+    if (outcome.kind === "active") {
+      const error =
+        plan === "club"
+          ? "You already have a Club Pass."
+          : (await activeClubPass(c.env.DB, clientId))
+            ? "Your Club Pass already covers every board you host."
+            : "You already have a Host Pass.";
+      return stateResponse(c, clientId, { error }, 409);
+    }
     return c.json(outcome.intent, 200, NO_STORE);
   } catch (err) {
     if (!(err instanceof StripeApiError)) throw err;
@@ -173,7 +201,7 @@ passRoutes.post("/payments/pass/stripe", async (c) => {
 passRoutes.post("/payments/pass/stripe/confirm", (c) =>
   asIdentity(c, async (clientId) => {
     try {
-      await confirmStripePass(c.env, clientId);
+      await confirmStripePass(c.env, clientId, Date.now(), await planOf(c));
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err;
       console.error(`host pass confirm failed: ${err.status} ${err.message}`);

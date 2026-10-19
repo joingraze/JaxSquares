@@ -5,10 +5,11 @@
 // contrast, nothing to hover or tap. Team colors come from the board's
 // --team-x / --team-y, so the panel and the board's bands always match.
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatAmount, formatRange } from "../../../shared/formats";
 import { gameKickoff } from "../../../shared/kickoff";
-import type { GameState, Player, Team } from "../../../shared/types";
+import { shownClub } from "../../../shared/clubs";
+import type { ClubBrand, GameState, Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon, TrophyIcon } from "../../components/icons";
 import { LogoMark, cx } from "../../components/ui";
 import { contrastText, countdown, kicksOffLabel, pluralize, shortTeam } from "../../lib/format";
@@ -16,12 +17,19 @@ import { boardPhase, claimedCount, headlineScore, nowSentence, type NowView } fr
 import { displayLink } from "../invite/inviteModel";
 import { QrCode } from "../invite/QrCode";
 import { prizeLineup } from "../rules/rulesModel";
+import { TvClubBrand } from "../club/TvClubBrand";
 import { latest, type TvPlayer, type TvUpcoming, type TvWinner } from "./tvModel";
 
 type Side = "x" | "y";
 
-/** The small JaxSquares mark in the panel's corner. */
-export function TvBrand() {
+/**
+ * The small JaxSquares mark in the panel's corner; on a Club Pass holder's
+ * board, the club's logo and name instead (src/features/club), unless the
+ * club TV already shows them in its own corner (`club={null}`).
+ */
+export function TvBrand({ club }: { club?: ClubBrand | null }) {
+  const shown = shownClub(club);
+  if (shown) return <TvClubBrand club={shown} />;
   return (
     <p className="tv-brand" data-testid="tv-brand">
       <LogoMark size={28} className="h-[calc(var(--u)*3.2)] w-[calc(var(--u)*3.2)]" />
@@ -71,6 +79,10 @@ function TeamChip({ side, team }: { side: Side; team: Team }) {
 
 export interface TvOpenPanelProps {
   state: GameState;
+  /** Hide the club's branding in the panel (the club TV shows it in its own corner). */
+  hideClub?: boolean;
+  /** At the panel's foot: the club TV's corner (its club and which board of how many). */
+  footer?: ReactNode;
   url: string;
   /** The QR code's side, px. */
   qr: number;
@@ -79,7 +91,7 @@ export interface TvOpenPanelProps {
   now: number;
 }
 
-export function TvOpenPanel({ state, url, qr, row, now }: TvOpenPanelProps) {
+export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOpenPanelProps) {
   const { game } = state;
   const { claimed, total } = claimedCount(state);
   const left = total - claimed;
@@ -88,7 +100,7 @@ export function TvOpenPanel({ state, url, qr, row, now }: TvOpenPanelProps) {
   const players = state.players.length;
   return (
     <section aria-label="Join this board" className="tv-panel" data-testid="tv-open">
-      <TvBrand />
+      <TvBrand club={hideClub ? null : game.club} />
       <div className="flex flex-col gap-[calc(var(--u)*1.2)]">
         <h2 className="tv-title">{game.name}</h2>
         <p className="tv-text-lg flex min-w-0 flex-wrap items-center gap-x-[calc(var(--u)*1.2)] gap-y-[calc(var(--u)*0.6)]">
@@ -131,6 +143,7 @@ export function TvOpenPanel({ state, url, qr, row, now }: TvOpenPanelProps) {
           )}
         </div>
       </div>
+      {footer}
     </section>
   );
 }
@@ -139,6 +152,9 @@ export function TvOpenPanel({ state, url, qr, row, now }: TvOpenPanelProps) {
 
 export interface TvGamePanelProps {
   state: GameState;
+  /** As TvOpenPanelProps.hideClub and .footer. */
+  hideClub?: boolean;
+  footer?: ReactNode;
   nowView: NowView | null;
   winners: TvWinner[];
   /** What's still to play, with what each can show. */
@@ -176,7 +192,7 @@ function useRowsThatFit(count: number) {
   return { ref, fit };
 }
 
-export function TvGamePanel({ state, nowView, winners, upcoming, now }: TvGamePanelProps) {
+export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, footer }: TvGamePanelProps) {
   const { game } = state;
   const phase = boardPhase(state);
   const score = headlineScore(state);
@@ -196,7 +212,7 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now }: TvGamePa
   return (
     <section aria-label="Scoreboard" className="tv-panel" data-testid="tv-game">
       <div className="flex min-w-0 items-center justify-between gap-[calc(var(--u)*2)]">
-        <TvBrand />
+        <TvBrand club={hideClub ? null : game.club} />
         <p className="tv-text-md min-w-0 truncate text-right text-ink-muted">{game.name}</p>
       </div>
 
@@ -257,6 +273,7 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now }: TvGamePa
           </p>
         </div>
       )}
+      {footer}
     </section>
   );
 }

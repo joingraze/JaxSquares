@@ -44,6 +44,7 @@ const MIGRATIONS = [
   "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
+  "migrations/0016_club.sql",
 ];
 
 let t: TestD1;
@@ -152,7 +153,13 @@ describe("the test pass", () => {
   it("activates with no charge and no sign-in, lasts a year, and shows on GET /payments/pass and /me", async () => {
     const before = await call<HostPassState>("GET", "/payments/pass");
     expect(before.status).toBe(200);
-    expect(before.body).toEqual({ pass: null, offer: { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true } });
+    expect(before.body).toEqual({
+      pass: null,
+      offer: { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true },
+      // The Club Pass is shown apart (worker/club.test.ts).
+      club: null,
+      clubOffer: { priceCents: 4900, currency: "usd", web: true },
+    });
 
     const res = await call<HostPassState>("POST", "/payments/pass/test");
     expect(res.status).toBe(200);

@@ -85,13 +85,27 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `pass-disclosure` | the subscription disclosure beside the pass's button: name, length, price per period, auto-renews until canceled, how to cancel, Terms and Privacy links |
 | `pass-signin` | "Sign in to continue" in the checkout sheet when a signed-out browser picks the Host Pass (opens `signin-sheet`, then the purchase continues) |
 | `pass-card` | the Host Pass card at the top of Profile's Get sheet |
-| `host-pass-note` | "Included with your Host Pass" under the draw (host bar, the Now card) on a board the host's active pass covers |
+| `host-pass-note` | "Included with your Host Pass" under the draw (host bar, the Now card) on a board the host's active pass covers ("Included with your Club Pass" when that's the one covering it) |
 | `host-free-note` | "Free for up to 5 players" under the draw (host bar, the Now card, the lock confirm) on an unpaid board 5 or fewer players hold squares on; the draw reads "Draw the numbers · Free" |
-| `host-pass-section` | Profile → Host Pass (`data-state=none\|active\|ended\|past_due\|revoked`); absent on the web when the pass isn't sold there and was never held |
+| `host-pass-section` | Profile → Host Pass (`data-state=none\|active\|club\|ended\|past_due\|revoked`; `club`: no Host Pass, the Club Pass covers it, "Included with your Club Pass"); absent on the web when the pass isn't sold there and was never held |
 | `pass-get` | Profile → Host Pass "Get the Host Pass · $19.99/year" ("Get a test pass · no charge" in test mode); goes through the sign-in gate on the web |
 | `pass-status` | Profile → Host Pass status: "Active · renews Oct 19, 2027", "Ends Oct 19, 2027", "Ended …" |
 | `pass-manage` | Profile → Host Pass "Manage" (Apple's subscription management in the iOS app, a Stripe Customer Portal on the web) or "End test pass" in test mode |
 | `pass-restore` | Profile → Host Pass "Restore purchases" (iOS app only) |
+| `club-pitch`, `club-get` | Profile → under the Host Pass, for everyone on the web without an active Club Pass: "Running squares for a bar, club or office? Club Pass · $49/year" (`data-state=none\|ended\|past_due\|revoked`); opens the Club Pass checkout (signing in first). Never in the iOS app |
+| `club-perks`, `club-disclosure` | the Club Pass checkout sheet: what it includes, and its subscription disclosure (name, length, price per year, renews until canceled, how to cancel, Terms and Privacy); its confirm is `pay-confirm` |
+| `club-section` | Profile → Club Pass, for a holder (an active Club Pass) |
+| `club-status` | Profile → Club Pass: the club's logo and "Active · renews Oct 19, 2027" ("Active" alone in the iOS app) |
+| `club-manage` | Profile → Club Pass "Manage" (the Stripe Customer Portal) or "End test Club Pass"; web only, never in the iOS app |
+| `club-name`, `club-name-save` | the club name field (40 characters; a name that talks money is refused) and its Save |
+| `club-logo-file`, `club-logo-upload`, `club-logo-remove` | the logo's file input (hidden), its Upload / Replace button and Remove |
+| `club-tv` | the TV link card (`data-state=none\|known\|elsewhere`: no link yet, made on this device, made on another device) |
+| `club-tv-url`, `club-tv-copy`, `club-tv-open` | the TV link this device made (shortened, its token hidden), Copy link, and Open (web only) |
+| `club-tv-make`, `club-tv-rotate`, `club-tv-confirm`, `club-tv-rotate-confirm` | "Make a TV link", "New link", and the confirm saying the old link stops working ("Make a new link") |
+| `club-board`, `club-boards-empty` | each of the club's open and live boards in Profile, or the empty line |
+| `club-banner` | "Hosted by <club>" with its logo above a Club Pass holder's board (and its invite view) |
+| `club-logo`, `club-initial` | the club's logo image, or its initial on gold when it has none (banner, Profile, TV, printout) |
+| `host-export` | host tools → Board → "Players list (CSV)" on a Club Pass board (host and co-hosts): a download on the web, the share sheet in the iOS app |
 | `invite-share` | the share-invite button in the invite sheet |
 | `invite-copy` | the link preview card in the invite sheet (tap to copy) |
 | `invite-code-toggle` | "Same room? Show code" toggle in the invite sheet |
@@ -164,10 +178,15 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `tv-upcoming` | TV "Still to play": the moments to come with what each can show ("Q3 $200", "Final the rest") |
 | `tv-celebrate` | the winner card over the TV board after a winner lands (`data-period`), with Jax cheering (`jax-cheer`); it goes by itself after 7 s |
 | `tv-offline`, `tv-brand` | TV mode's "Offline · showing the last update" pill, and its small JaxSquares mark |
+| `tv-club` | TV mode's panel corner on a Club Pass holder's board: the club's logo and name (in place of `tv-brand`) |
+| `club-tv` | the club TV (`/club/:clubId/tv#k=<token>`): `data-board` (the board on screen), `data-boards` (how many go round); `data-state=loading\|missing\|offline\|empty\|inactive` when no board is up |
+| `club-tv-corner`, `club-tv-progress` | the club TV's corner at the foot of the panel: the club's logo and name, and "Board 2 of 4" with dots |
+| `club-tv-title` | the club's logo and name, big, when the club TV has no board to show |
 | `print-sheet` | the printed sheet (`data-mode=signup\|open\|game`, `data-amounts=true\|false`); the same element is the on-screen preview |
 | `print-amounts`, `print-button` | on screen only (never printed): the "Include square price and prizes" switch (off by default; absent on a board with no price or amounts) and "Print" ("Send to a computer to print" in the native app, which shares the print link) |
 | `print-cell` | each printed square (`data-row`, `data-col`, `data-winner` on a decided one): its owner's name fitted to the box, empty for open squares |
 | `print-subtitle`, `print-price` | the sheet's title row: "Chiefs vs Bills · Sun, Oct 25, 2026 · 1:00 PM PDT", and "$10 a square" (amounts on only) |
+| `print-club` | on a Club Pass holder's board, " · Hosted by <club>" in the subtitle, with the club's logo (`club-logo`) beside the title |
 | `print-rules`, `print-amount` | "Who wins": one line per moment (`data-moment`), with each square's amount (`print-amount`) only when amounts are on |
 | `print-winners` | a line per fixed moment to write each winner on, filled in once decided |
 | `print-qr`, `print-follow`, `print-signup` | the QR code to the live board, "Follow it live: jaxsquares.com/g/…", and (while squares are open) "Grab a square on your phone, or write your name in a box." |

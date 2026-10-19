@@ -10,7 +10,15 @@ export function boardViewPath(gameId: string, view: BoardView): string {
   return `/g/${encodeURIComponent(gameId)}/${view}`;
 }
 
-/** A board's TV or print view: the shell lays these out full width, without the phone column or route slide. */
+/**
+ * A board's TV or print view, or a club's TV (/club/:clubId/tv): the shell
+ * lays these out full width, without the phone column or route slide.
+ */
 export function isBoardViewPath(pathname: string): boolean {
-  return /^\/g\/[^/]+\/(tv|print)\/?$/i.test(pathname);
+  return /^\/g\/[^/]+\/(tv|print)\/?$/i.test(pathname) || isClubTvPath(pathname);
+}
+
+/** A Club Pass holder's TV, /club/:clubId/tv (src/pages/ClubTvView.tsx): TV mode's own theme, like /g/:id/tv. */
+export function isClubTvPath(pathname: string): boolean {
+  return /^\/club\/[^/]+\/tv\/?$/i.test(pathname);
 }

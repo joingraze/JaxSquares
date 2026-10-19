@@ -32,6 +32,8 @@ describe("getPaymentConfig", () => {
       iapProductId: DEFAULT_IAP_PRODUCT_ID,
       // No Stripe price for the Host Pass yet: the web doesn't sell it in live mode.
       hostPass: { priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: false },
+      // Nor for the Club Pass (web only).
+      clubPass: { priceCents: 4900, currency: "usd", web: false },
     });
     expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: " LIVE " })).mode).toBe("live");
   });

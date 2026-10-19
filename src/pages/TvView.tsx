@@ -10,7 +10,7 @@
 // confetti), then the board comes back. The screen stays awake (Screen Wake
 // Lock), and the only controls are a small toolbar that hides itself.
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { unitOf } from "../../shared/formats";
 import { drawFor, gridSize, resolveResults } from "../../shared/squares";
@@ -49,6 +49,26 @@ export default function TvView() {
   const id = useParams().id?.toLowerCase();
   const navigate = useNavigate();
   const location = useLocation();
+  const exit = () => {
+    if (location.key !== "default") navigate(-1);
+    else navigate(`/g/${id ?? ""}`, { replace: true });
+  };
+  return <TvScreen id={id} onExit={exit} />;
+}
+
+export interface TvScreenProps {
+  id: string | undefined;
+  onExit: () => void;
+  /** The club TV (/club/:id/tv) shows the club in its own corner, so the panel doesn't. */
+  hideClub?: boolean;
+  /** At the panel's foot: the club TV's corner (its club, which board of how many). */
+  panelFooter?: ReactNode;
+  /** A winner the club TV came to this board for: celebrated once the board is up. */
+  celebrate?: Activity | null;
+}
+
+/** One board on the TV: the page above, and each board in turn on the club TV (src/pages/ClubTvView.tsx). */
+export function TvScreen({ id, onExit, hideClub, panelFooter, celebrate: arrivedFor }: TvScreenProps) {
   const theme = useTvTheme();
   useWakeLock();
   const fullscreen = useFullscreen();
@@ -71,6 +91,13 @@ export default function TvView() {
     }
   }, []);
   const { state, notFound, error, loading, connection, refresh } = useGame(id, { onActivity });
+  // The club TV switched here for a winner that landed while another board was up: celebrate it once the board is up.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const loaded = state !== null;
+  useEffect(() => {
+    if (arrivedFor && loaded && stateRef.current) onActivity(arrivedFor, stateRef.current);
+  }, [arrivedFor, loaded, onActivity]);
   const current = queue[0] ?? null;
   const [cheer, setCheer] = useState(0);
   useEffect(() => {
@@ -115,10 +142,7 @@ export default function TvView() {
   const winners = useMemo(() => (state ? tvWinners(state, results) : []), [state, results]);
   const upcoming = useMemo(() => (state ? tvUpcoming(periodCards(state, results), unitOf(state.game.format)) : []), [state, results]);
 
-  const exit = () => {
-    if (location.key !== "default") navigate(-1);
-    else navigate(`/g/${id ?? ""}`, { replace: true });
-  };
+  const exit = onExit;
 
   const rootStyle = {
     ...(game ? teamVars(game.teamX, game.teamY, theme) : {}),
@@ -199,9 +223,9 @@ export default function TvView() {
       <div className="tv-stage" data-orientation={layout.orientation}>
         <TvBoard game={game} cells={cells} axis={axis} layout={layout} nowKind={nowOnBoard ? (nowOnBoard.live ? "live" : "projected") : null} />
         {picking ? (
-          <TvOpenPanel state={state} url={url} qr={qr} row={row} now={now} />
+          <TvOpenPanel state={state} url={url} qr={qr} row={row} now={now} hideClub={hideClub} footer={panelFooter} />
         ) : (
-          <TvGamePanel state={state} nowView={nowView} winners={winners} upcoming={upcoming} now={now} />
+          <TvGamePanel state={state} nowView={nowView} winners={winners} upcoming={upcoming} now={now} hideClub={hideClub} footer={panelFooter} />
         )}
       </div>
 

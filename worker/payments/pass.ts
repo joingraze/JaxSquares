@@ -11,9 +11,9 @@
 // won't renew ends exactly at the period end. Checked when the pass is used:
 // webhooks and notifications keep the rows current, so no cron is needed.
 
-import type { HostPass, HostPassState, HostPassStatus } from "../../shared/types";
+import type { HostPass, HostPassState, HostPassStatus, PassPlan } from "../../shared/types";
 import type { Env } from "../env";
-import { getPaymentConfig, hostPassOffer } from "./config";
+import { clubPassOffer, getPaymentConfig, hostPassOffer } from "./config";
 import { isMissingTable, passesOf, type PassRow, type PassStatus } from "./store";
 
 /** Past the period end, an auto-renewing pass still covers draws this long while its renewal lands. */
@@ -73,30 +73,52 @@ async function rowsOf(db: D1Database, clientIds: readonly string[], activeOnly: 
   }
 }
 
+const ofPlan = (rows: readonly PassRow[], plan: PassPlan) => rows.filter((p) => p.plan === plan);
+
 /**
- * The active pass any of these identities holds, or null. `clientIds` are
- * canonical clientIds: whoever draws (c.get("clientId")) and the board's host.
+ * The active pass any of these identities holds, or null: a Host Pass or a
+ * Club Pass, since both cover the host fee. `clientIds` are canonical
+ * clientIds: whoever draws (c.get("clientId")) and the board's host.
  */
 export async function activePass(db: D1Database, clientIds: readonly string[], now = Date.now()): Promise<PassRow | null> {
   return bestActive(await rowsOf(db, clientIds, true), now);
 }
 
-/** Which of these identities hold an active pass (the cron's "kickoff soon" reminders skip them). */
+/**
+ * The identity's active Club Pass, or null: what turns on the club features
+ * on the boards it hosts (branding, 10 co-hosts, the players CSV, the club TV).
+ */
+export async function activeClubPass(db: D1Database, clientId: string, now = Date.now()): Promise<PassRow | null> {
+  return bestActive(ofPlan(await rowsOf(db, [clientId], true), "club"), now);
+}
+
+/** Which of these identities hold an active pass, of either plan (the cron's "kickoff soon" reminders skip them). */
 export async function holdersOfActivePass(db: D1Database, clientIds: readonly string[], now = Date.now()): Promise<Set<string>> {
   const rows = await rowsOf(db, clientIds, true);
   return new Set(rows.filter((p) => passCovers(p, now)).map((p) => p.clientId));
 }
 
-/** The identity's pass as the API shows it (GET /api/me folds it in). */
+/** The identity's Host Pass as the API shows it (GET /api/me folds it in). A Club Pass is shown apart (clubPassOf). */
 export async function hostPassOf(db: D1Database, clientId: string, now = Date.now()): Promise<HostPass | null> {
-  return passView(await rowsOf(db, [clientId], false), now);
+  return passView(ofPlan(await rowsOf(db, [clientId], false), "host"), now);
 }
 
-/** GET /api/payments/pass: the identity's pass and how it's sold here. */
+/** The identity's Club Pass as the API shows it (GET /api/me's `clubPass`). */
+export async function clubPassOf(db: D1Database, clientId: string, now = Date.now()): Promise<HostPass | null> {
+  return passView(ofPlan(await rowsOf(db, [clientId], false), "club"), now);
+}
+
+/** GET /api/payments/pass: the identity's passes (each plan apart) and how they're sold here. */
 export async function passState(env: Env, clientId: string, now = Date.now()): Promise<HostPassState> {
-  const pass = await hostPassOf(env.DB, clientId, now);
+  const rows = await rowsOf(env.DB, [clientId], false);
   const config = getPaymentConfig(env);
-  return { pass, offer: config.hostPass ?? hostPassOffer(env, config.mode === "live") };
+  const live = config.mode === "live";
+  return {
+    pass: passView(ofPlan(rows, "host"), now),
+    offer: config.hostPass ?? hostPassOffer(env, live),
+    club: passView(ofPlan(rows, "club"), now),
+    clubOffer: config.clubPass ?? clubPassOffer(env, live),
+  };
 }
 
 // ---- Provider states -> ours ----

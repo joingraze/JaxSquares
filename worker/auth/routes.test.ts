@@ -6,7 +6,7 @@
 // Apple's and Google's keys are local test keys behind a mocked fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../../shared/playerId";
-import type { AppConfig, CreateGameResponse, GameState, GameSummary, HostPassState, MeResponse } from "../../shared/types";
+import type { AppConfig, ClubSettings, CreateGameResponse, GameState, GameSummary, HostPassState, MeResponse } from "../../shared/types";
 import type { Env } from "../env";
 import worker from "../index";
 import { createTestD1, type TestD1 } from "../payments/testD1";
@@ -49,6 +49,7 @@ const MIGRATIONS = [
   "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
+  "migrations/0016_club.sql",
 ];
 
 let t: TestD1;
@@ -231,6 +232,7 @@ describe("first sign-in", () => {
       hostTokens: { [mine.id]: mine.admin },
       profile: { name: "Jordan", color: "#38b6ff", emoji: "🐐" },
       hostPass: null,
+      clubPass: null,
       cohostGames: [],
     });
     const [account] = rows<{ id: string; canonical_client_id: string; email: string }>("SELECT * FROM accounts");
@@ -381,6 +383,55 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
+  it("moves its Club Pass and its club into the account, so the account's boards carry the club", async () => {
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    const a = await boardBy(PHONE, "Board A");
+    // The laptop, before signing in: a Club Pass, a named club and a TV link.
+    expect((await call<HostPassState>("POST", "/payments/pass/test", { client: LAPTOP, body: { plan: "club" } })).body.club?.active).toBe(true);
+    const named = await call<ClubSettings>("PATCH", "/clubs/mine", { client: LAPTOP, body: { name: "Laptop Lounge" } });
+    expect(named.status).toBe(200);
+    const link = await call<ClubSettings>("POST", "/clubs/mine/tv", { client: LAPTOP });
+    expect(link.status).toBe(201);
+    seen.pop();
+    expect((await call("GET", "/clubs/mine", { client: PHONE })).status).toBe(404);
+
+    expect((await signIn("google", LAPTOP, "g-1")).status).toBe(200);
+    expect(rows("SELECT owner_client_id, name FROM clubs")).toEqual([{ owner_client_id: PHONE, name: "Laptop Lounge" }]);
+    expect(rows("SELECT client_id, plan FROM host_passes")).toEqual([{ client_id: PHONE, plan: "club" }]);
+    for (const client of [PHONE, LAPTOP]) {
+      const mine = await call<ClubSettings>("GET", "/clubs/mine", { client, headers: { "x-signed-in": "1" } });
+      expect(mine.body.club).toMatchObject({ id: named.body.club.id, name: "Laptop Lounge" });
+      // The TV link the laptop made still works: it moved with the club.
+      expect(mine.body.tvKey).toBe(link.body.tvKey);
+    }
+    expect((await call<MeResponse>("GET", "/me", { client: PHONE })).body.clubPass).toMatchObject({ active: true });
+    // The account's board now shows the club (read fresh past the branding cache's TTL in other isolates; here, at once).
+    const board = await call<GameState>("GET", `/games/${a.id}`, { client: null });
+    expect(board.body.game.club?.name ?? "").toBe("Laptop Lounge");
+    expectNoSecrets();
+  });
+
+  it("keeps the account's own club when both have one; an empty one gives way", async () => {
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    for (const client of [PHONE, LAPTOP, FRIEND]) await call("POST", "/payments/pass/test", { client, body: { plan: "club" } });
+    await call("PATCH", "/clubs/mine", { client: PHONE, body: { name: "The Account Club" } });
+    await call("PATCH", "/clubs/mine", { client: LAPTOP, body: { name: "The Laptop Club" } });
+    expect((await signIn("google", LAPTOP, "g-1")).status).toBe(200);
+    expect(rows("SELECT owner_client_id, name FROM clubs ORDER BY name")).toEqual([{ owner_client_id: PHONE, name: "The Account Club" }]);
+
+    // Another account whose club is still empty takes its new device's.
+    expect((await signIn("google", STRANGER, "g-2")).status).toBe(200);
+    expect((await call("GET", "/clubs/mine", { client: STRANGER, body: undefined })).status).toBe(404);
+    await call("POST", "/payments/pass/test", { client: STRANGER, body: { plan: "club" } });
+    expect((await call("GET", "/clubs/mine", { client: STRANGER })).status).toBe(200);
+    await call("PATCH", "/clubs/mine", { client: FRIEND, body: { name: "Friend's Bar" } });
+    expect((await signIn("google", FRIEND, "g-2")).status).toBe(200);
+    expect(rows("SELECT owner_client_id, name FROM clubs ORDER BY name")).toEqual([
+      { owner_client_id: STRANGER, name: "Friend's Bar" },
+      { owner_client_id: PHONE, name: "The Account Club" },
+    ]);
+  });
+
   it("keeps co-host rights: a co-host who signs in stays one on every device, and a board the account hosts drops its co-host row", async () => {
     // A friend's board the laptop co-hosts, and the phone's own board the laptop also co-hosts.
     const friends = await boardBy(FRIEND, "Friend's Board");
@@ -483,7 +534,7 @@ describe("sign-out", () => {
 
     // The laptop is just itself again (the app throws its clientId away anyway).
     const me = await call<MeResponse>("GET", "/me", { client: LAPTOP });
-    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null, hostPass: null, cohostGames: [] });
+    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null, hostPass: null, clubPass: null, cohostGames: [] });
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: LAPTOP })).body.games).toEqual([]);
     expect((await call<MeResponse>("GET", "/me", { client: PHONE })).body.account).not.toBeNull();
     // Signing out twice (or when never signed in) is fine.
@@ -577,6 +628,15 @@ describe("DELETE /api/account", () => {
     expect(rows("SELECT * FROM accounts")).toEqual([]);
   });
 
+  it("deletes a Club Pass holder's club (its name, logo and TV link) with the account", async () => {
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    await call("POST", "/payments/pass/test", { client: PHONE, body: { plan: "club" } });
+    await call("PATCH", "/clubs/mine", { client: PHONE, body: { name: "The Rusty Anchor" } });
+    expect(rows("SELECT name FROM clubs")).toEqual([{ name: "The Rusty Anchor" }]);
+    expect((await call("DELETE", "/account", { client: PHONE })).status).toBe(200);
+    expect(rows("SELECT * FROM clubs")).toEqual([]);
+  });
+
   it("skips Apple's token exchange and revocation quietly without the Sign in with Apple key", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     expect((await signIn("apple", PHONE, "apple-1", { body: { authorizationCode: "c0de" } })).status).toBe(200);
@@ -642,7 +702,7 @@ describe("resolving a signed-in device", () => {
   });
 
   it("fails open to the device itself when the account tables aren't there yet", async () => {
-    t = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0010") && !m.includes("0011")));
+    t = await createTestD1(MIGRATIONS.filter((m) => !m.includes("0010") && !m.includes("0011") && !m.includes("0016")));
     env = { ...env, DB: t.d1 };
     const a = await boardBy(PHONE);
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: PHONE, headers: { "x-signed-in": "1" } })).body.games.map((g) => g.id)).toEqual([a.id]);

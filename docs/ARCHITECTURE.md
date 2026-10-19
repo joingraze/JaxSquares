@@ -27,7 +27,9 @@ exception so far: the public-id rename below, which closed an impersonation hole
   when they draw its numbers: one tap with Apple Pay / Google Pay (Stripe) on the
   web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($19.99
   a year, auto-renewing until canceled), which covers that fee on every board
-  its holder hosts while it's active. Creating a board, inviting and picking
+  its holder hosts while it's active, or the web-only **Club Pass** ($49 a
+  year: the Host Pass plus club branding, 10 co-hosts, a players CSV and a club
+  TV; never offered in the iOS app; see "The Club Pass"). Creating a board, inviting and picking
   squares are free, and so is drawing a board whose squares 5 or fewer players
   hold (the free tier: `FREE_PLAYER_LIMIT` / `isFreeDraw` in
   `shared/hostFee.ts`); JaxSquares never sells squares. With `PAYMENTS_MODE` unset
@@ -36,7 +38,7 @@ exception so far: the public-id rename below, which closed an impersonation hole
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
   Capacitor Preferences in the native app) sent as `x-client-id` on every request.
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
-  Up to 3 co-hosts the host invites run the board with them by their
+  Up to 3 co-hosts (10 on a Club Pass holder's board) the host invites run the board with them by their
   (canonical) clientId, never the token (see "Co-hosts").
   Signing in with Apple or Google is optional: it maps every signed-in device to
   its account's canonical clientId, so boards follow a person (see "Optional
@@ -133,10 +135,11 @@ Model, merge rules and setup: docs/auth.md. In short:
   previews, and the React SPA via the `ASSETS` binding.
 - D1 (`DB`) is the source of truth. Core SQL lives in `worker/db.ts`; tables a
   module owns are queried only by that module's store file
-  (`worker/payments/store.ts`: `purchases`, `host_passes`, `stripe_customers`; `worker/push/store.ts`:
+  (`worker/payments/store.ts`: `purchases`, `host_passes` (with its `plan`), `stripe_customers`; `worker/push/store.ts`:
   `push_subscriptions`, `game_mutes`; `worker/auth/store.ts`: `accounts`,
   `account_identities`, `client_links`; `worker/email/store.ts`:
-  `email_subscriptions`, `email_suppressions`). The sign-in merge runs
+  `email_subscriptions`, `email_suppressions`; `worker/clubs/store.ts`:
+  `clubs`). The sign-in merge runs
   statements built by each owner in one batch.
 - Durable Object `GameRoom` (`GAME_ROOM`, one per game id via `idFromName(gameId)`)
   holds the hibernatable WebSockets for that game, broadcasts state, tracks presence,
@@ -180,7 +183,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden. `emailEnabled`: email notices are set up (the app shows the opt-in only then) |
 | POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
-| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
+| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Club Pass, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
@@ -191,7 +194,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
-| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has `MAX_COHOSTS` (3); 429 |
+| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has its host's plan's limit (`cohostLimitOf`: `MAX_COHOSTS`, 3, or `CLUB_MAX_COHOSTS`, 10, on a Club Pass holder's board); 429 |
 | POST | `/api/games/:id/cohosts/accept` | C | `CohostAcceptInput` `{ token }` | `{ state }`: the caller (a player on the board, not its host) becomes a co-host; the invite is used up in the same transaction, which re-checks it's unused and unexpired and that the board has room. Already a co-host: `{ state }`, the link stays unused. 400 malformed token, 403 not on the board ("Join the board first…"), 404 unknown link, 409 the host's own link or the board is full, 410 used or expired; 429. Logs a `cohost` activity and pushes `cohost-accepted` to the host |
 | DELETE | `/api/games/:id/cohosts/:playerId` | C H | – | `{ state }`: the host removes a co-host (public id), or a co-host steps down (their own id; any other id is 403 for a co-host). They stay on the board. 404 when that id isn't a co-host |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
@@ -202,13 +205,14 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
+| GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | A Club Pass board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Club Pass, or for anyone but the host and co-hosts; 429 |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
 | GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, marks the fee paid). A verified purchase that can't pay for the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already paid for (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
 | POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused`. `invoice.paid` and `customer.subscription.*` for a Host Pass make the server read the Subscription back from Stripe |
-| GET | `/api/payments/pass` | C | – | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer }` (`no-store`), for the request's canonical identity |
+| GET | `/api/payments/pass` | C | – | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer, club: HostPass \| null, clubOffer: ClubPassOffer }` (`no-store`), for the request's canonical identity. The purchase routes below take `{ plan: "club" }` for the Club Pass (`test`, `test/end`, `stripe`, `stripe/confirm`; web only) |
 | POST | `/api/payments/pass/test`, `/api/payments/pass/test/end` | C | – | `HostPassState`: a no-charge test pass for a year / end it. Test mode only (403 in live) |
 | POST | `/api/payments/pass/stripe` | C | – | `{ clientSecret, amountCents, currency }` (the pass's first invoice, Stripe Billing); **409** `{ error, code: "account_required" }` (`ACCOUNT_REQUIRED_CODE`) for a device with no account link; 409 with the state when one is active; 503 until `STRIPE_HOST_PASS_PRICE_ID` is set |
 | POST | `/api/payments/pass/stripe/confirm` | C | – | `HostPassState`, read back from Stripe |
@@ -226,6 +230,13 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/games/:id/email` | C | – | `{ status: "none", email: null }`: the address is deleted (works even when email isn't set up); 429 |
 | GET, POST | `/api/email/confirm?token=` | – | – | HTML page. GET asks ("Confirm my email", which POSTs); POST confirms. 400 page for a used or expired (7 days) link, 503 until set up |
 | GET, POST | `/api/email/unsubscribe?token=` | – | form `scope=board\|all`, or RFC 8058 `List-Unsubscribe=One-Click` | HTML page. GET asks (this board, or every board for the address); POST unsubscribes. 400 page for a bad token |
+| GET | `/api/clubs/mine` | C | – | `ClubSettings` `{ club: ClubBrand, tvKey, boards: ClubBoard[] }` (`no-store`): the identity's club, made on first need; 404 without an active Club Pass |
+| PATCH | `/api/clubs/mine` | C | `{ name }` | `ClubSettings`; 400 a name over 40 characters or one that talks money (`CLUB_NAME_MONEY_ERROR`); 404; 429. Re-broadcasts the club's open and live boards |
+| PUT | `/api/clubs/mine/logo` | C | the image (`image/webp` or `image/png`, ≤ 60 KB, ≤ 256×256) | `ClubSettings`; 400 (empty, magic bytes not matching the type, broken header, too large in pixels), 413 (over 60 KB), 415 (any other type); 404; 429 |
+| DELETE | `/api/clubs/mine/logo` | C | – | `ClubSettings`; 404; 429 |
+| POST | `/api/clubs/mine/tv` | C | – | `ClubTvLink` (201, `no-store`): `ClubSettings` + `tvUrl` `<origin>/club/<id>/tv#k=<token>`; only the token's hash is kept, the old link stops working; 404; 429 |
+| GET | `/api/clubs/:id/logo[?v=<version>]` | – | – | The logo, `ETag`, `nosniff`; `public, max-age=31536000, immutable` with its current `?v=`, a day otherwise; 304 on `If-None-Match`; 404 |
+| GET | `/api/clubs/:id/tv` | – (`x-club-tv-token`) | – | `ClubTvState` `{ club, active, boards: GameState[] }` (`no-store`): up to 12 open and live boards' public states (live, then drawn, then being picked); `boards: []` when the Club Pass isn't active; 404 for a wrong or old token (the same as an unknown club); 429 per address |
 | GET | `/api/health` | – | – | `{ ok: true }` |
 
 Rate limits (`worker/rateLimit.ts`, fixed windows in the D1 `rate_limits` table
@@ -253,6 +264,13 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `cohost-invite-ip` | 60 per address per hour | what `cohost-invite` counts, for every device behind one address |
 | `cohost-accept` | 20 per device per hour | co-host accepts with a well-formed token, counted before the token is looked up (links can't be guessed at speed) |
 | `cohost-accept-ip` | 60 per address per hour | what `cohost-accept` counts, for every device behind one address |
+| `club-brand` | 30 per device per hour | a club's name changes and logo uploads or removals |
+| `club-brand-ip` | 90 per address per hour | what `club-brand` counts, for every device behind one address |
+| `club-tv` | 10 per device per hour | new club TV links |
+| `club-tv-ip` | 30 per address per hour | what `club-tv` counts, for every device behind one address |
+| `club-tv-view-ip` | 120 per address per minute | `GET /api/clubs/:id/tv`, counted before the token is checked |
+| `club-export` | 30 per device per hour | players CSV downloads |
+| `club-export-ip` | 120 per address per hour | what `club-export` counts, for every device behind one address |
 | `email` | 20 per device per hour | adding, resending or removing an email-notice address |
 | `email-ip` | 60 per address per hour | what `email` counts, for every device behind one address |
 | `email-send` | 5 per email address per hour | confirmation emails to one address, whoever asks (keyed by the address's keyed hash, never the address) |
@@ -283,6 +301,9 @@ Non-API routes:
   · A printable board with a QR code to follow it live"), `og:url` the view's own
   link. Never an amount. A code typed in capitals redirects (301) to the
   lowercase view, like the board.
+- `/club/:clubId/tv` (the club TV, see "The Club Pass") isn't a Worker route:
+  the assets' SPA fallback serves `index.html`, and the page reads its token
+  from the URL's fragment.
 - `assetlinks.json` reads `ANDROID_PACKAGE` (default `com.jaxsquares.app`) and
   `ANDROID_SHA256_CERT_FINGERPRINTS` (comma-separated); the AASA file reads
   `APPLE_TEAM_ID` and `APPLE_BUNDLE_ID`.
@@ -698,6 +719,15 @@ score, q1, q2, q3, final.
   `emailNotices(env, gameId, events)` and the store's `mergeClientStatements`,
   `deleteClientSubscriptionsStatement`, `pruneSubscriptions`. Owns
   `worker/email/store.ts` (its D1 tables).
+- `worker/clubs/*` – what the Club Pass turns on (docs/payments.md "Club
+  Pass"): the club's branding on its holder's boards (`brand.ts`:
+  `clubBrandOf`, read into every board state by `worker/db.ts`, cached per
+  isolate for 30 s), the logo check (`logo.ts`), the players CSV (`csv.ts`, used
+  by the core export route) and the club routes (`routes.ts`). Exports
+  `clubRoutes` (Hono), `clubBrandOf`, `forgetClubBrand`, `playersCsv`,
+  `csvFilename` and the store's `mergeClientStatements`,
+  `deleteOwnerStatement`. Owns `worker/clubs/store.ts` (`clubs`). The pass
+  itself (selling it, `activeClubPass`) is the payments module's.
 - `worker/auth/*` – optional sign-in (docs/auth.md): ID token verification
   (`jwt.ts`), Apple token exchange/revocation (`apple.ts`), the canonical
   clientId resolver (`canonical.ts`). Exports `authRoutes` (Hono),
@@ -759,6 +789,11 @@ the phone column or the route slide (`isBoardViewPath`).
   no admin token, so a TV that never joined just watches: it never joins,
   claims or asks for the admin token. The TV is nobody's player (`me = ""`:
   nothing is "mine"); its socket counts once in "N watching" like any device.
+- On a Club Pass holder's board the panel's corner shows the club's logo and
+  name instead of the JaxSquares mark, and the printout carries the logo and
+  "Hosted by <club>" (see "The Club Pass"). The page's body is `TvScreen`
+  (exported for the club TV, which passes `hideClub`, a `panelFooter` and a
+  winner to celebrate on arrival).
 - Entry points: "Show on TV" and "Print board" in the board's invite sheet
   (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
   the host sheet's hint "Hosting a watch party? Show the board on your TV."
@@ -916,8 +951,12 @@ the board locks meanwhile.
 ## Co-hosts
 
 Office pools and watch parties often have two or three organizers. The host
-invites up to `MAX_COHOSTS` (3, the one constant in `shared/cohosts.ts`, for
-everyone) players to run the board with them.
+invites up to `MAX_COHOSTS` (3) players to run the board with them, or up to
+`CLUB_MAX_COHOSTS` (10) on a Club Pass holder's board: the limit is a function
+of the host's plan (`cohostLimit(plan)` / `cohostLimitOf(game)` in
+`shared/cohosts.ts`, from `Game.club`), checked by the invite route, inside
+the accept's own SQL, and by the host sheet. A board whose host's Club Pass
+ends keeps the co-hosts it has, but takes no new one past 3.
 
 - **What a co-host can do:** every host action: edit the board, rules and
   prizes (PATCH), draw the numbers (`/lock`, paying the host fee through the
@@ -1131,6 +1170,54 @@ server's 402 decides), unless 5 or fewer players hold squares
   the iOS app, a Stripe Customer Portal on the web), and Restore purchases in
   the iOS app. Prices in the iOS app are only the App Store's.
 
+## The Club Pass
+
+A yearly plan for bars, booster clubs, offices and fundraisers (setup and the
+payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
+'club', web only; while it's active, on every board its holder hosts:
+
+- **No host fee** (`activePass` counts it).
+- **Branding.** `Game.club: ClubBrand | null` (`{ id, name, hasLogo,
+  logoVersion }`, public; `shownClub` shows only a named club):
+  `ClubBanner` above the scorebug or invite hero ("Hosted by <club>" and its
+  logo, `club-banner`), TV mode's panel corner (`TvBrand` → `TvClubBrand`,
+  `tv-club`), the printout's title row (`print-club`: the logo beside the
+  title, "· Hosted by <club>" in the subtitle) and the link preview's
+  description ("Hosted by <club> · Chiefs vs Bills · …", `inviteMeta`; the
+  name only, never an amount). The club's id is its own random one: nothing
+  ties it to a clientId beyond the host's public id the board already shows.
+- **10 co-hosts** (see "Co-hosts").
+- **Players CSV** (`GET /api/games/:id/export.csv`): host tools → Board →
+  "Players list (CSV)" (`ExportPlayersRow`, `host-export`): a download on the
+  web; in the iOS app the share sheet (the web view's file share when it has
+  one, else the CSV's text through `@capacitor/share`).
+- **Club TV** (`/club/:clubId/tv#k=<token>`, `src/pages/ClubTvView.tsx`): reads
+  `GET /api/clubs/:id/tv` every 15 s with the token as a header, primes each
+  board's state, and shows one board at a time with the board TV's own screen
+  (`TvScreen`, exported by `src/pages/TvView.tsx`: board, panel, toolbar,
+  celebrations, live over its socket), the next every 20 s
+  (`CLUB_TV_ROTATE_MS`). A winner that lands on a board that isn't up takes the
+  screen at once and is celebrated there (`nextBoard`, `rotationOrder` in
+  `src/features/club/clubModel.ts`); one on the board that's up holds it for
+  another turn. The club's logo and name stay in the corner at the panel's
+  foot with "Board 2 of 4" (`club-tv-corner`, `club-tv-progress`); the panel's
+  own corner keeps the JaxSquares mark there. Full width like the board views
+  (`isBoardViewPath`), TV mode's own theme (`index.html`, `useTvTheme`). Only
+  public board states; a wrong or old link shows "This TV link doesn't work
+  anymore".
+- **Client state.** The pass is in the Host Pass store (`hostPassStore.ts`:
+  `club`, `clubOffer`; `useHostPass().clubActive`, and `active` covers the
+  draw for either pass; `PassIncluded` says "Included with your Club Pass").
+  The club API and the TV link this device made: `src/lib/club.ts`
+  (`jaxsquares.clubTv`, wiped at sign-out). Profile → Club Pass
+  (`ClubSection`): a holder's status, Manage (web), name, logo
+  (`prepareLogo`, `src/lib/clubLogo.ts`), TV link (Copy, Open, New link with
+  a confirm) and boards; everyone else on the web, one line ("Running squares
+  for a bar, club or office? Club Pass · $49/year") that opens
+  `ClubCheckoutSheet`. **iOS:** nothing offered, priced or linked to buying or
+  managing it; a holder's features all work and Profile says "Club Pass ·
+  Active".
+
 ## Email notices
 
 Optional, per board, never required; for players push can't reach (docs/email.md).
@@ -1187,12 +1274,15 @@ getSchedule(league, week?): Promise<ScheduleResult | null>         // direct; wh
 ```ts
 paymentsRoutes: Hono<{ Bindings: Env }>          // /games/:id/pay/*, /stripe/webhook, /payments/pass*, /payments/apple/notifications
 getPaymentConfig(env: Env): PaymentConfig
-/** The active Host Pass any of these (canonical) clientIds holds, or null. Missing table (0011 not applied) = none. */
+/** The active pass (Host Pass or Club Pass) any of these (canonical) clientIds holds, or null. Missing table (0011 not applied) = none. */
 activePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<PassRow | null>
 /** Which of these clientIds hold an active pass (the cron's reminders skip them). */
 holdersOfActivePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<Set<string>>
 /** The identity's pass as the API shows it (GET /api/me). */
 hostPassOf(db: D1Database, clientId: string, now?: number): Promise<HostPass | null>
+/** The identity's active Club Pass (the club features), or null; and its Club Pass as the API shows it (MeResponse.clubPass). */
+activeClubPass(db: D1Database, clientId: string, now?: number): Promise<PassRow | null>
+clubPassOf(db: D1Database, clientId: string, now?: number): Promise<HostPass | null>
 /** Account deletion: the account's web passes stop renewing (throws when Stripe can't be reached). */
 endWebPassRenewals(env: Env, clientId: string): Promise<void>
 /** The sign-in merge: a device's passes and Stripe customer move to the canonical clientId. */
@@ -1242,7 +1332,9 @@ kickoff in `starts_at`; the cron's index covers linked boards only) and
 game") and `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0003_*`, `0006_*` and `0011_host_pass.sql` (`host_passes`,
 `stripe_customers`), push `0004_*`, auth `0010_accounts.sql`, email
-`0013_email.sql` (`email_subscriptions`, `email_suppressions`).
+`0013_email.sql` (`email_subscriptions`, `email_suppressions`), and
+`0016_club.sql` (payments' `host_passes.plan` and clubs' `clubs`; 0015 is
+left to a parallel change).
 
 `worker/email/index.ts` (email notices, docs/email.md):
 ```ts

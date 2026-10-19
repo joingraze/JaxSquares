@@ -67,6 +67,7 @@ import { HostControls, loadHostTools } from "../features/host/hostTools";
 import { RecapCta, RecapPill } from "../features/recap/RecapCta";
 import { useRecapNudge } from "../features/recap/useRecapNudge";
 import { InviteHero } from "../features/invite/InviteHero";
+import { ClubBanner } from "../features/club/ClubMark";
 import { JoinedCard } from "../features/invite/JoinedCard";
 import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
@@ -1065,6 +1066,9 @@ export default function GameView() {
             You're offline. Showing the last update.
           </p>
         )}
+
+        {/* A Club Pass holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
+        <ClubBanner game={game} />
 
         {/* A newcomer gets the invite hero (matchup, who's in, squares left) in place of the scoreboard. */}
         <div ref={scoreRef}>

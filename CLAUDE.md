@@ -101,8 +101,9 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   that count as paid; a linked board draws itself at kickoff only once paid
   (`docs/payments.md`). The yearly Host Pass covers the fee: an active pass
   (`activePass`, keyed by the canonical clientId) marks the board paid through
-  it at the draw or at kickoff. Its tables join the sign-in merge, and buying
-  it on the web needs a sign-in.
+  it at the draw or at kickoff, as does the web-only Club Pass (`plan` 'club',
+  never offered or linked in the iOS app), which adds the club features. Its
+  tables join the sign-in merge, and buying it on the web needs a sign-in.
 
 ## Conventions
 

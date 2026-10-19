@@ -207,6 +207,7 @@ describe("notify", () => {
     expect(sent.web.map((w) => w.payload.body)).toEqual(["🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."]);
 
     t.migrate("migrations/0011_host_pass.sql");
+    t.migrate("migrations/0016_club.sql");
     const now = Date.now();
     t.query(
       `INSERT INTO host_passes (id, client_id, provider, external_id, status, current_period_end, auto_renew, livemode, event_at, created_at, updated_at)

@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { CheckIcon, CrownIcon, SparklesIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
 import type { CheckoutMethod } from "../../lib/checkout";
+import { useHostPass } from "../../lib/useHostPass";
 import { paysForItself, perYear } from "./passText";
 
 export type CheckoutPlan = "board" | "pass";
@@ -186,12 +187,13 @@ export function PassDisclosure({ method, price, onNavigate }: { method: Checkout
   );
 }
 
-/** "Included with your Host Pass": where a price would be on a board the pass covers. */
+/** "Included with your Host Pass" (or Club Pass, when that's the one covering it): where a price would be on a board the pass covers. */
 export function PassIncluded({ className }: { className?: string }) {
+  const { pass, clubActive } = useHostPass(false);
   return (
     <p data-testid="host-pass-note" className={cx("flex items-center justify-center gap-1.5 text-footnote font-semibold text-ink-gold", className)}>
       <SparklesIcon size={14} strokeWidth={2.4} className="shrink-0" />
-      Included with your Host Pass
+      {clubActive && !pass?.active ? "Included with your Club Pass" : "Included with your Host Pass"}
     </p>
   );
 }

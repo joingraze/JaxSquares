@@ -53,6 +53,11 @@ export async function shareLink(opts: { title: string; text: string; url: string
   return copyText(opts.url);
 }
 
+/** The native share sheet with text only (a players list in the iOS app). Throws when it's canceled or unavailable. */
+export async function shareTextNative(opts: { title: string; text: string }): Promise<void> {
+  await Share.share({ title: opts.title, text: opts.text, dialogTitle: opts.title });
+}
+
 function canWebShare(data: ShareData): boolean {
   if (typeof navigator.share !== "function") return false;
   if (typeof navigator.canShare === "function" && !navigator.canShare(data)) return false;

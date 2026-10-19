@@ -20,7 +20,7 @@ import {
   sanitizePrizes,
   withRules,
 } from "../shared/formats";
-import { COHOST_INVITE_TTL_MS, COHOST_PARAM, MAX_COHOSTS, hasCohostRoom, isCohostOf, isCohostToken, type HostRole } from "../shared/cohosts";
+import { COHOST_INVITE_TTL_MS, COHOST_PARAM, cohostLimitOf, hasCohostRoom, isCohostOf, isCohostToken, type HostRole } from "../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
@@ -41,6 +41,7 @@ import type {
   Team,
 } from "../shared/types";
 import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
+import { clubRoutes, csvFilename, playersCsv } from "./clubs";
 import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
@@ -405,12 +406,13 @@ api.get("/config", (c) =>
   ),
 );
 
-// Routers owned by the scores, payments, push, auth and email modules.
+// Routers owned by the scores, payments, push, auth, email and clubs modules.
 api.route("/", scheduleRoutes);
 api.route("/", paymentsRoutes);
 api.route("/", pushRoutes);
 api.route("/", authRoutes);
 api.route("/", emailRoutes);
+api.route("/", clubRoutes);
 
 api.post("/games", requireClient, async (c) => {
   const clientId = c.get("clientId");
@@ -895,7 +897,8 @@ api.post("/games/:id/final", requireClient, async (c) => {
 });
 
 // ---- Co-hosts (shared/cohosts.ts; docs/ARCHITECTURE.md "Co-hosts") ----
-// The host invites up to MAX_COHOSTS players with single-use links; a co-host
+// The host invites up to MAX_COHOSTS players (CLUB_MAX_COHOSTS on a Club Pass
+// holder's board: cohostLimitOf) with single-use links; a co-host
 // runs the board with them (every route behind hostState) by their canonical
 // clientId, never the admin token. Host only: inviting co-hosts, removing one,
 // deleting the board; nobody removes the host.
@@ -905,9 +908,11 @@ const COHOST_LINK = {
   unknown: "This co-host link doesn't work anymore. Ask the host for a new one.",
   used: "This co-host link was already used. Ask the host for a new one.",
   expired: "This co-host link expired. Ask the host for a new one.",
-  full: `This board already has ${MAX_COHOSTS} co-hosts. Ask the host to make room.`,
   join: "Join the board first, then accept the co-host invite.",
 } as const;
+
+/** The board already has every co-host its host's plan allows. */
+const cohostsFull = (game: Game) => `This board already has ${cohostLimitOf(game)} co-hosts. Ask the host to make room.`;
 
 /** A new co-host invite token: 32 random bytes, base64url (43 characters; isCohostToken). */
 function newCohostToken(): string {
@@ -926,7 +931,7 @@ async function cohostTokenHash(token: string): Promise<string> {
 api.post("/games/:id/cohost-invites", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostOnlyState(c, id, "Only the host can invite co-hosts");
-  if (!hasCohostRoom(state.game)) fail(409, `A board can have up to ${MAX_COHOSTS} co-hosts. Remove one to invite someone new.`);
+  if (!hasCohostRoom(state.game)) fail(409, `A board can have up to ${cohostLimitOf(state.game)} co-hosts. Remove one to invite someone new.`);
   const limited = await deviceLimited(c, RATE_LIMITS.cohostInvite, RATE_LIMITS.cohostInviteIp);
   if (limited) return limited;
   const token = newCohostToken();
@@ -963,7 +968,7 @@ api.post("/games/:id/cohosts/accept", requireClient, async (c) => {
     if (!invite) fail(404, COHOST_LINK.unknown);
     if (invite.usedAt !== null) fail(410, COHOST_LINK.used);
     if (invite.expiresAt <= now) fail(410, COHOST_LINK.expired);
-    if (!hasCohostRoom(board.game)) fail(409, COHOST_LINK.full);
+    if (!hasCohostRoom(board.game)) fail(409, cohostsFull(board.game));
   };
   refusal(await db.cohostInvite(c.env.DB, id, tokenHash), state);
   const added = newActivity("cohost", me, { name: player.name }, now);
@@ -971,7 +976,7 @@ api.post("/games/:id/cohosts/accept", requireClient, async (c) => {
     c,
     id,
     [
-      ...db.acceptCohostInvite(c.env.DB, { gameId: id, tokenHash, clientId: c.get("clientId"), now, max: MAX_COHOSTS }),
+      ...db.acceptCohostInvite(c.env.DB, { gameId: id, tokenHash, clientId: c.get("clientId"), now, max: cohostLimitOf(state.game) }),
       db.insertActivityIfChanged(c.env.DB, id, added),
     ],
     now,
@@ -997,6 +1002,28 @@ api.delete("/games/:id/cohosts/:playerId", requireClient, async (c) => {
   const { state: next } = await commitOr404(c, id, [stmt]);
   publish(c, next);
   return c.json({ state: next });
+});
+
+/**
+ * A Club Pass board's players as a CSV (worker/clubs/csv.ts), for its host
+ * and co-hosts: name, how many squares, which ones, their numbers once drawn,
+ * when they joined. Never a payment column, an email or a clientId. `?tz=`
+ * (an IANA zone) sets the joined time's zone (UTC otherwise).
+ */
+api.get("/games/:id/export.csv", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostState(c, id);
+  if (!state.game.club) fail(403, "Downloading the players list comes with the Club Pass.");
+  const limited = await deviceLimited(c, RATE_LIMITS.clubExport, RATE_LIMITS.clubExportIp);
+  if (limited) return limited;
+  return new Response(playersCsv(state, { timeZone: c.req.query("tz") }), {
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${csvFilename(state.game.name)}"`,
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
 });
 
 api.get("/games/:id/live", async (c) => {

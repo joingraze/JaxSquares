@@ -11,8 +11,11 @@
 // same page (the SPA routes them) with a preview that says what they are.
 // Never an amount: the status line is squares left, numbers drawn or the
 // final score. A finished board's preview is its recap: "See who won <board>"
-// with "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won).
+// with "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won). A
+// Club Pass holder's board leads with "Hosted by <club>" (the name only; the
+// image stays the app's).
 
+import { hostedByLine, shownClub } from "../shared/clubs";
 import { boardPeriods, resolveResults, squaresLeft, totalSquares, winCounts } from "../shared/squares";
 import { BOOT_STATE_ID, type GameState } from "../shared/types";
 
@@ -38,6 +41,12 @@ export function boardPageOf(pathname: string): BoardPage {
 }
 
 export function inviteMeta(state: GameState, origin: string, page: BoardPage = "board"): InviteMeta {
+  const meta = boardMeta(state, origin, page);
+  const club = shownClub(state.game.club);
+  return club ? { ...meta, description: `${hostedByLine(club)} · ${meta.description}` } : meta;
+}
+
+function boardMeta(state: GameState, origin: string, page: BoardPage): InviteMeta {
   const { game } = state;
   const matchup = `${teamLabel(game.teamX)} vs ${teamLabel(game.teamY)}`;
   let status: string;

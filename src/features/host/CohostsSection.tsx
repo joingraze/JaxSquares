@@ -1,10 +1,11 @@
 // The host sheet's "Co-hosts" section (shared/cohosts.ts). The host sees who
 // co-hosts with a Remove on each, and "Invite a co-host": a single-use link
-// (7 days) shared like any invite, until the board has MAX_COHOSTS. A co-host
+// (7 days) shared like any invite, until the board has its plan's limit
+// (cohostLimitOf: MAX_COHOSTS, or CLUB_MAX_COHOSTS on a Club Pass holder's board). A co-host
 // sees the same list with "Step down" on their own row, and who the host is.
 // The confirms live in the host sheet ("cohost-remove", "step-down").
 
-import { MAX_COHOSTS, cohostIdsOf } from "../../../shared/cohosts";
+import { cohostIdsOf, cohostLimitOf } from "../../../shared/cohosts";
 import type { GameState } from "../../../shared/types";
 import { ShareIcon, UserPlusIcon } from "../../components/icons";
 import { Avatar, Button, ListGroup, ListRow } from "../../components/ui";
@@ -28,14 +29,15 @@ export interface CohostsSectionProps {
 
 export function CohostsSection({ state, role, me, busy, onInvite, onRemove, onStepDown }: CohostsSectionProps) {
   const cohosts = cohostPlayers(state);
-  const full = cohostIdsOf(state.game).length >= MAX_COHOSTS;
+  const limit = cohostLimitOf(state.game);
+  const full = cohostIdsOf(state.game).length >= limit;
   const host = state.players.find((p) => p.id === state.game.hostPlayerId);
   // The pitch in full, under the list (a row's subtitle would cut it short).
   const footer =
     role === "host"
       ? full
-        ? `Up to ${MAX_COHOSTS} co-hosts. Remove one to invite someone new.`
-        : `${COHOST_PITCH} Up to ${MAX_COHOSTS} co-hosts; each link works once, for 7 days.`
+        ? `Up to ${limit} co-hosts. Remove one to invite someone new.`
+        : `${COHOST_PITCH} Up to ${limit} co-hosts; each link works once, for 7 days.`
       : `${host?.name || "The host"} hosts this board. You can do everything they can, except remove them, delete the board or invite co-hosts.`;
   return (
     <ListGroup title="Co-hosts" footer={footer}>

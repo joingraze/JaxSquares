@@ -42,6 +42,8 @@ export const STORAGE_KEYS = {
   account: "jaxsquares.account",
   /** Ids of the boards this identity co-hosts (a hint for loading host tools; no token). */
   cohosts: "jaxsquares.cohosts",
+  /** The Club Pass holder's club TV link, as made on this device (src/lib/club.ts): only its token's hash is on the server. */
+  clubTv: "jaxsquares.clubTv",
 } as const;
 
 /** Server limit for player names (worker cleanProfile). */
@@ -292,7 +294,7 @@ function localKeysWith(prefix: string): string[] {
 export function wipeIdentity(): void {
   for (const id of getKnownGames()) unpersist(STORAGE_KEYS.admin(id));
   for (const key of localKeysWith(STORAGE_KEYS.admin(""))) unpersist(key);
-  for (const key of [STORAGE_KEYS.games, STORAGE_KEYS.seen, STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts]) {
+  for (const key of [STORAGE_KEYS.games, STORAGE_KEYS.seen, STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts, STORAGE_KEYS.clubTv]) {
     unpersist(key);
   }
   linkTokens.clear();

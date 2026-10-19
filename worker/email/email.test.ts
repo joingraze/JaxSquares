@@ -38,6 +38,7 @@ const MIGRATIONS = [
   "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
+  "migrations/0016_club.sql",
 ];
 
 /** A Resend request as the mock saw it: one message, or a batch. */

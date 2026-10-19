@@ -133,7 +133,7 @@ let epoch = 0;
  * device that has none. Refreshes Home when anything changed. Returns whether it did.
  */
 export function applyMe(me: MeResponse, requestedAt?: number): boolean {
-  applyMePass(me.hostPass, requestedAt);
+  applyMePass(me.hostPass, requestedAt, me.clubPass);
   let changed = setServerIdentity(me.playerId, me.account);
   if (saveAdminTokens(me.hostTokens ?? {}) > 0) changed = true;
   // An older server leaves it out: keep what's held.

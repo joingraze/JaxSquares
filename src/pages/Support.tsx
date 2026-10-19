@@ -2,7 +2,8 @@
 // The contact address is a placeholder until the mailbox exists. The host fee
 // and the Host Pass show as this device shows them (useHostFee,
 // useHostPassPrice): inside the iOS app only the App Store's price and Apple's
-// billing, never the web price or Stripe.
+// billing, never the web price or Stripe. The Club Pass (web only) has its
+// question on the web only: the iOS app never offers or points to buying it.
 import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { FREE_PLAYER_LIMIT } from "../../shared/hostFee";
@@ -12,7 +13,7 @@ import { ChevronDownIcon, PawIcon } from "../components/icons";
 import { buttonStyles, Card, Jax, ListGroup, ListRow, LogoMark, TopBar } from "../components/ui";
 import { platform } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
-import { useHostPassPrice, useHostPrices } from "../lib/useHostPass";
+import { useClubPassPrice, useHostPassPrice, useHostPrices } from "../lib/useHostPass";
 import { ordinal, passPaysOffAt } from "../features/pass/passText";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
@@ -29,7 +30,30 @@ const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
  * them (null while loading); `paysOffAt`: the board the pass pays for itself
  * on (passPaysOffAt; null leaves it out); `inApp`: inside the iOS app.
  */
-function faqs(price: string | null, passPrice: string | null, paysOffAt: number | null, inApp: boolean): Faq[] {
+function faqs(price: string | null, passPrice: string | null, paysOffAt: number | null, inApp: boolean, clubPrice: string | null): Faq[] {
+  const club: Faq[] = inApp
+    ? []
+    : [
+        {
+          q: "What's the Club Pass, and how do I cancel it?",
+          a: (
+            <>
+              <p>
+                The Club Pass is a yearly plan{clubPrice ? ` (${clubPrice} a year)` : ""} for bars, booster clubs, offices and fundraisers that run
+                boards every week. It covers the host fee on every board you host, like the Host Pass, and adds your club's name and logo on those
+                boards (their TV view, printout and invite), up to 10 co-hosts per board, a download of each board's players list, and a TV link
+                that rotates your open and live boards. Get it in Profile › Club Pass; it needs a sign-in, so it stays with your account.
+              </p>
+              <p>
+                It renews every year until you cancel. Cancel any time in Profile › Club Pass › Manage; it stays active until the end of the year
+                you've paid for, and then your boards go back to plain JaxSquares. If a TV link gets out, make a new one in Profile › Club Pass:
+                the old one stops working right away.
+              </p>
+              <p>To ask about a refund, email us with the email address you signed in with.</p>
+            </>
+          ),
+        },
+      ];
   return [
     {
       q: "How do my friends join a board?",
@@ -123,6 +147,7 @@ function faqs(price: string | null, passPrice: string | null, paysOffAt: number 
         </>
       ),
     },
+    ...club,
     {
       q: "How do I turn notifications on or off?",
       a: (
@@ -194,6 +219,7 @@ function MeetJax() {
 export default function Support() {
   const { price } = useHostFee();
   const { price: passPrice } = useHostPassPrice();
+  const clubPrice = useClubPassPrice();
   const amounts = useHostPrices();
   // Profile links here as /support#meet-jax.
   const { hash } = useLocation();
@@ -230,7 +256,7 @@ export default function Support() {
         <section>
           <h2 className="mb-3 px-1 font-display text-title-3 font-extrabold text-ink">Common questions</h2>
           <ListGroup>
-            {faqs(price, passPrice, passPaysOffAt(amounts.pass, amounts.board), platform() === "ios").map((faq, i) => (
+            {faqs(price, passPrice, passPaysOffAt(amounts.pass, amounts.board), platform() === "ios", clubPrice).map((faq, i) => (
               <FaqItem key={faq.q} faq={faq} defaultOpen={i === 0} />
             ))}
           </ListGroup>

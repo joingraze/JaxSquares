@@ -120,6 +120,7 @@ import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
+import { ExportPlayersRow } from "../club/ExportPlayersRow";
 
 export type HostView =
   | "home"
@@ -838,6 +839,8 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("players")}
             />
           )}
+          {/* A Club Pass board's players as a CSV, for the host and co-hosts (src/features/club). */}
+          <ExportPlayersRow game={game} />
           {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
           {isHost && (
             <ListRow

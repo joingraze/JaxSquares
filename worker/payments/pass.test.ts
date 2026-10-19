@@ -11,6 +11,7 @@ function row(over: Partial<PassRow> = {}): PassRow {
     id: "hp_1",
     clientId: "client-1",
     provider: "iap",
+    plan: "host",
     externalId: "200000",
     status: "active",
     currentPeriodEnd: NOW + 100 * DAY,

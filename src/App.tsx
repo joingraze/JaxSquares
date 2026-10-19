@@ -26,6 +26,8 @@ const screens = {
   // The board on a TV (/g/:id/tv) and on paper (/g/:id/print): full-bleed, outside the phone column.
   tv: () => import("./pages/TvView"),
   print: () => import("./pages/PrintView"),
+  // A Club Pass holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
+  clubTv: () => import("./pages/ClubTvView"),
   profile: () => import("./pages/Profile"),
   privacy: () => import("./pages/Privacy"),
   terms: () => import("./pages/Terms"),
@@ -154,6 +156,7 @@ export function appRoutes(): RouteObject[] {
             { path: "g/:id", ...screen("game") },
             { path: "g/:id/tv", ...screen("tv") },
             { path: "g/:id/print", ...screen("print") },
+            { path: "club/:clubId/tv", ...screen("clubTv") },
             { path: "me", ...screen("profile") },
             { path: "privacy", ...screen("privacy") },
             { path: "terms", ...screen("terms") },

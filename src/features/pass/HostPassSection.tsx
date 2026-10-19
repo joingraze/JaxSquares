@@ -33,7 +33,7 @@ function PassMark() {
 
 export function HostPassSection() {
   const toast = useToast();
-  const { pass, loaded } = useHostPass();
+  const { pass, loaded, clubActive } = useHostPass();
   const { price, payments } = useHostPassPrice();
   // "Pays for itself by your fifth board": from the two prices this device shows (hidden when either is unknown).
   const amounts = useHostPrices(payments !== null, payments);
@@ -105,12 +105,15 @@ export function HostPassSection() {
       else toast.show({ tone: "neutral", title: "No Host Pass found", description: "This Apple ID has no active Host Pass to restore." });
     });
 
-  const state = active ? "active" : pass ? pass.status : "none";
+  const state = active ? "active" : clubActive ? "club" : pass ? pass.status : "none";
   return (
     <div data-testid="host-pass-section" data-state={state}>
-      <ListGroup title="Host Pass" footer={footer(pass, on, test)}>
+      <ListGroup title="Host Pass" footer={clubActive && !active ? undefined : footer(pass, on, test)}>
         {active && pass ? (
           <ActiveRows pass={pass} on={on} test={pass.provider === "test"} busy={busy === "manage"} onManage={() => void manage()} canEnd={test} />
+        ) : clubActive ? (
+          // The Club Pass covers the host fee too (src/features/club): nothing to buy here.
+          <ListRow data-testid="pass-status" leading={<PassMark />} title="Host Pass" subtitle="Included with your Club Pass" />
         ) : (
           <div className="px-4 pb-4 pt-3.5">
             <div className="flex items-start gap-3">

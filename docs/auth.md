@@ -66,9 +66,10 @@ owner):
 | `push_subscriptions` | moved, so the account's pushes reach every signed-in device |
 | `game_mutes` | `INSERT OR IGNORE`, then the device's rows deleted (a mute is now the account's) |
 | `cohosts` | `INSERT OR IGNORE` under the canonical id, then the device's rows deleted, so a co-host who signs in on another device stays one (and the board's version bumps); where the account now hosts a board the device co-hosted, its co-host row goes (it's the host) |
-| `host_passes` | moved (payments, `worker/payments/store.ts`): the device's Host Pass rows join the account's, and both are kept; the account is covered while any is active |
+| `host_passes` | moved (payments, `worker/payments/store.ts`): the device's Host Pass and Club Pass rows (`plan`, migration 0016) join the account's, and all are kept; the account is covered while any is active, and has the club features while a Club Pass is |
 | `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
 | `email_subscriptions` | moved (email notices, `worker/email/store.ts`, docs/email.md); where both have an address on a board, the confirmed one stays (else the account's) and the other is deleted. `email_suppressions` is keyed by the address, so nothing moves |
+| `clubs` | moved (clubs, `worker/clubs/store.ts`, migration 0016): the device's club (name, logo, TV link) becomes the account's, unless the account has a club of its own with a name or a logo, which stays (the device's is deleted); an account's empty club gives way to the device's. Its TV link keeps working. The account's branding cache is dropped in that isolate (`forgetClubBrand`) |
 | `client_links` | the device's link |
 
 `purchases` and `cohost_invites` have no client column (an invite is always
@@ -112,11 +113,12 @@ interface MeResponse {
   hostTokens: Record<string, string>;
   profile?: { name: string; color: string; emoji: string } | null; // last board profile, for a new device
   hostPass?: HostPass | null;      // the identity's Host Pass (docs/payments.md), null when it never had one
+  clubPass?: HostPass | null;      // the identity's Club Pass (docs/payments.md "Club Pass"), null when it never had one
   cohostGames?: string[];          // ids of the boards the identity co-hosts (no tokens)
 }
 ```
 
-The app primes its Host Pass state from `hostPass` (`src/lib/hostPassStore.ts`).
+The app primes its Host Pass state from `hostPass` and `clubPass` (`src/lib/hostPassStore.ts`).
 It always reads the link
 fresh (503 when it can't, so the app never mistakes an error for "signed
 out"). The app calls it on start (`refreshMe` in `src/lib/auth.ts`, deferred a
@@ -158,8 +160,10 @@ second) and gets the same shape back from every sign-in.
    identity has no refresh token).
 3. Deletes the account, its identities and every device link, and the push
    registrations under the canonical clientId (each device re-registers as
-   itself), and its email notice addresses (docs/email.md: nobody could manage
-   them afterwards).
+   itself), its email notice addresses (docs/email.md: nobody could manage
+   them afterwards) and a Club Pass holder's club (its name, logo and TV link:
+   the branding goes with the account; docs/payments.md "Club Pass"). A web
+   Club Pass stops renewing in step 1, like a web Host Pass.
 4. **The boards and squares stay** as anonymous data under the canonical
    clientId, so friends' games carry on. Every signed-in device starts fresh
    (this one now, the others on their next start), so nobody can change them
@@ -198,7 +202,12 @@ up before the iOS app with sign-in ships** (App Store guideline 5.1.1(v)).
 `auth` (20 per device per hour) and `auth-ip` (60 per address per hour) count
 sign-in attempts, sign-outs and deletions (`worker/rateLimit.ts`).
 
-### The Host Pass
+### The Host Pass (and the Club Pass)
+
+The Club Pass (docs/payments.md "Club Pass") is a `host_passes` row with
+`plan` 'club', so everything below holds for it too; its club (`clubs`) joins
+the merge and goes with a deleted account (above). `MeResponse.clubPass`
+carries it, and buying it on the web needs a sign-in the same way.
 
 Built (docs/payments.md "Host Pass"): the pass is keyed by the canonical
 clientId (`host_passes`, owned by the payments module), so it's the account's

@@ -8,7 +8,9 @@ import type { CSSProperties } from "react";
 import { gameKickoff } from "../../../shared/kickoff";
 import { drawFor, fixedPeriodsOf, gridSize, resolveResults } from "../../../shared/squares";
 import type { GameState } from "../../../shared/types";
+import { hostedByLine, shownClub } from "../../../shared/clubs";
 import { LogoMark } from "../../components/ui";
+import { ClubMark } from "../club/ClubMark";
 import { axisLabels, defaultDrawKey } from "../board/boardModel";
 import { displayLink } from "../invite/inviteModel";
 import { QrCode } from "../invite/QrCode";
@@ -47,6 +49,7 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
   const matchup = `${game.teamX.name || game.teamX.abbr || "Team X"} vs ${game.teamY.name || game.teamY.abbr || "Team Y"}`;
   const freshLabel = game.format.freshNumbers && game.numbers ? (fixedPeriodsOf(game).find((p) => p.key === drawKey)?.label ?? null) : null;
   const site = link.split("/")[0] || link;
+  const club = shownClub(game.club);
 
   const vars = {
     "--n": n,
@@ -62,12 +65,17 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
   return (
     <article className={["jx-paper", className].filter(Boolean).join(" ")} data-orientation={sheet.orientation} data-testid="print-sheet" data-mode={mode} data-amounts={amounts} style={vars}>
       <header className="jx-paper-head">
-        <div className="min-w-0">
-          <h1 className="jx-paper-title">{game.name}</h1>
-          <p className="jx-paper-sub" data-testid="print-subtitle">
-            {matchup}
-            {kickoff !== null && <> · {printDate(kickoff)}</>}
-          </p>
+        <div className="flex min-w-0 items-center gap-[3mm]">
+          {/* A Club Pass holder's board: the club's logo, and "Hosted by" in the subtitle (src/features/club). */}
+          {club && <ClubMark club={club} size="inherit" className="h-[11.5mm] w-[11.5mm] text-[16pt]" />}
+          <div className="min-w-0">
+            <h1 className="jx-paper-title">{game.name}</h1>
+            <p className="jx-paper-sub" data-testid="print-subtitle">
+              {matchup}
+              {kickoff !== null && <> · {printDate(kickoff)}</>}
+              {club && <span data-testid="print-club"> · {hostedByLine(club)}</span>}
+            </p>
+          </div>
         </div>
         {mode === "signup" ? (
           <span className="jx-paper-tag">Sign-up sheet</span>

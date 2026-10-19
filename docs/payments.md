@@ -2,7 +2,8 @@
 
 The only money in JaxSquares is the **host fee**: the host pays JaxSquares once
 per board, when they draw its numbers, or takes the yearly **Host Pass**, which
-covers that fee on every board they host (see "Host Pass" below). Setting up a
+covers that fee on every board they host (see "Host Pass" below), or the
+web-only **Club Pass**, the Host Pass plus club features (see "Club Pass"). Setting up a
 board, inviting friends and picking squares are free, and so is drawing a
 **small board**: one whose squares 5 or fewer players hold (see "The free
 tier" below). Nothing ever moves between players. JaxSquares never sells
@@ -13,6 +14,7 @@ squares; the fee is for creating and managing the board.
 | A board held by 5 or fewer players | Free | `FREE_PLAYER_LIMIT` (`shared/hostFee.ts`) |
 | A bigger board, once | $4.99 | `BOARD_PRICE_CENTS` (499) on the web, the App Store product's price in the iOS app |
 | Host Pass, every board for a year | $19.99 a year | `HOST_PASS_PRICE_CENTS` (1999) on the web, the App Store subscription's price in the iOS app |
+| Club Pass, the Host Pass plus club features, for a year | $49 a year | `CLUB_PASS_PRICE_CENTS` (4900), web only (see "Club Pass" below) |
 
 | Where the host is | How they pay | Server check |
 |---|---|---|
@@ -680,6 +682,140 @@ curl -s https://jaxsquares.com/api/config | jq .payments.hostPass
 npx wrangler d1 execute jaxsquares --remote --command \
   "SELECT provider, status, current_period_end, auto_renew, livemode FROM host_passes ORDER BY created_at DESC LIMIT 5"
 ```
+
+## Club Pass
+
+A yearly plan for bars, booster clubs, offices and fundraisers that run boards
+every week: **$49 a year** (`CLUB_PASS_PRICE_CENTS`, 4900), auto-renewing
+until canceled, sold **on the web only** through Stripe Billing, and only to a
+signed-in account (like the web Host Pass). It's everything the Host Pass is,
+plus the club features on every board its holder hosts while it's active:
+
+| | What | Where |
+|---|---|---|
+| No host fee | Like the Host Pass: `activePass` counts a Club Pass, so the draw (and a linked board's kickoff) is covered | `worker/payments/pass.ts` |
+| Club branding | The club's name (checked like a board name, `mentionsMoney`, 40 characters) and an optional logo: the board header ("Hosted by <club>", the invite view too), TV mode's panel, the printout, and the link preview's description (the name only, never an amount, the image unchanged) | `Game.club`, `worker/clubs/brand.ts` |
+| More co-hosts | Up to 10 per board (`CLUB_MAX_COHOSTS`) instead of `MAX_COHOSTS` (3): `cohostLimitOf(game)` in `shared/cohosts.ts` | the invite and accept routes, `CohostsSection` |
+| Players CSV | `GET /api/games/:id/export.csv`, host and co-hosts of a club board: player, how many squares, the squares as "row-col" (from 1 at the top left), after the draw their numbers (team across the top first; a column per draw with new numbers each quarter), when they joined (`?tz=`). Never a payment column, an email or a clientId; formula-looking names are kept as text | `worker/clubs/csv.ts` |
+| Club TV | `/club/<club id>/tv#k=<token>`: the club's open and live boards, one every 20 seconds, each on the TV mode screen; a winner on a board that isn't up takes the screen; the club in the corner | `src/pages/ClubTvView.tsx` |
+
+**The iOS app never offers it** (App Store guidelines 3.1.1 / 3.1.3(b): an
+app may unlock what was bought elsewhere, but must not point to buying it).
+No price, no pitch, no Get button, no Manage link and no "buy it on the web"
+there (`clubCheckoutMethod` and `clubPassPrice` say null on iOS; Profile,
+Terms and Support leave it out). A holder's features just work in the app:
+Profile shows "Club Pass · Active" and the club settings (name, logo, TV link,
+boards), and boards, TV and printouts carry the branding.
+
+### How it's built
+
+- **One table for both passes.** Migration `0016_club.sql` adds
+  `host_passes.plan` (`'host'` default, or `'club'`). `activePass` and
+  `holdersOfActivePass` count any plan; `hostPassOf` / `clubPassOf` show each
+  plan apart (`HostPassState.club`, `MeResponse.clubPass`; the `HostPass`
+  shape is the same). A Club Pass holder isn't sold a Host Pass (409 "Your Club
+  Pass already covers every board you host."); a Host Pass holder can add the
+  Club Pass (both stay until one is canceled in Manage).
+- **Buying it** reuses the Host Pass routes with `{ plan: "club" }` in the
+  body: `POST /api/payments/pass/stripe` (409 `account_required` without a
+  sign-in; 503 until `STRIPE_CLUB_PASS_PRICE_ID` is set; idempotency key
+  `clubpass-<customer>-<price>-<n>`; description "JaxSquares Club Pass
+  (yearly)"; metadata `product=host_pass`, `plan=club`), `POST
+  /api/payments/pass/stripe/confirm` and, in test mode, `POST
+  /api/payments/pass/test` / `test/end`. Manage is the same Customer Portal
+  (`POST /api/payments/pass/portal`): one Stripe Customer per identity holds
+  both subscriptions. The client: `ClubCheckoutSheet` (Express Checkout or
+  the card form, the test pass in test mode) from Profile's pitch.
+- **The plan follows the Price.** Every webhook (and confirm) reads the
+  Subscription back from Stripe; `planOfSubscription` maps its Price: the
+  club Price → `club`, the Host Pass Price → `host`, any other Price (an older
+  one kept by subscriptions made before a price change) leaves the stored plan
+  as it is. So a holder who switches plans in the Customer Portal (if you
+  allow it) moves between them, and a Club Pass price change never demotes
+  existing holders.
+- **The club** (`clubs`, owned by `worker/clubs/store.ts`): a random public
+  id, the owner's canonical clientId (server-only), the name, the logo (base64
+  in D1, with its type and a SHA-256 ETag) and the TV link token's SHA-256.
+  It's made the first time a Club Pass holder needs one. It joins the sign-in
+  merge and goes with a deleted account (docs/auth.md).
+- **Branding on the board.** `worker/db.ts` reads the host's club with every
+  board state (`clubBrandOf`, cached per isolate for 30 s, dropped on the
+  holder's own changes and pass changes) into `Game.club` `{ id, name,
+  hasLogo, logoVersion }`: present while the host's Club Pass is active (an
+  unnamed club shows nothing), never who owns it. A rename or new logo
+  re-broadcasts the club's open and live boards.
+- **The logo.** The browser resizes it to fit 256×256 and re-encodes it as
+  WebP (PNG where it can't), stepping quality and size down until it's under
+  60 KB (`src/lib/clubLogo.ts`). `PUT /api/clubs/mine/logo` checks the type
+  (`image/webp` or `image/png`), the magic bytes (and that they agree), the
+  size (60 KB) and the dimensions in the image's own header
+  (`worker/clubs/logo.ts`). `GET /api/clubs/:id/logo` serves it with an ETag
+  (304 on `If-None-Match`), `nosniff`, and `max-age=31536000, immutable` when
+  asked with its version (`?v=`, as the app always does), a day otherwise.
+- **The club TV link.** `POST /api/clubs/mine/tv` makes a 32-byte token and
+  keeps only its hash; the link comes back once and the device that made it
+  keeps it (`jaxsquares.clubTv`, wiped at sign-out), shown again while the
+  server's fingerprint (`tvKey`) matches. Making a new one cuts the old one off
+  at once. The token rides in the URL's fragment and goes to `GET
+  /api/clubs/:id/tv` in `x-club-tv-token`, so it's never in a request log. A
+  wrong or old token is a 404 like an unknown club; the answer is up to 12
+  boards' public states (`ClubTvState`), the same as anyone with each board's
+  link sees. The TV polls it every 15 s; the board on screen is live over its
+  own socket.
+- **Rate limits:** `club-brand` (30 per device per hour) / `club-brand-ip`
+  (90) for the name and logo, `club-tv` (10) / `club-tv-ip` (30) for new TV
+  links, `club-export` (30) / `club-export-ip` (120) for the CSV, and
+  `club-tv-view-ip` (120 per address per minute) for the TV's reads, counted
+  before the token is checked.
+- **When it ends** the branding, the extra co-host room (existing co-hosts
+  stay), the CSV and the TV's boards stop; boards drawn while it was active
+  stay drawn. The club's name and logo are kept for when it's renewed.
+
+### Setup (Club Pass)
+
+Every value is a plain setting (`wrangler.jsonc` → `vars`); no new secrets.
+
+**Stripe**
+
+1. Product catalog → **Add product** → name **Club Pass**, description "For
+   bars, booster clubs, offices and fundraisers: every board you host for a
+   year, with your club's name and logo, 10 co-hosts, players lists and a TV
+   link." Pricing: **Recurring**, **$49.00 per year**. Save.
+2. Copy the Price id (`price_…`) into `STRIPE_CLUB_PASS_PRICE_ID` in
+   `wrangler.jsonc` → `vars`, and keep `CLUB_PASS_PRICE_CENTS` (4900) equal to
+   it: the web shows that number. Until the Price id is set, live mode doesn't
+   sell the Club Pass (Profile hides the pitch; the route answers 503). Test
+   mode always offers the no-charge test pass.
+   - **Changing the price later:** add a new Price to the same product and
+     point `STRIPE_CLUB_PASS_PRICE_ID` at it (with `CLUB_PASS_PRICE_CENTS`) in
+     one deploy. Existing subscriptions keep renewing at their old Price, and
+     the webhook keeps them Club Passes (an unknown Price never changes a
+     pass's plan). Leave the old Price active.
+3. Nothing else changes in Stripe: the webhook endpoint and its events
+   (`invoice.paid`, `customer.subscription.updated` / `.deleted`), the
+   restricted key's permissions and the Customer Portal are the Host Pass's.
+   If you want holders to switch between the Host Pass and the Club Pass
+   themselves, add both products to the Customer Portal's "Subscription
+   products" (Settings → Billing → Customer portal → Subscriptions → let
+   customers switch plans); the webhook moves the pass's plan with the Price.
+4. **App Store Connect:** nothing. The Club Pass has no in-app product, and
+   the iOS app never sells it (see above). Review notes may mention that club
+   features bought on the web work in the app.
+
+Then `npm run deploy` (CI applies `0016_club.sql` before deploying, or run
+`npm run db:migrate:remote`). Check it:
+
+```bash
+curl -s https://jaxsquares.com/api/config | jq .payments.clubPass
+# { "priceCents": 4900, "currency": "usd", "web": true }
+npx wrangler d1 execute jaxsquares --remote --command \
+  "SELECT plan, provider, status, current_period_end FROM host_passes WHERE plan = 'club' ORDER BY created_at DESC LIMIT 5"
+```
+
+Refunds: a holder asks Support (`support@jaxsquares.com`); refund from the
+Stripe dashboard (Payments → the charge → Refund) and cancel the subscription
+there if they want it ended now. A refunded Club Pass that's canceled stops
+covering draws and the club features at once.
 
 ## Not covered yet
 

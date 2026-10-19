@@ -8,8 +8,8 @@
 // localized string in the iOS app (App Store guideline 3.1.1), never the web price.
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { HostPass, HostPassOffer, PaymentConfig } from "../../shared/types";
-import { fetchAppConfig, fetchPassState, hostPassPrice, hostPrices, passCheckoutMethod, type CheckoutMethod, type Platform, type PriceAmount } from "./checkout";
+import type { ClubPassOffer, HostPass, HostPassOffer, PaymentConfig } from "../../shared/types";
+import { clubPassPrice, fetchAppConfig, fetchPassState, hostPassPrice, hostPrices, passCheckoutMethod, type CheckoutMethod, type Platform, type PriceAmount } from "./checkout";
 import { getHostPassSnapshot, hostPassGeneration, setHostPassState, subscribeHostPass } from "./hostPassStore";
 import { platform } from "./native";
 
@@ -34,8 +34,13 @@ export function refreshHostPass(): Promise<void> {
 export interface HostPassView {
   pass: HostPass | null;
   offer: HostPassOffer | null;
-  /** Covers the host fee right now: drawing costs nothing more. */
+  /** The Club Pass, shown apart (src/features/club); it covers the host fee too. */
+  club: HostPass | null;
+  clubOffer: ClubPassOffer | null;
+  /** Covers the host fee right now (the Host Pass or the Club Pass): drawing costs nothing more. */
   active: boolean;
+  /** The Club Pass is active: the club features are on. */
+  clubActive: boolean;
   loaded: boolean;
   refresh: () => Promise<void>;
 }
@@ -47,7 +52,17 @@ export function useHostPass(enabled = true): HostPassView {
   useEffect(() => {
     if (enabled && !known) void refreshHostPass();
   }, [enabled, known]);
-  return { pass: s.pass, offer: s.offer, active: s.pass?.active === true, loaded: s.loaded, refresh: refreshHostPass };
+  const clubActive = s.club?.active === true;
+  return {
+    pass: s.pass,
+    offer: s.offer,
+    club: s.club,
+    clubOffer: s.clubOffer,
+    active: s.pass?.active === true || clubActive,
+    clubActive,
+    loaded: s.loaded,
+    refresh: refreshHostPass,
+  };
 }
 
 /** The pass's yearly price on this device ("$19.99", or the App Store's string), null while loading or when it can't be said. */
@@ -70,6 +85,23 @@ export function useHostPassPrice(enabled = true): { price: string | null; paymen
     };
   }, [enabled]);
   return { price, payments };
+}
+
+/** The Club Pass's yearly web price ("$49"); null in the iOS app (it never shows it) and while loading. */
+export function useClubPassPrice(): string | null {
+  const [price, setPrice] = useState<string | null>(null);
+  useEffect(() => {
+    const on = platform();
+    if (on === "ios") return;
+    let live = true;
+    fetchAppConfig()
+      .then(({ payments }) => live && setPrice(clubPassPrice(payments, on)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+  return price;
 }
 
 /**

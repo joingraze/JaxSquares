@@ -263,14 +263,16 @@ devices to an Apple or Google account.
 | Contact Info → **Name** | The display name you type. It can be a nickname. | Shows on your squares to the others in the board. |
 | Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works), or ask for email about a board (docs/email.md). | Shown only to you ("Signed in with Apple · email"); a board's address gets that board's notices, and is deleted a week after its game. |
 | Identifiers → **User ID** | Only if you sign in: the account id Apple or Google assigns you. | Keeps your boards on every device you sign in on. |
-| User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color. | The game itself. |
+| User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color; a Club Pass holder's club name and logo (a picture they pick, resized on the device to 256x256 at most). | The game itself; the club's branding on its boards. |
 | Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock, and for a Host Pass its original transaction id, status and renewal date. | Opens the board you paid for, stops one purchase from being used twice, and lets the Host Pass cover your boards. |
 
 **Not collected:**
 
 - Phone, physical address (email only if you choose to sign in or ask for board email, above)
 - Precise or coarse location
-- Contacts, photos, health, financial info
+- Contacts, photos, health, financial info (a club logo a Club Pass holder
+  uploads is declared as Other User Content above: a brand graphic for their
+  boards, not their photo library; **check this with whoever owns legal**)
 - Payment card data: Apple handles IAP, and the iOS app never shows Stripe
 - Browsing history, search history
 - Usage analytics: there is no analytics SDK, and Firebase is included only

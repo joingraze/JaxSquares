@@ -14,6 +14,7 @@
 // trip per mutation, and the state it returns is exactly what was written.
 
 import { upgradeFormat } from "../shared/formats";
+import { clubBrandOf } from "./clubs/brand";
 import { isFreeHolderCount } from "../shared/hostFee";
 import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
@@ -21,6 +22,7 @@ import { MAX_GROUP_BOARDS, siblingSummary } from "../shared/siblings";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
+  ClubBoard,
   Game,
   GameFormat,
   GameState,
@@ -324,15 +326,17 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
   const playerRows = players.results as PlayerRow[];
   const squareRows = squares.results as SquareRow[];
   const cohosts = cohostRowsOf(results);
-  const [ids, siblings] = await Promise.all([
+  const [ids, siblings, club] = await Promise.all([
     playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts]),
     // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
     row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
+    // The host's club while their Club Pass is active (worker/clubs, cached per isolate): its public branding only.
+    clubBrandOf(db, row.host_client_id),
   ]);
   const liveRow = live.results[0] as LiveRow | undefined;
   const state: GameState = {
     // Co-hosts by public id only.
-    game: { ...rowToGame(row, publicId(ids, row.host_client_id)), cohostIds: cohosts.map((c) => publicId(ids, c)) },
+    game: { ...rowToGame(row, publicId(ids, row.host_client_id)), cohostIds: cohosts.map((c) => publicId(ids, c)), club },
     players: playerRows.map(rowToPlayer(ids, row.host_client_id)),
     squares: squareRows.map(rowToSquare(ids)),
     scores: (scores.results as ScoreRow[]).map(rowToScore),
@@ -1173,6 +1177,47 @@ export async function hostTokensFor(db: D1Database, clientId: string): Promise<R
     .bind(clientId, HOST_TOKENS_MAX)
     .all<{ id: string; admin_token: string }>();
   return Object.fromEntries(results.map((r) => [r.id, r.admin_token]));
+}
+
+// ---- The Club Pass (worker/clubs): a holder's boards ----
+
+/** A board that hasn't moved in this long, with its kickoff past (or none), no longer goes round on the club's TV. */
+const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
+
+/**
+ * The open and live boards `clientId` (a Club Pass holder's canonical
+ * clientId: the caller's own, or the owner of a club whose TV link checked
+ * out) hosts, as their club settings list them and their TV goes round:
+ * live games first, then drawn boards, then boards being picked, each by
+ * kickoff (boards without one last, newest first).
+ * A board drawn long ago that nobody ended stops showing after a while.
+ */
+export async function clubBoards(db: D1Database, clientId: string, now: number, limit: number): Promise<ClubBoard[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT g.id, g.name, g.status, g.format, g.starts_at, g.linked_event,
+              (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id) AS claimed
+       FROM games g
+       WHERE g.host_client_id = ?1 AND g.status IN ('open', 'locked')
+         AND (g.updated_at >= ?2 OR g.starts_at >= ?3)
+       ORDER BY EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = g.id AND l.state = 'in') DESC,
+                g.status = 'locked' DESC, g.starts_at IS NULL, g.starts_at, g.created_at DESC
+       LIMIT ?4`,
+    )
+    .bind(clientId, now - CLUB_BOARD_STALE_MS, now - 12 * 60 * 60_000, limit)
+    .all<{ id: string; name: string; status: string; format: string; starts_at: number | null; linked_event: string | null; claimed: number }>();
+  return results.map((r) => {
+    const format = json<GameFormat>(r.format, { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false });
+    const total = totalSquares(format.boardSize);
+    return {
+      id: r.id,
+      name: r.name,
+      status: r.status as Game["status"],
+      squaresLeft: Math.max(0, total - Number(r.claimed ?? 0)),
+      totalSquares: total,
+      startsAt: json<LinkedEvent | null>(r.linked_event, null)?.startsAt ?? r.starts_at ?? null,
+    };
+  });
 }
 
 /** The name, color and emoji `clientId` last joined a board with (public on that board), or null. */
