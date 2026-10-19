@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { NavigationType, Outlet, ScrollRestoration, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { checkHostToken } from "../lib/api";
+import { isBoardViewPath } from "../lib/boardViews";
 import { captureHostLink } from "../lib/identity";
 import * as push from "../lib/push";
 import { ShellContext, TAB_PATHS, type ShellApi } from "./shell";
@@ -65,6 +66,8 @@ export function AppShell() {
     lastPath.current = location.pathname;
   }
   const transition = anim.current.transition;
+  // A board's TV and print views take the whole screen (or page): no phone column, no slide.
+  const fullBleed = isBoardViewPath(location.pathname);
 
   // ---- host links opened inside the app (#host=<token>, or the older ?host=<token>) ----
   useEffect(() => {
@@ -90,11 +93,11 @@ export function AppShell() {
   return (
     <ShellContext.Provider value={shell}>
       <div aria-hidden className="floodlights pointer-events-none fixed inset-0 -z-10" />
-      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
+      <div className={fullBleed ? "flex min-h-dvh w-full flex-col" : "mx-auto flex min-h-dvh w-full max-w-md flex-col"}>
         <main
           key={location.pathname}
           id="main"
-          className={`flex flex-1 flex-col pb-shell ${ANIMATION[transition]}`}
+          className={fullBleed ? "flex flex-1 flex-col" : `flex flex-1 flex-col pb-shell ${ANIMATION[transition]}`}
         >
           <Outlet />
         </main>

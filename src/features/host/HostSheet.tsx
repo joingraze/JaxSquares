@@ -7,6 +7,7 @@
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { squareHolders } from "../../../shared/hostFee";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
@@ -28,6 +29,7 @@ import {
   SparklesIcon,
   TrashIcon,
   TrophyIcon,
+  TvIcon,
   UsersIcon,
 } from "../../components/icons";
 import {
@@ -45,6 +47,7 @@ import {
   cx,
 } from "../../components/ui";
 import { PUBLIC_ORIGIN } from "../../lib/api";
+import { boardViewPath } from "../../lib/boardViews";
 import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
 import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
@@ -628,6 +631,22 @@ export function HostSheet(props: HostSheetProps) {
             <PrizeTotals state={state} me={me} />
           </Section>
         )}
+
+        {/* Watch parties: the board on the TV (TV mode, /g/:id/tv). */}
+        <Link
+          to={boardViewPath(game.id, "tv")}
+          data-testid="host-tv"
+          onClick={() => void haptic("selection")}
+          className="pressable flex min-h-14 items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2.5 ring-1 ring-inset ring-line"
+        >
+          <RowIcon>
+            <TvIcon size={18} />
+          </RowIcon>
+          <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
+            <b className="font-bold text-ink">Hosting a watch party?</b> Show the board on your TV.
+          </span>
+          <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
+        </Link>
 
         <ListGroup title="Board">
           <ListRow

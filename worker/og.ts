@@ -6,6 +6,11 @@
 // /api/games/:id returns) in <script type="application/json" id="jx-boot">,
 // so a friend opening the invite sees the board without waiting for that GET
 // (src/lib/live.ts takes it once, for this board only).
+//
+// The board's TV view (/g/:id/tv) and printable board (/g/:id/print) are the
+// same page (the SPA routes them) with a preview that says what they are.
+// Never an amount: the status line is squares left, numbers drawn or the
+// final score.
 
 import { squaresLeft, totalSquares } from "../shared/squares";
 import { BOOT_STATE_ID, type GameState } from "../shared/types";
@@ -22,7 +27,16 @@ export interface InviteMeta {
 
 const teamLabel = (t: { name: string; abbr?: string }) => t.name || t.abbr || "TBD";
 
-export function inviteMeta(state: GameState, origin: string): InviteMeta {
+/** Which page of a board a /g/... path is: the board itself, its TV view or its printable board. */
+export type BoardPage = "board" | "tv" | "print";
+
+/** "/g/abc123" -> "board", "/g/abc123/tv" -> "tv", "/g/abc123/print" -> "print" (anything else under it: "board"). */
+export function boardPageOf(pathname: string): BoardPage {
+  const m = /^\/g\/[^/]+\/(tv|print)\/?$/i.exec(pathname);
+  return m ? (m[1].toLowerCase() as BoardPage) : "board";
+}
+
+export function inviteMeta(state: GameState, origin: string, page: BoardPage = "board"): InviteMeta {
   const { game } = state;
   const matchup = `${teamLabel(game.teamX)} vs ${teamLabel(game.teamY)}`;
   let status: string;
@@ -49,12 +63,15 @@ export function inviteMeta(state: GameState, origin: string): InviteMeta {
       break;
     }
   }
-  return {
-    title: `Join ${game.name} on JaxSquares`,
-    description: `${matchup} · ${status}`,
-    url: `${origin}/g/${game.id}`,
-    image: `${origin}/og-image.png`,
-  };
+  const url = `${origin}/g/${game.id}`;
+  const image = `${origin}/og-image.png`;
+  if (page === "tv") {
+    return { title: `${game.name} on TV · JaxSquares`, description: `${matchup} · Live on the big screen · ${status}`, url: `${url}/tv`, image };
+  }
+  if (page === "print") {
+    return { title: `Print ${game.name} · JaxSquares`, description: `${matchup} · A printable board with a QR code to follow it live`, url: `${url}/print`, image };
+  }
+  return { title: `Join ${game.name} on JaxSquares`, description: `${matchup} · ${status}`, url, image };
 }
 
 function metaTags(m: InviteMeta): string {

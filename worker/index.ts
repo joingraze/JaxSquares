@@ -41,7 +41,7 @@ import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHi
 import * as db from "./db";
 import type { Env } from "./env";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
-import { inviteMeta, withInviteMeta } from "./og";
+import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
 import { activePass, getPaymentConfig, holdersOfActivePass, paymentsRoutes } from "./payments";
 import { playerIdOf } from "./playerIds";
 import { pushRoutes, type NotifyEvent } from "./push";
@@ -933,7 +933,9 @@ async function invitePage(c: Ctx): Promise<Response> {
   ]);
   if (!state || !html.ok) return html;
   // The board's public state rides along, so the page renders it without a second round trip.
-  return withInviteMeta(html, inviteMeta(state, new URL(c.req.url).origin), state);
+  // Its TV view (/g/:id/tv) and printable board (/g/:id/print) get the same, with their own preview.
+  const url = new URL(c.req.url);
+  return withInviteMeta(html, inviteMeta(state, url.origin, boardPageOf(url.pathname)), state);
 }
 
 app.get("/g/:id", invitePage);

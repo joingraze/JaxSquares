@@ -123,3 +123,23 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
 | `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
+| `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens `/g/:id/tv`) and "Print board" (opens `/g/:id/print`) |
+| `host-tv` | the host sheet's hint "Hosting a watch party? Show the board on your TV." (a link to `/g/:id/tv`) |
+| `tv-view` | TV mode's root (`data-phase=draft\|open\|locked\|live\|final`, `data-awake=true\|false` while the toolbar shows / has hidden itself; `data-state=empty` on the not-found / loading screen) |
+| `tv-toolbar`, `tv-fullscreen`, `tv-theme`, `tv-exit` | TV mode's auto-hiding toolbar (`data-awake`), its Full screen (only where the browser can), Light / Dark (TV mode's own theme) and Exit (back to the board) |
+| `tv-board`, `tv-cell` | TV mode's read-only grid (`data-drawn`, `data-final`, `data-now=live\|projected\|none`) and each square (`data-row`, `data-col`, `data-state=empty\|taken\|winner`, `data-live` on the square the score points at, `data-live-reverse` on its reverse) |
+| `tv-predraw` | the line across the top of the TV grid before the draw: "Numbers get drawn when the host locks the board" |
+| `tv-open`, `tv-qr`, `tv-link` | the TV panel while squares are open: the big QR code to the invite link ("Scan to grab a square") and the short link under it |
+| `tv-game`, `tv-score`, `tv-score-x`, `tv-score-y`, `tv-status` | the TV panel once the numbers are drawn: the scoreboard, each team's score, and its status line ("Live · Q3 4:12", "Final", "Numbers drawn · kicks off in 2h 10m") |
+| `tv-now`, `tv-now-name` | TV "Right now · Q3": who the square in play belongs to (`data-live`), or "Next score wins" with the four likeliest scores on every-score boards |
+| `tv-winners`, `tv-winner`, `tv-winner-label` | TV winners so far (only whole rows that fit, "· N earlier"), each moment's row (`data-key=<period key>`) and its label as the board's result cards say it ("Q1 · $200", "Score 3 · TD · $20") |
+| `tv-upcoming` | TV "Still to play": the moments to come with what each can show ("Q3 $200", "Final the rest") |
+| `tv-celebrate` | the winner card over the TV board after a winner lands (`data-period`), with Jax cheering (`jax-cheer`); it goes by itself after 7 s |
+| `tv-offline`, `tv-brand` | TV mode's "Offline · showing the last update" pill, and its small JaxSquares mark |
+| `print-sheet` | the printed sheet (`data-mode=signup\|open\|game`, `data-amounts=true\|false`); the same element is the on-screen preview |
+| `print-amounts`, `print-button` | on screen only (never printed): the "Include square price and prizes" switch (off by default; absent on a board with no price or amounts) and "Print" ("Send to a computer to print" in the native app, which shares the print link) |
+| `print-cell` | each printed square (`data-row`, `data-col`, `data-winner` on a decided one): its owner's name fitted to the box, empty for open squares |
+| `print-subtitle`, `print-price` | the sheet's title row: "Chiefs vs Bills · Sun, Oct 25, 2026 · 1:00 PM PDT", and "$10 a square" (amounts on only) |
+| `print-rules`, `print-amount` | "Who wins": one line per moment (`data-moment`), with each square's amount (`print-amount`) only when amounts are on |
+| `print-winners` | a line per fixed moment to write each winner on, filled in once decided |
+| `print-qr`, `print-follow`, `print-signup` | the QR code to the live board, "Follow it live: jaxsquares.com/g/…", and (while squares are open) "Grab a square on your phone, or write your name in a box." |

@@ -1,0 +1,515 @@
+/*
+ * TV mode (/g/:id/tv): a read-only board for a TV or a laptop across the room.
+ * Everything is sized from the screen: the board from tvLayout() (--band,
+ * --axis, --cell, --gap) and the type from --u (1% of the screen's short side),
+ * so it reads the same at 720p, 1080p and 4K. Colors are the semantic tokens,
+ * so dark (the TV default) and light both work; player colors arrive per
+ * square as --p, team colors as --team-x / --team-y.
+ */
+
+/* In the components layer, so a Tailwind utility on the same element wins. */
+@layer components {
+  .tv-root {
+    --u: 7.2px;
+    position: relative;
+    min-height: 100dvh;
+    overflow: hidden;
+    background:
+      radial-gradient(60% 50% at 0% 0%, color-mix(in srgb, var(--team-x) 12%, transparent), transparent 70%),
+      radial-gradient(60% 50% at 100% 100%, color-mix(in srgb, var(--team-y) 10%, transparent), transparent 70%),
+      var(--color-canvas);
+    color: var(--color-ink);
+  }
+  .tv-root[data-awake="false"] {
+    cursor: none;
+  }
+
+  .tv-stage {
+    display: flex;
+    gap: var(--pad);
+    padding: var(--pad);
+    height: 100dvh;
+    box-sizing: border-box;
+  }
+  .tv-stage[data-orientation="portrait"] {
+    flex-direction: column;
+    height: auto;
+    min-height: 100dvh;
+    /* A phone held upright: the toolbar gets its own room above the board instead of covering it. */
+    padding-top: calc(var(--pad) + var(--safe-top) + 4.25rem);
+  }
+
+  /* ---------- The board ---------- */
+
+  .tv-board {
+    display: grid;
+    grid-template-columns: var(--band) var(--axis) repeat(var(--n), var(--cell));
+    grid-template-rows: var(--band) var(--axis) repeat(var(--n), var(--cell));
+    gap: var(--gap);
+    flex: none;
+    align-self: center;
+  }
+
+  .tv-band {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: calc(var(--band) * 0.28);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: calc(var(--band) * 0.5);
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .tv-band > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 92%;
+  }
+  .tv-band-x {
+    grid-row: 1;
+    grid-column: 3 / span var(--n);
+    background: var(--team-x);
+    color: var(--team-x-ink);
+  }
+  .tv-band-y {
+    grid-row: 3 / span var(--n);
+    grid-column: 1;
+    background: var(--team-y);
+    color: var(--team-y-ink);
+  }
+  .tv-band-y > span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    max-width: none;
+    max-height: 92%;
+  }
+
+  .tv-axis {
+    display: grid;
+    place-items: center;
+    border-radius: calc(var(--axis) * 0.18);
+    background: var(--color-surface-3);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    font-size: calc(var(--axis) * 0.62);
+    color: var(--color-ink);
+  }
+  .tv-board[data-size="5"] .tv-axis {
+    font-size: calc(var(--axis) * 0.42);
+  }
+  .tv-axis-x {
+    grid-row: 2;
+  }
+  .tv-axis-y {
+    grid-column: 2;
+  }
+  .tv-axis-strip {
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: calc(var(--axis) * 0.18);
+    border: 1px dashed var(--color-line-strong);
+    color: var(--color-ink-muted);
+    font-weight: 700;
+    font-size: max(0.625rem, calc(var(--axis) * 0.34));
+    white-space: nowrap;
+  }
+  .tv-axis-strip > span {
+    max-width: 96%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tv-axis-strip-x {
+    grid-row: 2;
+    grid-column: 3 / span var(--n);
+  }
+  .tv-axis-strip-y {
+    grid-row: 3 / span var(--n);
+    grid-column: 2;
+  }
+  .tv-axis[data-hot="true"] {
+    background: var(--color-live-500);
+    color: #fff;
+    box-shadow: 0 0 calc(var(--axis) * 0.5) -0.1em rgb(255 64 64 / 0.7);
+  }
+  .tv-board[data-now="projected"] .tv-axis[data-hot="true"] {
+    background: var(--color-brand-400);
+    color: var(--color-ink-inverse);
+    box-shadow: none;
+  }
+
+  /* ---------- Squares ---------- */
+
+  .tv-cell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: calc(var(--cell) * 0.12);
+    background: color-mix(in srgb, var(--p) 24%, var(--color-surface-2));
+    /* The owner's color as a jersey stripe along the bottom. */
+    box-shadow:
+      inset 0 calc(var(--cell) * -0.07) 0 var(--p),
+      inset 0 0 0 1px var(--color-line);
+    color: var(--color-ink);
+  }
+  .tv-cell[data-state="empty"] {
+    background: var(--color-surface);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+  .tv-board[data-drawn="false"] .tv-cell[data-state="empty"] {
+    /* Squares still up for grabs: a faint volt wash. */
+    background: var(--brand-wash);
+    box-shadow: inset 0 0 0 1px var(--brand-wash-ring);
+  }
+
+  .tv-name {
+    max-width: 92%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    /* Lifted a little above the stripe. */
+    margin-bottom: calc(var(--cell) * 0.04);
+  }
+  .tv-cell-initials .tv-name {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    letter-spacing: 0;
+  }
+
+  /* Earlier winners: a gold ring and a trophy pip with the moment. */
+  .tv-cell[data-state="winner"] {
+    box-shadow:
+      inset 0 0 0 calc(var(--cell) * 0.05) var(--color-gold-line),
+      inset 0 calc(var(--cell) * -0.07) 0 var(--p);
+  }
+  .tv-pip {
+    position: absolute;
+    top: calc(var(--cell) * 0.05);
+    right: calc(var(--cell) * 0.05);
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--cell) * 0.03);
+    border-radius: 999px;
+    padding: calc(var(--cell) * 0.025) calc(var(--cell) * 0.06);
+    background: var(--color-gold-400);
+    color: var(--color-ink-inverse);
+    font-size: calc(var(--cell) * 0.155);
+    font-weight: 800;
+    line-height: 1;
+  }
+  /* Final whistle: the winners take the full gold. */
+  .tv-board[data-final="true"] .tv-cell[data-state="winner"] {
+    background: var(--foil);
+    color: var(--color-ink-inverse);
+  }
+  .tv-board[data-final="true"] .tv-cell:not([data-state="winner"]) {
+    opacity: 0.62;
+  }
+
+  /* The square the score points at right now. */
+  .tv-cell[data-live="true"] {
+    z-index: 2;
+    overflow: visible;
+    outline: calc(var(--cell) * 0.09) solid var(--color-live-500);
+    outline-offset: calc(var(--cell) * 0.01);
+    transform: scale(1.06);
+    animation: tv-now 1.6s ease-in-out infinite;
+  }
+  .tv-board[data-now="projected"] .tv-cell[data-live="true"] {
+    outline-color: var(--color-brand-line);
+    animation: none;
+    box-shadow:
+      0 0 calc(var(--cell) * 0.5) calc(var(--cell) * -0.05) var(--brand-glow),
+      inset 0 calc(var(--cell) * -0.07) 0 var(--p);
+  }
+  .tv-cell[data-live-reverse="true"] {
+    outline: calc(var(--cell) * 0.04) dashed var(--color-live-500);
+    outline-offset: calc(var(--cell) * -0.02);
+  }
+  @keyframes tv-now {
+    0%,
+    100% {
+      box-shadow:
+        0 0 calc(var(--cell) * 0.25) 0 rgb(255 64 64 / 0.55),
+        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
+    }
+    50% {
+      box-shadow:
+        0 0 calc(var(--cell) * 0.6) calc(var(--cell) * 0.06) rgb(255 64 64 / 0.75),
+        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tv-cell[data-live="true"] {
+      animation: none;
+      box-shadow:
+        0 0 calc(var(--cell) * 0.4) 0 rgb(255 64 64 / 0.65),
+        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
+    }
+  }
+
+  /* ---------- The panel ---------- */
+
+  .tv-panel {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: calc(var(--u) * 2.2);
+  }
+
+  .tv-brand {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--u) * 1);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: calc(var(--u) * 2.1);
+    letter-spacing: -0.02em;
+    color: var(--color-ink-muted);
+  }
+  .tv-title {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: calc(var(--u) * 4.6);
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    color: var(--color-ink);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .tv-eyebrow {
+    font-size: calc(var(--u) * 1.7);
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+  .tv-text-lg {
+    font-size: calc(var(--u) * 2.6);
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .tv-text-md {
+    font-size: calc(var(--u) * 2.1);
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .tv-card {
+    border-radius: calc(var(--u) * 2.2);
+    background: var(--color-surface-2);
+    box-shadow:
+      var(--elevation-card),
+      inset 0 0 0 1px var(--color-line-strong);
+    padding: calc(var(--u) * 2) calc(var(--u) * 2.4);
+  }
+
+  /* Scoreboard rows */
+  .tv-score-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: calc(var(--u) * 1.6);
+  }
+  .tv-team-chip[data-side="x"] {
+    background: var(--team-x);
+    color: var(--team-x-ink);
+  }
+  .tv-team-chip[data-side="y"] {
+    background: var(--team-y);
+    color: var(--team-y-ink);
+  }
+  .tv-team-chip {
+    display: grid;
+    place-items: center;
+    min-width: calc(var(--u) * 7);
+    height: calc(var(--u) * 5.4);
+    padding: 0 calc(var(--u) * 0.8);
+    border-radius: calc(var(--u) * 1.2);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: calc(var(--u) * 2.2);
+  }
+  .tv-team-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(var(--u) * 3.2);
+    font-weight: 800;
+  }
+  .tv-score {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    font-size: calc(var(--u) * 8.5);
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+  }
+  .tv-score[data-trailing="true"] {
+    color: var(--color-ink-muted);
+  }
+
+  .tv-avatar {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow:
+      inset 0 -0.12em 0 rgb(0 0 0 / 0.18),
+      inset 0 0.08em 0 rgb(255 255 255 / 0.35);
+  }
+
+  /* Winners so far: only whole rows (TvGamePanel measures how many fit). */
+  .tv-winners {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--u) * 0.8);
+    min-height: 0;
+    overflow: hidden;
+  }
+  .tv-winner {
+    display: grid;
+    flex: none;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: calc(var(--u) * 1.2);
+    border-radius: calc(var(--u) * 1.4);
+    background: var(--color-surface-2);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+    padding: calc(var(--u) * 0.8) calc(var(--u) * 1.6);
+  }
+  .tv-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--u) * 0.6);
+    border-radius: 999px;
+    background: var(--color-surface-2);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+    padding: calc(var(--u) * 0.5) calc(var(--u) * 1.3);
+    font-size: calc(var(--u) * 1.9);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  /* The QR code (open boards) */
+  .tv-qr {
+    display: grid;
+    place-items: center;
+    border-radius: calc(var(--u) * 2.4);
+    background: #fff;
+    padding: calc(var(--u) * 1.4);
+    box-shadow: 0 calc(var(--u) * 1.6) calc(var(--u) * 4) calc(var(--u) * -1.6) rgb(0 0 0 / 0.55);
+  }
+  .tv-qr svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ---------- Toolbar (auto-hides) ---------- */
+
+  .tv-toolbar {
+    position: fixed;
+    top: max(var(--safe-top), calc(var(--u) * 1.6));
+    right: max(var(--safe-right), calc(var(--u) * 1.6));
+    z-index: 40;
+    display: flex;
+    gap: 0.5rem;
+    border-radius: 1.25rem;
+    padding: 0.5rem;
+    transition:
+      opacity 300ms ease,
+      transform 300ms ease;
+  }
+  .tv-toolbar[data-awake="false"] {
+    opacity: 0;
+    transform: translateY(-0.75rem);
+    pointer-events: none;
+  }
+
+  /* ---------- Celebration ---------- */
+
+  .tv-celebrate {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: calc(var(--u) * 4);
+    background: var(--color-scrim);
+    animation: tv-fade-in 260ms ease-out both;
+  }
+  .tv-celebrate-card {
+    display: flex;
+    max-width: min(92vw, calc(var(--u) * 120));
+    flex-direction: column;
+    align-items: center;
+    gap: calc(var(--u) * 1.8);
+    border-radius: calc(var(--u) * 4);
+    background:
+      radial-gradient(90% 70% at 50% 0%, rgb(255 194 51 / 0.32), transparent 70%),
+      var(--color-surface-2);
+    box-shadow:
+      var(--glow-gold),
+      inset 0 0 0 calc(var(--u) * 0.3) var(--color-gold-line);
+    padding: calc(var(--u) * 4) calc(var(--u) * 6) calc(var(--u) * 4.5);
+    text-align: center;
+    animation: tv-pop 420ms var(--ease-spring) both;
+  }
+  .tv-celebrate-name {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: calc(var(--u) * 11);
+    line-height: 1;
+    letter-spacing: -0.035em;
+    overflow-wrap: anywhere;
+  }
+
+  @keyframes tv-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes tv-pop {
+    0% {
+      transform: scale(0.82);
+      opacity: 0;
+    }
+    60% {
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+}

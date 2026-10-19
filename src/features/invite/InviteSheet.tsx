@@ -5,7 +5,7 @@
 // link lives in Host tools ("Host from another phone"), never next to Send.
 import { useEffect, useRef, useState } from "react";
 import type { GameState, Player } from "../../../shared/types";
-import { ArrowRightIcon, CheckIcon, CopyIcon } from "../../components/icons";
+import { ArrowRightIcon, CheckIcon, CopyIcon, PrinterIcon, TvIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
 import { inviteUrl } from "../../lib/api";
 import { readableTeamColor, shortMatchup, shortTeam, teamVars } from "../../lib/format";
@@ -62,6 +62,10 @@ export interface InviteSheetProps {
   watching?: number;
   /** The board was just created: lead with "it's live" and a small celebration. */
   justCreated?: boolean;
+  /** "Show on TV": open the board's TV view (/g/:id/tv). Hidden when not given. */
+  onShowTv?: () => void;
+  /** "Print board": open the printable board (/g/:id/print). Hidden when not given. */
+  onPrint?: () => void;
 }
 
 type Flash = "copied-link" | "shared" | "share-copied" | null;
@@ -74,7 +78,7 @@ const FLASH_MS = 2000;
 /** Team marks shrunk to sit inline with the card's matchup line. */
 const MINI_MARK = "!h-5 !w-auto min-w-6 !rounded-md px-1 !text-[0.5625rem]";
 
-export function InviteSheet({ state, open, onClose, justCreated = false }: InviteSheetProps) {
+export function InviteSheet({ state, open, onClose, justCreated = false, onShowTv, onPrint }: InviteSheetProps) {
   const theme = useResolvedTheme();
   const { game } = state;
   const url = inviteUrl(game.id);
@@ -225,6 +229,22 @@ export function InviteSheet({ state, open, onClose, justCreated = false }: Invit
         >
           {showCode ? "Hide code" : "Same room? Show code"}
         </Button>
+
+        {/* Watch party or office: the board on a TV, or on paper. */}
+        {(onShowTv || onPrint) && (
+          <div className="grid grid-cols-2 gap-2">
+            {onShowTv && (
+              <Button data-testid="invite-tv" variant="secondary" size="md" haptic="selection" leading={<TvIcon size={20} />} onClick={onShowTv}>
+                Show on TV
+              </Button>
+            )}
+            {onPrint && (
+              <Button data-testid="invite-print" variant="secondary" size="md" haptic="selection" leading={<PrinterIcon size={20} />} onClick={onPrint}>
+                Print board
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </BottomSheet>
   );

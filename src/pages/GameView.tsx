@@ -65,6 +65,7 @@ import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
 import { api, errorMessage, inviteUrl } from "../lib/api";
+import { boardViewPath } from "../lib/boardViews";
 import { pluralize, teamVars } from "../lib/format";
 import { getAdminToken, getPlayerId, isHostOf, rememberSeen, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
@@ -1247,6 +1248,8 @@ export default function GameView() {
           open={inviteOpen}
           watching={watching}
           justCreated={justCreated}
+          onShowTv={() => navigate(boardViewPath(game.id, "tv"))}
+          onPrint={() => navigate(boardViewPath(game.id, "print"))}
           onClose={() => {
             setInviteOpen(false);
             // Fresh from creating the board: now's the moment to offer notifications.

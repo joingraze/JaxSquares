@@ -244,6 +244,14 @@ Non-API routes:
 - `GET /g/:id` serves `index.html` with per-game Open Graph tags (HTMLRewriter) so an
   invite pasted in iMessage/WhatsApp previews as "Join <board name>".
 - The same page embeds the board's state (see "Boot state on invite links").
+- `GET /g/:id/tv` and `GET /g/:id/print` (the board's TV view and printable
+  board, see "TV mode and the printable board") are the same page: `index.html`,
+  the board's state, and a preview of their own (`boardPageOf` / `inviteMeta(…,
+  page)` in `worker/og.ts`): "<board name> on TV · JaxSquares" ("<matchup> · Live
+  on the big screen · <status>") and "Print <board name> · JaxSquares" ("<matchup>
+  · A printable board with a QR code to follow it live"), `og:url` the view's own
+  link. Never an amount. A code typed in capitals redirects (301) to the
+  lowercase view, like the board.
 - `assetlinks.json` reads `ANDROID_PACKAGE` (default `com.jaxsquares.app`) and
   `ANDROID_SHA256_CERT_FINGERPRINTS` (comma-separated); the AASA file reads
   `APPLE_TEAM_ID` and `APPLE_BUNDLE_ID`.
@@ -685,6 +693,66 @@ score, q1, q2, q3, final.
   per-element tweak. Colors computed in JS take the resolved theme:
   `teamVars(x, y, theme)` / `readableTeamColor(c, fallback, theme)` with
   `useResolvedTheme()` (team colors are lifted on dark and darkened to 3:1 on light).
+
+## TV mode and the printable board (client)
+
+Two views of a board for a room, at a suffix of its link (`boardViewPath` in
+`src/lib/boardViews.ts`), each its own lazy screen and route-preload entry
+(`src/App.tsx`, `vite.config.ts`). The shell lays them out full width, without
+the phone column or the route slide (`isBoardViewPath`).
+
+| Route | Screen | For |
+|---|---|---|
+| `/g/:id/tv` | `src/pages/TvView.tsx` (`src/features/tv`) | a TV or laptop at a watch party or bar (AirPlay, Chromecast, HDMI, a smart TV's browser), landscape 1280×720 to 4K; a portrait screen stacks |
+| `/g/:id/print` | `src/pages/PrintView.tsx` (`src/features/print`) | an office wall: US Letter or A4, landscape for 10×10, portrait for 5×5 |
+
+- Who can open them: anyone with the board link. Both read the public board
+  through `useGame` (socket + polling, and the page's boot state). `GET
+  /api/games/:id` and the live socket need no `x-client-id`, no membership and
+  no admin token, so a TV that never joined just watches: it never joins,
+  claims or asks for the admin token. The TV is nobody's player (`me = ""`:
+  nothing is "mine"); its socket counts once in "N watching" like any device.
+- Entry points: "Show on TV" and "Print board" in the board's invite sheet
+  (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
+  the host sheet's hint "Hosting a watch party? Show the board on your TV."
+  (`host-tv`).
+- TV mode shows the board as large as the screen allows (`tvLayout`: the full
+  height on 16:9, the panel keeps the rest; type scales with `--u`, 1% of the
+  short side), first names or initials in the squares (`tvCellName`), the
+  drawn digits, team colors (the panel's chips use the board's `--team-x/y`),
+  and the square the score points at right now (`rightNow`, glowing; red when
+  live). While squares are open the panel is a big QR code to the invite link
+  ("Scan to grab a square", the short link, squares left, the prize lineup);
+  once the numbers are drawn it's the score with the quarter and clock, "Right
+  now", the winners so far (`tvWinners`: each moment's label as the result
+  cards say it, amounts included since this is in-app, only whole rows that
+  fit) and what's still to play (`tvUpcoming`). A winner activity
+  (`useGame`'s `onActivity`) shows a 7 s celebration card (`celebrationFor`)
+  with Jax cheering and confetti, one at a time; reduced motion keeps it still.
+- TV plumbing (`src/features/tv/screen.ts`): the Screen Wake Lock, taken again
+  on `visibilitychange`; Full screen where the browser has it; a toolbar (Full
+  screen, Light/Dark, Exit) that hides itself and the cursor after 3.5 s with
+  no pointer, touch or key (a remote's arrows count). Its own theme, dark by
+  default, saved as `jaxsquares.tvTheme` and never touching the device's
+  Appearance choice; the pre-paint script in `index.html` paints a `/tv` page
+  in it, and leaving TV mode puts the device's theme back.
+- The printout (`PrintSheet`): the board name, teams and kickoff in local time
+  (`printDate`), the grid with each owner's name fitted to its box (`fitName`:
+  shrink, then split between words, then cut with "…"; widths from
+  `src/lib/textWidth.ts`) and the digits (a dash before the draw), who wins
+  when (`printRules` over `ruleLines`, so `GameFormat.rules` / `rulesOf`), a
+  line per fixed moment to write the winner on (`printWinners`), a QR code to
+  the live board ("Follow it live: jaxsquares.com/g/…") and "Made with
+  JaxSquares". Before anyone claims it's a sign-up sheet ("Grab a square on your
+  phone, or write your name in a box"). Amounts are off by default; the screen
+  version's "Include square price and prizes" switch (never printed) adds the
+  price and each prize's amount (`printPrice` / `printRules`, reading the rules
+  helpers; decided winners' amounts from `PeriodResult`). Black ink on white
+  in millimetres whatever the theme; the screen shows the same sheet scaled
+  inside its page. `@page` (size, 10 mm margin) is written by the page, and
+  print rules apply only under `html[data-print-page]`, set while it's open.
+  In the native app (whose web view can't print) the button shares the print
+  link to send to a computer.
 
 ## Kickoff
 

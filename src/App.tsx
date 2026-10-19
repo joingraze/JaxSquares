@@ -23,6 +23,9 @@ const screens = {
   home: () => import("./pages/Home"),
   create: () => import("./pages/CreateGame"),
   game: () => import("./pages/GameView"),
+  // The board on a TV (/g/:id/tv) and on paper (/g/:id/print): full-bleed, outside the phone column.
+  tv: () => import("./pages/TvView"),
+  print: () => import("./pages/PrintView"),
   profile: () => import("./pages/Profile"),
   privacy: () => import("./pages/Privacy"),
   terms: () => import("./pages/Terms"),
@@ -149,6 +152,8 @@ export function appRoutes(): RouteObject[] {
             { index: true, ...screen("home") },
             { path: "new", ...screen("create") },
             { path: "g/:id", ...screen("game") },
+            { path: "g/:id/tv", ...screen("tv") },
+            { path: "g/:id/print", ...screen("print") },
             { path: "me", ...screen("profile") },
             { path: "privacy", ...screen("privacy") },
             { path: "terms", ...screen("terms") },

@@ -311,3 +311,21 @@ export const PawIcon = make(
   </>,
   { fillable: true },
 );
+export const TvIcon = make(
+  "Tv",
+  <>
+    <rect x="2.5" y="4.5" width="19" height="13" rx="2.5" />
+    <path d="M8 21h8M12 17.5V21" />
+  </>,
+);
+export const PrinterIcon = make(
+  "Printer",
+  <>
+    <path d="M7 8.5V3.5h10v5" />
+    <path d="M7 17.5H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <path d="M7 14h10v6.5H7z" />
+    <path d="M17 11.5h.01" />
+  </>,
+);
+export const ExpandIcon = make("Expand", <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />);
+export const ShrinkIcon = make("Shrink", <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />);
