@@ -201,3 +201,7 @@ npm run deploy               # builds the SPA + Worker and publishes them togeth
 The D1 database id is already in `wrangler.jsonc`. For a fresh Cloudflare
 account, create one with `npx wrangler d1 create jaxsquares` and paste its id
 into `d1_databases[0].database_id`.
+
+`jaxsquares.com` is registered at Squarespace with its DNS on Cloudflare; the
+last deploy step attaches it to the Worker once the zone is active. Setup and
+status: [docs/domain.md](docs/domain.md).

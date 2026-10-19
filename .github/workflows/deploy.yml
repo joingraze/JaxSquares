@@ -86,3 +86,12 @@ jobs:
           # A landing page is its own static file, not the SPA fallback.
           curl -fsS "$URL/football-squares" | grep -q 'rel="canonical" href="https://jaxsquares.com/football-squares"'
           echo "Live: $URL"
+
+      # jaxsquares.com: once it's an active zone in this Cloudflare account,
+      # attach it to the Worker (idempotent). Until then the log prints the
+      # domain's DNS and what's left to do (docs/domain.md). Never fails the deploy.
+      - name: Custom domain (jaxsquares.com)
+        continue-on-error: true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: scripts/custom-domain.sh
