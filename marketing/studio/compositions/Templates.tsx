@@ -260,8 +260,9 @@ export function makeOnThisDay(p: OnThisDayProps) {
           <div
             className="absolute"
             style={{
-              left: 40,
-              right: 40,
+              // Narrow enough that row 9 clears the note card below.
+              left: 70,
+              right: 70,
               top: 160,
               opacity: gridIn,
               transform: `translateY(${(1 - gridIn) * 40}px)`,
@@ -298,7 +299,7 @@ export function makeOnThisDay(p: OnThisDayProps) {
             frame={frame}
             start={200}
             exit={OTD_FRAMES - 52}
-            style={{ position: "absolute", top: 446, left: 24, right: 24, zIndex: 31 }}
+            style={{ position: "absolute", top: 466, left: 24, right: 24, zIndex: 31 }}
           >
             <div className="rounded-2xl bg-pitch-900/90 px-4 py-3 text-center ring-1 ring-white/10">
               <div className="text-[13.5px] font-semibold leading-snug text-slate-200">
