@@ -43,6 +43,14 @@ dashboard instead:
 Optional, afterwards: turn DNSSEC on in Cloudflare (DNS → Settings) and add the
 DS record it gives you at Squarespace.
 
+## Status
+
+- Cloudflare zone `jaxsquares.com` added (Free plan) in the account with the
+  `jaxsquares` Worker. Squarespace's website A records and `www` CNAME were
+  deleted; the `_domainconnect` CNAME (Squarespace's helper) stays.
+- Cloudflare nameservers: `lily.ns.cloudflare.com`, `vern.ns.cloudflare.com`
+  (set at Squarespace → Domain nameservers → Use custom nameservers).
+
 ## After it's live
 
 - Stripe: register `jaxsquares.com` for Apple Pay (docs/payments.md).
