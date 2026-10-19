@@ -9,6 +9,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatAmount, formatRange } from "../../../shared/formats";
 import { gameKickoff } from "../../../shared/kickoff";
 import { shownClub } from "../../../shared/clubs";
+import { sportWords } from "../../../shared/sportWords";
 import type { ClubBrand, GameState, Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon, TrophyIcon } from "../../components/icons";
 import { LogoMark, cx } from "../../components/ui";
@@ -110,7 +111,7 @@ export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOp
           <TeamChip side="y" team={game.teamY} />
           <span>{shortTeam(game.teamY, game.league)}</span>
         </p>
-        {kickoff !== null && kickoff > now && <p className="tv-text-md text-ink-muted">{kicksOffLabel(kickoff, now)}</p>}
+        {kickoff !== null && kickoff > now && <p className="tv-text-md text-ink-muted">{kicksOffLabel(kickoff, now, game.sport)}</p>}
       </div>
 
       <div className={cx("flex flex-1 items-center gap-[calc(var(--u)*3)]", row ? "flex-row" : "flex-col justify-center text-center")}>
@@ -206,7 +207,7 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, 
   if (phase === "live") status = { text: score?.detail || "Live", tone: "live" };
   else if (phase === "final") status = { text: "Final", tone: "final" };
   // A countdown only while nothing's been scored (a custom board's host can score before its set time).
-  else if (kickoff !== null && kickoff > now && !score) status = { text: `Numbers drawn · kicks off in ${countdown(kickoff - now)}`, tone: "muted" };
+  else if (kickoff !== null && kickoff > now && !score) status = { text: `Numbers drawn · ${sportWords(game.sport).starts.toLowerCase()} in ${countdown(kickoff - now)}`, tone: "muted" };
   else status = { text: score ? score.detail : "Numbers drawn", tone: "muted" };
 
   return (

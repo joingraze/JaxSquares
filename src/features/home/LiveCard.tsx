@@ -92,7 +92,7 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
               <span className="inline-flex min-w-0 items-center gap-1 font-bold text-ink-gold">
                 <TrophyIcon size={13} strokeWidth={2.4} className="shrink-0" />
                 <span className="truncate">
-                  {wins.size === 1 && firstWin ? `Hit ${phraseOf(firstWin.periodKey, firstWin.label).moment}` : `${wins.size} hits`}
+                  {wins.size === 1 && firstWin ? `Hit ${phraseOf(firstWin.periodKey, firstWin.label, game.sport).moment}` : `${wins.size} hits`}
                 </span>
               </span>
             )}

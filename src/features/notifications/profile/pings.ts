@@ -3,6 +3,7 @@
 
 import { fixedPeriods, rulesOf } from "../../../../shared/formats";
 import { periodKeyForLive } from "../../../../shared/squares";
+import { sportWords } from "../../../../shared/sportWords";
 import type { GameSummary } from "../../../../shared/types";
 
 export interface PingBoards {
@@ -29,12 +30,12 @@ export function pingBoards(games: readonly GameSummary[]): PingBoards {
 }
 
 /** The next result this board will ping about: "Q1", "Half", "Q3", "Final", or "the next score". */
-export function upcomingResult(g: Pick<GameSummary, "format" | "live" | "latestScore">): string | null {
+export function upcomingResult(g: Pick<GameSummary, "format" | "live" | "latestScore"> & Partial<Pick<GameSummary, "sport" | "league">>): string | null {
   // The fixed moments the rules award; a board where only every score wins pings about the next score.
   const periods = fixedPeriods(rulesOf(g.format));
   if (periods.length === 0) return "the next score";
   if (g.live?.state === "in") {
-    const key = periodKeyForLive(g.format, g.live.period);
+    const key = periodKeyForLive(g.format, g.live.period, g);
     return periods.find((p) => p.key === key)?.label ?? "Final";
   }
   const last = g.latestScore?.label;
@@ -57,9 +58,9 @@ export function nextPing(g: GameSummary, now = Date.now()): string {
     return `Next: numbers drawn${squaresLine(g.mySquares)}`;
   }
   const notStarted = !g.latestScore && g.live?.state !== "in" && g.live?.state !== "post";
-  if (notStarted && g.startsAt && g.startsAt > now) return `Next: kickoff${squaresLine(g.mySquares)}`;
+  if (notStarted && g.startsAt && g.startsAt > now) return `Next: ${sportWords(g.sport).startLower}${squaresLine(g.mySquares)}`;
   const up = upcomingResult(g);
-  const what = up === "the next score" ? "the next score" : up ? `${up} result` : "the final whistle";
+  const what = up === "the next score" ? "the next score" : up ? `${up} result` : sportWords(g.sport).end;
   return `${g.live?.state === "in" ? "Live · next" : "Next"}: ${what}${squaresLine(g.mySquares)}`;
 }
 

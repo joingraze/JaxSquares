@@ -1041,6 +1041,7 @@ export async function listGamesForClient(
       id: game.id,
       name: game.name,
       sport: game.sport,
+      league: game.league,
       teamX: game.teamX,
       teamY: game.teamY,
       status: game.status,
@@ -1077,11 +1078,11 @@ export async function listGamesForClient(
 
 /** The live feed's score while it's on (or over), else the latest recorded period's. */
 export function latestScoreOf(
-  game: Pick<Game, "format" | "periods" | "status">,
+  game: Pick<Game, "format" | "periods" | "status"> & Partial<Pick<Game, "sport" | "league">>,
   scores: Score[],
   live: LiveStatus | null,
 ): GameSummary["latestScore"] {
-  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, game.status) };
+  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, game.status, game) };
   const byKey = new Map(scores.map((s) => [s.periodKey, s]));
   const last = boardPeriods(game, scores)
     .filter((p) => byKey.has(p.key))

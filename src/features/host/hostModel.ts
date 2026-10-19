@@ -36,6 +36,7 @@ import {
 import { cohostIdsOf } from "../../../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
+import { isFootball, periodsBefore, wordsFor } from "../../../shared/sports";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Player, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
@@ -273,7 +274,7 @@ export function hostStatusLine(state: GameState, now = Date.now()): string {
   }
   if (isLinked(game)) {
     if (state.live?.state === "in") return "Live · scores come in on their own";
-    return gameStarted(state, now) ? "Scores come in on their own" : "Numbers drawn · waiting for kickoff";
+    return gameStarted(state, now) ? "Scores come in on their own" : `Numbers drawn · waiting for ${wordsFor(game).startLower}`;
   }
   if (entriesOnly(game)) return "Numbers drawn · add each score as it happens";
   const next = upcomingPeriod(state);
@@ -378,8 +379,12 @@ export function scoreTargets(state: Pick<GameState, "game" | "scores">): ScoreTa
   return [...targets, { key: NEXT_ENTRY, label: everyScorePeriod(n + 1).label, existing: null }];
 }
 
-/** The live period number each fixed period ends with (linked boards); "final" ends with the game. */
-const ENDS_AFTER: Record<string, number> = { q1: 1, q2: 2, q3: 3 };
+/**
+ * The live period number each fixed period ends with (linked boards): Q1 1,
+ * the half 2, Q3 3; the half 1 in a game of halves (shared/sports.ts
+ * `periodsBefore`). "final" ends with the game.
+ */
+const endsAfter = (game: Pick<Game, "sport" | "league">, key: string): number | undefined => periodsBefore(key, game) ?? undefined;
 
 /** Play is stopped right after `live.period`: the feed's "End of 1st" or "Halftime" (see worker/scores/espn.ts). */
 function atBreak(live: LiveStatus): boolean {
@@ -387,19 +392,20 @@ function atBreak(live: LiveStatus): boolean {
 }
 
 /** The real game is still playing for this period, so its score isn't known yet. */
-function stillInPlay(live: LiveStatus | null, key: string): boolean {
+function stillInPlay(state: Pick<GameState, "game" | "live">, key: string): boolean {
+  const { live } = state;
   if (!live || live.state !== "in") return false;
-  const n = ENDS_AFTER[key];
+  const n = endsAfter(state.game, key);
   if (n === undefined) return true;
   return live.period < n || (live.period === n && !atBreak(live));
 }
 
-/** The live score is this period's final score: the break right after it, or the final whistle. */
+/** The live score is this period's final score: the break right after it, or the final whistle (buzzer). */
 function liveScoreIsFor(state: Pick<GameState, "game" | "live">, key: string): boolean {
   const { live } = state;
   if (!live) return false;
   if (key === "final") return live.state === "post" && liveLabel(live, state.game.status) === "Final";
-  return live.period === ENDS_AFTER[key] && atBreak(live);
+  return live.period === endsAfter(state.game, key) && atBreak(live);
 }
 
 /**
@@ -414,7 +420,7 @@ export function defaultTargetKey(state: Pick<GameState, "game" | "squares" | "sc
   if (hasEntries(game)) return NEXT_ENTRY;
   const periods = boardPeriods(game, state.scores);
   const next = upcomingPeriod(state);
-  if (next && stillInPlay(state.live, next.key)) {
+  if (next && stillInPlay(state, next.key)) {
     const done = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
     const last = periods.filter((p) => done.has(p.key)).at(-1);
     if (last) return last.key;
@@ -574,7 +580,7 @@ export function previewWinner(state: GameState, key: string, draft: ScoreDraft):
   const rev = rule?.reverse && !reverseOnly ? swapped : null;
   const legacy = !state.game.format.rules?.length;
   const note = legacy ? prizeFor(state.game.prizes, real) : (reverseOnly ? rule?.reverse?.note : rule?.square?.note) || null;
-  const football = !state.game.sport || state.game.sport === "football";
+  const football = isFootball(state.game);
   const play = football && everyScoreIndex(real) !== null ? entryPlayFor(state.scores, real, scoreX, scoreY) : null;
   return {
     periodKey: real,

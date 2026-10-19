@@ -39,7 +39,8 @@ import {
   type PeriodResult,
 } from "../../../shared/squares";
 import { isCohostOf, type HostRole } from "../../../shared/cohosts";
-import type { Activity, AmountUnit, Game, GameState, GameStatus, MomentRule, NumberDraw, Player, Square } from "../../../shared/types";
+import { isBasketball, periodName, wordsFor, type GameKind } from "../../../shared/sports";
+import type { Activity, AmountUnit, Game, GameState, GameStatus, MomentRule, NumberDraw, Player, Sport, Square } from "../../../shared/types";
 
 /** Matches docs/testids.md: `data-state` on every board square. */
 export type CellState = "empty" | "mine" | "taken" | "selected" | "winner";
@@ -325,8 +326,9 @@ export function headlineScore(state: Pick<GameState, "game" | "scores" | "live">
   return null;
 }
 
-function clockLine(period: number, clock: string): string {
-  const p = period > 4 ? "OT" : `Q${Math.max(1, period)}`;
+/** "Q3 8:41", "OT", or "H2 12:41" in a game of halves (when the feed sends no text of its own). */
+function clockLine(period: number, clock: string, kind?: GameKind): string {
+  const p = periodName(period, kind);
   return clock ? `${p} ${clock}` : p;
 }
 
@@ -351,8 +353,29 @@ const PLAY_WEIGHT: Record<number, number> = { 7: 0.34, 3: 0.3, 6: 0.03, 8: 0.03,
 /** Two scores in what's left of a period are less likely than either alone. */
 const SECOND_SCORE = 0.5;
 
-/** "field goal", "touchdown"... for a play's points. */
-export function playName(points: number): string {
+/**
+ * A sport's scoring plays for "how close am I": its plays likeliest first,
+ * their rough weights, and the two the "what's next" chips show per team.
+ */
+export interface PlayBook {
+  plays: readonly number[];
+  weight: Readonly<Record<number, number>>;
+  outcomes: readonly number[];
+  sport: "football" | "basketball";
+}
+
+const FOOTBALL_BOOK: PlayBook = { plays: SCORING_PLAYS, weight: PLAY_WEIGHT, outcomes: [7, 3], sport: "football" };
+/** Basketball: a basket (2), a three, a free throw. */
+const BASKETBALL_BOOK: PlayBook = { plays: [2, 3, 1], weight: { 2: 0.45, 3: 0.3, 1: 0.2 }, outcomes: [2, 3], sport: "basketball" };
+
+/** The board's plays: basketball's baskets and threes, else football's touchdowns and field goals. */
+export function playBookFor(kind?: GameKind | null): PlayBook {
+  return isBasketball(kind) ? BASKETBALL_BOOK : FOOTBALL_BOOK;
+}
+
+/** "field goal", "touchdown"... for a play's points; "basket", "three", "free throw" in basketball. */
+export function playName(points: number, kind?: GameKind | null): string {
+  if (isBasketball(kind)) return points === 3 ? "three" : points === 1 ? "free throw" : points === 2 ? "basket" : `${points}-point play`;
   switch (points) {
     case 7:
       return "touchdown";
@@ -386,13 +409,14 @@ function addPlays(score: ScorePair, plays: ScoringPlay[]): ScorePair {
   return { scoreX, scoreY };
 }
 
-const SINGLE_PLAYS: ScoringPlay[] = SCORING_PLAYS.flatMap((points) => [
-  { team: "x" as const, points },
-  { team: "y" as const, points },
-]);
+const singlePlays = (book: PlayBook): ScoringPlay[] =>
+  book.plays.flatMap((points) => [
+    { team: "x" as const, points },
+    { team: "y" as const, points },
+  ]);
 
-const weightOf = (plays: ScoringPlay[]) =>
-  plays.reduce((w, p, i) => w * (PLAY_WEIGHT[p.points] ?? 0.01) * (i > 0 ? SECOND_SCORE : 1), 1);
+const weightOf = (plays: ScoringPlay[], book: PlayBook) =>
+  plays.reduce((w, p, i) => w * (book.weight[p.points] ?? 0.01) * (i > 0 ? SECOND_SCORE : 1), 1);
 
 /**
  * The likeliest way, in at most `maxPlays` (2) common scoring plays, for the
@@ -407,8 +431,10 @@ export function nearestPath(
   maxPlays = 2,
   minPlays = 0,
   reverse = false,
+  book: PlayBook = FOOTBALL_BOOK,
 ): ScorePath | null {
   if (mine.size === 0) return null;
+  const SINGLE_PLAYS = singlePlays(book);
   const cellAt = reverse ? reverseCell : winningCell;
   const hit = (plays: ScoringPlay[]): ScorePath | null => {
     const cell = cellAt(addPlays(score, plays), draw);
@@ -424,7 +450,7 @@ export function nearestPath(
   let best: ScorePath | null = null;
   let bestWeight = 0;
   for (const plays of options) {
-    const w = weightOf(plays);
+    const w = weightOf(plays, book);
     if (w <= bestWeight) continue;
     const found = hit(plays);
     if (found) {
@@ -443,9 +469,10 @@ export function nextChange(
   squares: Square[],
   me?: string,
   reverse = false,
+  book: PlayBook = FOOTBALL_BOOK,
 ): { play: ScoringPlay; cell: Cell; ownerId: string | null } | null {
   const cellAt = reverse ? reverseCell : winningCell;
-  for (const play of SINGLE_PLAYS) {
+  for (const play of singlePlays(book)) {
     const cell = cellAt(addPlays(score, [play]), draw);
     if (!cell || cellKey(cell.row, cell.col) === fromKey) continue;
     const ownerId = squareAt(squares, cell.row, cell.col)?.playerId ?? null;
@@ -456,6 +483,8 @@ export function nextChange(
 }
 
 export interface NowView {
+  /** The board's sport (the plays and words follow it: "a Lakers three", "the final buzzer"). */
+  sport?: Sport;
   /** Real live game data; false = the last recorded score ("if nobody scores"). */
   live: boolean;
   periodKey: string | null;
@@ -522,7 +551,7 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
     // The fixed period in play, or the next score once those are decided (every-score boards: always).
     ({ periodKey, rule } = momentInPlay(state, live.period));
     score = { scoreX: live.scoreX, scoreY: live.scoreY };
-    detail = live.detail || clockLine(live.period, live.clock);
+    detail = live.detail || clockLine(live.period, live.clock, game);
   } else {
     const next = upcomingPeriod(state);
     if (next) periodKey = next.key;
@@ -549,12 +578,15 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
   const rev = rule?.reverse && !reverseOnly ? reverseCell(score, draw) : null;
   const label = everyScore ? "Next score" : (fixedPeriodsOf(game).find((p) => p.key === periodKey)?.label ?? "This period");
   // Every-score boards: the current square is already decided, so it's all about the next score.
-  const change = mine && !everyScore ? nextChange(score, draw, cellKey(cell.row, cell.col), squares, me, reverseOnly) : null;
-  const outcomes = OUTCOME_PLAYS.flatMap((play) => {
+  const book = playBookFor(game);
+  const change = mine && !everyScore ? nextChange(score, draw, cellKey(cell.row, cell.col), squares, me, reverseOnly, book) : null;
+  const outcomePlays: ScoringPlay[] = book === FOOTBALL_BOOK ? OUTCOME_PLAYS : (["x", "y"] as const).flatMap((team) => book.outcomes.map((points) => ({ team, points })));
+  const outcomes = outcomePlays.flatMap((play) => {
     const c = cellAt(addPlays(score, [play]), draw);
     return c ? [{ play, cell: c, ownerId: owner(c) }] : [];
   });
   return {
+    sport: game.sport,
     live: isLive,
     periodKey,
     label,
@@ -568,7 +600,7 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
     ownerId,
     mine,
     reverse: rev ? { cell: rev, ownerId: owner(rev) } : null,
-    path: everyScore ? nearestPath(score, draw, mineKeys, 2, 1, reverseOnly) : mine ? null : nearestPath(score, draw, mineKeys, 2, 0, reverseOnly),
+    path: everyScore ? nearestPath(score, draw, mineKeys, 2, 1, reverseOnly, book) : mine ? null : nearestPath(score, draw, mineKeys, 2, 0, reverseOnly, book),
     threat: change ? { play: change.play, ownerId: change.ownerId } : null,
     outcomes,
     mineCount: mineKeys.size,
@@ -586,9 +618,9 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
  * score) "Wins at halftime if it stays 14–10". Mine reads "Yours …".
  */
 export function nowSentence(
-  now: Pick<NowView, "live" | "periodKey" | "label" | "scoreX" | "scoreY" | "mine" | "ownerId"> & Partial<Pick<NowView, "reverseOnly">>,
+  now: Pick<NowView, "live" | "periodKey" | "label" | "scoreX" | "scoreY" | "mine" | "ownerId"> & Partial<Pick<NowView, "reverseOnly" | "sport">>,
 ): string {
-  const { moment } = periodPhrase(now.periodKey ?? "", now.label);
+  const { moment } = periodPhrase(now.periodKey ?? "", now.label, now.sport);
   const when = now.reverseOnly ? `${moment} (reverse)` : moment;
   const score = `${now.scoreX}–${now.scoreY}`;
   const verb = now.mine ? "Yours" : now.ownerId ? "Wins" : "Nobody wins";
@@ -833,7 +865,7 @@ export function fallbackActivityText(a: Activity, state: Pick<GameState, "game" 
     case "released":
       return `${who} gave back ${squaresWord(count)}`;
     case "locked":
-      return d.auto ? "Kickoff! Numbers are locked in" : "Numbers drawn. Good luck!";
+      return d.auto ? `${wordsFor(state.game).start}! Numbers are locked in` : "Numbers drawn. Good luck!";
     case "score": {
       const label = typeof d.label === "string" ? d.label : "Score";
       return `${label}: ${teamX.abbr || teamX.name} ${Number(d.scoreX) || 0} – ${teamY.abbr || teamY.name} ${Number(d.scoreY) || 0}`;
@@ -847,7 +879,7 @@ export function fallbackActivityText(a: Activity, state: Pick<GameState, "game" 
       return `${label}: ${joined} ${names.length === 1 && names[0] === "You" ? "won!" : names.length > 1 ? "win" : "wins"}`;
     }
     case "final":
-      return "That's the final whistle";
+      return `That's ${wordsFor(state.game).end}`;
     case "rules":
       return d.scoring ? `${who} changed the rules` : `${who} updated the prizes`;
     case "cohost":

@@ -2,8 +2,9 @@
 // Pure functions (no React, no IO) so they are easy to test.
 
 import type { CSSProperties } from "react";
-import { NFL_TEAMS } from "../../shared/teams";
-import type { Game, GameStatus, League, Team } from "../../shared/types";
+import { NBA_TEAMS, NFL_TEAMS } from "../../shared/teams";
+import { sportWords } from "../../shared/sportWords";
+import type { Game, GameStatus, League, Sport, Team } from "../../shared/types";
 import type { ResolvedTheme } from "./theme";
 
 // ---- Names ----
@@ -53,19 +54,41 @@ const TWO_WORD_MASCOTS = [
   "big green",
   "big red",
   "mountain hawks",
+  // College basketball's own.
+  "red storm",
+  "golden grizzlies",
+  "golden griffins",
+  "blue demons",
+  "blue hose",
+  "purple aces",
+  "purple eagles",
+  "great danes",
+  "fighting camels",
+  "delta devils",
+  "runnin' bulldogs",
+  "rainbow wahine",
+  "lady volunteers",
+  "lady techsters",
 ];
 
 /**
  * The name fans use in conversation: "Kansas City Chiefs" -> "Chiefs" (NFL),
- * "Penn State Nittany Lions" -> "Penn State" (college: the school, mascot dropped).
+ * "Los Angeles Lakers" -> "Lakers" (NBA, WNBA: the nickname), "Penn State
+ * Nittany Lions" -> "Penn State" (college: the school, mascot dropped).
  */
 export function shortTeamName(team: Team, league: League): string {
   const name = team.name.trim().replace(/\s+/g, " ");
-  if (league === "nfl") {
+  if (league === "nfl" || league === "nba") {
     const abbr = team.abbr?.toUpperCase();
-    const nfl = (abbr ? NFL_TEAMS.find((t) => t.abbr === abbr) : undefined) ?? NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
-    if (nfl) return nfl.nickname;
-    return name;
+    const teams = league === "nba" ? NBA_TEAMS : NFL_TEAMS;
+    const pro = (abbr ? teams.find((t) => t.abbr === abbr) : undefined) ?? teams.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
+    if (pro) return pro.nickname;
+    if (league === "nfl") return name;
+  }
+  if (league === "nba" || league === "wnba") {
+    // Pro basketball nicknames are one word ("Aces", "Liberty", "Valkyries").
+    const words = name.split(" ");
+    return words.length > 1 ? words[words.length - 1] : name;
   }
   if (league === "custom") return name;
   const words = name.split(" ");
@@ -78,13 +101,13 @@ export function shortTeamName(team: Team, league: League): string {
 
 /**
  * The name friends use for a team: "Green Bay Packers" -> "Packers" (an NFL
- * team, linked or typed), "Penn State Nittany Lions" -> "Penn State"
+ * or NBA team, linked or typed), "Penn State Nittany Lions" -> "Penn State"
  * (college), anything typed stays as typed.
  */
 export function shortTeam(team: Team, league: Game["league"]): string {
   const name = team.name.trim().replace(/\s+/g, " ");
-  const nfl = NFL_TEAMS.find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
-  if (nfl) return nfl.nickname;
+  const pro = [...NFL_TEAMS, ...NBA_TEAMS].find((t) => `${t.location} ${t.nickname}`.toLowerCase() === name.toLowerCase());
+  if (pro) return pro.nickname;
   if (league === "custom") return name || team.abbr?.trim() || "";
   return shortTeamName(team, league) || name;
 }
@@ -296,9 +319,12 @@ export function zoneLabel(ts = Date.now(), timeZone?: string): string {
   return part?.value ?? "";
 }
 
-/** "Kicks off Sun 1:00 PM PDT", "Kicks off Today 8:20 PM PDT", "Kicks off Oct 26 · 1:00 PM PDT". */
-export function kicksOffLabel(ts: number, now = Date.now()): string {
-  return `Kicks off ${kickoffLabel(ts, now)} ${zoneLabel(ts)}`.trim();
+/**
+ * "Kicks off Sun 1:00 PM PDT", "Kicks off Today 8:20 PM PDT", "Kicks off Oct
+ * 26 · 1:00 PM PDT"; on a basketball board (`sport`) "Tips off Today 7:30 PM PDT".
+ */
+export function kicksOffLabel(ts: number, now = Date.now(), sport?: Sport | null): string {
+  return `${sportWords(sport).starts} ${kickoffLabel(ts, now)} ${zoneLabel(ts)}`.trim();
 }
 
 /** Compact countdown: "2d 4h", "3h 12m", "45m", "<1m". */

@@ -109,9 +109,9 @@ export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
 
 // ---- Editing ----
 
-/** Every moment in game order, with its rule (null = it doesn't win). */
-export function editorRows(rules: readonly MomentRule[]): { moment: Moment; rule: MomentRule | null }[] {
-  return MOMENTS.map((moment) => ({ moment, rule: rules.find((r) => r.moment === moment) ?? null }));
+/** Every moment in game order (the game's own, `moments`: basketball has no every score, a game of halves only halftime and the final), with its rule (null = it doesn't win). */
+export function editorRows(rules: readonly MomentRule[], moments: readonly Moment[] = MOMENTS): { moment: Moment; rule: MomentRule | null }[] {
+  return moments.map((moment) => ({ moment, rule: rules.find((r) => r.moment === moment) ?? null }));
 }
 
 /** True when the reverse square wins at every moment these rules have. */

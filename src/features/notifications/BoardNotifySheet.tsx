@@ -5,7 +5,7 @@
 // up on the server.
 
 import { useState } from "react";
-import type { EmailNoticeStatus } from "../../../shared/types";
+import type { EmailNoticeStatus, Sport } from "../../../shared/types";
 import { BottomSheet, Button } from "../../components/ui";
 import { EmailOptIn } from "./EmailOptIn";
 import { MuteToggle } from "./MuteToggle";
@@ -15,11 +15,13 @@ import "./notifications.css";
 export interface BoardNotifySheetProps {
   gameId: string;
   boardName: string;
+  /** The board's sport (the mute row's "tip-off" on a basketball board). */
+  sport?: Sport;
   open: boolean;
   onClose: () => void;
 }
 
-export function BoardNotifySheet({ gameId, boardName, open, onClose }: BoardNotifySheetProps) {
+export function BoardNotifySheet({ gameId, boardName, open, onClose, sport }: BoardNotifySheetProps) {
   const push = usePushStatus(open);
   const [status, setStatus] = useState<EmailNoticeStatus | null>(null);
 
@@ -40,7 +42,7 @@ export function BoardNotifySheet({ gameId, boardName, open, onClose }: BoardNoti
           <section aria-label="On this device">
             <p className="eyebrow mb-2 px-1 text-ink-subtle">On this device</p>
             <div className="rounded-2xl p-3.5 ring-1 ring-inset ring-line">
-              <MuteToggle gameId={gameId} label={boardName} />
+              <MuteToggle gameId={gameId} label={boardName} sport={sport} />
             </div>
           </section>
         )}

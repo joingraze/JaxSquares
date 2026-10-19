@@ -1,5 +1,6 @@
-// ScoreHub: one Durable Object per league (idFromName("espn:nfl")) that every
-// ESPN request goes through: the game picker's schedule and every linked
+// ScoreHub: one Durable Object per league (idFromName("espn:nfl"), "espn:nba",
+// "espn:ncaab"...) that every ESPN request goes through: the game picker's
+// schedule (by week for football, by day for basketball) and every linked
 // board's live-score poll. A Durable Object is a single context, so concurrent
 // callers can safely wait on one in-flight fetch, and its memory is one cache
 // for the whole app: ESPN sees about one request per scoreboard per TTL no
@@ -8,10 +9,11 @@
 // Classic Durable Object class (no `cloudflare:workers` import), like GameRoom,
 // so it loads in plain Vitest.
 
+import { isDayLeague } from "../../shared/sports";
 import type { LinkedEvent } from "../../shared/types";
 import type { Env } from "../env";
-import { parseWeekId } from "./espn";
-import { fetchLiveForEvent, getSchedule, isLinkedLeague } from "./index";
+import { parseDayId, parseWeekId } from "./espn";
+import { fetchLiveForEvent, isLinkedLeague, scheduleFor } from "./index";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -49,8 +51,14 @@ export class ScoreHub implements DurableObject {
     if (url.pathname === "/schedule" && request.method === "GET") {
       const league = url.searchParams.get("league") ?? "";
       const week = url.searchParams.get("week") ?? undefined;
-      if (!isLinkedLeague(league) || (week !== undefined && !parseWeekId(week))) return json({ error: "bad query" }, 400);
-      return json(await getSchedule(league, week, { inflight: this.inflight }));
+      const date = url.searchParams.get("date") ?? undefined;
+      if (!isLinkedLeague(league)) return json({ error: "bad query" }, 400);
+      // Football goes by week, basketball by day (YYYYMMDD).
+      const bad = isDayLeague(league)
+        ? week !== undefined || (date !== undefined && parseDayId(date) === null)
+        : date !== undefined || (week !== undefined && !parseWeekId(week));
+      if (bad) return json({ error: "bad query" }, 400);
+      return json(await scheduleFor(league, { week, date }, { inflight: this.inflight }));
     }
     return json({ error: "not found" }, 404);
   }

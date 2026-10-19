@@ -16,9 +16,10 @@ import {
   tidyNote,
   type FixedPreset,
 } from "../../../shared/formats";
-import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
+import { leagueSport, playsHalves, wordsFor, type BoardSport, type GameKind } from "../../../shared/sports";
+import { nflTeamToTeam, teamsForSport, type NflTeam, type ProTeam } from "../../../shared/teams";
 import { shortTeam, shortTeamName } from "../../lib/format";
-import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Team } from "../../../shared/types";
+import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Sport, Team } from "../../../shared/types";
 import { capLine, firstNoteProblem, formatOf, isEveryScoreSetup, isEveryScoreWithReverseQuarters, noteInputId, type PrizeChoice } from "../rules/rulesModel";
 
 /**
@@ -34,68 +35,87 @@ export const TEAM_NAME_MAX = 40;
 export const BOARD_NAME_MAX = 60;
 
 // ---- Team names ----
+//
+// A custom board's typed teams match the NFL's on a football board and the
+// NBA's on a basketball board (shared/teams.ts `teamsForSport`).
 
-function nflByAbbr(abbr: string | undefined): NflTeam | undefined {
+function teamByAbbr(abbr: string | undefined, sport: BoardSport = "football"): ProTeam | undefined {
   if (!abbr) return undefined;
   const a = abbr.toUpperCase();
-  return NFL_TEAMS.find((t) => t.abbr === a);
+  return teamsForSport(sport).find((t) => t.abbr === a);
 }
 
-/** Team colors from live data, keyed by NFL abbreviation ("GB" -> "#204e32"). */
+/** Team colors from live data, keyed by abbreviation ("GB" -> "#204e32"); one map per sport. */
 export type TeamColors = Readonly<Record<string, string>>;
 
 /**
- * What a typed custom team becomes: an exact NFL match (abbreviation, nickname,
- * full name, or an unambiguous city) is upgraded to the full team with its
- * abbreviation, and its color when this week's live schedule has it; anything
- * else is kept as typed. Null when blank.
+ * What a typed custom team becomes: an exact match among the sport's pro teams
+ * (abbreviation, nickname, full name, or an unambiguous city) is upgraded to
+ * the full team with its abbreviation, and its color when the live schedule
+ * has it; anything else is kept as typed. Null when blank. `nfl` is the
+ * matched pro team (the NBA's on a basketball board).
  */
-export function resolveCustomTeam(text: string, colors: TeamColors = {}): { team: Team; nfl: NflTeam | null } | null {
+export function resolveCustomTeam(text: string, colors: TeamColors = {}, sport: BoardSport = "football"): { team: Team; nfl: ProTeam | null } | null {
   const typed = text.trim().replace(/\s+/g, " ").slice(0, TEAM_NAME_MAX);
   if (!typed) return null;
-  const nfl = matchNflTeam(typed);
-  if (nfl) {
-    const color = colors[nfl.abbr];
-    return { team: color ? { ...nflTeamToTeam(nfl), color } : nflTeamToTeam(nfl), nfl };
+  const pro = matchTeam(typed, sport);
+  if (pro) {
+    const color = colors[pro.abbr];
+    return { team: color ? { ...nflTeamToTeam(pro), color } : nflTeamToTeam(pro), nfl: pro };
   }
   return { team: { name: typed }, nfl: null };
 }
 
 /**
- * NFL team colors from the live schedule (the only place team colors come
- * from), so a typed "Packers" gets the same green as the linked GB @ CHI game.
+ * Pro team colors from the live schedule (the only place team colors come
+ * from), so a typed "Packers" gets the same green as the linked GB @ CHI game
+ * (and a typed "Lakers" the NBA schedule's purple, with `league` "nba").
  */
-export function teamColorsFrom(events: readonly ScheduleEvent[]): TeamColors {
+export function teamColorsFrom(events: readonly ScheduleEvent[], league: "nfl" | "nba" = "nfl"): TeamColors {
+  const sport: BoardSport = league === "nba" ? "basketball" : "football";
   const out: Record<string, string> = {};
   for (const e of events) {
-    if (e.league !== "nfl") continue;
+    if (e.league !== league) continue;
     for (const t of [e.home, e.away]) {
       const abbr = t.abbr?.toUpperCase();
-      if (abbr && t.color && nflByAbbr(abbr)) out[abbr] = t.color;
+      if (abbr && t.color && teamByAbbr(abbr, sport)) out[abbr] = t.color;
     }
   }
   return out;
 }
 
+const popular = (abbrs: string[], sport: BoardSport) => abbrs.map((abbr) => teamByAbbr(abbr, sport)).filter((t): t is ProTeam => Boolean(t));
+
 /** One-tap teams for a custom board, before anything is typed. */
-export const POPULAR_TEAMS: readonly NflTeam[] = ["KC", "PHI", "DAL", "GB", "BUF", "SF", "DET", "BAL"]
-  .map((abbr) => nflByAbbr(abbr))
-  .filter((t): t is NflTeam => Boolean(t));
+export const POPULAR_TEAMS: readonly NflTeam[] = popular(["KC", "PHI", "DAL", "GB", "BUF", "SF", "DET", "BAL"], "football");
+/** The same for a custom basketball board. */
+export const POPULAR_NBA_TEAMS: readonly ProTeam[] = popular(["LAL", "BOS", "GS", "NY", "MIA", "CHI", "DEN", "OKC"], "basketball");
+
+/** The one-tap teams for a custom board of this sport. */
+export function popularTeams(sport: BoardSport = "football"): readonly ProTeam[] {
+  return sport === "basketball" ? POPULAR_NBA_TEAMS : POPULAR_TEAMS;
+}
 
 export function matchNflTeam(text: string): NflTeam | null {
+  return matchTeam(text, "football");
+}
+
+/** The sport's pro team a typed name means (abbreviation, nickname, full name or an unambiguous city), or null. */
+export function matchTeam(text: string, sport: BoardSport = "football"): ProTeam | null {
   const q = text.trim().toLowerCase().replace(/\s+/g, " ");
   if (!q) return null;
-  const exact = NFL_TEAMS.find(
+  const teams = teamsForSport(sport);
+  const exact = teams.find(
     (t) => t.abbr.toLowerCase() === q || t.nickname.toLowerCase() === q || `${t.location} ${t.nickname}`.toLowerCase() === q,
   );
   if (exact) return exact;
-  const byCity = NFL_TEAMS.filter((t) => t.location.toLowerCase() === q);
+  const byCity = teams.filter((t) => t.location.toLowerCase() === q);
   return byCity.length === 1 ? byCity[0] : null;
 }
 
-/** The label a custom team shows on the board name: the nickname for an NFL match, else what was typed. */
-export function customShortName(text: string): string {
-  const resolved = resolveCustomTeam(text);
+/** The label a custom team shows on the board name: the nickname for a pro team match, else what was typed. */
+export function customShortName(text: string, sport: BoardSport = "football"): string {
+  const resolved = resolveCustomTeam(text, {}, sport);
   if (!resolved) return "";
   return resolved.nfl ? resolved.nfl.nickname : resolved.team.name;
 }
@@ -237,8 +257,9 @@ export function boardHeadline(format: GameFormat): string {
  * Plain-language rules that follow every choice, e.g. "The square matching the
  * last digit of each team's score wins after Q1, at halftime, after Q3 and at
  * the final." Custom rules say where the square and the reverse square win.
+ * `kind` words fresh numbers: every quarter, or every half in a game of halves.
  */
-export function describeBoard(format: GameFormat): string {
+export function describeBoard(format: GameFormat, kind?: GameKind): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
   let text: string;
@@ -258,18 +279,18 @@ export function describeBoard(format: GameFormat): string {
     text = text.trim();
   }
   if (format.boardSize === 25) text += " Two numbers per row and column.";
-  if (freshApplies(format)) text += " New numbers every quarter.";
+  if (freshApplies(format)) text += playsHalves(kind) ? " New numbers every half." : " New numbers every quarter.";
   return text;
 }
 
 /** One line for the rules row and the checkout ticket: "Every quarter · 10×10 · Reverse". */
-export function formatLine(format: GameFormat): string {
+export function formatLine(format: GameFormat, kind?: GameKind): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
   const size = BOARD_SIZE_INFO[format.boardSize].short;
   const parts = exact ? [PRESET_INFO[exact.preset].label, size] : [rulesSummary(rules), size];
   if (exact?.reverse) parts.push("Reverse");
-  if (freshApplies(format)) parts.push("New numbers each Q");
+  if (freshApplies(format)) parts.push(playsHalves(kind) ? "New numbers each half" : "New numbers each Q");
   return parts.join(" · ");
 }
 
@@ -316,6 +337,8 @@ export interface BoardMatchup {
   teamX: Team;
   teamY: Team;
   league: League;
+  /** That board's sport (absent on older cached boards: its league's, else football). */
+  sport?: Sport;
   linkedEvent: LinkedEvent | null;
   /** A custom board's kickoff (null = no set time); a linked board's is its event's. */
   startsAt: number | null;
@@ -323,24 +346,34 @@ export interface BoardMatchup {
 
 export type Matchup =
   | { kind: "linked"; event: ScheduleEvent }
-  | { kind: "custom"; x: string; y: string }
+  /** Two typed teams the host scores by hand, as football (the default) or basketball. */
+  | { kind: "custom"; x: string; y: string; sport?: BoardSport }
   | { kind: "board"; from: BoardMatchup };
+
+/** The sport and league a matchup's board is played as (its moments, presets, words). */
+export function matchupKind(m: Matchup | null): { sport: Sport; league: League } {
+  if (!m) return { sport: "football", league: "custom" };
+  if (m.kind === "board") return { sport: m.from.sport ?? leagueSport(m.from.league) ?? "football", league: m.from.league };
+  if (m.kind === "linked") return { sport: leagueSport(m.event.league) ?? "football", league: m.event.league };
+  return { sport: m.sport ?? "football", league: "custom" };
+}
 
 /** The two teams (and link) a matchup puts on the board, or null while incomplete. */
 export function matchupTeams(
   m: Matchup | null,
   colors: TeamColors = {},
-): { teamX: Team; teamY: Team; league: League; linkedEvent: LinkedEvent | null } | null {
+): { teamX: Team; teamY: Team; league: League; sport: Sport; linkedEvent: LinkedEvent | null } | null {
   if (!m) return null;
-  if (m.kind === "board") return { ...withSideColors(m.from.teamX, m.from.teamY), league: m.from.league, linkedEvent: m.from.linkedEvent };
+  const { sport } = matchupKind(m);
+  if (m.kind === "board") return { ...withSideColors(m.from.teamX, m.from.teamY), league: m.from.league, sport, linkedEvent: m.from.linkedEvent };
   if (m.kind === "linked") {
     const o = orientEvent(m.event);
-    return { ...withSideColors(o.teamX, o.teamY), league: m.event.league, linkedEvent: o.linkedEvent };
+    return { ...withSideColors(o.teamX, o.teamY), league: m.event.league, sport, linkedEvent: o.linkedEvent };
   }
-  const x = resolveCustomTeam(m.x, colors);
-  const y = resolveCustomTeam(m.y, colors);
+  const x = resolveCustomTeam(m.x, colors, m.sport);
+  const y = resolveCustomTeam(m.y, colors, m.sport);
   if (!x || !y) return null;
-  return { ...withSideColors(x.team, y.team), league: "custom", linkedEvent: null };
+  return { ...withSideColors(x.team, y.team), league: "custom", sport, linkedEvent: null };
 }
 
 /** Teams as the board will show them: a team without a color gets its side's color. */
@@ -355,8 +388,8 @@ export function matchupShortNames(m: Matchup | null): [string, string] | null {
   if (m.kind === "linked") {
     return [shortTeamName(m.event.away, m.event.league), shortTeamName(m.event.home, m.event.league)];
   }
-  const x = customShortName(m.x);
-  const y = customShortName(m.y);
+  const x = customShortName(m.x, m.sport);
+  const y = customShortName(m.y, m.sport);
   return x && y ? [x, y] : null;
 }
 
@@ -395,7 +428,7 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
   const total = format.boardSize;
   return {
     name,
-    sport: "football",
+    sport: teams.sport,
     league: teams.league,
     teamX: teams.teamX,
     teamY: teams.teamY,
@@ -442,7 +475,9 @@ export function blockersOf(d: BlockerInput): CreateBlocker[] {
     if (!x && !y) out.push({ field: "team-x", label: "Add both teams to continue" });
     else if (!x) out.push({ field: "team-x", label: "Add the away team to continue" });
     else if (!y) out.push({ field: "team-y", label: "Add the home team to continue" });
-    if (d.kickoff != null && kickoffProblem(d.kickoff, d.now ?? Date.now())) out.push({ field: "kickoff", label: "Pick another kickoff to continue" });
+    if (d.kickoff != null && kickoffProblem(d.kickoff, d.now ?? Date.now())) {
+      out.push({ field: "kickoff", label: `Pick another ${wordsFor(matchupKind(m)).startLower} to continue` });
+    }
   }
   const prize = firstPrizeProblem(d.format);
   if (prize) out.push({ field: "prize", key: prize.key, label: "Fix the prize note to continue" });

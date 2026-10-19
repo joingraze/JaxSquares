@@ -38,6 +38,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
+import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
 import type { Game, GameFormat, GameState, ScheduleEvent } from "../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
@@ -76,6 +77,7 @@ import {
   buildCreateInput,
   createFeeLine,
   createFormat,
+  matchupKind,
   matchupShortNames,
   matchupTeams,
   teamColorsFrom,
@@ -116,6 +118,8 @@ const LIVE_BEAT_MS = 650;
 /** A tapped game shows its check for a beat before the flow moves on. */
 const PICK_BEAT_MS = 260;
 const HOST_INPUT_ID = "host-name";
+const FOOTBALL_ONLY: readonly BoardSport[] = ["football"];
+const BOTH_SPORTS: readonly BoardSport[] = ["football", "basketball"];
 const GAME_SECTION_ID = "create-game";
 
 /**
@@ -207,9 +211,6 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const location = useLocation();
   const toast = useToast();
   const profile = useProfile();
-  const schedule = useSchedule();
-  const now = useNow(30_000);
-  const colors = useMemo(() => teamColorsFrom(schedule.nfl.events), [schedule.nfl.events]);
   // Another board for a game: three steps, and the board it comes from rides along in the URL.
   const steps = sibling ? SIBLING_STEPS : STEPS;
   const from = sibling?.fromId ?? null;
@@ -219,8 +220,19 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     const draft = loadDraft();
     return draft && (draft.from ?? null) === from ? draft : null;
   });
+  /** Football or basketball: the game step's first choice (its leagues, or custom teams scored by hand). */
+  const [sport, setSport] = useState<BoardSport>(restored?.sport ?? "football");
+  const sportTouched = useRef(restored?.sportTouched ?? false);
   const [tab, setTab] = useState<PickerTab>(restored?.tab ?? "nfl");
   const tabTouched = useRef(restored?.tabTouched ?? false);
+  // Football's games load right away; basketball's once it's picked, or when football has nothing to link.
+  const [wantBasketball, setWantBasketball] = useState(sport === "basketball");
+  const schedule = useSchedule(wantBasketball ? BOTH_SPORTS : FOOTBALL_ONLY);
+  const now = useNow(30_000);
+  const colors = useMemo(
+    () => (sport === "basketball" ? teamColorsFrom(schedule.nba.events, "nba") : teamColorsFrom(schedule.nfl.events)),
+    [sport, schedule.nba.events, schedule.nfl.events],
+  );
   /** Explicit picks per league (any week); without one, the soonest game is picked. */
   const [picked, setPicked] = useState<Partial<Record<ScheduleLeague, ScheduleEvent>>>(restored?.picked ?? {});
   const [custom, setCustom] = useState(restored?.custom ?? { x: "", y: "" });
@@ -270,13 +282,46 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     };
   }, []);
 
-  // Land on the first league that has games; lead with custom teams when none do.
+  // Land on the first league that has games: football's first, then (when
+  // football has nothing to link, say in March) basketball's; lead with custom
+  // teams when none do. Once the host picks a sport, only that sport's leagues.
   useEffect(() => {
     if (tabTouched.current) return;
-    const { nfl, ncaaf } = schedule;
-    if (!nfl.loading && nfl.events.length) setTab("nfl");
-    else if (!nfl.loading && !ncaaf.loading) setTab(ncaaf.events.length ? "ncaaf" : "custom");
-  }, [schedule]);
+    const landing = (s: BoardSport): PickerTab | "loading" | null => {
+      const leagues = SPORT_LEAGUES[s];
+      for (const league of leagues) {
+        if (schedule[league].loading) return "loading";
+        if (schedule[league].events.length) return league;
+      }
+      return null;
+    };
+    const here = landing(sport);
+    if (here === "loading") return;
+    if (here) return setTab(here);
+    if (sport === "football" && !sportTouched.current) {
+      // Nothing to link in football: look at basketball before typing teams.
+      if (!wantBasketball) return setWantBasketball(true);
+      const hoops = landing("basketball");
+      if (hoops === "loading") return;
+      if (hoops) {
+        setSport("basketball");
+        return setTab(hoops);
+      }
+    }
+    setTab("custom");
+  }, [schedule, sport, wantBasketball]);
+
+  /** The host picks a sport: its leagues show (custom stays custom, now scored as that sport). */
+  const pickSport = (next: BoardSport) => {
+    if (next === sport) return;
+    sportTouched.current = true;
+    setSport(next);
+    if (next === "basketball") setWantBasketball(true);
+    if (tab === "custom") return;
+    tabTouched.current = false;
+    const first = SPORT_LEAGUES[next].find((l) => !schedule[l].loading && schedule[l].events.length) ?? SPORT_LEAGUES[next][0];
+    setTab(first);
+  };
 
   // The game in the open league: the one tapped there, else the soonest.
   const leagueEvents = tab === "custom" ? [] : schedule[tab].events;
@@ -287,10 +332,12 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const matchup: Matchup | null = sibling
     ? sibling.matchup
     : tab === "custom"
-      ? { kind: "custom", x: custom.x, y: custom.y }
+      ? { kind: "custom", x: custom.x, y: custom.y, sport }
       : event
         ? { kind: "linked", event }
         : null;
+  // What the board is played as: its moments, preset cards and words follow it.
+  const kind = sibling ? matchupKind(sibling.matchup) : tab === "custom" ? { sport, league: "custom" as const } : { sport, league: tab };
   const teams = matchupTeams(matchup, colors);
   const shortNames = matchupShortNames(matchup);
   // Another board for a game is "Office Squares · Board 2", never named for its price.
@@ -323,6 +370,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   useEffect(() => {
     if (leavingTo.current || frozen) return;
     saveDraft({
+      sport,
+      sportTouched: sportTouched.current,
       tab,
       tabTouched: tabTouched.current,
       picked,
@@ -337,7 +386,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       hostName,
       ...(from ? { from } : {}),
     });
-  }, [tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen, from]);
+  }, [sport, tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen, from]);
 
   // Opening the board: rewind the flow's steps first (Back from the board then
   // goes where the host started), then replace the first one with the board.
@@ -501,6 +550,13 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   };
   const editRules = (d: RulesDraft) =>
     updatePrizes(withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }), d.choice);
+  // A game that can't take the rules picked so far (every score on basketball,
+  // the quarters in men's college basketball's two halves): fit them to it.
+  useEffect(() => {
+    const fitted = fitRules(rules, kind);
+    if (fitted !== rules) updatePrizes(withRules({ ...format, rules: fitted }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the game's sport or league changes
+  }, [kind.sport, kind.league]);
   const linkedMatchup = matchup?.kind === "linked" || (matchup?.kind === "board" && !!matchup.from.linkedEvent);
   const matchupLabel = shortNames ? (linkedMatchup ? `${shortNames[0]} @ ${shortNames[1]}` : `${shortNames[0]} vs ${shortNames[1]}`) : "";
   // Another board for a game: the price step says what's carried over and asks for this board's price.
@@ -516,6 +572,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
         <section id={GAME_SECTION_ID} aria-label="The game" className="scroll-mt-24">
           <GamePicker
             schedule={schedule}
+            sport={sport}
+            onSport={pickSport}
             tab={tab}
             onTab={pickTab}
             selected={event}
@@ -524,21 +582,28 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
             onCustomChange={(side, value) => setCustom((c) => ({ ...c, [side]: value }))}
             showErrors={shake > 0 && !teams}
             colors={colors}
-            customFooter={<KickoffPicker value={kickoff} onChange={setKickoff} now={now} error={kickoffError(kickoff, now)} />}
+            customFooter={<KickoffPicker value={kickoff} onChange={setKickoff} now={now} error={kickoffError(kickoff, now, sport)} sport={sport} />}
           />
         </section>
       );
       break;
     case "format":
       body = (
-        <FormatPicker format={format} onChange={(f, choice) => updatePrizes(f, choice)} prizeChoice={prizeChoice} teamX={teams?.teamX} teamY={teams?.teamY} />
+        <FormatPicker
+          format={format}
+          onChange={(f, choice) => updatePrizes(f, choice)}
+          prizeChoice={prizeChoice}
+          teamX={teams?.teamX}
+          teamY={teams?.teamY}
+          kind={kind}
+        />
       );
       break;
     case "prizes":
       body = (
         <>
           {sibling && teams && <SiblingIntro seed={sibling} teamX={teams.teamX} teamY={teams.teamY} matchup={matchupLabel} />}
-          <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} />
+          <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} kind={kind} />
         </>
       );
       break;
@@ -592,6 +657,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
           now={now}
           onEdit={(s) => go(s, { fromReview: true })}
           sibling={sibling ? { sourceName: sibling.source.name } : null}
+          kind={kind}
           steps={steps}
         />
       );

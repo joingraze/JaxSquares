@@ -12,7 +12,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
+import { PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
+import { freshNumbersInfo, isFootball, presetsFor, wordsFor, type GameKind } from "../../../shared/sports";
 import { squareHolders } from "../../../shared/hostFee";
 import { boardCountLine, siblingCheckOf, siblingProblem } from "../../../shared/siblings";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
@@ -488,6 +489,7 @@ export function HostSheet(props: HostSheetProps) {
         boardSize={game.format.boardSize}
         // The board's total, like "the rest": every square until the draw, the claimed ones after.
         squares={game.numbers ? state.squares.length : undefined}
+        kind={game}
       />
     );
     footer = (
@@ -712,7 +714,7 @@ export function HostSheet(props: HostSheetProps) {
               )}
               <SuggestionChip entry={entry} teamX={game.teamX} teamY={game.teamY} />
               <ScoreTiles teamX={game.teamX} teamY={game.teamY} entry={entry} />
-              <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={entry.key === NEXT_ENTRY || everyScoreIndex(entry.key) !== null} />
+              <Keypad entry={entry} teamX={game.teamX} teamY={game.teamY} quickAdds={isFootball(game) && (entry.key === NEXT_ENTRY || everyScoreIndex(entry.key) !== null)} />
               {(!typedBoard || target?.existing) && (
                 <div className="flex min-h-11 items-center justify-between gap-2 px-1">
                   {!typedBoard ? (
@@ -825,7 +827,7 @@ export function HostSheet(props: HostSheetProps) {
           <ListRow
             leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
             title="Edit board"
-            subtitle={["Name", canEditKickoff(game) && "kickoff", picking && "max squares per player"].filter(Boolean).join(", ")}
+            subtitle={["Name", canEditKickoff(game) && wordsFor(game).startLower, picking && "max squares per player"].filter(Boolean).join(", ")}
             chevron
             onClick={() => onView("edit")}
           />
@@ -960,6 +962,7 @@ function RulesEditView({
   violation,
   boardSize,
   squares,
+  kind,
 }: {
   draft: RulesDraft;
   onChange: (draft: RulesDraft) => void;
@@ -968,14 +971,17 @@ function RulesEditView({
   boardSize: BoardSize;
   /** Squares the board's total counts (the claimed ones once drawn); every square when absent. */
   squares?: number;
+  /** The board's sport and league: its presets and moments (no every score for basketball, halves in men's college). */
+  kind?: GameKind;
 }) {
   const preset = presetChoice(draft.rules);
+  const fresh = freshNumbersInfo(kind);
   return (
     <div className="flex flex-col gap-5 pb-2">
       <section aria-label="Presets" className="flex flex-col gap-2">
         <p className="eyebrow px-1 text-ink-subtle">When squares win</p>
         <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5">
-          {PERIOD_PRESETS.map((p) => (
+          {presetsFor(kind).map((p) => (
             <Chip
               key={p}
               data-testid="rules-preset"
@@ -990,13 +996,13 @@ function RulesEditView({
           {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
         </div>
       </section>
-      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} />
+      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} kind={kind} />
       {canUseFreshNumbers(draft.rules) && (
         <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
           <Switch
             className="min-h-12"
-            label="New numbers each quarter"
-            description={lock.fresh ?? "A fresh draw before every quarter."}
+            label={fresh.label}
+            description={lock.fresh ?? fresh.description}
             checked={draft.freshNumbers}
             disabled={!!lock.fresh}
             onChange={(freshNumbers) => onChange({ ...draft, freshNumbers })}
@@ -1094,15 +1100,15 @@ function OpenHero({
       ? `Drawing turns on once someone picks a square.${free ? ` ${FREE_TIER_LINE}` : ""}`
       : "Lock & draw turns on once someone picks a square."
     : late && (fee || free)
-      ? "Kickoff's passed, so the numbers weren't drawn. Draw them whenever you're ready."
+      ? `${wordsFor(game).start}'s passed, so the numbers weren't drawn. Draw them whenever you're ready.`
       : fee
         ? planned
-          ? `${kicksOffLabel(planned)}. ${FREE_TIER_LINE} Bigger ones pay when you draw.`
+          ? `${kicksOffLabel(planned, undefined, game.sport)}. ${FREE_TIER_LINE} Bigger ones pay when you draw.`
           : `${FREE_TIER_LINE} Bigger ones pay when you draw the numbers.`
         : kickoff
-          ? `Jax draws the numbers at kickoff (${kickoffLabel(kickoff)}) if you don't.${free ? ` ${FREE_TIER_LINE}` : ""}`
+          ? `Jax draws the numbers at ${wordsFor(game).startLower} (${kickoffLabel(kickoff)}) if you don't.${free ? ` ${FREE_TIER_LINE}` : ""}`
           : planned
-            ? `${kicksOffLabel(planned)}. Lock when everyone's in.${free ? ` ${FREE_TIER_LINE}` : ""}`
+            ? `${kicksOffLabel(planned, undefined, game.sport)}. Lock when everyone's in.${free ? ` ${FREE_TIER_LINE}` : ""}`
             : free
               ? `Lock when everyone's in. ${FREE_TIER_LINE}`
               : "Lock when everyone's in. The numbers get drawn live.";
@@ -1149,7 +1155,7 @@ function OpenHero({
         >
           <ClockIcon size={20} className="shrink-0 text-ink-brand" />
           <span className="min-w-0 flex-1">
-            <span className="block text-subhead font-extrabold leading-snug text-ink">Pay now and Jax draws the numbers at kickoff</span>
+            <span className="block text-subhead font-extrabold leading-snug text-ink">Pay now and Jax draws the numbers at {wordsFor(game).startLower}</span>
             <span className="block text-footnote text-ink-muted">
               {price ? `${price} · ` : ""}squares stay open till {kickoffLabel(kickoff)}
             </span>
@@ -1200,7 +1206,7 @@ function AutoHero({ state, started, onFix }: { state: GameState; started: boolea
           </span>
           <div className="min-w-0">
             <p className="font-display text-headline font-extrabold text-ink">
-              {kickoff ? `Kickoff ${kickoffLabel(kickoff)}` : "Waiting for kickoff"}
+              {kickoff ? `${wordsFor(game).start} ${kickoffLabel(kickoff)}` : `Waiting for ${wordsFor(game).startLower}`}
             </p>
             <p className="mt-0.5 text-footnote text-ink-muted">Nothing to do until then. Scores and winners update by themselves.</p>
           </div>
@@ -1303,7 +1309,7 @@ function LockConfirm({ state, fee, covered, free, price }: { state: GameState; f
         <b className="font-bold text-ink">Squares freeze.</b> No more picking or dropping.
       </Fact>
       <Fact icon={<ShuffleIcon size={16} />}>
-        <b className="font-bold text-ink">0–9 drawn at random</b> for each team{fresh ? ", fresh every quarter" : ""}, live for everyone.
+        <b className="font-bold text-ink">0–9 drawn at random</b> for each team{fresh ? `, fresh every ${freshNumbersInfo(state.game).each}` : ""}, live for everyone.
       </Fact>
       {f.empty > 0 ? (
         !low && (

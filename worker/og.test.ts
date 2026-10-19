@@ -162,3 +162,35 @@ describe("bootScript (the board's state embedded in the invite page)", () => {
   });
 });
 
+describe("inviteMeta for a basketball board", () => {
+  const hoops = (over: Partial<GameState["game"]> = {}, extra: Partial<GameState> = {}) =>
+    state({ sport: "basketball", league: "nba", teamX: { name: "Celtics", abbr: "BOS" }, teamY: { name: "Lakers", abbr: "LAL" }, ...over }, extra);
+
+  it("says it's basketball squares, with no amounts", () => {
+    const m = inviteMeta(hoops({ format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false, unit: "$", squarePrice: 20 } }), "https://jaxsquares.com");
+    expect(m.title).toBe("Join Smith Family Squares on JaxSquares");
+    expect(m.description).toBe("Celtics vs Lakers · 🏀 Basketball squares · 98 of 100 squares left. Grab yours");
+    expect(m.imageAlt).toBe("JaxSquares basketball squares board");
+    expect(m.description).not.toMatch(/\$|\b20\b|football|kickoff/i);
+  });
+
+  it("recaps a three-digit final, and words the TV and print previews the same way", () => {
+    const done = inviteMeta(hoops({ status: "final" }, { scores: [{ periodKey: "final", scoreX: 117, scoreY: 121, source: "live", updatedAt: 0 }] }), "https://x");
+    expect(done.title).toBe("See who won Smith Family Squares on JaxSquares");
+    expect(done.description).toBe("Final: Celtics 117, Lakers 121 · 🏀 Basketball squares");
+    expect(inviteMeta(hoops(), "https://x", "tv").description).toBe("Celtics vs Lakers · 🏀 Basketball squares · Live on the big screen · 98 of 100 squares left. Grab yours");
+    expect(inviteMeta(hoops(), "https://x", "print").description).toMatch(/^Celtics vs Lakers · 🏀 Basketball squares · A printable board/);
+  });
+
+  it("leaves football's preview as it was", () => {
+    const m = inviteMeta(state(), "https://x");
+    expect(m.description).toBe("Chiefs vs Eagles · 98 of 100 squares left. Grab yours");
+    expect(m.imageAlt).toBeUndefined();
+  });
+
+  it("leads a club's basketball board with the club, then the sport", () => {
+    const club = { id: "club1", name: "The Rusty Anchor", hasLogo: false, logoVersion: null };
+    expect(inviteMeta(hoops({ club }), "https://x").description).toBe("Hosted by The Rusty Anchor · Celtics vs Lakers · 🏀 Basketball squares · 98 of 100 squares left. Grab yours");
+  });
+});
+

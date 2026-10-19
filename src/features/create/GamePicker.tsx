@@ -1,11 +1,17 @@
-// Which game: real games (NFL / College) a week at a time — the current week's
-// soonest three (plus "see all" and search), later weeks as rows that open to
-// that week's schedule — or a custom matchup with two typed teams.
+// Which game: first the sport (Football | Basketball), then its leagues as
+// chips (NFL, College; NBA, WNBA, Men's college, Women's college) and Custom.
+// Football goes a week at a time — the current week's soonest three (plus "see
+// all" and search), later weeks as rows that open to that week's schedule.
+// Basketball has no weeks: the next 7 days, a row per day (today first, the
+// first day with games open), and any other date from a date picker. Custom is
+// two typed teams the host scores by hand, as football or basketball.
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { LEAGUE_INFO, SPORT_LEAGUES, type BoardSport } from "../../../shared/sports";
 import type { ScheduleEvent } from "../../../shared/types";
 import {
   AlertIcon,
+  BasketballIcon,
   CalendarIcon,
   CheckIcon,
   ChevronDownIcon,
@@ -13,7 +19,6 @@ import {
   LiveIcon,
   PencilIcon,
   SearchIcon,
-  StarIcon,
   XIcon,
 } from "../../components/icons";
 import { cx, Jax, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
@@ -21,13 +26,16 @@ import { kickoffLabel, shortTeamName } from "../../lib/format";
 import { haptic } from "../../lib/native";
 import { CustomMatchup } from "./CustomMatchup";
 import { kickoffParts, startsIn, withSideColors, type TeamColors } from "./model";
-import { groupByDay, matchesQuery, siteLabel, weekRange, weekTag, zoneLabel } from "./scheduleView";
-import { useWeekGames, type LeagueSchedule, type Schedule, type ScheduleLeague } from "./useSchedule";
+import { dateInputValue, dayIdOf, groupByDay, matchesQuery, pickedDayLabel, siteLabel, weekRange, weekTag, zoneLabel } from "./scheduleView";
+import { useDayGames, useWeekGames, type LeagueSchedule, type Schedule, type ScheduleLeague } from "./useSchedule";
 
 export type PickerTab = ScheduleLeague | "custom";
 
 export interface GamePickerProps {
   schedule: Schedule;
+  /** The sport whose leagues show (football by default). */
+  sport?: BoardSport;
+  onSport?: (sport: BoardSport) => void;
   tab: PickerTab;
   onTab: (tab: PickerTab) => void;
   selected: ScheduleEvent | null;
@@ -35,42 +43,71 @@ export interface GamePickerProps {
   custom: { x: string; y: string };
   onCustomChange: (side: "x" | "y", value: string) => void;
   showErrors?: boolean;
-  /** Live NFL team colors, so typed teams match their real games. */
+  /** Live team colors for the sport (NFL or NBA), so typed teams match their real games. */
   colors?: TeamColors;
   /** Under the typed teams on the Custom tab (the create flow's kickoff picker). */
   customFooter?: ReactNode;
 }
 
-const LEAGUE_LABEL: Record<ScheduleLeague, string> = { nfl: "NFL", ncaaf: "College" };
+const leagueLabel = (league: ScheduleLeague) => LEAGUE_INFO[league].label;
 
-export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom, onCustomChange, showErrors, colors, customFooter }: GamePickerProps) {
-  const noGamesAnywhere = !schedule.nfl.loading && !schedule.ncaaf.loading && !schedule.nfl.events.length && !schedule.ncaaf.events.length;
+export function GamePicker({
+  schedule,
+  sport = "football",
+  onSport,
+  tab,
+  onTab,
+  selected,
+  onPickEvent,
+  custom,
+  onCustomChange,
+  showErrors,
+  colors,
+  customFooter,
+}: GamePickerProps) {
+  const leagues = SPORT_LEAGUES[sport];
+  const noGamesAnywhere = leagues.every((l) => !schedule[l].loading && !schedule[l].events.length);
   const count = (league: ScheduleLeague) =>
-    !schedule[league].loading && schedule[league].events.length > 0 ? (
-      <span className="tabular-nums text-ink-subtle">{schedule[league].events.length}</span>
-    ) : null;
+    !schedule[league].loading && schedule[league].events.length > 0 ? schedule[league].events.length : null;
 
   return (
     <div className="flex flex-col gap-3">
-      <SegmentedControl<PickerTab>
-        aria-label="Choose the game"
-        value={tab}
-        onChange={onTab}
+      <SegmentedControl<BoardSport>
+        aria-label="Sport"
+        data-testid="sport-picker"
+        value={sport}
+        onChange={(next) => onSport?.(next)}
         options={[
-          { value: "nfl", icon: <FootballIcon />, label: <>{LEAGUE_LABEL.nfl} {count("nfl")}</> },
-          { value: "ncaaf", icon: <StarIcon />, label: <>{LEAGUE_LABEL.ncaaf} {count("ncaaf")}</> },
-          { value: "custom", icon: <PencilIcon />, label: <span data-testid="custom-matchup">Custom</span> },
+          { value: "football", icon: <FootballIcon />, label: "Football", testId: "sport-football" },
+          { value: "basketball", icon: <BasketballIcon />, label: "Basketball", testId: "sport-basketball" },
         ]}
       />
 
+      <div
+        role="radiogroup"
+        aria-label="League"
+        data-testid="league-picker"
+        className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 scrollbar-none"
+      >
+        {leagues.map((league) => (
+          <LeagueChip key={league} on={tab === league} onClick={() => onTab(league)} league={league} count={count(league)}>
+            {leagueLabel(league)}
+          </LeagueChip>
+        ))}
+        <LeagueChip on={tab === "custom"} onClick={() => onTab("custom")} league="custom" testId="custom-matchup" icon={<PencilIcon size={16} />}>
+          Custom
+        </LeagueChip>
+      </div>
+
       {tab === "custom" ? (
-        <div key="custom" className="animate-fade-in">
+        <div key={`custom-${sport}`} className="animate-fade-in">
           <CustomMatchup
             x={custom.x}
             y={custom.y}
             onChange={onCustomChange}
             showErrors={showErrors}
             colors={colors}
+            sport={sport}
             note={noGamesAnywhere ? undefined : "Any two teams work. You punch in the score as the game goes."}
           />
           {noGamesAnywhere && (
@@ -85,17 +122,72 @@ export function GamePicker({ schedule, tab, onTab, selected, onPickEvent, custom
         </div>
       ) : (
         <div key={tab} className="animate-fade-in">
-          <GameList
-            league={tab}
-            schedule={schedule[tab]}
-            selected={selected}
-            onPick={onPickEvent}
-            onCustom={() => onTab("custom")}
-            showErrors={showErrors}
-          />
+          {LEAGUE_INFO[tab].schedule === "day" ? (
+            <DayList
+              league={tab}
+              schedule={schedule[tab]}
+              selected={selected}
+              onPick={onPickEvent}
+              onCustom={() => onTab("custom")}
+              showErrors={showErrors}
+            />
+          ) : (
+            <GameList
+              league={tab}
+              schedule={schedule[tab]}
+              selected={selected}
+              onPick={onPickEvent}
+              onCustom={() => onTab("custom")}
+              showErrors={showErrors}
+            />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/** One league chip: its name and how many games it has to link. */
+function LeagueChip({
+  on,
+  onClick,
+  league,
+  count = null,
+  icon,
+  testId = "league-option",
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  league: ScheduleLeague | "custom";
+  count?: number | null;
+  icon?: ReactNode;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      data-testid={testId}
+      data-league={league}
+      onClick={() => {
+        if (on) return;
+        void haptic("selection");
+        onClick();
+      }}
+      className={cx(
+        "pressable tap-target inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-subhead font-bold transition-colors",
+        on
+          ? "bg-brand-400 text-ink-inverse shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
+          : "bg-surface-3 text-ink-muted ring-1 ring-inset ring-line hover:text-ink",
+      )}
+    >
+      {icon}
+      {children}
+      {count !== null && <span className={cx("tabular-nums", on ? "text-ink-inverse/70" : "text-ink-subtle")}>{count}</span>}
+    </button>
   );
 }
 
@@ -133,36 +225,9 @@ function GameList({
   const laterOpen = open && open !== leadId ? open : null;
   const later = useWeekGames(league, laterOpen, attempt);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading games">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex h-14 items-center gap-3 rounded-2xl bg-surface-2 px-3 ring-1 ring-inset ring-line">
-            <Skeleton className="h-7 w-15" />
-            <Skeleton className="h-4 flex-1" />
-            <Skeleton className="h-4 w-16" />
-          </div>
-        ))}
-      </div>
-    );
-  }
+  if (loading) return <ListSkeleton />;
 
-  if (!events.length && !weeks.length) {
-    return (
-      <div className="flex flex-col gap-3 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
-        <div className="flex items-center gap-3">
-          <Jax pose="sleep" size={92} className="-ml-1" />
-          <div className="min-w-0 flex-1">
-            <p className="text-callout font-bold text-ink">No {LEAGUE_LABEL[league]} games to link right now</p>
-            <p className="text-footnote text-ink-muted">Jax is napping. Type your teams and run the score yourself.</p>
-          </div>
-        </div>
-        <button type="button" onClick={onCustom} className="pressable h-11 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
-          Type teams
-        </button>
-      </div>
-    );
-  }
+  if (!events.length && !weeks.length) return <NoGames league={league} onCustom={onCustom} />;
 
   const q = query.trim();
   const openWeek = laterOpen ? weeks.find((w) => w.id === laterOpen) : null;
@@ -211,38 +276,7 @@ function GameList({
         </span>
       </p>
 
-      {searchPool.length > FIRST_ROWS && (
-        <div className="flex h-12 items-center gap-2 rounded-2xl bg-surface-2 pl-3.5 pr-1.5 ring-1 ring-inset ring-line transition-shadow focus-within:ring-2 focus-within:ring-brand-line">
-          <SearchIcon size={18} className="shrink-0 text-ink-subtle" />
-          <input
-            ref={searchRef}
-            type="search"
-            data-testid="game-search"
-            aria-label={`Search ${LEAGUE_LABEL[league]} games`}
-            value={query}
-            placeholder={`Find a team · ${searchPool.length} games`}
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-            enterKeyHint="search"
-            onChange={(e) => setQuery(e.target.value)}
-            className="h-full min-w-0 flex-1 bg-transparent text-body font-medium text-ink outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden"
-          />
-          {q && (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setQuery("");
-                searchRef.current?.focus();
-              }}
-              className="tap-target grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-subtle hover:text-ink"
-            >
-              <XIcon size={16} />
-            </button>
-          )}
-        </div>
-      )}
+      {searchPool.length > FIRST_ROWS && <SearchBox inputRef={searchRef} league={league} count={searchPool.length} query={query} onQuery={setQuery} />}
 
       {pinned && !q && row(pinned)}
 
@@ -250,14 +284,9 @@ function GameList({
         results.length ? (
           results.map((e) => row(e))
         ) : (
-          <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
-            <p className="min-w-0 flex-1 text-footnote text-ink-muted">
-              No {LEAGUE_LABEL[league]} game with “{q}” in {openWeek ? `${week?.label ?? "this week"} or ${openWeek.label}` : (week?.label ?? "this week")}.
-            </p>
-            <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
-              Type teams
-            </button>
-          </div>
+          <NoMatch onCustom={onCustom}>
+            No {leagueLabel(league)} game with “{q}” in {openWeek ? `${week?.label ?? "this week"} or ${openWeek.label}` : (week?.label ?? "this week")}.
+          </NoMatch>
         )
       ) : (
         <>
@@ -350,11 +379,330 @@ function GameList({
   );
 }
 
-function WeekHeader({ id, label, tag, range, open, onToggle }: { id: string; label: string; tag?: string; range: string | null; open: boolean; onToggle: () => void }) {
+function ListSkeleton() {
+  return (
+    <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading games">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex h-14 items-center gap-3 rounded-2xl bg-surface-2 px-3 ring-1 ring-inset ring-line">
+          <Skeleton className="h-7 w-15" />
+          <Skeleton className="h-4 flex-1" />
+          <Skeleton className="h-4 w-16" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NoGames({ league, onCustom, when = "right now", children }: { league: ScheduleLeague; onCustom: () => void; when?: string; children?: ReactNode }) {
+  return (
+    <div data-testid="no-games" className="flex flex-col gap-3 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
+      <div className="flex items-center gap-3">
+        <Jax pose="sleep" size={92} className="-ml-1" />
+        <div className="min-w-0 flex-1">
+          <p className="text-callout font-bold text-ink">
+            No {leagueLabel(league)} games to link {when}
+          </p>
+          <p className="text-footnote text-ink-muted">Jax is napping. Type your teams and run the score yourself.</p>
+        </div>
+      </div>
+      {children}
+      <button type="button" onClick={onCustom} className="pressable h-11 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+        Type teams
+      </button>
+    </div>
+  );
+}
+
+function NoMatch({ onCustom, children }: { onCustom: () => void; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
+      <p className="min-w-0 flex-1 text-footnote text-ink-muted">{children}</p>
+      <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+        Type teams
+      </button>
+    </div>
+  );
+}
+
+function SearchBox({
+  inputRef,
+  league,
+  count,
+  query,
+  onQuery,
+}: {
+  inputRef: RefObject<HTMLInputElement>;
+  league: ScheduleLeague;
+  count: number;
+  query: string;
+  onQuery: (q: string) => void;
+}) {
+  return (
+    <div className="flex h-12 items-center gap-2 rounded-2xl bg-surface-2 pl-3.5 pr-1.5 ring-1 ring-inset ring-line transition-shadow focus-within:ring-2 focus-within:ring-brand-line">
+      <SearchIcon size={18} className="shrink-0 text-ink-subtle" />
+      <input
+        ref={inputRef}
+        type="search"
+        data-testid="game-search"
+        aria-label={`Search ${leagueLabel(league)} games`}
+        value={query}
+        placeholder={`Find a team · ${count} games`}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
+        enterKeyHint="search"
+        onChange={(e) => onQuery(e.target.value)}
+        className="h-full min-w-0 flex-1 bg-transparent text-body font-medium text-ink outline-none placeholder:text-ink-subtle [&::-webkit-search-cancel-button]:hidden"
+      />
+      {query.trim() && (
+        <button
+          type="button"
+          aria-label="Clear search"
+          onClick={() => {
+            onQuery("");
+            inputRef.current?.focus();
+          }}
+          className="tap-target grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-subtle hover:text-ink"
+        >
+          <XIcon size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Rows an open basketball day shows before "See all". */
+const DAY_ROWS = 6;
+
+/** A day heading as an element id: "Wednesday, Oct 21" -> "wednesday-oct-21". */
+const daySlug = (day: string) => day.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+/**
+ * Basketball's games, a day at a time: the next 7 days as rows (each local
+ * day with games, today first; the first one open), a search across them, and
+ * another date from the phone's date picker (that day loads when picked).
+ */
+function DayList({
+  league,
+  schedule,
+  selected,
+  onPick,
+  onCustom,
+  showErrors,
+}: {
+  league: ScheduleLeague;
+  schedule: LeagueSchedule;
+  selected: ScheduleEvent | null;
+  onPick: (e: ScheduleEvent) => void;
+  onCustom: () => void;
+  showErrors?: boolean;
+}) {
+  const { loading, events } = schedule;
+  const [query, setQuery] = useState("");
+  const [openState, setOpen] = useState<string | null | undefined>(undefined);
+  const [all, setAll] = useState<string | null>(null);
+  const [date, setDate] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const picked = useDayGames(league, date, attempt);
+
+  if (loading) return <ListSkeleton />;
+
+  const days = groupByDay(events);
+  // Until someone toggles a day, the first one with games is open.
+  const open = openState === undefined ? (days[0]?.day ?? null) : openState;
+  const q = query.trim();
+  const pickedEvents = picked?.status === "ready" ? picked.events : [];
+  const searchPool = [...events, ...pickedEvents.filter((e) => !events.some((x) => x.eventId === e.eventId))];
+  const results = q ? searchPool.filter((e) => matchesQuery(e, q)) : [];
+  const openDay = days.find((d) => d.day === open) ?? null;
+  let openRows: ScheduleEvent[] = [];
+  if (openDay) {
+    openRows = all === openDay.day ? openDay.events : openDay.events.slice(0, DAY_ROWS);
+    if (selected && openDay.events.some((e) => e.eventId === selected.eventId) && !openRows.some((e) => e.eventId === selected.eventId)) {
+      openRows = [...openRows, selected];
+    }
+  }
+  const visible = new Set((q ? results : [...openRows, ...pickedEvents]).map((e) => e.eventId));
+  const pinned = selected && selected.league === league && !visible.has(selected.eventId) ? selected : null;
+
+  const toggle = (day: string) => {
+    void haptic("selection");
+    setOpen(open === day ? null : day);
+  };
+  const pick = (e: ScheduleEvent) => {
+    onPick(e);
+    if (q) {
+      setQuery("");
+      searchRef.current?.blur();
+    }
+  };
+  const row = (e: ScheduleEvent, grouped = false) => (
+    <GameRow key={e.eventId} event={e} grouped={grouped} selected={e.eventId === selected?.eventId} onPick={() => pick(e)} />
+  );
+  const datePicker = <DatePickerRow date={date} onDate={setDate} />;
+
+  return (
+    <div data-testid="day-list" className="flex flex-col gap-2">
+      <p className="flex items-center gap-2 px-1 text-footnote text-ink-muted">
+        <LiveIcon size={16} className="shrink-0 text-ink-subtle" />
+        <span>
+          <span className="font-bold text-ink">Live scores built in.</span> Winners update on their own.
+        </span>
+      </p>
+
+      {searchPool.length > FIRST_ROWS && <SearchBox inputRef={searchRef} league={league} count={searchPool.length} query={query} onQuery={setQuery} />}
+
+      {pinned && !q && row(pinned)}
+
+      {q ? (
+        results.length ? (
+          results.map((e) => row(e))
+        ) : (
+          <NoMatch onCustom={onCustom}>
+            No {leagueLabel(league)} game with “{q}” in the next 7 days{date ? " or that date" : ""}.
+          </NoMatch>
+        )
+      ) : (
+        <>
+          {days.length === 0 && !date && (
+            <NoGames league={league} onCustom={onCustom} when="in the next 7 days">
+              <p className="text-footnote text-ink-muted">Or pick a date further out below.</p>
+            </NoGames>
+          )}
+          {days.map((d) => (
+            <div key={d.day} className="flex flex-col gap-2">
+              <WeekHeader
+                id={daySlug(d.day)}
+                testId="day-toggle"
+                label={d.day}
+                range={`${d.events.length} ${d.events.length === 1 ? "game" : "games"}`}
+                open={open === d.day}
+                onToggle={() => toggle(d.day)}
+              />
+              {open === d.day && (
+                <div id={`week-${daySlug(d.day)}`} className="flex flex-col gap-2">
+                  {openRows.map((e) => row(e, true))}
+                  {d.events.length > DAY_ROWS && (
+                    <button
+                      type="button"
+                      data-testid="day-see-all"
+                      onClick={() => setAll((cur) => (cur === d.day ? null : d.day))}
+                      className="tap-target h-10 self-start rounded-xl px-2 text-subhead font-bold text-ink-brand hover:bg-ink/5"
+                    >
+                      {all === d.day ? "Show fewer" : `See all ${d.events.length} games`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {datePicker}
+          {date && (
+            <div className="flex flex-col gap-2">
+              {!picked || picked.status === "loading" ? (
+                <div aria-busy="true" aria-label={`Loading ${pickedDayLabel(date)}`} className="flex flex-col gap-2">
+                  {[0, 1].map((i) => (
+                    <Skeleton key={i} className="h-14 w-full rounded-2xl" />
+                  ))}
+                </div>
+              ) : picked.status === "error" ? (
+                <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
+                  <p className="min-w-0 flex-1 text-footnote text-ink-muted">Couldn’t load {pickedDayLabel(date)}.</p>
+                  <button
+                    type="button"
+                    onClick={() => setAttempt((n) => n + 1)}
+                    className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : picked.events.length ? (
+                <DayGroups events={picked.events} row={row} />
+              ) : (
+                <p className="rounded-2xl bg-surface-2 px-4 py-3 text-footnote text-ink-muted ring-1 ring-inset ring-line">
+                  No {leagueLabel(league)} games on {pickedDayLabel(date)} yet.
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      <p className="px-1 text-caption text-ink-subtle">Times in {zoneLabel()}</p>
+
+      {showErrors && !selected && (
+        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
+          <AlertIcon size={14} />
+          Tap a game to put it on your board.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** "Another date": the phone's own date picker over the row; a date loads that day's games. */
+function DatePickerRow({ date, onDate }: { date: string | null; onDate: (date: string | null) => void }) {
+  const now = Date.now();
+  return (
+    <div className="flex min-h-12 items-center gap-2 rounded-2xl bg-surface-2 pr-1.5 ring-1 ring-inset ring-line">
+      <label className="relative flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-2 px-3.5 text-subhead font-bold text-ink-brand">
+        <CalendarIcon size={16} className="shrink-0" />
+        <span className="truncate">{date ? pickedDayLabel(date) : "Another date"}</span>
+        <input
+          type="date"
+          data-testid="day-picker"
+          aria-label="Pick another date"
+          value={date ? dateInputValue(date) : ""}
+          min={dateInputValue(dayIdOf(now))}
+          max={dateInputValue(dayIdOf(now + 365 * 86_400_000))}
+          onClick={(e) => {
+            try {
+              e.currentTarget.showPicker?.();
+            } catch {
+              // Not allowed here (or not supported): the tap focuses the input instead.
+            }
+          }}
+          onChange={(e) => onDate(e.target.value ? e.target.value.replace(/-/g, "") : null)}
+          className="absolute inset-0 h-full w-full cursor-pointer text-body opacity-0"
+        />
+      </label>
+      {date && (
+        <button
+          type="button"
+          aria-label="Clear the date"
+          onClick={() => onDate(null)}
+          className="tap-target grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-subtle hover:text-ink"
+        >
+          <XIcon size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WeekHeader({
+  id,
+  label,
+  tag,
+  range,
+  open,
+  onToggle,
+  testId = "week-toggle",
+}: {
+  id: string;
+  label: string;
+  tag?: string;
+  range: string | null;
+  open: boolean;
+  onToggle: () => void;
+  testId?: string;
+}) {
   return (
     <button
       type="button"
-      data-testid="week-toggle"
+      data-testid={testId}
       data-week={id}
       aria-expanded={open}
       aria-controls={`week-${id}`}

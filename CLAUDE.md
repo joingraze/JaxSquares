@@ -81,7 +81,9 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   at the draw, board size never (409).
 - Every score change may show an amount per kind of score (`Prize.byKind`,
   score moment only; `amount` is the flat amount with score types off and a
-  quiet fallback). Five kinds: `touchdown`, `fieldGoal`, `extraPoint`,
+  quiet fallback). Score kinds and every score are football-only: a
+  basketball board (`shared/sports.ts`) never shows them, and a score rule on
+  one is a 400. Five kinds: `touchdown`, `fieldGoal`, `extraPoint`,
   `twoPoint`, `safety`; every entry gets one, derived on read from the
   ordered entries (`entryPlays` in `shared/squares.ts`), never stored. A
   stored legacy `byKind.conversion` reads as both `extraPoint` and `twoPoint`

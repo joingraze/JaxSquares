@@ -1,17 +1,19 @@
 // Two typed teams, stacked full width with the VS between them. Before anything
 // is typed, popular teams sit underneath as one-tap chips (two taps make a
-// board); while typing, NFL autocomplete takes their place. A team that matches
-// a known NFL team gets that team's live colors everywhere (preview, chips,
-// board); anything else gets the board's side color.
+// board); while typing, autocomplete takes their place: NFL teams on a
+// football board, NBA teams on a basketball one. A team that matches a known
+// team gets that team's live colors everywhere (preview, chips, board);
+// anything else gets the board's side color.
 
 import { useRef, useState, type KeyboardEvent } from "react";
-import { searchNflTeams, type NflTeam } from "../../../shared/teams";
+import type { BoardSport } from "../../../shared/sports";
+import { searchTeams, teamsForSport, type ProTeam } from "../../../shared/teams";
 import type { Team } from "../../../shared/types";
 import { AlertIcon, PlusIcon, XIcon } from "../../components/icons";
 import { cx, TeamMark } from "../../components/ui";
 import { withAlpha } from "../../lib/format";
 import { haptic } from "../../lib/native";
-import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, matchNflTeam, POPULAR_TEAMS, resolveCustomTeam, TEAM_NAME_MAX, type TeamColors } from "./model";
+import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, matchTeam, popularTeams, resolveCustomTeam, TEAM_NAME_MAX, type TeamColors } from "./model";
 import { VsBadge } from "./VsBadge";
 
 // Re-exported for the checkout ticket and the rules mini board.
@@ -28,30 +30,32 @@ export interface CustomMatchupProps {
   showErrors?: boolean;
   /** Muted line under the fields (e.g. why we're on custom). */
   note?: string;
-  /** Live NFL team colors (teamColorsFrom). */
+  /** Live team colors for the sport (teamColorsFrom). */
   colors?: TeamColors;
+  /** Which teams it suggests: the NFL's (football, the default) or the NBA's (basketball). */
+  sport?: BoardSport;
 }
 
 type Side = "x" | "y";
 const PLACEHOLDER: Record<Side, string> = { x: "Away team", y: "Home team" };
 
-export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }: CustomMatchupProps) {
+export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {}, sport = "football" }: CustomMatchupProps) {
   const [active, setActive] = useState<Side | null>(null);
   const refs = { x: useRef<HTMLInputElement>(null), y: useRef<HTMLInputElement>(null) };
 
   const values = { x, y };
   const activeValue = active ? values[active] : "";
-  const typing = Boolean(active && activeValue.trim() && !matchNflTeam(activeValue));
-  const suggestions = typing ? searchNflTeams(activeValue, 3) : [];
-  const taken = new Set([matchNflTeam(x)?.abbr, matchNflTeam(y)?.abbr]);
-  const popular = POPULAR_TEAMS.filter((t) => !taken.has(t.abbr));
+  const typing = Boolean(active && activeValue.trim() && !matchTeam(activeValue, sport));
+  const suggestions = typing ? searchTeams(activeValue, 3, teamsForSport(sport)) : [];
+  const taken = new Set([matchTeam(x, sport)?.abbr, matchTeam(y, sport)?.abbr]);
+  const popular = popularTeams(sport).filter((t) => !taken.has(t.abbr));
   const showPopular = !typing && (!x.trim() || !y.trim());
 
   const sideColor = (side: Side) => (side === "x" ? CUSTOM_X_COLOR : CUSTOM_Y_COLOR);
   // A chip shows exactly the tile it will become: the live color, else the color of the side it fills.
-  const chipTeam = (t: NflTeam, side: Side): Team => ({ name: t.nickname, abbr: t.abbr, color: colors[t.abbr] ?? sideColor(side) });
+  const chipTeam = (t: ProTeam, side: Side): Team => ({ name: t.nickname, abbr: t.abbr, color: colors[t.abbr] ?? sideColor(side) });
 
-  const fill = (side: Side, team: NflTeam) => {
+  const fill = (side: Side, team: ProTeam) => {
     void haptic("selection");
     onChange(side, team.nickname);
     const other: Side = side === "x" ? "y" : "x";
@@ -76,7 +80,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
 
   const field = (side: Side) => {
     const value = values[side];
-    const resolved = resolveCustomTeam(value, colors);
+    const resolved = resolveCustomTeam(value, colors, sport);
     // Mid-word ("Pack") isn't a team yet: keep the slot empty-looking until it resolves or you move on.
     const settled = resolved && (resolved.nfl || active !== side || !typing);
     const preview: Team | null = settled ? { ...resolved.team, color: resolved.team.color ?? sideColor(side) } : null;
@@ -147,7 +151,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
     );
   };
 
-  const chip = (t: NflTeam, side: Side, onPick: () => void, label: string) => (
+  const chip = (t: ProTeam, side: Side, onPick: () => void, label: string) => (
     <button
       key={t.abbr}
       type="button"
@@ -165,8 +169,8 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {} }:
 
   const filled = Boolean(x.trim()) && Boolean(y.trim());
   const glow = filled ? 0.22 : 0.1;
-  const xColor = resolveCustomTeam(x, colors)?.team.color ?? CUSTOM_X_COLOR;
-  const yColor = resolveCustomTeam(y, colors)?.team.color ?? CUSTOM_Y_COLOR;
+  const xColor = resolveCustomTeam(x, colors, sport)?.team.color ?? CUSTOM_X_COLOR;
+  const yColor = resolveCustomTeam(y, colors, sport)?.team.color ?? CUSTOM_Y_COLOR;
   return (
     <div className="flex flex-col gap-3">
       <div

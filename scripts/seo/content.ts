@@ -1,8 +1,9 @@
 // The copy for every landing page. Plain language, no betting vocabulary
 // (BANNED_WORDS in site.ts; seo.test.ts checks), no prices (the host fee is
 // changing: say "free to set up and invite"), and amounts only ever described
-// as the host's display-only information. "Super Bowl" and "NFL" are used only
-// to describe the games; those pages carry the "not affiliated" line.
+// as the host's display-only information. "Super Bowl", "NFL", "NBA", "WNBA",
+// "NCAA" and "March Madness" are used only to describe the games; those pages
+// carry the matching "not affiliated" line.
 
 import { boardDiagram, callout, features, link, paras, printableCards, shots, steps, table, terms, ticks } from "./blocks.ts";
 import type { LandingPage } from "./render.ts";
@@ -10,6 +11,8 @@ import { PRINT_QR_LABEL } from "./site.ts";
 
 const HOW_TO = "how-to-play-football-squares";
 const PRINTABLES = "printable-football-squares";
+const BASKETBALL = "basketball-squares";
+const MARCH = "march-madness-squares";
 
 const hub: LandingPage = {
   slug: "football-squares",
@@ -87,7 +90,9 @@ When a quarter ends, look at the last digit of each team's score. If it's Hawks 
       body: paras(`
 The Super Bowl is the biggest squares day of the year, and the ${link("super-bowl-squares", "Super Bowl squares guide")} covers planning a board for a party, an office or a family group chat. Running a board every week? ${link("nfl-squares", "NFL squares")} has ideas for Sunday afternoons, prime-time games, Thanksgiving and the playoffs.
 
-College fans get a full slate every Saturday, plus rivalry week and bowl season: see ${link("college-football-squares", "college football squares")}. And if you'd like a sheet for the fridge door too, grab a ${link(PRINTABLES, "free printable football squares template")}. Each one has a QR code that turns it into a live board.`),
+College fans get a full slate every Saturday, plus rivalry week and bowl season: see ${link("college-football-squares", "college football squares")}. And if you'd like a sheet for the fridge door too, grab a ${link(PRINTABLES, "free printable football squares template")}. Each one has a QR code that turns it into a live board.
+
+Squares isn't just for football, either. ${link(BASKETBALL, "Basketball squares")} works the same way for NBA, WNBA and college games, and the ${link(MARCH, "March Madness squares guide")} covers a board for every tournament game.`),
     },
     {
       id: "prizes",
@@ -414,6 +419,276 @@ It's also why <strong>every score</strong> is such a fun format for college game
   },
 };
 
+/** The share image is the same for every sport; on the basketball pages its alt text doesn't say football. */
+const NEUTRAL_IMAGE_ALT = "JaxSquares squares board";
+
+const basketball: LandingPage = {
+  slug: BASKETBALL,
+  nav: "Basketball squares",
+  blurb: "Live boards for NBA, WNBA and college games, with winners each quarter or each half.",
+  title: "Basketball Squares for NBA, WNBA and College Games | JaxSquares",
+  description:
+    "Run basketball squares for NBA, WNBA and college games. Link a real game and the scores fill in live, quarter by quarter or half by half. Free to set up.",
+  eyebrow: "Basketball squares",
+  h1: `Basketball squares, <span class="hl">from tip-off to the final buzzer</span>`,
+  lede:
+    "The same 100-square game, made for the hardwood. Link an NBA, WNBA or college game, text one link to your group, and watch the winning square light up at the end of each quarter, at halftime and at the final buzzer.",
+  hero: {
+    jax: "cheer",
+    win: { x: 2, y: 8 },
+    art: "An example basketball squares board: Hawks across the top, Wolves down the side, most squares claimed and the Hawks 2, Wolves 8 square lit gold as the winner.",
+  },
+  sections: [
+    {
+      id: "how-basketball-squares-works",
+      h2: "How basketball squares works",
+      body:
+        paras(`
+Basketball squares works just like the football version. A board is a 10×10 grid of 100 squares, with one team across the top and the other down the side. Everyone claims their squares first. Then the digits 0 to 9 are drawn at random across the top and again down the side, so every square ends up with one number for each team.
+
+When a quarter ends, take the last digit of each team's score. At Hawks 102, Wolves 98, the Hawks digit is 2 and the Wolves digit is 8, and the square where they meet wins. Everything in front of the last digit is ignored, so a three-digit score works exactly like a two-digit one. Nobody knows which square gets which numbers when they pick, so the friend who can't name a single player has the same chance as the one who never misses a game.`) +
+        `<figure class="diagram">${boardDiagram({
+          id: "basketball-diagram",
+          win: { x: 2, y: 8 },
+          guide: true,
+          title: "At Hawks 102, Wolves 98, follow the Hawks 2 column down and the Wolves 8 row across: the square where they meet wins.",
+        })}<figcaption>Hawks 102, Wolves 98: the Hawks 2 column meets the Wolves 8 row.</figcaption></figure>`,
+    },
+    {
+      id: "when-squares-win",
+      h2: "When squares win",
+      body:
+        terms([
+          ["Every quarter", "Winners at the end of Q1, at halftime, at the end of Q3 and at the final buzzer. The classic for NBA, WNBA and women's college games, which all play four quarters."],
+          ["Halftime and final", "Two winners. Men's college games play two halves, so this is how their boards work: one winner at halftime and one at the final."],
+          ["Final only", "One winner, decided by the final score, overtime included."],
+          ["Reverse winners", "The square with the two digits swapped wins too, so at 102–98 both the 2–8 and the 8–2 squares win. It works with any of the above."],
+          ["New numbers each quarter", "The digits are reshuffled before every quarter (every half in men's college), so a cold start doesn't sink anyone's night."],
+          ["10×10 or 5×5", "100 squares for a big group, or 25 squares, with two numbers per row and column, for a small one."],
+        ]) +
+        paras(`
+Football boards can also have a winner on every score. Basketball boards don't: a game has well over a hundred baskets and free throws, far too many winners to follow, so a basketball board sticks to the quarters, the half and the final. The ${link(HOW_TO, "rules guide")} covers reverse winners, board sizes and what to do when a winning square is empty.`),
+    },
+    {
+      id: "digits",
+      h2: "Why every digit has a shot",
+      body: paras(`
+In football, scores come in sevens and threes, so some digits turn up all the time and others hardly ever. Basketball is different. Points arrive in ones, twos and threes, dozens of times a game, so by the end of a quarter the last digit of a team's score could be anything. Over a season, the digits 0 to 9 come up close to evenly.
+
+That makes basketball squares one of the fairest boards there is. No square is a lost cause, and the winning square can change hands in a few seconds: a late three or a pair of free throws right before the buzzer changes everything. The board shows whose square is winning right now and how close yours is, a basket, a three or a free throw away, so the last minute of every quarter is worth watching.`),
+    },
+    {
+      id: "leagues",
+      h2: "Link an NBA, WNBA or college game",
+      body:
+        paras(`
+When you make a board, pick Basketball and then the league: NBA, WNBA, men's college or women's college. The next seven days of games are listed by day, and you can pick a date to look further ahead. Link your board to a game and the scores keep themselves up to date: the scorebug ticks over, the square that's winning right now glows, and the winner lights up the moment each quarter or half ends. Overtime counts toward the final.
+
+Watching a game that isn't listed, like a high school game or a rec league final? Type in any two teams instead and the host enters the scores. The score pad takes a three-digit score in a few taps, and the host can correct a score or pick a winner by hand.`) +
+        ticks([
+          "Opening night: the first night of the NBA season is a natural first board for the group chat.",
+          "Holiday games: the Christmas Day slate gives the whole family something to follow between courses.",
+          "Summer nights: the WNBA season brings a full schedule and plenty of close finishes.",
+          `College hoops: conference rivalries all winter, then the tournament in March. See the ${link(MARCH, "March Madness squares guide")} for planning a board for every tournament game.`,
+          "The playoffs: a board for every game of a series, for the group that watches them all.",
+        ]),
+    },
+    {
+      id: "why-jaxsquares",
+      h2: "Why run your board on JaxSquares",
+      body:
+        features([
+          ["A live board", "Every pick, the draw and every score land on every phone within a second. No refreshing, and nobody has to send a photo of the sheet."],
+          ["Scores on their own", "Link a real NBA, WNBA or college game and the scores fill in as it's played. Typing in your own matchup? A score takes a few taps."],
+          ["Free to set up", "Making a board, inviting your group and picking squares cost nothing. Players never pay to join."],
+          ["No app needed", "Friends tap the link and they're in, with no download and no account. Same room? Show a QR code or a six-character board code."],
+        ]) +
+        shots(["pick", "draw"]) +
+        `<p>Running a football board too? The ${link("football-squares", "football squares guide")} has everything for the NFL and college football seasons.</p>`,
+    },
+    {
+      id: "printable",
+      h2: "A printable basketball board",
+      body: (ctx) =>
+        printableCards(ctx.printableSizes, "basketball") +
+        `<p>It prints on one Letter page, with team lines, number boxes, lines for each quarter's winner and a QR code that turns it into a live board. The ${link(PRINTABLES, "printable templates page")} has the football boards, an A4 board and a prize sheet.</p>`,
+    },
+    {
+      id: "prizes",
+      h2: "Prizes without the awkward part",
+      body: paras(`
+JaxSquares never collects, holds or sends money, and nobody pays anyone through the app. If your group likes to play for something, the host can show a square price and prizes on the board as plain information, in dollars or in points, so everyone sees the rules before they pick. Any settling up happens among yourselves.
+
+Plenty of groups skip amounts entirely. Mark the board Just for fun, or add a prize note like “Loser brings the wings” or “Winner picks the next game we watch.”`),
+    },
+  ],
+  faqs: [
+    {
+      q: "Which basketball games can I link?",
+      a: "NBA, WNBA, men's college and women's college games. When you make a board, the next seven days of games are listed by day, and you can pick a date further ahead. Any other game can be typed in, and the host enters the scores.",
+    },
+    {
+      q: "Why is there no every-score option for basketball?",
+      a: "A basketball game has well over a hundred scoring plays, so a winner on every one would bury the board. Basketball boards have winners at the end of each quarter, at halftime and at the final, or at the final alone.",
+    },
+    {
+      q: "How do men's college games work?",
+      a: "Men's college games are played in two halves instead of four quarters, so their boards have a winner at halftime and at the final, or at the final alone. NBA, WNBA and women's college games are played in quarters.",
+    },
+    {
+      q: "Does overtime count?",
+      a: "Yes, toward the final. The final winner is decided by the score when the game ends, however many overtimes it takes. Quarter and halftime winners use the score at the end of those periods.",
+    },
+    {
+      q: "What about scores over 100?",
+      a: "Only the last digit of each score counts, so 102 is a 2 and 110 is a 0. Everything in front of the last digit is ignored, on the board and on paper.",
+    },
+    {
+      q: "Is JaxSquares affiliated with the NBA, the WNBA or the NCAA?",
+      a: "No. JaxSquares isn't affiliated with or endorsed by the NBA, the WNBA or the NCAA. We use those names only to describe the games your board can follow.",
+    },
+  ],
+  related: [MARCH, "football-squares", HOW_TO, PRINTABLES],
+  parent: null,
+  nbaNotice: true,
+  ncaaNotice: true,
+  imageAlt: NEUTRAL_IMAGE_ALT,
+  cta: {
+    h2: "Make your basketball board",
+    text: "Pick the game, text the link, and let the scores do the rest. Free to set up, and friends join from a link.",
+  },
+};
+
+const marchMadness: LandingPage = {
+  slug: MARCH,
+  nav: "March Madness squares",
+  blurb: "A board for every tournament game: halves for the men's games, quarters for the women's, and no bracket required.",
+  title: "March Madness Squares: A Live Board for Every Game | JaxSquares",
+  description:
+    "Run March Madness squares for the college basketball tournament: a live board for each game, winners at halftime and the final, and no bracket to bust.",
+  eyebrow: "March Madness squares",
+  h1: `March Madness squares, <span class="hl">one game at a time</span>`,
+  lede:
+    "A bracket can be over by the first Friday. A squares board starts fresh every game. Make one for each tournament game your group cares about, text the link, and watch the winning square light up at halftime and at the final buzzer.",
+  hero: {
+    jax: "sit",
+    win: { x: 6, y: 3 },
+    art: "An example tournament squares board with the Hawks 6, Wolves 3 square lit gold as the winner.",
+  },
+  sections: [
+    {
+      id: "squares-or-bracket",
+      h2: "Squares or a bracket? Why not both",
+      body: paras(`
+Brackets are a March tradition, but they take homework, and most of them are in pieces by the end of the first weekend. Squares asks nothing of anyone. There's no seeding to study and no upset to call: claim a few squares, wait for the numbers, and follow the score. The friend who couldn't name a single team in the tournament has the same chance as the one who filled out six brackets.
+
+It works game by game, too. A bracket is one long contest, but a board is a fresh start every game, so the people knocked out of the bracket chat by Friday still have something to cheer for on Sunday. New to squares? The ${link(HOW_TO, "how-to-play guide")} explains the grid, the draw and every way to win.`),
+    },
+    {
+      id: "halves-and-quarters",
+      h2: "Halves for the men's games, quarters for the women's",
+      body:
+        paras(`
+The men's and women's games are played differently, and the boards follow. Men's college games are two 20-minute halves, so a men's board has a winner at halftime and a winner at the final, or a single winner at the final. Women's college games are four 10-minute quarters, so a women's board can have a winner at the end of every quarter, just like an NBA game.
+
+JaxSquares sets this up for you: pick Men's college or Women's college when you make the board and only the ways to win that fit the game are offered.`) +
+        terms([
+          ["Men's games", "Two halves. Winners at halftime and at the final, or at the final only."],
+          ["Women's games", "Four quarters. Winners every quarter, at halftime and the final, or at the final only."],
+          ["Either way", "Overtime counts toward the final, reverse winners double the winning squares, and new numbers each period keep a cold start from sinking anyone."],
+        ]),
+    },
+    {
+      id: "plan",
+      h2: "Plan your tournament boards",
+      body: steps([
+        ["Find the game", "Make a board, pick Basketball, then Men's college or Women's college. The next seven days of games are listed by day, and you can pick a date to look further ahead."],
+        ["Choose how squares win", "Halftime and final is the classic for a men's game, and every quarter for a women's game. Add reverse winners for a big group."],
+        ["Text the link", "Drop it in the group chat, the team channel or the family thread. Friends tap their squares on their own phones, with no download."],
+        ["Draw before tip-off", "Lock the board and draw the numbers before the game starts. Everyone sees their digits land at the same moment."],
+        ["Follow it live", "The scores fill in on their own, the winning square glows as the lead changes, and the winner lights up at halftime and at the final buzzer."],
+      ]),
+    },
+    {
+      id: "ideas",
+      h2: "Ideas for tournament season",
+      body: ticks([
+        "The opening rounds: two full days of games, back to back. Make a board for the games your group cares about most, or one for each afternoon and evening.",
+        "Your school's game: the alumni chat's favorite way to watch, win or lose.",
+        "Upset watch: pick the game everyone calls a mismatch. Upsets make for wild scores, and the squares don't care who's favored.",
+        "The office: a board in the team channel is easier than a bracket for people who don't follow college basketball, and it's over in two hours.",
+        "The title games: the men's and women's championship games are made for a party board, with the whole room watching every possession.",
+      ]),
+    },
+    {
+      id: "finishes",
+      h2: "Close games, buzzer-beaters and overtime",
+      body: paras(`
+Tournament games are famous for their finishes, and that's when a squares board is at its best. A late three or a pair of free throws moves the last digit, so the winning square can change hands several times in the final minute. The board shows whose square is winning right now and how close yours is, a basket or a three away.
+
+If a game goes to overtime, the final winner is decided by the score at the end, overtime included, and the halftime winner stays as it was. Because basketball points come in ones, twos and threes, every digit from 0 to 9 has a real chance, so there are no hopeless squares on a tournament board. The ${link(BASKETBALL, "basketball squares guide")} has more on how the digits fall, and a free printable board for the break room.`),
+    },
+    {
+      id: "why-jaxsquares",
+      h2: "Why JaxSquares for tournament season",
+      body:
+        features([
+          ["Scores on their own", "Link a men's or women's college game and the scores fill in live, half by half or quarter by quarter."],
+          ["A board per game", "Each board takes about a minute to make, and everyone's name, color and emoji are already saved on their phones for the next one."],
+          ["Every board on one screen", "Home sorts your boards into Live now, Up next and Final, so a packed day of games stays easy to follow."],
+          ["No app needed", "Friends tap the link and they're in. Same room? Show a QR code or a six-character board code."],
+        ]) +
+        `<p>Back to football in the fall? The ${link("football-squares", "football squares guide")} covers the NFL and college seasons, and the ${link("college-football-squares", "college football squares")} page has ideas for rivalry week and bowl season.</p>`,
+    },
+    {
+      id: "prizes",
+      h2: "Prizes, kept simple",
+      body:
+        paras(`
+JaxSquares never collects, holds or sends money, and nobody pays anyone through the app. A host can show a square price and prizes on the board as plain information, in dollars or in points, or mark it Just for fun. Prize notes work on any board: “Winner picks the pizza for the next game” or “Loser wears the rival school's shirt.”`) +
+        callout(
+          paras(
+            "If your group plays with money involved, make sure that's allowed where you live and at your workplace. When in doubt, play for bragging rights.",
+          ),
+        ),
+    },
+  ],
+  faqs: [
+    {
+      q: "Is JaxSquares affiliated with the NCAA or March Madness?",
+      a: "No. JaxSquares isn't affiliated with or endorsed by the NCAA. We use the name March Madness only to describe the college basketball tournament your board is for.",
+    },
+    {
+      q: "Can I link a board to a tournament game?",
+      a: "Yes. Pick Basketball, then Men's college or Women's college, and choose the game from its day in the list. Games show up once they're on the schedule, and the scores fill in live while they're played.",
+    },
+    {
+      q: "Why do men's boards only have halftime and final winners?",
+      a: "Men's college games are played in two halves, not four quarters, so there's no end of a first or third quarter to score. Women's college games are played in quarters, so their boards can have a winner every quarter.",
+    },
+    {
+      q: "Can one board cover the whole tournament?",
+      a: "A board follows a single game's score, so make one for each game your group wants to follow. It takes about a minute, and friends join each one from a link.",
+    },
+    {
+      q: "Does overtime count?",
+      a: "Yes, toward the final. The final winner is decided by the score when the game ends, however many overtimes it takes. The halftime winner is set at halftime.",
+    },
+    {
+      q: "Do my friends need to download an app?",
+      a: "No. They open the link you send, pick a name, a color and an emoji, and tap their squares. It works in any phone or computer browser.",
+    },
+  ],
+  related: [BASKETBALL, "football-squares", HOW_TO, "college-football-squares"],
+  parent: BASKETBALL,
+  ncaaNotice: true,
+  imageAlt: NEUTRAL_IMAGE_ALT,
+  cta: {
+    h2: "Get your tournament board ready",
+    text: "Pick the game, text the link, and draw the numbers before tip-off. Free to set up, and friends join from a link.",
+  },
+};
+
 const printables: LandingPage = {
   slug: PRINTABLES,
   nav: "Printable templates",
@@ -436,7 +711,7 @@ const printables: LandingPage = {
       h2: "Download a template",
       body: (ctx) =>
         printableCards(ctx.printableSizes) +
-        `<p>Each PDF prints on a single page. Use the Letter files in the US and Canada and the A4 file almost everywhere else.</p>`,
+        `<p>Each PDF prints on a single page. Use the Letter files in the US and Canada and the A4 file almost everywhere else. Playing basketball? There's a ${link(BASKETBALL, "printable basketball squares board")} too.</p>`,
     },
     {
       id: "on-the-sheet",
@@ -690,4 +965,4 @@ Squares works great just for fun, for bragging rights or for a prize like the la
   },
 };
 
-export const PAGES: readonly LandingPage[] = [hub, superBowl, nfl, college, printables, howTo];
+export const PAGES: readonly LandingPage[] = [hub, superBowl, nfl, college, basketball, marchMadness, printables, howTo];

@@ -12,7 +12,8 @@
 
 import { periodPhrase, scorePlayLabel } from "../../../shared/formats";
 import { lastDigit, resolveResults, winCounts, type PeriodResult } from "../../../shared/squares";
-import type { GameState, Player, Team } from "../../../shared/types";
+import { sportWords } from "../../../shared/sportWords";
+import type { GameState, Player, Sport, Team } from "../../../shared/types";
 import { initialsOf, luminance, shortTeam, teamVars } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 
@@ -86,6 +87,8 @@ export interface RecapCard {
   rows: RecapRow[];
   /** How many players have won (each counted once). */
   winners: number;
+  /** The board's sport: the card's lines (yard lines, or a basketball court's) and the share text's ball. Absent reads as football. */
+  sport?: Sport;
 }
 
 const FIXED = new Set(["q1", "q2", "q3", "final"]);
@@ -118,6 +121,7 @@ export function recapCard(state: GameState): RecapCard | null {
     status: final ? "Final" : statusAfter(results[results.length - 1]),
     rows: results.flatMap((r) => rowsOf(r, players)),
     winners: Object.keys(winCounts(results)).length,
+    sport: game.sport,
   };
 }
 
@@ -205,7 +209,24 @@ export function fitRows(rows: readonly RecapRow[], capacity: number): { shown: R
 export function recapShareText(card: RecapCard): string {
   const score = card.score ? `${card.teamX.name} ${card.score.x}, ${card.teamY.name} ${card.score.y}` : `${card.teamX.name} vs ${card.teamY.name}`;
   const won = card.winners > 0 ? ` · ${card.winners} ${card.winners === 1 ? "winner" : "winners"}` : "";
-  return `${card.final ? "Final" : card.status}: ${score}${won} on ${card.boardName} 🏈`;
+  return `${card.final ? "Final" : card.status}: ${score}${won} on ${card.boardName} ${sportWords(card.sport).emoji}`;
+}
+
+/** A basketball court's center, as faint line ops: the half-court line and the center circle (two rings), drawn as short segments. */
+function courtLines(color: string): RecapOp[] {
+  const ops: RecapOp[] = [];
+  const cx = RECAP_WIDTH / 2;
+  const cy = RECAP_HEIGHT * 0.56;
+  ops.push({ kind: "line", x1: 0, y1: cy, x2: RECAP_WIDTH, y2: cy, color, width: 3 });
+  for (const r of [190, 64]) {
+    const steps = 72;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const b = ((i + 1) / steps) * Math.PI * 2;
+      ops.push({ kind: "line", x1: cx + r * Math.cos(a), y1: cy + r * Math.sin(a), x2: cx + r * Math.cos(b), y2: cy + r * Math.sin(b), color, width: 3 });
+    }
+  }
+  return ops;
 }
 
 // ---- Where everything goes ----
@@ -261,8 +282,13 @@ export function recapLayout(card: RecapCard): RecapLayout {
   const ops: RecapOp[] = [];
   const right = RECAP_WIDTH - PAD;
 
-  // Yard lines across the turf, faint.
-  for (let y = 120; y < RECAP_HEIGHT; y += 120) ops.push({ kind: "line", x1: 0, y1: y, x2: RECAP_WIDTH, y2: y, color: c.yardLine, width: 2 });
+  if (card.sport === "basketball") {
+    // A court under the floodlights, faint: the half-court line and the center circle.
+    ops.push(...courtLines(c.yardLine));
+  } else {
+    // Yard lines across the turf, faint.
+    for (let y = 120; y < RECAP_HEIGHT; y += 120) ops.push({ kind: "line", x1: 0, y1: y, x2: RECAP_WIDTH, y2: y, color: c.yardLine, width: 2 });
+  }
 
   // ---- Header: the board, where the game stands, Jax cheering ----
   const headerW = RECAP_WIDTH - 2 * PAD - JAX_W - 24;

@@ -50,7 +50,7 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
   const urgent = open && isUrgent(stats.left, stats.total);
   // A linked game's time, or the custom board's host-set one ("Sun 1:00 PM PDT").
   const startsAt = gameKickoff(game);
-  const kickoff = startsAt !== null && open && startsAt > Date.now() ? kicksOffLabel(startsAt) : null;
+  const kickoff = startsAt !== null && open && startsAt > Date.now() ? kicksOffLabel(startsAt, undefined, game.sport) : null;
   const action = heroAction(state);
   const arrival = useNewArrival(state.players, true);
   const boardCount = boardCountLine(state);

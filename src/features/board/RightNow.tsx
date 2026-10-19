@@ -9,9 +9,9 @@
 import type { ReactNode } from "react";
 import { formatAmount, formatRange, periodPhrase } from "../../../shared/formats";
 import type { Player, Team } from "../../../shared/types";
-import { FootballIcon, TrophyIcon } from "../../components/icons";
+import { SportIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
-import { nowSentence, playName, type NowView, type ScoringPlay } from "./boardModel";
+import { nowSentence, playName as nameOfPlay, type NowView, type ScoringPlay } from "./boardModel";
 
 export interface RightNowProps {
   now: NowView;
@@ -32,7 +32,7 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
   const owner = now.ownerId ? (byId.get(now.ownerId) ?? null) : null;
   const teamOf: TeamOf = (side) => (side === "x" ? teamX : teamY);
   const score = `${now.scoreX}–${now.scoreY}`;
-  const period = periodPhrase(now.periodKey ?? "", now.label);
+  const period = periodPhrase(now.periodKey ?? "", now.label, now.sport);
 
   return (
     <section
@@ -202,7 +202,8 @@ function NextScore({
 }
 
 /** "a Cowboys touchdown and a Giants field goal", "two Cowboys touchdowns", "a Cowboys touchdown and field goal". */
-function playsPhrase(plays: ScoringPlay[], teamOf: TeamOf): string {
+function playsPhrase(plays: ScoringPlay[], teamOf: TeamOf, sport?: NowView["sport"]): string {
+  const playName = (points: number) => nameOfPlay(points, { sport });
   const [a, b] = plays;
   const name = (p: ScoringPlay) => teamOf(p.team).name;
   if (!b) return `a ${name(a)} ${playName(a.points)}`;
@@ -215,14 +216,14 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
   const nameOf = (id: string | null) => (id === me ? "you" : (byId.get(id ?? "")?.name ?? (id ? "someone" : "an empty square")));
   const leading = now.mine && !now.everyScore;
 
-  let icon = <FootballIcon size={13} />;
+  let icon = <SportIcon sport={now.sport} size={13} />;
   let text: ReactNode;
   let chips: ScoringPlay[] = [];
   if (leading) {
     icon = <TrophyIcon size={13} filled />;
     text = now.threat ? (
       <>
-        <b className="font-extrabold text-ink-brand">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf))} would hand it to {nameOf(now.threat.ownerId)}.
+        <b className="font-extrabold text-ink-brand">Hold on!</b> {cap(playsPhrase([now.threat.play], teamOf, now.sport))} would hand it to {nameOf(now.threat.ownerId)}.
       </>
     ) : (
       <b className="font-extrabold text-ink-brand">Hold on! It's yours if nobody scores.</b>
@@ -231,7 +232,7 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
     chips = now.path.plays;
     text = (
       <>
-        <b className="font-extrabold text-ink">{now.path.plays.length === 1 ? "1 score away:" : "2 scores away:"}</b> {playsPhrase(now.path.plays, teamOf)}{" "}
+        <b className="font-extrabold text-ink">{now.path.plays.length === 1 ? "1 score away:" : "2 scores away:"}</b> {playsPhrase(now.path.plays, teamOf, now.sport)}{" "}
         {now.path.plays.length === 1 ? (now.everyScore ? "lands on your square" : "puts you in front") : now.everyScore ? "get you there" : "put you in front"}
       </>
     );

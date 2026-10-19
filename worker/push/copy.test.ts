@@ -294,3 +294,53 @@ describe("buildDeliveries", () => {
     expect(text).not.toMatch(/\$|\bbets?\b|wager|gambl|\bpot\b|payout|buy-?in|\bodds\b|\bcash\b|\bmoney\b|jackpot|stakes|\d+\.\d\d/i);
   });
 });
+
+describe("basketball boards", () => {
+  const hoops = (over: Parameters<typeof makeGame>[0] = {}) =>
+    makeGame({ name: "March Squares", sport: "basketball", league: "nba", teamX: { name: "Celtics", abbr: "BOS" }, teamY: { name: "Lakers", abbr: "LAL" }, ...over });
+  const linked = (startsAt: number) => ({ provider: "espn" as const, league: "nba" as const, eventId: "401705001", startsAt, xIsHome: false });
+
+  it("says tip-off, not kickoff", () => {
+    const start = buildDeliveries(hoops({ lockedAt: NOW - 60_000 }), players, { kind: "game-starting" }, NOW);
+    expect(bodyFor(start, "client-jax-001")).toBe("🏀 Tip-off! Numbers are in. Find your squares.");
+    const full = buildDeliveries(hoops({ status: "open", linkedEvent: linked(NOW + 3_600_000) }), players, { kind: "board-full" }, NOW);
+    expect(full[0].content.body).toBe("🔥 Your board is full. Draw numbers now, or they'll draw at tip-off.");
+    const unpaid = hoops({ status: "open", paid: false, linkedEvent: linked(NOW + 58 * 60_000) });
+    expect(buildDeliveries(unpaid, players, { kind: "board-full" }, NOW)[0].content.body).toBe(
+      "🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at tip-off.",
+    );
+    expect(buildDeliveries(unpaid, players, { kind: "draw-reminder" }, NOW)[0].content.body).toBe(
+      "⏰ Tip-off in about an hour. Draw the numbers now, or pay ahead and Jax draws them at tip-off.",
+    );
+    const soon = hoops({ status: "open", paid: false, linkedEvent: linked(NOW + 20 * 60_000) });
+    expect(buildDeliveries(soon, players, { kind: "draw-reminder" }, NOW)[0].content.body).toMatch(/^⏰ Tip-off in 20 minutes\./);
+  });
+
+  it("names a men's college board's halftime and final winners like football's, with no football words or amounts", () => {
+    const game = hoops({
+      league: "ncaab",
+      format: {
+        periods: "halves",
+        reverse: false,
+        boardSize: 100,
+        freshNumbers: false,
+        unit: "$",
+        squarePrice: 10,
+        rules: [
+          { moment: "q2", square: { amount: 400, note: "Winner picks the music" }, reverse: null },
+          { moment: "final", square: { amount: 600, note: "" }, reverse: null },
+        ],
+      },
+      periods: [
+        { key: "q2", label: "Half" },
+        { key: "final", label: "Final" },
+      ],
+    });
+    const half = buildDeliveries(game, players, { kind: "winner", periodKey: "q2", label: "Half", playerIds: [pid("client-jax-001")] }, NOW);
+    expect(bodyFor(half, "client-jax-001")).toBe("🎉 Your square hit at Half! 🏆 Winner picks the music");
+    const final = buildDeliveries(game, players, { kind: "winner", periodKey: "final", label: "Final", playerIds: [pid("client-sam-002")] }, NOW);
+    expect(bodyFor(final, "client-jax-001")).toBe("🏁 Sam's square hit at the Final. See who won each half.");
+    const text = [...half, ...final].map((d) => d.content.body).join("\n");
+    expect(text).not.toMatch(/\$|\b400\b|\b600\b|kickoff|touchdown|football|whistle/i);
+  });
+});

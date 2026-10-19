@@ -57,13 +57,17 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
 });
 
+const none = { loading: false, events: [], week: null, weeks: [], dates: [] };
+const BASKETBALL_NONE = { nba: none, wnba: none, ncaab: none, ncaaw: none };
+
 function Harness() {
   const [selected, setSelected] = useState<ScheduleEvent | null>(THIS_WEEK[0]);
   return (
     <GamePicker
       schedule={{
-        nfl: { loading: false, events: THIS_WEEK, week: week("2-6", "Week 6", NOW - DAY), weeks: [week("2-7", "Week 7", NOW + 4 * DAY), week("2-8", "Week 8", NOW + 11 * DAY)] },
-        ncaaf: { loading: false, events: [], week: null, weeks: [] },
+        nfl: { loading: false, events: THIS_WEEK, week: week("2-6", "Week 6", NOW - DAY), weeks: [week("2-7", "Week 7", NOW + 4 * DAY), week("2-8", "Week 8", NOW + 11 * DAY)], dates: [] },
+        ncaaf: none,
+        ...BASKETBALL_NONE,
       }}
       tab="nfl"
       onTab={() => {}}
@@ -116,5 +120,126 @@ describe("GamePicker weeks", () => {
     const rows = screen.getAllByTestId("game-option");
     expect(rows).toHaveLength(1);
     expect(within(rows[0]).getByText("Raiders")).toBeTruthy();
+  });
+});
+
+describe("GamePicker basketball", () => {
+  /** A local time `days` from today at `hour`:30. */
+  const at = (days: number, hour: number) => {
+    const d = new Date(NOW);
+    d.setHours(hour, 30, 0, 0);
+    d.setDate(d.getDate() + days);
+    return d.getTime();
+  };
+  const hoops = (id: string, startsAt: number, away: [string, string], home: [string, string], extra: Partial<ScheduleEvent> = {}) =>
+    game(id, startsAt, away, home, { league: "nba", ...extra });
+  const NBA_WEEK = [
+    hoops("t1", at(0, 19), ["Boston Celtics", "BOS"], ["Los Angeles Lakers", "LAL"]),
+    hoops("t2", at(0, 20), ["Miami Heat", "MIA"], ["Denver Nuggets", "DEN"]),
+    hoops("m1", at(1, 19), ["Golden State Warriors", "GS"], ["New York Knicks", "NY"]),
+    hoops("x1", at(3, 18), ["Chicago Bulls", "CHI"], ["Phoenix Suns", "PHX"]),
+  ];
+  const APRIL = [hoops("apr", Date.parse("2027-04-02T23:30:00Z"), ["Orlando Magic", "ORL"], ["Utah Jazz", "UTAH"])];
+  const MARCH = [
+    game("mm", at(1, 12), ["Vermont Catamounts", "UVM"], ["Duke Blue Devils", "DUKE"], { league: "ncaab", ranks: { home: 2 }, neutralSite: true, venue: { name: "Lenovo Center", city: "Raleigh", country: "USA" } }),
+  ];
+
+  function Hoops({ nba = NBA_WEEK, start = "nba" as const }: { nba?: ScheduleEvent[]; start?: "nba" | "ncaab" }) {
+    const [selected, setSelected] = useState<ScheduleEvent | null>(null);
+    const [tab, setTab] = useState<"nba" | "wnba" | "ncaab" | "ncaaw" | "custom" | "nfl" | "ncaaf">(start);
+    const [sport, setSport] = useState<"football" | "basketball">("basketball");
+    return (
+      <GamePicker
+        schedule={{
+          nfl: { loading: false, events: THIS_WEEK, week: week("2-6", "Week 6", NOW - DAY), weeks: [], dates: [] },
+          ncaaf: none,
+          ...BASKETBALL_NONE,
+          nba: { loading: false, events: nba, week: null, weeks: [], dates: ["20261019", "20261020"] },
+          ncaab: { loading: false, events: MARCH, week: null, weeks: [], dates: [] },
+        }}
+        sport={sport}
+        onSport={(s) => {
+          setSport(s);
+          setTab(s === "football" ? "nfl" : "nba");
+        }}
+        tab={tab}
+        onTab={setTab}
+        selected={selected}
+        onPickEvent={setSelected}
+        custom={{ x: "", y: "" }}
+        onCustomChange={() => {}}
+      />
+    );
+  }
+
+  it("shows the sport switch and basketball's league chips with their game counts", () => {
+    render(<Hoops />);
+    expect(screen.getByTestId("sport-basketball")).toHaveAttribute("aria-checked", "true");
+    const chips = screen.getAllByTestId("league-option");
+    expect(chips.map((c) => c.textContent)).toEqual(["NBA4", "WNBA", "Men's college1", "Women's college"]);
+    expect(chips[0]).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("custom-matchup")).toHaveAttribute("data-league", "custom");
+  });
+
+  it("lists the next days' games by day, today first and open", () => {
+    render(<Hoops />);
+    const days = screen.getAllByTestId("day-toggle");
+    expect(days.map((d) => d.textContent?.replace(/\s+/g, " "))).toEqual([
+      expect.stringMatching(/^Today2 games/),
+      expect.stringMatching(/^Tomorrow1 game/),
+      expect.stringMatching(/1 game$/),
+    ]);
+    expect(days.map((d) => d.getAttribute("aria-expanded"))).toEqual(["true", "false", "false"]);
+    expect(screen.getAllByTestId("game-option").map((r) => r.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/^Boston Celtics at Los Angeles Lakers/),
+      expect.stringMatching(/^Miami Heat at Denver Nuggets/),
+    ]);
+    fireEvent.click(days[1]);
+    expect(screen.getAllByTestId("game-option").map((r) => r.getAttribute("aria-label"))).toEqual([expect.stringMatching(/^Golden State Warriors at New York Knicks/)]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("searches across the days", () => {
+    render(<Hoops />);
+    fireEvent.change(screen.getByTestId("game-search"), { target: { value: "suns" } });
+    const rows = screen.getAllByTestId("game-option");
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText("Suns")).toBeTruthy();
+  });
+
+  it("loads another date from the date picker", async () => {
+    fetchMock.mockImplementation(async (input: string) => {
+      const url = new URL(String(input), "http://x");
+      return url.searchParams.get("date") === "20270402" ? json({ events: APRIL, dates: ["20270402"] }) : json({ events: [], unavailable: true });
+    });
+    render(<Hoops />);
+    const picker = screen.getByTestId("day-picker");
+    expect(picker.className).toMatch(/\btext-body\b/);
+    fireEvent.change(picker, { target: { value: "2027-04-02" } });
+    const row = await screen.findByRole("button", { name: /Orlando Magic at Utah Jazz/ });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/schedule?league=nba&date=20270402");
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("says when a league has no games this week, and still offers a date", () => {
+    render(<Hoops nba={[]} />);
+    expect(screen.getByTestId("no-games").textContent).toMatch(/No NBA games to link in the next 7 days/);
+    expect(screen.getByTestId("day-picker")).toBeTruthy();
+  });
+
+  it("shows college ranks and neutral sites", () => {
+    render(<Hoops start="ncaab" />);
+    const [row] = screen.getAllByTestId("game-option");
+    expect(row.textContent).toMatch(/2Duke/);
+    expect(within(row).getByText("Neutral site · Raleigh")).toBeTruthy();
+  });
+
+  it("switches back to football's weeks", () => {
+    render(<Hoops />);
+    fireEvent.click(screen.getByTestId("sport-football"));
+    expect(screen.getAllByTestId("league-option").map((c) => c.getAttribute("data-league"))).toEqual(["nfl", "ncaaf"]);
+    expect(screen.queryByTestId("day-list")).toBeNull();
+    expect(screen.getAllByTestId("week-toggle")[0]).toHaveAttribute("data-week", "2-6");
   });
 });

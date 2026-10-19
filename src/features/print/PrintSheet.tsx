@@ -6,6 +6,7 @@
 
 import type { CSSProperties } from "react";
 import { gameKickoff } from "../../../shared/kickoff";
+import { freshNumbersInfo } from "../../../shared/sports";
 import { drawFor, fixedPeriodsOf, gridSize, resolveResults } from "../../../shared/squares";
 import type { GameState } from "../../../shared/types";
 import { hostedByLine, shownClub } from "../../../shared/clubs";
@@ -158,7 +159,10 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
             <p className="mt-[2mm] text-[7.5pt]">
               The square matching the last digit of each team&apos;s score wins.
               {rules.some((r) => r.sides.some((s) => s.side === "Reverse")) && " Reverse is the square with the two digits swapped."}
-              {game.format.freshNumbers && (freshLabel ? ` New numbers each quarter: these are the ${freshLabel} numbers, the app has every quarter's.` : " New numbers are drawn for each quarter.")}
+              {game.format.freshNumbers &&
+                (freshLabel
+                  ? ` New numbers each ${freshNumbersInfo(game).each}: these are the ${freshLabel} numbers, the app has every ${freshNumbersInfo(game).each}'s.`
+                  : ` New numbers are drawn for each ${freshNumbersInfo(game).each}.`)}
             </p>
           </section>
 

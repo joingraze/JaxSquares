@@ -18,7 +18,8 @@
 
 import { drawFor, myWins, resolveResults, squaresLeft, winCounts } from "../../../shared/squares";
 import { SHARED_DRAW_KEY, drawKeys, periodPhrase } from "../../../shared/formats";
-import type { Activity, ActivityType, GameState, Team } from "../../../shared/types";
+import { sportWords } from "../../../shared/sportWords";
+import type { Activity, ActivityType, GameState, Sport, Team } from "../../../shared/types";
 
 /** Who the news is about, which decides the avatar an alert wears. */
 export type AlertSubject =
@@ -92,9 +93,9 @@ export function joinNames(names: string[]): string {
 
 export const teamShort = (t: Team): string => t.abbr?.trim() || t.name;
 
-/** A period mid-sentence with a leading space (" at halftime", " on score 3"), or "" when there's nothing to say. */
-export function atMoment(periodKey: string, label: string): string {
-  const { moment } = periodPhrase(periodKey, label);
+/** A period mid-sentence with a leading space (" at halftime", " on score 3", " at the final buzzer" in basketball), or "" when there's nothing to say. */
+export function atMoment(periodKey: string, label: string, sport?: Sport | null): string {
+  const { moment } = periodPhrase(periodKey, label, sport);
   return moment ? ` ${moment}` : "";
 }
 
@@ -209,10 +210,11 @@ function locked(a: Activity, state: GameState, me: string): ActivityAnnouncement
   const mine = mineSquares.length;
   const numbers = myNumbers(state, me);
   const labeled = myNumberPairs(state, me);
-  const head = kickoff ? "Kickoff! Numbers are in" : "Numbers are in";
+  const start = sportWords(state.game.sport).start;
+  const head = kickoff ? `${start}! Numbers are in` : "Numbers are in";
   if (mine > 0 && numbers && labeled && numbers.length > 0) {
     // Short enough for one line ("Your numbers: GB 3 · CHI 0 +2 more"); the alert's chip spells out the rest.
-    const text = `${kickoff ? "Kickoff! " : ""}Your numbers: ${labeled[0]}${labeled.length > 1 ? ` +${labeled.length - 1} more` : ""}`;
+    const text = `${kickoff ? `${start}! ` : ""}Your numbers: ${labeled[0]}${labeled.length > 1 ? ` +${labeled.length - 1} more` : ""}`;
     return {
       text,
       tone: "live",
@@ -243,7 +245,7 @@ function score(a: Activity, state: GameState): ActivityAnnouncement | null {
   const scoreY = int(d.scoreY, 0);
   const line = `${teamShort(teamX)} ${scoreX}–${scoreY} ${teamShort(teamY)}`;
   const label = str(d.label) ?? periodKey;
-  const phrase = periodPhrase(periodKey, label);
+  const phrase = periodPhrase(periodKey, label, state.game.sport);
   let lead: string;
   if (/^s\d+$/.test(periodKey)) lead = "Score!";
   else if (periodKey === "final") lead = "Final:";
@@ -261,7 +263,7 @@ function winner(a: Activity, state: GameState, me: string): ActivityAnnouncement
   const d = a.data as Data;
   const periodKey = str(d.periodKey) ?? "";
   const label = str(d.label) ?? periodKey;
-  const when = atMoment(periodKey, label);
+  const when = atMoment(periodKey, label, state.game.sport);
   const winners = ids(d.playerIds);
   const cell = cellOf(d.cell);
   const chip = scoreChipFor(state, periodKey, label);

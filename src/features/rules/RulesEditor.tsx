@@ -16,6 +16,7 @@
 
 import { useState, type ReactNode } from "react";
 import { AMOUNTS_DISCLAIMER, MOMENT_INFO, PRIZE_MAX_LENGTH, formatAmount, withoutRest } from "../../../shared/formats";
+import { momentsFor, type GameKind } from "../../../shared/sports";
 import { totalSquares } from "../../../shared/squares";
 import type { BoardSize, Moment, MomentRule } from "../../../shared/types";
 import { AlertIcon, CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusIcon, SparklesIcon } from "../../components/icons";
@@ -68,6 +69,8 @@ export interface RulesEditorProps {
   squares?: number;
   /** Why which moments win can't change any more (shown, with those controls disabled). */
   locked?: string | null;
+  /** The board's sport and league: only the moments its game has (no every score for basketball, halftime and the final in a game of halves). Football by default. */
+  kind?: GameKind;
 }
 
 /** Fun ideas for notes, one per moment; none of them are money. */
@@ -90,14 +93,14 @@ const WHEN: Record<Moment, string> = {
 
 const SIDE_LABEL: Record<Side, string> = { square: "Square", reverse: "Reverse" };
 
-export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null }: RulesEditorProps) {
+export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind }: RulesEditorProps) {
   const set = (patch: Partial<RulesDraft>) => onChange({ ...draft, ...patch });
   const setRules = (rules: MomentRule[]) => set({ rules });
   const amounts = draft.choice === "$" || draft.choice === "pts";
   const unit = draft.choice === "pts" ? "pts" : "$";
   const problems = noteProblems(draft.rules);
   const custom = presetChoice(draft.rules) === null;
-  const rows = editorRows(draft.rules);
+  const rows = editorRows(draft.rules, momentsFor(kind));
   const total = draft.squarePrice ? Math.round(draft.squarePrice * squares * 100) / 100 : null;
 
   return (

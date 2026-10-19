@@ -17,6 +17,7 @@
 
 import { periodPhrase } from "../../../shared/formats";
 import { squaresLeft } from "../../../shared/squares";
+import { sportWords } from "../../../shared/sportWords";
 import type { Activity, GameState } from "../../../shared/types";
 import {
   BURST_WINDOW_MS,
@@ -140,7 +141,7 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
         ...ann,
         key: "numbers",
         kind: "numbers",
-        title: kickoff ? "Kickoff! Numbers are in" : "Numbers are in",
+        title: kickoff ? `${sportWords(state.game.sport).start}! Numbers are in` : "Numbers are in",
         detail: ann.chip ? undefined : findLine ?? "Tap to see the board",
         duration: MOMENT_MS,
       };
@@ -162,7 +163,7 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
 
     case "winner": {
       const periodKey = str(d.periodKey) ?? "";
-      const when = atMoment(periodKey, str(d.label) ?? periodKey);
+      const when = atMoment(periodKey, str(d.label) ?? periodKey, state.game.sport);
       // The final whistle's summary card covers the Final's winner.
       if (periodKey === "final" && finalWhistleNear(a, state, me)) return null;
       const winners = ids(d.playerIds);
@@ -204,11 +205,11 @@ export function boardAlert(a: Activity, state: GameState, me: string): BoardAler
       let detail: string | undefined;
       let subject = ann.subject;
       if (iWonFinal) {
-        title = `Your square hit${atMoment("final", "Final")}! 🏁`;
+        title = `Your square hit${atMoment("final", "Final", state.game.sport)}! 🏁`;
         detail = mine && mine !== "Final" ? `You won ${mine}` : (str((fin!.data as Data).prize) ?? "That's a wrap");
         subject = { kind: "me" };
       } else if (finWinners.length > 0) {
-        title = `${joinNames(finWinners.map((id) => nameOf(state, id)))} ${finWinners.length > 1 ? "win" : "wins"}${atMoment("final", "Final")} 🏁`;
+        title = `${joinNames(finWinners.map((id) => nameOf(state, id)))} ${finWinners.length > 1 ? "win" : "wins"}${atMoment("final", "Final", state.game.sport)} 🏁`;
         detail = mine ? `You won ${mine}` : "That's a wrap. See who won each round";
         subject = { kind: "player", id: finWinners[0] };
       } else {

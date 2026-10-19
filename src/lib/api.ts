@@ -201,9 +201,17 @@ export const api = {
   // ---- App ----
   health: () => request<{ ok: true }>("GET", "/health"),
   config: () => request<AppConfig>("GET", "/config"),
-  /** The first week with games to link plus the weeks after it, or one week's games with `week` ("2-8"). */
-  schedule: (league: Exclude<League, "custom">, signal?: AbortSignal, week?: string) =>
-    request<ScheduleResponse>("GET", `/schedule?league=${league}${week ? `&week=${encodeURIComponent(week)}` : ""}`, { signal }),
+  /**
+   * Football: the first week with games to link plus the weeks after it, or
+   * one week's games with `week` ("2-8"). Basketball: the next 7 days' games,
+   * or one day's with `date` ("20260320").
+   */
+  schedule: (league: Exclude<League, "custom">, signal?: AbortSignal, week?: string, date?: string) =>
+    request<ScheduleResponse>(
+      "GET",
+      `/schedule?league=${league}${week ? `&week=${encodeURIComponent(week)}` : ""}${date ? `&date=${encodeURIComponent(date)}` : ""}`,
+      { signal },
+    ),
 
   // ---- Boards ----
   /**

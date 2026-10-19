@@ -32,6 +32,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { periodPhrase } from "../../../shared/formats";
+import { freshNumbersInfo, wordsFor } from "../../../shared/sports";
 import type { GameState, HostPassState, MeResponse, NumberDraw } from "../../../shared/types";
 import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, ShuffleIcon, TrophyIcon, UsersIcon } from "../../components/icons";
 import { celebrate, cx, useToast } from "../../components/ui";
@@ -225,7 +226,7 @@ function HostPanel({
       return;
     }
     if (purpose === "ahead") {
-      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: "Your Host Pass covers this board. Jax draws the numbers at kickoff." });
+      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: `Your Host Pass covers this board. Jax draws the numbers at ${wordsFor(state.game).startLower}.` });
       return;
     }
     // The host tapped "Draw the numbers": draw right away; the pass covers the fee.
@@ -264,7 +265,7 @@ function HostPanel({
       return;
     }
     if (purpose === "ahead") {
-      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: "Jax draws the numbers at kickoff. Squares stay open till then." });
+      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: `Jax draws the numbers at ${wordsFor(state.game).startLower}. Squares stay open till then.` });
       return;
     }
     // The host tapped "Draw the numbers": draw right away, with the reveal.
@@ -317,7 +318,7 @@ function HostPanel({
     }
     const { key, draw } = revealDraw(next.game);
     const fresh = Object.keys(next.game.numbers ?? {}).length > 1;
-    setReveal({ draw, label: fresh ? `${next.game.periods.find((p) => p.key === key)?.label ?? "Q1"} numbers · fresh set each quarter` : null, state: next });
+    setReveal({ draw, label: fresh ? `${next.game.periods.find((p) => p.key === key)?.label ?? "Q1"} numbers · fresh set each ${freshNumbersInfo(next.game).each}` : null, state: next });
     setView("home");
   };
 
@@ -335,7 +336,7 @@ function HostPanel({
     setOpen(false);
     later(async () => {
       setPicking(label);
-      const { short, moment } = periodPhrase(periodKey, label);
+      const { short, moment } = periodPhrase(periodKey, label, state.game.sport);
       const cell = await pickCell(`Tap the square that wins ${moment}`).finally(() => setPicking(null));
       if (!cell) {
         openSheet("home");

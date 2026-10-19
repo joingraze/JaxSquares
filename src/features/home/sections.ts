@@ -4,7 +4,8 @@
 // headline. No React or IO, so it is unit-tested in sections.test.ts.
 
 import { gameKickoff } from "../../../shared/kickoff";
-import type { GameState, GameSummary, HostProfile, Player, Team } from "../../../shared/types";
+import { sportWords } from "../../../shared/sportWords";
+import type { GameState, GameSummary, HostProfile, Player, Sport, Team } from "../../../shared/types";
 import { periodNote, periodPhrase } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel, pluralize } from "../../lib/format";
 import { lockIsTheMove } from "../host/hostModel";
@@ -167,11 +168,14 @@ export const ACTION_LABEL: Record<BoardAction, string> = {
   pick: "Pick squares",
 };
 
-export function kickoffText(startsAt: number, now: number, short = false): string {
+/** "Kickoff in 3h", "kicks off in 3h", "Kicking off"; a basketball board's "Tip-off in 3h", "tips off in 3h", "Tipping off". */
+export function kickoffText(startsAt: number, now: number, short = false, sport?: Sport | null): string {
+  const w = sportWords(sport);
+  const lower = (s: string) => s[0].toLowerCase() + s.slice(1);
   const ms = startsAt - now;
-  if (ms <= 0) return short ? "kicking off" : "Kicking off";
-  if (ms < 2 * DAY) return short ? `kicks off in ${countdown(ms)}` : `Kickoff in ${countdown(ms)}`;
-  return short ? kickoffLabel(startsAt, now) : `Kickoff ${kickoffLabel(startsAt, now)}`;
+  if (ms <= 0) return short ? lower(w.starting) : w.starting;
+  if (ms < 2 * DAY) return short ? `${lower(w.starts)} in ${countdown(ms)}` : `${w.start} in ${countdown(ms)}`;
+  return short ? kickoffLabel(startsAt, now) : `${w.start} ${kickoffLabel(startsAt, now)}`;
 }
 
 /** "15 squares yours": what a card on a board I'm playing says first. */
@@ -187,7 +191,7 @@ export function cardModel(g: GameSummary, now: number): CardModel {
   const role = relation === "host" ? (g.isHost ? "Your board" : "Co-host") : relation === "playing" ? squaresYours(g.mySquares) : "Watching";
   // A playing card's role already says how many are mine; a host's card says it here.
   const mine = relation !== "host" ? null : g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
-  const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null;
+  const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true, g.sport) : null;
   const base = { relation, role, action: action ? { kind: action, label: ACTION_LABEL[action] } : null };
 
   switch (action) {
@@ -201,12 +205,12 @@ export function cardModel(g: GameSummary, now: number): CardModel {
     default: {
       if (left === 0) {
         // A playing card shows my squares there instead. Only a linked board whose host fee is paid (or that 5 or fewer players hold: free) draws on its own.
-        const meta = relation === "playing" ? null : g.linked && (g.paid !== false || g.freeDraw === true) ? "numbers drawn at kickoff" : "waiting on the host's draw";
+        const meta = relation === "playing" ? null : g.linked && (g.paid !== false || g.freeDraw === true) ? `numbers drawn at ${sportWords(g.sport).startLower}` : "waiting on the host's draw";
         return { ...base, status: "Board's full", statusTone: "muted", statusIsLeft: false, meta, meter: true, buzz: false };
       }
       const soon = g.startsAt !== null && g.startsAt - now < DAY;
       return g.startsAt !== null
-        ? { ...base, status: kickoffText(g.startsAt, now), statusTone: soon ? "brand" : "muted", statusIsLeft: false, meta: mine, meter: true, buzz: false }
+        ? { ...base, status: kickoffText(g.startsAt, now, false, g.sport), statusTone: soon ? "brand" : "muted", statusIsLeft: false, meta: mine, meter: true, buzz: false }
         : { ...base, status: `${left} left`, statusTone: "muted", statusIsLeft: true, meta: mine, meter: true, buzz: false };
     }
   }
@@ -242,7 +246,7 @@ export function inviteModel(g: GameSummary, now: number): InviteModel {
     from: name ? `${name} invited you` : "You're invited",
     left: Math.max(0, g.totalSquares - g.claimed),
     matchup: `${g.teamX.name} vs ${g.teamY.name}`,
-    kickoff: g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null,
+    kickoff: g.startsAt !== null ? kickoffText(g.startsAt, now, true, g.sport) : null,
     lineup: prizeLineup(g.format),
     canHide: !g.joined && !g.isHost,
   };
@@ -280,7 +284,7 @@ export function withState(g: GameSummary, s: GameState, me: string): GameSummary
 /** Same rule as the server's dashboard query: the live feed's score, else the latest recorded period's. */
 function latestScoreOf(s: GameState, results: PeriodResult[]): GameSummary["latestScore"] {
   const { live } = s;
-  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, s.game.status) };
+  if (live && live.state !== "pre") return { scoreX: live.scoreX, scoreY: live.scoreY, label: liveLabel(live, s.game.status, s.game) };
   const last = [...results].reverse().find((r) => r.score);
   if (last?.score) return { scoreX: last.score.scoreX, scoreY: last.score.scoreY, label: last.label };
   const byKey = new Map(s.scores.map((x) => [x.periodKey, x]));
@@ -309,8 +313,8 @@ export function withTeamColors(teamX: Team, teamY: Team): [Team, Team] {
  * a "(reverse)" suffix: `short` for chips and clocks ("Q1", "Half", "Final"),
  * `moment` inside sentences ("at halftime", "at the end of Q1", "on score 3").
  */
-export function phraseOf(periodKey: string, label = ""): { short: string; moment: string } {
-  return periodPhrase(periodKey, label.replace(/\s*\(reverse\)$/, ""));
+export function phraseOf(periodKey: string, label = "", sport?: Sport | null): { short: string; moment: string } {
+  return periodPhrase(periodKey, label.replace(/\s*\(reverse\)$/, ""), sport);
 }
 
 /** "at halftime" -> "At halftime", for a moment that starts a line. */
@@ -375,7 +379,7 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
   const playerById = new Map(state.players.map((p) => [p.id, p]));
   const results = resolveResults(state);
   const next = upcomingPeriod(state);
-  const nextPhrase = next ? phraseOf(next.key, next.label) : null;
+  const nextPhrase = next ? phraseOf(next.key, next.label, game.sport) : null;
   const upNext = { nextLabel: nextPhrase?.short ?? null, nextMoment: nextPhrase?.moment || null };
 
   if (live && live.state !== "pre") {
@@ -391,7 +395,7 @@ export function liveSnapshot(state: GameState, me: string): LiveSnapshot | null 
       scoreY: live.scoreY,
       hasScore: true,
       inProgress: live.state === "in",
-      clock: liveLabel(live, game.status),
+      clock: liveLabel(live, game.status, game),
       leader: now
         ? {
             playerId: leaderId,
@@ -549,9 +553,10 @@ export function headlineFor(sections: Sections, opts: { winningNow: boolean; hit
   }
   if (sections.live.length > 0) return { lead: "Game on.", hot: "You're watching live.", tone: "live" };
   if (sections.next.length > 0) {
-    const kickoff = sections.next.find((g) => g.startsAt !== null && g.startsAt > opts.now)?.startsAt;
+    const soonest = sections.next.find((g) => g.startsAt !== null && g.startsAt > opts.now);
+    const kickoff = soonest?.startsAt;
     return kickoff
-      ? { lead: "Kickoff in", hot: `${countdown(kickoff - opts.now)}.`, tone: "brand" }
+      ? { lead: `${sportWords(soonest?.sport).start} in`, hot: `${countdown(kickoff - opts.now)}.`, tone: "brand" }
       : { lead: "You're in.", hot: "Now we wait.", tone: "brand" };
   }
   return { lead: "Good games.", hot: "Run it back?", tone: "brand" };

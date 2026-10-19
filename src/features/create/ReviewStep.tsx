@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { rulesOf } from "../../../shared/formats";
+import { playsHalves, regulationPeriods, wordsFor, type GameKind } from "../../../shared/sports";
 import type { GameFormat, LinkedEvent, Team } from "../../../shared/types";
 import { ChevronRightIcon, ClockIcon, LiveIcon, PencilIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx, TeamMark } from "../../components/ui";
@@ -38,12 +39,15 @@ export interface ReviewStepProps {
   sibling?: { sourceName: string } | null;
   /** The flow's steps (the card numbers follow them). */
   steps?: Steps;
+  /** The board's sport and league ("Tips off" for basketball, a game of halves drawn as two). */
+  kind?: GameKind;
 }
 
-export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name, maxPerPlayer, host, now, onEdit, sibling = null, steps = STEPS }: ReviewStepProps) {
+export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name, maxPerPlayer, host, now, onEdit, sibling = null, steps = STEPS, kind }: ReviewStepProps) {
+  const words = wordsFor(kind);
   const rules = rulesOf(format);
   const lineup = prizeLineup(format);
-  const modifiers = [format.reverse && "Reverse", format.freshNumbers && "New numbers each Q"].filter(Boolean) as string[];
+  const modifiers = [format.reverse && "Reverse", format.freshNumbers && (playsHalves(kind) ? "New numbers each half" : "New numbers each Q")].filter(Boolean) as string[];
   const when = linked ? kickoffLine(linked.startsAt, now) : kickoffLine(kickoff, now);
   return (
     <div className="flex flex-col gap-3">
@@ -65,7 +69,7 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
               <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
               <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
                 {linked ? <LiveIcon size={14} className="shrink-0 text-ink-brand" /> : <ClockIcon size={14} className="shrink-0 text-ink-brand" />}
-                <span className="truncate">{linked ? `Live scores · ${when}` : kickoff === null ? "No set time" : `Kicks off ${when}`}</span>
+                <span className="truncate">{linked ? `Live scores · ${when}` : kickoff === null ? "No set time" : `${words.starts} ${when}`}</span>
               </span>
               <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[rulesTitle(format), boardHeadline(format), ...modifiers].join(" · ")}</span>
             </span>
@@ -92,7 +96,7 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
                   <>
                     <span data-testid="review-kickoff" className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink">
                       <ClockIcon size={14} className="shrink-0 text-ink-brand" />
-                      <span className="truncate">{kickoff === null ? "No set time" : `Kicks off ${kickoffLine(kickoff, now)}`}</span>
+                      <span className="truncate">{kickoff === null ? "No set time" : `${words.starts} ${kickoffLine(kickoff, now)}`}</span>
                     </span>
                     <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
                       <PencilIcon size={14} className="shrink-0 text-ink-subtle" />
@@ -107,7 +111,7 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
           <ReviewCard step="format" steps={steps} summary={`${rulesTitle(format)}, ${boardHeadline(format)}`} onEdit={onEdit}>
             <div className="flex items-center gap-3">
               <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4">
-                <FormatGlyph rules={rules} />
+                <FormatGlyph rules={rules} segments={regulationPeriods(kind)} />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{rulesTitle(format)}</span>

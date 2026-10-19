@@ -174,7 +174,7 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
     groupRuns(list).map((run) => {
       if (run.boards.length === 1) return render(run.boards[0]);
       const startsAt = run.boards[0].startsAt;
-      const when = startsAt !== null && run.boards.every((b) => b.startsAt === startsAt) ? kickoffText(startsAt, now, true) : null;
+      const when = startsAt !== null && run.boards.every((b) => b.startsAt === startsAt) ? kickoffText(startsAt, now, true, run.boards[0]?.sport) : null;
       return (
         <BoardGroup key={run.key} label={groupLabel(run.boards, when)}>
           {run.boards.map((g) => render(g, run.boards))}
@@ -437,7 +437,7 @@ function useWinCelebration(boards: GameSummary[], states: Readonly<Record<string
       const reverse = win.label.endsWith("(reverse)");
       toast.show({
         tone: "win",
-        title: `Your ${reverse ? "reverse " : ""}square hit ${phraseOf(win.periodKey, win.label).moment}!`,
+        title: `Your ${reverse ? "reverse " : ""}square hit ${phraseOf(win.periodKey, win.label, game.sport).moment}!`,
         description: score ? `${game.name} · ${scoreWithTeams(game, score.scoreX, score.scoreY)}` : game.name,
         action: { label: "See it", onClick: () => navigateRef.current(`/g/${game.id}`) },
       });

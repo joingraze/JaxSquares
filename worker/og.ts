@@ -16,6 +16,7 @@
 // image stays the app's).
 
 import { hostedByLine, shownClub } from "../shared/clubs";
+import { isFootball, wordsFor } from "../shared/sports";
 import { boardPeriods, resolveResults, squaresLeft, totalSquares, winCounts } from "../shared/squares";
 import { BOOT_STATE_ID, type GameState } from "../shared/types";
 
@@ -27,6 +28,8 @@ export interface InviteMeta {
   description: string;
   url: string;
   image: string;
+  /** The image's alt text: "JaxSquares basketball squares board" on a basketball board. */
+  imageAlt?: string;
 }
 
 const teamLabel = (t: { name: string; abbr?: string }) => t.name || t.abbr || "TBD";
@@ -42,8 +45,18 @@ export function boardPageOf(pathname: string): BoardPage {
 
 export function inviteMeta(state: GameState, origin: string, page: BoardPage = "board"): InviteMeta {
   const meta = boardMeta(state, origin, page);
+  const sporty = withSport(state, meta);
   const club = shownClub(state.game.club);
-  return club ? { ...meta, description: `${hostedByLine(club)} · ${meta.description}` } : meta;
+  return club ? { ...sporty, description: `${hostedByLine(club)} · ${sporty.description}` } : sporty;
+}
+
+/** The preview follows the board's sport ("🏀 Basketball squares" after the matchup on a basketball board); football's reads as it always has. */
+function withSport(state: GameState, meta: InviteMeta): InviteMeta {
+  if (isFootball(state.game)) return meta;
+  const words = wordsFor(state.game);
+  const sport = `${words.emoji} ${words.noun[0].toUpperCase()}${words.noun.slice(1)} squares`;
+  const [matchup, ...rest] = meta.description.split(" · ");
+  return { ...meta, description: [matchup, sport, ...rest].join(" · "), imageAlt: `JaxSquares ${words.noun} squares board` };
 }
 
 function boardMeta(state: GameState, origin: string, page: BoardPage): InviteMeta {
@@ -110,7 +123,7 @@ function metaTags(m: InviteMeta): string {
     ["property", "og:description", m.description],
     ["property", "og:url", m.url],
     ["property", "og:image", m.image],
-    ["property", "og:image:alt", "JaxSquares football squares board"],
+    ["property", "og:image:alt", m.imageAlt ?? "JaxSquares football squares board"],
     ["name", "twitter:card", "summary_large_image"],
     ["name", "twitter:title", m.title],
     ["name", "twitter:description", m.description],

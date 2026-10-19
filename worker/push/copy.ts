@@ -4,9 +4,11 @@
 //
 // Copy rules: short, fun, and never about money. A host's free-text prize note
 // may be quoted as-is; a square price or prize amount never goes in a push
-// (amounts stay in the app).
+// (amounts stay in the app). Board copy follows the board's sport: "Tip-off"
+// on a basketball board where football says "Kickoff".
 
 import { periodNote } from "../../shared/formats";
+import { sportWords } from "../../shared/sportWords";
 import type { Game, PeriodsPreset, Sport } from "../../shared/types";
 import type { Member } from "../db";
 import type { Delivery, NotifyEvent, NotifyKind, PushContent } from "./types";
@@ -134,11 +136,12 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       // paid, the board is free (5 or fewer players), or the host's Host Pass
       // covers it (then nothing to pay).
       const linkedOpen = game.linkedEvent !== null && game.status === "open";
+      const start = sportWords(game.sport).startLower;
       const body = !linkedOpen
         ? "🔥 Your board is full. Time to draw numbers."
         : game.paid === false && !context.hostHasPass && !context.freeDraw
-          ? "🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff."
-          : "🔥 Your board is full. Draw numbers now, or they'll draw at kickoff.";
+          ? `🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at ${start}.`
+          : `🔥 Your board is full. Draw numbers now, or they'll draw at ${start}.`;
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:full` }));
     }
 
@@ -146,8 +149,10 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       // Paid or drawn since the reminder was due, free (Jax draws it at kickoff), or a Host Pass covers it: nothing to remind.
       if (game.status !== "open" || game.paid !== false || game.linkedEvent === null || context.hostHasPass || context.freeDraw) return [];
       const mins = Math.round((game.linkedEvent.startsAt - now) / 60_000);
-      const when = mins >= 45 ? "Kickoff in about an hour." : mins >= 2 ? `Kickoff in ${mins} minutes.` : "Kickoff's here.";
-      const body = `⏰ ${when} Draw the numbers now, or pay ahead and Jax draws them at kickoff.`;
+      // "Kickoff" or "Tip-off", as the board's sport says it.
+      const { start, startLower } = sportWords(game.sport);
+      const when = mins >= 45 ? `${start} in about an hour.` : mins >= 2 ? `${start} in ${mins} minutes.` : `${start}'s here.`;
+      const body = `⏰ ${when} Draw the numbers now, or pay ahead and Jax draws them at ${startLower}.`;
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:draw-reminder`, urgency: "high", ttlSeconds: HOUR }));
     }
 

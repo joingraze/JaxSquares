@@ -128,6 +128,19 @@ export const FootballIcon = make(
     <path d="M4.6 13.6l5.8 5.8M13.6 4.6l5.8 5.8" opacity="0.55" />
   </>,
 );
+export const BasketballIcon = make(
+  "Basketball",
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 3v18M3 12h18" />
+    <path d="M5.7 5.6c2.5 2.7 2.5 10.1 0 12.8M18.3 5.6c-2.5 2.7-2.5 10.1 0 12.8" />
+  </>,
+);
+
+/** The board's sport as an icon: a basketball on a basketball board, else the football. */
+export function SportIcon({ sport, ...props }: IconProps & { sport?: string | null }) {
+  return sport === "basketball" ? <BasketballIcon {...props} /> : <FootballIcon {...props} />;
+}
 export const GridIcon = make(
   "Grid",
   <>

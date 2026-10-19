@@ -7,7 +7,7 @@ import { encodeQr, isDark } from "../../src/features/invite/qr.ts";
 import { esc } from "./blocks.ts";
 import { PRINT_QR_LABEL, PRINT_QR_URL } from "./site.ts";
 
-export type SheetKind = "board-10x10-letter" | "board-10x10-a4" | "board-5x5" | "prize-sheet";
+export type SheetKind = "board-10x10-letter" | "board-10x10-a4" | "board-5x5" | "prize-sheet" | "basketball-10x10-letter";
 
 export interface SheetAssets {
   /** data: URLs for the woff2 fonts. */
@@ -34,6 +34,7 @@ export const SHEETS: Record<SheetKind, { paper: Paper; file: string; title: stri
   "board-10x10-a4": { paper: A4_LANDSCAPE, file: "football-squares-10x10-a4", title: "Football squares board (10×10, A4)" },
   "board-5x5": { paper: LETTER_LANDSCAPE, file: "football-squares-5x5", title: "Football squares board (5×5)" },
   "prize-sheet": { paper: LETTER_PORTRAIT, file: "football-squares-prize-sheet", title: "Football squares quarters prize sheet" },
+  "basketball-10x10-letter": { paper: LETTER_LANDSCAPE, file: "basketball-squares-10x10-letter", title: "Basketball squares board (10×10, Letter)" },
 };
 
 const INK = "#0f1a14";
@@ -164,6 +165,7 @@ function grid(n: 5 | 10, boardIn: number): string {
 function boardSheet(kind: SheetKind, a: SheetAssets): string {
   const { paper } = SHEETS[kind];
   const n = kind === "board-5x5" ? 5 : 10;
+  const hoops = kind === "basketball-10x10-letter";
   const headIn = 0.62;
   const contentW = paper.width - MARGIN * 2;
   const boardIn = Math.min(paper.height - MARGIN * 2 - headIn, contentW - 2.75 - 0.3);
@@ -176,10 +178,12 @@ function boardSheet(kind: SheetKind, a: SheetAssets): string {
     `<li>Write your name in the squares you want.</li>` +
     `<li>When the board is full, draw 0–9 at random for the boxes across the top, then again down the side${n === 5 ? " (two digits per box)" : ""}.</li>` +
     `<li>At the end of each quarter, the square matching the last digit of each team's score wins.</li></ol></div>`;
+  // Men's college games are two halves: say which lines they use.
+  const halves = `<p class="fine" style="margin:0">Playing two halves (men's college)? Use the Half and Final lines. Overtime counts toward the final.</p>`;
   return (
-    `<div class="sheet">${head(n === 5 ? `Football squares <span>5×5</span>` : `Football <span>squares</span>`, a)}` +
+    `<div class="sheet">${head(n === 5 ? `Football squares <span>5×5</span>` : hoops ? `Basketball <span>squares</span>` : `Football <span>squares</span>`, a)}` +
     `<div class="body">${grid(n, boardIn)}<div class="panel" style="flex:1">` +
-    `<div class="pair-lines">${line("Game")}${line("Date")}</div>${amounts()}${winners}${n === 5 ? how : ""}${qrBlock(a)}</div></div></div>`
+    `<div class="pair-lines">${line("Game")}${line("Date")}</div>${amounts()}${winners}${n === 5 ? how : ""}${hoops ? halves : ""}${qrBlock(a)}</div></div></div>`
   );
 }
 

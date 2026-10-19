@@ -73,9 +73,15 @@ describe("landing pages", () => {
 
     if (slug === HUB) {
       expect(types(doc)).toEqual(expect.arrayContaining(["Organization", "WebSite"]));
+    } else if (slug === "basketball-squares") {
+      // Heads the basketball pages: no breadcrumbs, like the hub.
+      expect(types(doc)).not.toContain("BreadcrumbList");
+      expect(doc.querySelector(".crumbs")).toBeNull();
     } else {
+      const parent = slug === "march-madness-squares" ? "basketball-squares" : HUB;
       const crumbs = data.find((d) => d["@type"] === "BreadcrumbList") as { itemListElement: { item: string }[] };
-      expect(crumbs.itemListElement.map((i) => i.item)).toEqual([pageUrl(HUB), pageUrl(slug)]);
+      expect(crumbs.itemListElement.map((i) => i.item)).toEqual([pageUrl(parent), pageUrl(slug)]);
+      expect(doc.querySelector(".crumbs a")?.getAttribute("href")).toBe(`/${parent}`);
     }
     if (page.howTo) {
       const howTo = data.find((d) => d["@type"] === "HowTo") as { step: { name: string; url: string }[] };
@@ -115,6 +121,42 @@ describe("landing pages", () => {
       }
       expect(footer).toContain("never collects, holds or sends money between players");
     }
+  });
+
+  it("carries the NBA line on the basketball page and the NCAA line on the basketball and March Madness pages", () => {
+    const footer = (slug: string) => rendered.find((r) => r.page.slug === slug)?.doc.querySelector("footer")?.textContent ?? "";
+    expect(footer("basketball-squares")).toContain("JaxSquares isn't affiliated with or endorsed by the NBA or the WNBA.");
+    for (const slug of ["basketball-squares", "march-madness-squares"]) {
+      expect(footer(slug)).toContain("JaxSquares isn't affiliated with or endorsed by the NCAA.");
+    }
+    expect(footer("football-squares")).not.toContain("NCAA");
+  });
+
+  it("keeps football out of the basketball pages' share image text and lists only their own printable", () => {
+    for (const { page, doc } of rendered) {
+      const alt = meta(doc, 'meta[property="og:image:alt"]');
+      const cards = [...doc.querySelectorAll(".printable a[download]")].map((a) => a.getAttribute("href"));
+      if (page.slug === "basketball-squares" || page.slug === "march-madness-squares") {
+        expect(alt).not.toMatch(/football/i);
+        expect(doc.querySelector("h1")?.textContent).not.toMatch(/football/i);
+      } else {
+        expect(alt).toBe("JaxSquares football squares board");
+      }
+      if (page.slug === "basketball-squares") expect(cards).toEqual(["/printables/basketball-squares-10x10-letter.pdf"]);
+      if (page.slug === "printable-football-squares") {
+        expect(cards).toHaveLength(4);
+        expect(cards.every((href) => href?.startsWith("/printables/football-squares-"))).toBe(true);
+      }
+    }
+  });
+
+  it("names the tournament only to describe it, and says the men's games are halves", () => {
+    const march = rendered.find((r) => r.page.slug === "march-madness-squares")!;
+    const text = march.doc.querySelector("main")?.textContent ?? "";
+    expect(text).toMatch(/two 20-minute halves/);
+    expect(text).toMatch(/four 10-minute quarters/);
+    // Other tournament round names are the NCAA's marks too: the copy doesn't lean on them.
+    expect(march.html).not.toMatch(/Final Four|Elite Eight|Sweet 16|Sweet Sixteen|Selection Sunday|First Four|Big Dance/);
   });
 
   it("sizes and describes every image, and lazy-loads the screenshots", () => {
@@ -188,10 +230,18 @@ describe("printables", () => {
     expect(count("board-10x10-letter")).toBe(20);
     expect(count("board-10x10-a4")).toBe(20);
     expect(count("board-5x5")).toBe(10);
+    expect(count("basketball-10x10-letter")).toBe(20);
   });
 
   it("matches each printable on the page to a sheet", () => {
     for (const p of PRINTABLES) expect(p.href).toBe(`/printables/${SHEETS[p.id as SheetKind].file}.pdf`);
+  });
+
+  it("heads the basketball board as basketball and tells a game of halves which lines to use", () => {
+    const doc = new DOMParser().parseFromString(sheetHtml("basketball-10x10-letter", assets), "text/html");
+    expect(doc.querySelector("h1")?.textContent).toBe("Basketball squares");
+    expect(doc.body.textContent).toContain("Use the Half and Final lines");
+    expect(new DOMParser().parseFromString(sheetHtml("board-10x10-letter", assets), "text/html").querySelector("h1")?.textContent).toBe("Football squares");
   });
 
   it("draws exactly the QR modules for the new-board page", () => {

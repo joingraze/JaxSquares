@@ -5,6 +5,7 @@
 // something happens. Pure (plus tiny localStorage helpers); unit-tested.
 
 import { resolveResults } from "../../../shared/squares";
+import { sportWords } from "../../../shared/sportWords";
 import type { Activity, GameState, GameSummary, Player } from "../../../shared/types";
 import { BURST_MS, phraseOf, scoreWithTeams } from "./sections";
 
@@ -105,7 +106,7 @@ function boardItems(g: GameSummary, s: GameState, me: string, since: number): In
           id: `${g.id}:${a.id}`,
           at: a.at,
           tone: "win",
-          text: `Your ${reverseOnly ? "reverse " : ""}square hit ${phraseOf(periodKey, label).moment}`,
+          text: `Your ${reverseOnly ? "reverse " : ""}square hit ${phraseOf(periodKey, label, s.game.sport).moment}`,
           detail,
           player: null,
         });
@@ -116,7 +117,7 @@ function boardItems(g: GameSummary, s: GameState, me: string, since: number): In
           id: `${g.id}:${a.id}`,
           at: a.at,
           tone: "live",
-          text: `${joinNames(names)} hit ${phraseOf(periodKey, label).moment}`,
+          text: `${joinNames(names)} hit ${phraseOf(periodKey, label, s.game.sport).moment}`,
           detail,
           player: byId.get(winners[0]) ?? null,
         });
@@ -128,7 +129,7 @@ function boardItems(g: GameSummary, s: GameState, me: string, since: number): In
         id: `${g.id}:${a.id}`,
         at: a.at,
         tone: "live",
-        text: a.data.auto === true ? "Kickoff! Numbers are in" : "Numbers are in",
+        text: a.data.auto === true ? `${sportWords(s.game.sport).start}! Numbers are in` : "Numbers are in",
         detail: count > 0 ? `Find your ${count === 1 ? "square" : `${count} squares`}` : null,
         player: null,
       });

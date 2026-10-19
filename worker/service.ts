@@ -291,7 +291,7 @@ export async function applyLiveUpdate(
     changed.push(...nextEveryScoreEntries(scores, live.scoreX, live.scoreY));
   }
   const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
-  for (const ps of periodScoresFromLinescores(game.format, update)) {
+  for (const ps of periodScoresFromLinescores(game.format, update, game)) {
     const cur = existing.get(ps.periodKey);
     if (cur?.source === "host") continue;
     if (cur && cur.scoreX === ps.scoreX && cur.scoreY === ps.scoreY) continue;

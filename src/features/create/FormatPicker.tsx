@@ -10,10 +10,14 @@
 // never change; the summary is the one place a modifier's effect shows
 // ("8 winners" with reverse on). Rules fine-tuned in "Square price & prizes"
 // (say, every score plus the quarters) show as a "Custom rules" card;
-// tapping a preset goes back to it, keeping amounts.
+// tapping a preset goes back to it, keeping amounts. A basketball board gets
+// the cards its game offers (shared/sports.ts `presetsFor`): no Every score
+// (too many scores), and men's college basketball, played in two halves,
+// only Halftime + Final and the Final, its timeline drawn as two halves.
 
 import type { CSSProperties, ReactNode } from "react";
-import { PERIOD_PRESETS, PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import { PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import { freshNumbersInfo, playsHalves, presetsFor, regulationPeriods, type GameKind } from "../../../shared/sports";
 import type { BoardSize, GameFormat, MomentRule, Team } from "../../../shared/types";
 import { CheckIcon, ShuffleIcon } from "../../components/icons";
 import { cx, Switch } from "../../components/ui";
@@ -45,6 +49,12 @@ export interface FormatPickerProps {
   /** Team colors for the mini board (falls back to the board defaults). */
   teamX?: Team | null;
   teamY?: Team | null;
+  /**
+   * The board's sport and league: basketball has no Every score card, and men's
+   * college basketball (two halves) only Halftime + Final and the Final.
+   * Football by default.
+   */
+  kind?: GameKind;
 }
 
 /** Where each preset's winners land on a 0..1 game timeline. */
@@ -68,7 +78,7 @@ const SIZES: { size: BoardSize; label: string; line: string }[] = [
   { size: 25, label: "Quick 5×5", line: "25 squares · 2 numbers each way" },
 ];
 
-export function FormatPicker({ format, onChange, prizeChoice = null, teamX, teamY }: FormatPickerProps) {
+export function FormatPicker({ format, onChange, prizeChoice = null, teamX, teamY, kind }: FormatPickerProps) {
   const rules = rulesOf(format);
   // Every score with the reverse at each quarter-end is still the Every score card.
   const current = presetChoice(rules);
@@ -76,14 +86,21 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
   // Canonical after every change: periods/reverse follow the rules, fresh numbers only where they apply.
   const set = (patch: Partial<GameFormat>) => onChange(withRules({ ...format, ...patch }));
   const setRules = (next: MomentRule[]) => set({ rules: next });
+  // The cards this game offers (no Every score for basketball), the game drawn as its quarters or halves.
+  const presets = presetsFor(kind);
+  const segments = regulationPeriods(kind);
+  const fresh = freshNumbersInfo(kind);
 
   return (
     <div className="flex flex-col gap-6">
       <div role="radiogroup" aria-label="When squares win" className="grid grid-cols-2 gap-2.5">
-        {PERIOD_PRESETS.map((preset) => (
+        {presets.map((preset, i) => (
           <FormatCard
             key={preset}
             preset={preset}
+            segments={segments}
+            halves={playsHalves(kind)}
+            wide={presets.length % 2 === 1 && i === presets.length - 1}
             selected={current === preset}
             onSelect={() => {
               if (current === preset) return;
@@ -99,7 +116,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
             data-testid="format-custom"
             className="col-span-2 flex items-center gap-3 rounded-card bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 p-3.5 ring-2 ring-inset ring-brand-line"
           >
-            <FormatGlyph rules={rules} />
+            <FormatGlyph rules={rules} segments={segments} />
             <span className="min-w-0">
               <span className="block font-display text-headline font-extrabold leading-tight text-ink">{PRESET_INFO.custom.label}</span>
               <span className="mt-0.5 block text-footnote font-semibold text-ink-brand">{rulesSummary(rules)}</span>
@@ -184,8 +201,8 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
             >
               <Switch
                 data-testid="format-fresh"
-                label="New numbers each quarter"
-                description="A fresh draw before every quarter."
+                label={fresh.label}
+                description={fresh.description}
                 checked={format.freshNumbers}
                 onChange={(freshNumbers) => set({ freshNumbers })}
               />
@@ -194,7 +211,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
         </div>
       </section>
 
-      <HowItWorks format={format} teamX={teamX} teamY={teamY} />
+      <HowItWorks format={format} teamX={teamX} teamY={teamY} kind={kind} />
     </div>
   );
 }
@@ -212,14 +229,15 @@ function OptionRow({ visual, children }: { visual: ReactNode; children: ReactNod
 
 const FIXED_AT: Record<string, number> = { q1: 0.25, q2: 0.5, q3: 0.75, final: 1 };
 
-/** The rules' timeline as a small glyph (dots where squares win), for summary rows. */
-export function FormatGlyph({ rules }: { rules: readonly MomentRule[] }) {
+/** The rules' timeline as a small glyph (dots where squares win), for summary rows: four quarters, or two halves (`segments`). */
+export function FormatGlyph({ rules, segments = 4 }: { rules: readonly MomentRule[]; segments?: number }) {
   const many = rules.some((r) => r.moment === "score");
   const fixed = rules.filter((r) => r.moment !== "score").map((r) => FIXED_AT[r.moment]);
+  const step = 28 / segments;
   return (
     <svg aria-hidden viewBox="0 0 28 12" className="h-3 w-7 shrink-0 overflow-visible">
-      {[0, 1, 2, 3].map((q) => (
-        <rect key={q} x={q * 7 + 0.5} y={5} width={6} height={2} rx={1} className="fill-ink/20" />
+      {Array.from({ length: segments }, (_, q) => (
+        <rect key={q} x={q * step + 0.5} y={5} width={step - 1} height={2} rx={1} className="fill-ink/20" />
       ))}
       {many && MARKS["every-score"].map((at, i) => <circle key={`s${i}`} cx={Math.max(2, Math.min(26, at * 28))} cy={6} r={1.6} className="fill-gold-400" />)}
       {fixed.map((at, i) => (
@@ -271,30 +289,49 @@ function ReverseGlyph({ on }: { on: boolean }) {
   );
 }
 
-function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selected: boolean; onSelect: () => void }) {
+function FormatCard({
+  preset,
+  selected,
+  onSelect,
+  segments = 4,
+  halves = false,
+  wide = false,
+}: {
+  preset: FixedPreset;
+  selected: boolean;
+  onSelect: () => void;
+  /** The game's periods: four quarters, or two halves. */
+  segments?: number;
+  /** Men's college basketball: Halftime + Final is the game's main card ("Every half"). */
+  halves?: boolean;
+  /** The last card of an odd row takes the full width. */
+  wide?: boolean;
+}) {
   const info = PRESET_INFO[preset];
   const marks = MARKS[preset];
   const many = preset === "every-score";
+  const when = halves && preset === "halves" ? "One at halftime, one at the final" : WHEN[preset];
   return (
     <button
       type="button"
       role="radio"
       aria-checked={selected}
-      aria-label={`${info.label}: ${WHEN[preset]}`}
+      aria-label={`${info.label}: ${when}`}
       data-testid="format-option"
       data-format={preset}
       onClick={onSelect}
       className={cx(
         "pressable relative flex min-h-34 flex-col items-start gap-3 overflow-hidden rounded-card p-3.5 text-left ring-inset transition-[background-color,box-shadow]",
+        wide && "col-span-2 min-h-28",
         selected
           ? "bg-[linear-gradient(160deg,rgb(198_249_31/0.18),rgb(198_249_31/0.03)_65%)] bg-surface-3 ring-2 ring-brand-line"
           : "bg-surface-3 ring-1 ring-line hover:bg-surface-4",
       )}
     >
-      {/* The game as four quarters; dots are the moments a square wins. */}
+      {/* The game as four quarters (or two halves); dots are the moments a square wins. */}
       <span aria-hidden className="relative block h-3 w-full">
         <span className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 gap-0.75">
-          {[0, 1, 2, 3].map((q) => (
+          {Array.from({ length: segments }, (_, q) => (
             <span key={q} className={cx("h-1.5 flex-1 rounded-full transition-colors", selected ? "bg-brand-400/35" : "bg-ink/10")} />
           ))}
         </span>
@@ -312,7 +349,7 @@ function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selec
       </span>
       <span className="flex flex-1 flex-col">
         <span className="block font-display text-headline font-extrabold leading-tight text-ink">{info.label}</span>
-        <span className="mt-1 block text-footnote leading-snug text-ink-muted">{WHEN[preset]}</span>
+        <span className="mt-1 block text-footnote leading-snug text-ink-muted">{when}</span>
         <span className={cx("mt-auto block pt-1.5 text-caption font-bold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset)}</span>
       </span>
     </button>
@@ -320,9 +357,9 @@ function FormatCard({ preset, selected, onSelect }: { preset: FixedPreset; selec
 }
 
 /** Mini board + plain-language rules; both follow every choice. */
-function HowItWorks({ format, teamX, teamY }: { format: GameFormat; teamX?: Team | null; teamY?: Team | null }) {
+function HowItWorks({ format, teamX, teamY, kind }: { format: GameFormat; teamX?: Team | null; teamY?: Team | null; kind?: GameKind }) {
   const { winners, size } = boardHeadlineParts(format);
-  const text = describeBoard(format);
+  const text = describeBoard(format, kind);
   return (
     <div className="flex items-center gap-4 rounded-2xl bg-surface-3 p-3.5 ring-1 ring-inset ring-line">
       <MiniBoard format={format} teamX={teamX} teamY={teamY} />

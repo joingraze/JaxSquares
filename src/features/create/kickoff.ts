@@ -4,6 +4,8 @@
 // is in the device's own time zone, labeled ("PDT"). Pure: no React, no IO.
 
 import { kickoffProblem } from "../../../shared/kickoff";
+import { inSportWords } from "../../../shared/sportWords";
+import type { Sport } from "../../../shared/types";
 import { kickoffLabel, zoneLabel } from "../../lib/format";
 
 const DAY_MS = 86_400_000;
@@ -137,8 +139,9 @@ export function kickoffLine(ts: number | null, now: number): string {
   return ts === null ? "No set time" : `${kickoffLabel(ts, now)} ${zoneLabel(ts)}`.trim();
 }
 
-/** Why a custom kickoff can't be used (the server's rule, in the picker's words), or null. */
-export function kickoffError(ts: number | null, now: number): string | null {
+/** Why a custom kickoff can't be used (the server's rule, in the picker's words: "tip-off" for basketball), or null. */
+export function kickoffError(ts: number | null, now: number, sport?: Sport | null): string | null {
   if (ts === null) return null;
-  return kickoffProblem(ts, now);
+  const problem = kickoffProblem(ts, now);
+  return problem && inSportWords(problem, sport);
 }

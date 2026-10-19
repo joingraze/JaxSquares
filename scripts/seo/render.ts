@@ -54,21 +54,42 @@ export interface LandingPage {
   howTo?: HowTo;
   /** The "not affiliated with the NFL" line in the footer. */
   nflNotice?: boolean;
+  /** The "not affiliated with the NBA or the WNBA" line in the footer. */
+  nbaNotice?: boolean;
+  /** The "not affiliated with the NCAA" line in the footer (pages that name the college tournament or the NCAA). */
+  ncaaNotice?: boolean;
+  /**
+   * The page this one sits under in the breadcrumbs. Absent: the hub. `null`:
+   * none, for a page that heads its own group (the basketball page).
+   */
+  parent?: LandingSlug | null;
+  /** The share image's alt text, when the page isn't about football. */
+  imageAlt?: string;
   related: LandingSlug[];
   cta: { h2: string; text: string };
 }
 
 const NOTE_FREE = "Free to set up and invite. No app or account needed.";
 const NFL_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NFL.";
+const NBA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NBA or the WNBA.";
+const NCAA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NCAA.";
 const MONEY_NOTICE =
   "JaxSquares never collects, holds or sends money between players. A square price or prize a host shows is information only.";
 const OG_IMAGE = `${ORIGIN}/og-image.png`;
-const HEADER_NAV: LandingSlug[] = ["how-to-play-football-squares", "super-bowl-squares", "printable-football-squares"];
+const HEADER_NAV: LandingSlug[] = ["how-to-play-football-squares", "super-bowl-squares", "basketball-squares", "printable-football-squares"];
 const HEADER_LABELS: Partial<Record<LandingSlug, string>> = {
   "how-to-play-football-squares": "How to play",
   "super-bowl-squares": "Super Bowl",
+  "basketball-squares": "Basketball",
   "printable-football-squares": "Printables",
 };
+
+/** The page above this one in the breadcrumbs, or null for a page at the top (the hub, the basketball page). */
+export function parentOf(page: LandingPage, all: readonly LandingPage[]): LandingPage | null {
+  if (page.slug === HUB || page.parent === null) return null;
+  const slug = page.parent ?? HUB;
+  return all.find((p) => p.slug === slug) ?? null;
+}
 
 /** Lets the page follow the app's saved Appearance (src/lib/theme.ts); without one, the phone's setting. */
 const THEME_BOOT =
@@ -103,15 +124,17 @@ export function structuredData(page: LandingPage, all: readonly LandingPage[]): 
       publisher: { "@id": `${ORIGIN}/#organization` },
     });
   } else {
-    const hub = all.find((p) => p.slug === HUB);
-    out.push({
-      "@context": "https://schema.org",
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: hub?.nav ?? "Football squares", item: pageUrl(HUB) },
-        { "@type": "ListItem", position: 2, name: page.nav, item: url },
-      ],
-    });
+    const parent = parentOf(page, all);
+    if (parent) {
+      out.push({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: parent.nav, item: pageUrl(parent.slug) },
+          { "@type": "ListItem", position: 2, name: page.nav, item: url },
+        ],
+      });
+    }
   }
   if (page.howTo) {
     out.push({
@@ -166,7 +189,7 @@ function head(page: LandingPage, all: readonly LandingPage[]): string {
     `<meta property="og:image" content="${OG_IMAGE}">`,
     `<meta property="og:image:width" content="1200">`,
     `<meta property="og:image:height" content="630">`,
-    `<meta property="og:image:alt" content="JaxSquares football squares board">`,
+    `<meta property="og:image:alt" content="${esc(page.imageAlt ?? "JaxSquares football squares board")}">`,
     `<meta name="twitter:card" content="summary_large_image">`,
     `<meta name="twitter:title" content="${t}">`,
     `<meta name="twitter:description" content="${d}">`,
@@ -204,11 +227,10 @@ function jaxArt(svg: string, width: number): string {
 }
 
 function hero(page: LandingPage, all: readonly LandingPage[], ctx: RenderContext): string {
-  const hub = all.find((p) => p.slug === HUB);
-  const crumbs =
-    page.slug === HUB
-      ? ""
-      : `<nav class="crumbs" aria-label="Breadcrumb"><a href="/${HUB}">${esc(hub?.nav ?? "Football squares")}</a> › <span aria-current="page">${esc(page.nav)}</span></nav>`;
+  const parent = parentOf(page, all);
+  const crumbs = parent
+    ? `<nav class="crumbs" aria-label="Breadcrumb"><a href="/${parent.slug}">${esc(parent.nav)}</a> › <span aria-current="page">${esc(page.nav)}</span></nav>`
+    : "";
   return (
     `<section class="hero"><div class="wrap"><div>${crumbs}` +
     `<p class="eyebrow">${esc(page.eyebrow)}</p><h1>${page.h1}</h1><p class="lede">${page.lede}</p>` +
@@ -269,6 +291,8 @@ function footer(page: LandingPage, all: readonly LandingPage[], ctx: RenderConte
     `<nav aria-labelledby="f-app"><h2 id="f-app">JaxSquares</h2><ul>${app}</ul></nav></div>` +
     `<p class="foot-note">${MONEY_NOTICE}</p>` +
     (page.nflNotice ? `<p class="foot-note">${NFL_NOTICE}</p>` : "") +
+    (page.nbaNotice ? `<p class="foot-note">${NBA_NOTICE}</p>` : "") +
+    (page.ncaaNotice ? `<p class="foot-note">${NCAA_NOTICE}</p>` : "") +
     `<p class="foot-note">© ${ctx.year} ${SITE_NAME}</p></div></footer>`
   );
 }

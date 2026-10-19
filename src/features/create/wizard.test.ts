@@ -149,6 +149,8 @@ describe("the draft", () => {
     return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v), removeItem: (k) => void data.delete(k) };
   }
   const draft = (over: Partial<WizardDraft> = {}): WizardDraft => ({
+    sport: "football",
+    sportTouched: false,
     tab: "nfl",
     tabTouched: true,
     picked: { nfl: event() },
@@ -222,5 +224,28 @@ describe("the draft", () => {
     expect(fixed.prizeChoice).toBeNull();
     expect(fixed.maxPerPlayer).toBe(0);
     expect(loadDraft(NOW, null)).toBeNull();
+  });
+
+  it("keeps a basketball draft's sport, league and picks", () => {
+    const store = memory();
+    const hoops = event({ eventId: "nba1", league: "nba" });
+    saveDraft(draft({ sport: "basketball", sportTouched: true, tab: "nba", picked: { nba: hoops, nfl: event() } }), NOW, store);
+    const back = loadDraft(NOW, store)!;
+    expect(back).toMatchObject({ sport: "basketball", sportTouched: true, tab: "nba" });
+    expect(back.picked.nba?.eventId).toBe("nba1");
+    // Custom stays custom whatever the sport; a league of the other sport falls back to this sport's first.
+    saveDraft(draft({ sport: "basketball", tab: "custom" }), NOW, store);
+    expect(loadDraft(NOW, store)?.tab).toBe("custom");
+    saveDraft(draft({ sport: "basketball", tab: "nfl" }), NOW, store);
+    expect(loadDraft(NOW, store)?.tab).toBe("nba");
+  });
+
+  it("reads an older draft (no sport) as football", () => {
+    const store = memory();
+    const { sport: _s, sportTouched: _t, ...older } = draft({ tab: "ncaaf" });
+    void _s;
+    void _t;
+    saveDraft(older as WizardDraft, NOW, store);
+    expect(loadDraft(NOW, store)).toMatchObject({ sport: "football", sportTouched: false, tab: "ncaaf" });
   });
 });

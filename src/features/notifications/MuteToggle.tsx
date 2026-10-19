@@ -2,6 +2,8 @@
 // Shows the last known setting instantly, then confirms with the server.
 
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { sportWords } from "../../../shared/sportWords";
+import type { Sport } from "../../../shared/types";
 import { BellIcon, BellOffIcon } from "../../components/icons";
 import { Switch, cx } from "../../components/ui";
 import { ToastContext } from "../../components/ui/toastContext";
@@ -73,9 +75,11 @@ export interface MuteToggleProps {
   className?: string;
   /** Told about every confirmed change (true = muted). */
   onChange?: (muted: boolean) => void;
+  /** The board's sport, for the line under it ("tip-off" on a basketball board). */
+  sport?: Sport;
 }
 
-export function MuteToggle({ gameId, variant = "row", label, className, onChange }: MuteToggleProps) {
+export function MuteToggle({ gameId, variant = "row", label, className, onChange, sport }: MuteToggleProps) {
   const { muted, busy, setMuted } = useGameMute(gameId, onChange);
 
   const control = (
@@ -102,7 +106,7 @@ export function MuteToggle({ gameId, variant = "row", label, className, onChange
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-callout font-semibold text-ink">{muted ? "Muted on this device" : "Notifications on"}</span>
-        <span className="block text-footnote text-ink-muted">{muted ? "You won't get pings from this board" : "Numbers, kickoff and winning squares"}</span>
+        <span className="block text-footnote text-ink-muted">{muted ? "You won't get pings from this board" : `Numbers, ${sportWords(sport).startLower} and winning squares`}</span>
       </span>
       {control}
     </div>

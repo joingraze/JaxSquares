@@ -213,6 +213,8 @@ export interface NumbersFacts {
   squares: { x: string; y: string }[];
   /** New numbers each quarter: the label of the draw shown ("Q1"). */
   freshLabel: string | null;
+  /** How often new numbers come: each "quarter" (the default), or each "half" in a game of halves. */
+  freshEach?: "quarter" | "half";
   /** Every score wins: the summary comes at the end instead of a win email. */
   everyScore: boolean;
   boardUrl: string;
@@ -228,7 +230,9 @@ export function numbersEmail(frame: EmailFrame, f: NumbersFacts): Rendered {
     { kind: "p", text: n === 1 ? `Here's your square on ${board}.` : `Here are your ${n} squares on ${board}.` },
     { kind: "squares", teamX: f.teamX, teamY: f.teamY, rows: f.squares.slice(0, SQUARES_LISTED), more: Math.max(0, n - SQUARES_LISTED) },
   ];
-  if (f.freshLabel) blocks.push({ kind: "p", text: `These are your ${f.freshLabel} numbers. Every quarter gets new ones, and the board shows them all.`, muted: true });
+  if (f.freshLabel) {
+    blocks.push({ kind: "p", text: `These are your ${f.freshLabel} numbers. Every ${f.freshEach ?? "quarter"} gets new ones, and the board shows them all.`, muted: true });
+  }
   blocks.push({
     kind: "p",
     text: f.everyScore

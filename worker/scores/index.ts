@@ -1,14 +1,22 @@
 // Live schedule + live score provider (ESPN). Mounted under /api by worker/index.ts;
 // fetchLiveForEvent is polled by the GameRoom Durable Object while a linked game is on.
+//
+// Football is picked a week of the season at a time; basketball has no weeks,
+// so its leagues (shared/sports.ts `isDayLeague`) are picked by day: the next
+// 7 days, today first, or one day further out (`date=YYYYMMDD`), one cached
+// scoreboard per day.
 
 import { Hono } from "hono";
+import { isDayLeague, isLinkedLeague as isKnownLeague } from "../../shared/sports";
 import type { LinkedEvent, LiveUpdate, ScheduleEvent, ScheduleResponse, ScheduleWeek } from "../../shared/types";
 import type { Env } from "../env";
 import { cached, type CachedValue } from "./cache";
 import {
+  espnDate,
   fetchEspnJson,
   isScoreboard,
   parseCalendar,
+  parseDayId,
   parseSchedule,
   parseScoreboardSnapshots,
   parseSummarySnapshot,
@@ -32,8 +40,12 @@ const SCHEDULE_STALE_S = 6 * 60 * 60;
 const SCHEDULE_TIMEOUT_MS = 8000;
 const LIVE_TTL_S = 10;
 const LIVE_TIMEOUT_MS = 4000;
-/** No football game runs this long, so an older "pre"/"in" entry is stale data. */
+/** No football or basketball game runs this long, so an older "pre"/"in" entry is stale data. */
 const MAX_GAME_SPAN_MS = 6 * HOUR_MS;
+/** Basketball's default schedule: this many days, today first. */
+export const SCHEDULE_DAYS = 7;
+/** Furthest ahead a basketball day can be asked for (a linked game can be up to 400 days out). */
+const MAX_DAYS_AHEAD = 400;
 /** Bump when the cached (parsed) shape changes so old entries are ignored after a deploy. */
 const CACHE_VERSION = "4";
 
@@ -56,8 +68,20 @@ function slateDay(startsAt: number): number {
   return Math.floor((startsAt - 10 * HOUR_MS) / DAY_MS) * DAY_MS;
 }
 
+/** A league with a live feed: NFL and college football, the NBA, the WNBA and men's and women's college basketball. */
 export function isLinkedLeague(v: string): v is LinkedLeague {
-  return v === "nfl" || v === "ncaaf";
+  return isKnownLeague(v);
+}
+
+/**
+ * A basketball day someone may ask for: a real date (YYYYMMDD, US Eastern as
+ * ESPN files games) from yesterday's slate (late games still on) to about a
+ * year ahead. null otherwise.
+ */
+export function dayInRange(date: string, now = Date.now()): number | null {
+  const day = parseDayId(date);
+  const today = slateDay(now);
+  return day !== null && day >= today - DAY_MS && day <= today + MAX_DAYS_AHEAD * DAY_MS ? day : null;
 }
 
 // ---- Schedule ----
@@ -79,6 +103,8 @@ export interface ScheduleResult {
   events: ScheduleEvent[];
   week: ScheduleWeek | null;
   weeks: ScheduleWeek[];
+  /** Date-based leagues: the days (YYYYMMDD) `events` covers. */
+  dates?: string[];
 }
 
 function loadWeekBoard(league: LinkedLeague, ref: WeekRef | undefined, opts: ScoresOptions) {
@@ -145,6 +171,57 @@ export async function getSchedule(
   return { events, week: current, weeks: later };
 }
 
+/** One day's scoreboard as the picker needs it: its games, none finished. */
+function loadDayBoard(league: LinkedLeague, day: number, now: number, opts: ScoresOptions) {
+  const url = scoreboardUrl(league, day);
+  return cached<ScheduleEvent[]>({
+    key: cacheKey(url, "schedule"),
+    // Today's and tomorrow's games can still move; later days rarely do.
+    ttlSeconds: day - slateDay(now) <= DAY_MS ? SCHEDULE_TTL_S : LATER_WEEK_TTL_S,
+    staleSeconds: SCHEDULE_STALE_S,
+    inflight: opts.inflight,
+    load: async () => {
+      const json = await fetchEspnJson(url, SCHEDULE_TIMEOUT_MS);
+      if (!isScoreboard(json)) throw new Error("ESPN scoreboard response had no events array");
+      return parseSchedule(json, league).filter((e) => e.state !== "post");
+    },
+  });
+}
+
+/**
+ * Basketball's games to link, by day, or null if ESPN is unavailable.
+ *
+ * Without `date`: the next SCHEDULE_DAYS days, today's slate first (ESPN files
+ * games by US date; a late game still on counts toward its own day). With
+ * `date` ("20260320"): that day's games. One ESPN request per day, each
+ * cached; a day that can't be read is left out while the others answer.
+ */
+export async function getDaySchedule(league: LinkedLeague, date?: string, opts: ScoresOptions = {}): Promise<ScheduleResult | null> {
+  const now = opts.now ?? Date.now();
+  let days: number[];
+  if (date !== undefined) {
+    const day = parseDayId(date);
+    if (day === null) return null;
+    days = [day];
+  } else {
+    const today = slateDay(now);
+    days = Array.from({ length: SCHEDULE_DAYS }, (_, i) => today + i * DAY_MS);
+  }
+  const boards = await Promise.all(days.map((day) => loadDayBoard(league, day, now, opts)));
+  if (boards.every((b) => !b)) return null;
+  const seen = new Set<string>();
+  const events = linkable(
+    boards.flatMap((b) => b?.value ?? []).filter((e) => !seen.has(e.eventId) && !!seen.add(e.eventId)),
+    now,
+  );
+  return { events, week: null, weeks: [], dates: days.map(espnDate) };
+}
+
+/** The schedule for any league: by week (football) or by day (basketball). */
+export function scheduleFor(league: LinkedLeague, query: { week?: string; date?: string }, opts: ScoresOptions = {}): Promise<ScheduleResult | null> {
+  return isDayLeague(league) ? getDaySchedule(league, query.date, opts) : getSchedule(league, query.week, opts);
+}
+
 // ---- Through the ScoreHub ----
 // Every request for a league goes through one ScoreHub Durable Object (hub.ts),
 // so ESPN sees one fetch per scoreboard per TTL however many boards and pickers
@@ -155,13 +232,14 @@ function hubFor(env: Env | undefined, league: LinkedLeague): DurableObjectStub |
   return ns ? ns.get(ns.idFromName(`espn:${league}`)) : null;
 }
 
-/** getSchedule through the league's ScoreHub. */
-export async function scheduleVia(env: Env | undefined, league: LinkedLeague, week?: string): Promise<ScheduleResult | null> {
+/** getSchedule (football, by week) or getDaySchedule (basketball, by day) through the league's ScoreHub. */
+export async function scheduleVia(env: Env | undefined, league: LinkedLeague, week?: string, date?: string): Promise<ScheduleResult | null> {
   const hub = hubFor(env, league);
   if (hub) {
     try {
       const q = new URLSearchParams({ league });
       if (week !== undefined) q.set("week", week);
+      if (date !== undefined) q.set("date", date);
       const res = await hub.fetch(`https://hub/schedule?${q}`);
       if (res.ok) return (await res.json()) as ScheduleResult | null;
       console.warn(`score hub answered ${res.status} for the ${league} schedule`);
@@ -169,7 +247,7 @@ export async function scheduleVia(env: Env | undefined, league: LinkedLeague, we
       console.warn("score hub unavailable", err);
     }
   }
-  return getSchedule(league, week);
+  return scheduleFor(league, { week, date });
 }
 
 /** fetchLiveForEvent through the league's ScoreHub. Never throws. */
@@ -191,8 +269,26 @@ export const scheduleRoutes = new Hono<{ Bindings: Env }>();
 
 scheduleRoutes.get("/schedule", async (c) => {
   const league = c.req.query("league") ?? "nfl";
-  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl or ncaaf" }, 400);
+  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
   const week = c.req.query("week");
+  const date = c.req.query("date");
+
+  if (isDayLeague(league)) {
+    // Basketball has no weeks: a day at a time.
+    if (week !== undefined) return c.json({ error: "Basketball games go by date: use date=20260320" }, 400);
+    if (date !== undefined && dayInRange(date) === null) {
+      return c.json({ error: "date must look like 20260320, from today to a year ahead" }, 400);
+    }
+    const result = await scheduleVia(c.env, league, undefined, date);
+    if (!result) {
+      c.header("cache-control", "no-store");
+      return c.json<ScheduleResponse>({ events: [], unavailable: true });
+    }
+    c.header("cache-control", `public, max-age=${date ? 300 : 60}`);
+    return c.json<ScheduleResponse>({ events: result.events, dates: result.dates ?? [] });
+  }
+
+  if (date !== undefined) return c.json({ error: "Football games go by week: use week=2-7" }, 400);
   if (week !== undefined && !parseWeekId(week)) return c.json({ error: "week must look like 2-7" }, 400);
 
   const result = await scheduleVia(c.env, league, week);

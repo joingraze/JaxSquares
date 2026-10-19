@@ -61,7 +61,7 @@ function FinalRow({ game, state, me }: { game: GameSummary; state: GameState | u
   // Joined but never picked: I watched this one.
   const watched = !game.isHost && !game.isCohost && game.mySquares === 0;
   let subtitle: string;
-  if (wins.length === 1) subtitle = `You hit ${phraseOf(wins[0].periodKey, wins[0].label).moment}`;
+  if (wins.length === 1) subtitle = `You hit ${phraseOf(wins[0].periodKey, wins[0].label, game.sport).moment}`;
   else if (wins.length > 1) subtitle = `You hit ${times(wins.length)}`;
   else if (others.length > 0) subtitle = `${watched ? "Watched · " : ""}${others[0].name}${others.length > 1 ? ` +${others.length - 1}` : ""} won`;
   else subtitle = game.isHost ? "You hosted" : game.isCohost ? "You co-hosted" : watched ? "Watched" : "Good game";

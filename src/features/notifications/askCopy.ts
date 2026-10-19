@@ -4,7 +4,8 @@
 // (once drawn) their own numbers in the preview. Pure, tested in askCopy.test.ts.
 
 import { periodPhrase } from "../../../shared/formats";
-import type { GameState } from "../../../shared/types";
+import { sportWords } from "../../../shared/sportWords";
+import type { GameState, Sport } from "../../../shared/types";
 import { myNumbers, teamShort } from "./activity";
 import type { AskTrigger } from "./prefs";
 
@@ -21,7 +22,10 @@ export interface AskCopy {
 
 /** A believable football score ending in this digit, so a preview reads like a real game. */
 const SCORE_FOR_DIGIT = [10, 21, 12, 3, 14, 17, 6, 7, 28, 9];
-const scoreEnding = (digit: string): number => SCORE_FOR_DIGIT[Number(digit)] ?? Number(digit);
+/** The same for basketball (a believable score at the end of a quarter or the half). */
+const HOOPS_SCORE_FOR_DIGIT = [50, 41, 52, 43, 54, 45, 56, 47, 58, 49];
+const scoreEnding = (digit: string, sport?: Sport | null): number =>
+  (sport === "basketball" ? HOOPS_SCORE_FOR_DIGIT : SCORE_FOR_DIGIT)[Number(digit)] ?? Number(digit);
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -30,15 +34,16 @@ function playerLines(state: GameState | null, me: string): [string, string] {
   const x = teamShort(state.game.teamX);
   const y = teamShort(state.game.teamY);
   const first = state.game.periods[0];
-  const when = (first ? periodPhrase(first.key, first.label) : periodPhrase("q1")).moment;
+  const sport = state.game.sport;
+  const when = (first ? periodPhrase(first.key, first.label, sport) : periodPhrase("q1")).moment;
   const mine = state.squares.filter((s) => s.playerId === me).length;
   const pairs = myNumbers(state, me);
   if (pairs && pairs.length > 0) {
     const p = pairs[0];
-    return [`🔢 Numbers are in. You've got ${x} ${p.x} · ${y} ${p.y}`, `🎉 ${x} ${scoreEnding(p.x)} – ${y} ${scoreEnding(p.y)} ${when}. Your square hits! 🏆`];
+    return [`🔢 Numbers are in. You've got ${x} ${p.x} · ${y} ${p.y}`, `🎉 ${x} ${scoreEnding(p.x, sport)} – ${y} ${scoreEnding(p.y, sport)} ${when}. Your square hits! 🏆`];
   }
   const back = mine > 0 ? `🔢 Numbers are in. Find your ${mine === 1 ? "square" : plural(mine, "square")}.` : "🔢 Numbers are in. Find your squares.";
-  return [back, `🎉 ${x} 7 – ${y} 3 ${when}. Your square hits! 🏆`];
+  return [back, sport === "basketball" ? `🎉 ${x} 57 – ${y} 53 ${when}. Your square hits! 🏆` : `🎉 ${x} 7 – ${y} 3 ${when}. Your square hits! 🏆`];
 }
 
 function hostLines(state: GameState | null, me: string): [string, string] {
@@ -55,6 +60,8 @@ export function askCopy(trigger: AskTrigger, state: GameState | null, me: string
   const isHost = trigger === "created" || (!!state && state.game.hostPlayerId === me);
   const mine = state ? state.squares.filter((s) => s.playerId === me).length : 0;
   const kickoff = !!state?.game.linkedEvent;
+  // "Kickoff" or "Tip-off", "the final whistle" or "the final buzzer": the board's sport.
+  const words = sportWords(state?.game.sport);
   // Numbers already drawn: the next pings are the results, not the draw.
   const drawn = !!state && state.game.status !== "open" && state.game.status !== "draft";
   const results = state ? state.game.periods.map((p) => periodPhrase(p.key, p.label).short) : [];
@@ -64,10 +71,10 @@ export function askCopy(trigger: AskTrigger, state: GameState | null, me: string
         ? `Who wins ${results.slice(0, -1).join(", ")}${results.length > 1 ? " & " : ""}${results[results.length - 1]}`
         : "Every winning square"
       : kickoff
-        ? "Kickoff and numbers drawn"
+        ? `${words.start} and numbers drawn`
         : "Numbers drawn",
     mine > 1 ? `Any of your ${mine} squares hitting` : "Your square hitting",
-    "The final whistle",
+    `${words.end[0].toUpperCase()}${words.end.slice(1)}`,
   ];
 
   if (trigger === "created") {
@@ -116,7 +123,7 @@ export function askCopy(trigger: AskTrigger, state: GameState | null, me: string
     title: "Get pinged when your square hits",
     body: drawn
       ? `Numbers are in on ${boardName}. We'll buzz you the moment ${mine > 1 ? "one of your squares" : "your square"} hits.`
-      : "Numbers drawn, kickoff and every one of your squares that wins. Nothing else.",
+      : `Numbers drawn, ${words.startLower} and every one of your squares that wins. Nothing else.`,
     boardName,
     lines,
     scope: playerScope,

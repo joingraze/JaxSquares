@@ -25,6 +25,7 @@ import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
+import { boardSportFor, freshNumbersInfo, isLeague, isLinkedLeague, leagueSportProblem, rulesProblemFor } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
 import { PAYMENT_REQUIRED_CODE } from "../shared/types";
 import type {
@@ -68,8 +69,6 @@ export { ScoreHub } from "./scores/hub";
 type AppEnv = { Bindings: Env; Variables: { clientId: string; playerId: string } };
 type Ctx = Context<AppEnv>;
 
-const SPORTS: readonly Sport[] = ["football", "basketball", "baseball", "hockey", "soccer", "other"];
-const LEAGUES: readonly League[] = ["nfl", "ncaaf", "custom"];
 const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused characters
 const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
 /** Most boards a device may ask about with `GET /api/me/games?seen=` (it keeps about this many). */
@@ -134,7 +133,7 @@ function cleanTeam(v: unknown): Team | null {
 function cleanLinkedEvent(v: unknown, now: number): LinkedEvent | null {
   if (!v || typeof v !== "object") return null;
   const e = v as Record<string, unknown>;
-  if (e.provider !== "espn" || (e.league !== "nfl" && e.league !== "ncaaf")) return null;
+  if (e.provider !== "espn" || !isLinkedLeague(e.league)) return null;
   if (typeof e.eventId !== "string" || !/^[A-Za-z0-9_-]{1,32}$/.test(e.eventId)) return null;
   const startsAt = Number(e.startsAt);
   const day = 24 * 60 * 60 * 1000;
@@ -237,7 +236,7 @@ function rulesEditProblem(state: GameState, next: GameFormat): string | null {
     return "Scoring rules lock once the first score is in. You can still change amounts and notes.";
   }
   if (next.freshNumbers !== game.format.freshNumbers && game.numbers) {
-    return "New numbers each quarter locks once the numbers are drawn. You can still change amounts and notes.";
+    return `${freshNumbersInfo(game).label} locks once the numbers are drawn. You can still change amounts and notes.`;
   }
   return null;
 }
@@ -435,11 +434,14 @@ api.post("/games", requireClient, async (c) => {
   if ([teamX, teamY].some((t) => mentionsMoney(t.name) || mentionsMoney(t.abbr ?? ""))) fail(400, MONEY_ERRORS.team);
   const linkedEvent = source ? source.game.linkedEvent : body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
   if (!source && body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
-  let league: League = source ? source.game.league : LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
+  let league: League = source ? source.game.league : isLeague(body.league) ? body.league : "custom";
   if (linkedEvent) league = linkedEvent.league;
   // A custom board's kickoff is the host's (optional); a linked board's is its event's.
   const startsAt = linkedEvent ? linkedEvent.startsAt : source ? (source.game.startsAt ?? null) : cleanKickoff(body.startsAt, now);
-  const sport: Sport = source ? source.game.sport : SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
+  // A league plays one sport (NBA: basketball); a custom board is football or basketball.
+  const sportProblem = source ? null : leagueSportProblem(body.sport, league);
+  if (sportProblem) fail(400, sportProblem);
+  const sport: Sport = source ? source.game.sport : boardSportFor(body.sport, league);
   const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(requested.boardSize));
   if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
   const host = cleanProfile(body.host);
@@ -447,6 +449,9 @@ api.post("/games", requireClient, async (c) => {
   // New boards keep every note inside their rules; an older client's notes are folded in.
   const legacy = cleanPrizes(requested, body.prizes);
   const format = requested.rules ? withRules({ ...requested, rules: foldNotes(requested.rules, legacy) }) : withRules(requested, legacy);
+  // Every score isn't offered for basketball, and a game of halves has no Q1 or Q3.
+  const unfit = rulesProblemFor(rulesOf(format), { sport, league });
+  if (unfit) fail(400, unfit);
   // Counted only once the request is valid, so fixing a typo doesn't use up a try.
   const limited = await deviceLimited(c, RATE_LIMITS.createGame, RATE_LIMITS.createGameIp);
   if (limited) return limited;
@@ -524,6 +529,9 @@ api.patch("/games/:id", requireClient, async (c) => {
     const problem = formatError(body.format);
     if (problem) fail(400, problem);
     const next = withRules(sanitizeFormat(body.format));
+    // Moments the board's game doesn't have: every score on basketball, a quarter-end in a game of halves.
+    const unfit = rulesProblemFor(rulesOf(next), game);
+    if (unfit) fail(400, unfit);
     const locked = rulesEditProblem(state, next);
     if (locked) fail(409, locked);
     const scoring = rulesShape(rulesOf(next)) !== rulesShape(rulesOf(game.format)) || next.freshNumbers !== game.format.freshNumbers;

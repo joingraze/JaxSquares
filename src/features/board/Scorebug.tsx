@@ -7,6 +7,7 @@
 // are being picked it adds one row of who's in.
 
 import { gameKickoff } from "../../../shared/kickoff";
+import { sportWords } from "../../../shared/sportWords";
 import type { GameState } from "../../../shared/types";
 import { ClockIcon, WifiOffIcon } from "../../components/icons";
 import { AvatarGroup, Badge, LiveDot, ProgressRing, TeamMark, cx } from "../../components/ui";
@@ -57,7 +58,7 @@ export function Scorebug({ state, watching, connection, nextLabel, now }: Scoreb
         {picking && kickoff !== null && kickoff > now && (
           <p data-testid="board-kickoff" className="col-span-3 -mt-1 flex items-center justify-center gap-1.5 text-caption font-semibold text-ink-muted">
             <ClockIcon size={13} className="shrink-0 text-ink-subtle" />
-            {kicksOffLabel(kickoff, now)}
+            {kicksOffLabel(kickoff, now, game.sport)}
           </p>
         )}
       </div>
@@ -202,9 +203,9 @@ function Center({
     <div className="flex flex-col items-center gap-1 px-1 text-center">
       <Badge tone="brand">Numbers drawn</Badge>
       <span className="whitespace-nowrap text-caption font-semibold text-ink-muted">
-        {pre ? `Kickoff in ${countdown(kickoff - now)}` : nextLabel ? `${nextLabel} up next` : "Game on"}
+        {pre ? `${sportWords(state.game.sport).start} in ${countdown(kickoff - now)}` : nextLabel ? `${nextLabel} up next` : "Game on"}
       </span>
-      {pre && <span className="sr-only">{kicksOffLabel(kickoff, now)}</span>}
+      {pre && <span className="sr-only">{kicksOffLabel(kickoff, now, state.game.sport)}</span>}
     </div>
   );
 }

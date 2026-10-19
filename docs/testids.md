@@ -18,6 +18,13 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `week-toggle` | each week row in the game picker (also `data-week=<season type>-<week>`, e.g. `2-7`); `aria-expanded` when open |
 | `week-see-all` | "See all N games" in the lead week |
 | `week-more` | "Full schedule · N more weeks" |
+| `sport-picker` | the game step's Football / Basketball switch (segments `sport-football`, `sport-basketball`) |
+| `league-picker`, `league-option` | the league chips under it (`role=radiogroup`; each chip `data-league=nfl\|ncaaf\|nba\|wnba\|ncaab\|ncaaw`, `aria-checked`); the Custom chip is `custom-matchup` (`data-league=custom`) |
+| `day-list` | basketball's games, a day at a time: the next 7 days (local), then the date picker |
+| `day-toggle` | each day row in it ("Today", "Tomorrow", "Fri, Mar 20"; `data-week=<the day, slugged>`, `aria-expanded` when open) |
+| `day-see-all` | "See all N games" in an open day with more than 6 |
+| `day-picker` | "Another date": the date input (`type=date`) that loads one day's games, up to a year ahead |
+| `no-games` | a league with nothing to link ("No NBA games to link in the next 7 days"), with the custom matchup as the way out |
 | `host-name` | the creator's name field on Final touches, if the create flow asks for it (a device with no name yet) |
 | `board-name` | the board name field on Final touches (auto-filled from the matchup) |
 | `custom-kickoff` | the kickoff card under custom teams (and in Edit board for a custom board) |
@@ -26,7 +33,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `kickoff-input` | the full date & time input (`datetime-local`, local time) behind "Other date & time" |
 | `kickoff-none` | "No set time" (`aria-pressed` while there's none; then reads "Set a kickoff") |
 | `board-kickoff` | "Kicks off Sun 1:00 PM PDT" on a board's scorebug while squares are picked |
-| `custom-matchup` | the "type your own teams" option |
+| `custom-matchup` | the "type your own teams" option (the Custom league chip) |
 | `team-x-input`, `team-y-input` | custom matchup team inputs |
 | `format-option` | each format preset card (also `data-format=<preset>`) |
 | `format-custom` | the "Custom rules" card on the create flow's How squares win step, shown (selected) when the rules match no preset |

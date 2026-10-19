@@ -2,16 +2,39 @@
 // unofficial and undocumented by ESPN, so every field below is treated as
 // optional and the parsers never throw on odd data: a malformed event is skipped,
 // a missing number becomes 0 or "unknown", and callers decide what to do with gaps.
+//
+// Football and basketball share the scoreboard and summary shapes: the same
+// competitors, `linescores` per period and `status` (STATUS_HALFTIME,
+// STATUS_END_PERIOD, "End of 1st"...). Basketball's periods are four quarters
+// (NBA, WNBA, women's college) or two halves (men's college), with overtime
+// after either; toLiveUpdate reports them as the feed counts them and
+// shared/sports.ts maps them onto the board's moments.
 
-import type { League, LiveUpdate, ScheduleEvent, ScheduleWeek, Team } from "../../shared/types";
+import type { LiveUpdate, ScheduleEvent, ScheduleWeek, Team } from "../../shared/types";
+import type { LinkedLeague } from "../../shared/sports";
 
-export type LinkedLeague = Exclude<League, "custom">;
+export type { LinkedLeague };
 export type EspnState = "pre" | "in" | "post";
 
-const SITE_API = "https://site.api.espn.com/apis/site/v2/sports/football";
+const SITE_API = "https://site.api.espn.com/apis/site/v2/sports";
 const LEAGUE_PATH: Record<LinkedLeague, string> = {
-  nfl: "nfl",
-  ncaaf: "college-football",
+  nfl: "football/nfl",
+  ncaaf: "football/college-football",
+  nba: "basketball/nba",
+  wnba: "basketball/wnba",
+  ncaab: "basketball/mens-college-basketball",
+  ncaaw: "basketball/womens-college-basketball",
+};
+
+/**
+ * Query params a league's scoreboard always takes. Without `groups`, ESPN's
+ * college scoreboards return only a featured subset: 80 is FBS football, 50
+ * Division I men's basketball; `limit` lifts the default page size.
+ */
+const LEAGUE_PARAMS: Partial<Record<LinkedLeague, Record<string, string>>> = {
+  ncaaf: { groups: "80", limit: "300" },
+  ncaab: { groups: "50", limit: "400" },
+  ncaaw: { limit: "400" },
 };
 
 // ---- Raw response shapes (only the fields we read) ----
@@ -90,6 +113,19 @@ export function parseWeekId(id: string): WeekRef | null {
 }
 
 /**
+ * A day as basketball's schedule names it ("20260320", the `dates` value
+ * ESPN takes) -> that date's midnight UTC in epoch ms, which espnDate turns
+ * back into the same id. null for anything that isn't a real calendar date.
+ */
+export function parseDayId(id: string): number | null {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(id);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const ms = Date.UTC(y, mo - 1, d);
+  return y >= 2000 && espnDate(ms) === id ? ms : null;
+}
+
+/**
  * The scoreboard for the current week, for one US day when `at` is a day (epoch
  * ms), or for a given week of the season. ESPN answers 400 to date ranges.
  */
@@ -100,11 +136,7 @@ export function scoreboardUrl(league: LinkedLeague, at?: number | WeekRef): stri
     params.set("seasontype", String(at.seasonType));
     params.set("week", String(at.week));
   }
-  if (league === "ncaaf") {
-    // groups=80 is FBS; without it the college scoreboard returns only a featured subset.
-    params.set("groups", "80");
-    params.set("limit", "300");
-  }
+  for (const [key, value] of Object.entries(LEAGUE_PARAMS[league] ?? {})) params.set(key, value);
   const query = params.toString();
   return `${SITE_API}/${LEAGUE_PATH[league]}/scoreboard${query ? `?${query}` : ""}`;
 }

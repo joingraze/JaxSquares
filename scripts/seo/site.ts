@@ -12,6 +12,8 @@ export const LANDING_SLUGS = [
   "super-bowl-squares",
   "nfl-squares",
   "college-football-squares",
+  "basketball-squares",
+  "march-madness-squares",
   "printable-football-squares",
   "how-to-play-football-squares",
 ] as const;
@@ -119,6 +121,8 @@ export const PRINT_QR_LABEL = "jaxsquares.com/new";
 
 export interface Printable {
   id: string;
+  /** The game the sheet is for: the football printables page lists the football ones, the basketball page its own. */
+  sport: "football" | "basketball";
   /** Published PDF path. */
   href: string;
   /** Preview image (first page) published next to the pages. */
@@ -133,6 +137,7 @@ export interface Printable {
 export const PRINTABLES = [
   {
     id: "board-10x10-letter",
+    sport: "football",
     href: "/printables/football-squares-10x10-letter.pdf",
     thumb: "/seo/printables/football-squares-10x10-letter.webp",
     thumbSize: { width: 560, height: 433 },
@@ -142,6 +147,7 @@ export const PRINTABLES = [
   },
   {
     id: "board-10x10-a4",
+    sport: "football",
     href: "/printables/football-squares-10x10-a4.pdf",
     thumb: "/seo/printables/football-squares-10x10-a4.webp",
     thumbSize: { width: 560, height: 396 },
@@ -151,6 +157,7 @@ export const PRINTABLES = [
   },
   {
     id: "board-5x5",
+    sport: "football",
     href: "/printables/football-squares-5x5.pdf",
     thumb: "/seo/printables/football-squares-5x5.webp",
     thumbSize: { width: 560, height: 433 },
@@ -160,12 +167,23 @@ export const PRINTABLES = [
   },
   {
     id: "prize-sheet",
+    sport: "football",
     href: "/printables/football-squares-prize-sheet.pdf",
     thumb: "/seo/printables/football-squares-prize-sheet.webp",
     thumbSize: { width: 335, height: 433 },
     name: "Quarters prize sheet",
     paper: "US Letter, portrait",
     blurb: "Track the score and the winner at Q1, halftime, Q3 and the final, with lines for your notes.",
+  },
+  {
+    id: "basketball-10x10-letter",
+    sport: "basketball",
+    href: "/printables/basketball-squares-10x10-letter.pdf",
+    thumb: "/seo/printables/basketball-squares-10x10-letter.webp",
+    thumbSize: { width: 560, height: 433 },
+    name: "Basketball squares board",
+    paper: "US Letter, landscape",
+    blurb: "A 100-square board with winner lines for each quarter, halftime and the final.",
   },
 ] as const satisfies readonly Printable[];
 

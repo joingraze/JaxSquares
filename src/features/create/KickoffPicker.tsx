@@ -5,6 +5,8 @@
 // Used by the create flow and the host's Edit board.
 
 import { useLayoutEffect, useRef } from "react";
+import { sportWords } from "../../../shared/sportWords";
+import type { Sport } from "../../../shared/types";
 import { CalendarIcon, ClockIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
@@ -28,6 +30,8 @@ export interface KickoffPickerProps {
   value: number | null;
   onChange: (value: number | null) => void;
   now: number;
+  /** The board's sport: "Tip-off" on a basketball board (football's "Kickoff" by default). */
+  sport?: Sport;
   /** Why this time can't be used (shown under the card). */
   error?: string | null;
   className?: string;
@@ -36,7 +40,8 @@ export interface KickoffPickerProps {
 /** DOM id of the full date & time input (focused when the kickoff blocks Next). */
 export const KICKOFF_INPUT_ID = "kickoff-input";
 
-export function KickoffPicker({ value, onChange, now, error, className }: KickoffPickerProps) {
+export function KickoffPicker({ value, onChange, now, error, className, sport }: KickoffPickerProps) {
+  const words = sportWords(sport);
   // The last time picked, so "No set time" and back keeps it.
   const last = useRef<number | null>(value);
   if (value !== null) last.current = value;
@@ -79,7 +84,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
   return (
     <section
       data-testid="custom-kickoff"
-      aria-label="Kickoff"
+      aria-label={words.start}
       className={cx("overflow-hidden rounded-card bg-surface-2 shadow-card ring-1 ring-inset", error ? "ring-danger-500/70" : "ring-line", className)}
     >
       <div className="flex items-center gap-3 px-3.5 pt-3.5">
@@ -87,7 +92,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
           <ClockIcon size={22} />
         </span>
         <div className="min-w-0 flex-1" aria-live="polite">
-          <p className="eyebrow text-ink-subtle">Kickoff</p>
+          <p className="eyebrow text-ink-subtle">{words.start}</p>
           {readout ? (
             <>
               <p className="truncate font-display text-headline font-extrabold leading-tight text-ink">
@@ -109,7 +114,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
 
       {value !== null && (
         <div className="flex flex-col gap-2 pt-3">
-          <div ref={dayRow} role="group" aria-label="Kickoff day" className="flex gap-2 overflow-x-auto px-3.5 pb-0.5 scrollbar-none">
+          <div ref={dayRow} role="group" aria-label={`${words.start} day`} className="flex gap-2 overflow-x-auto px-3.5 pb-0.5 scrollbar-none">
             {shownDays.map((d) => {
               const on = d.key === selectedDay;
               return (
@@ -132,7 +137,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
               );
             })}
           </div>
-          <div role="group" aria-label="Kickoff time" className="flex gap-2 overflow-x-auto px-3.5 pb-0.5 scrollbar-none">
+          <div role="group" aria-label={`${words.start} time`} className="flex gap-2 overflow-x-auto px-3.5 pb-0.5 scrollbar-none">
             {shownTimes.map((t) => {
               const on = t === selectedTime;
               return (
@@ -165,7 +170,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
             id={KICKOFF_INPUT_ID}
             type="datetime-local"
             data-testid="kickoff-input"
-            aria-label="Kickoff date and time"
+            aria-label={`${words.start} date and time`}
             value={value === null ? "" : toLocalInput(value)}
             min={toLocalInput(now - 60 * 60_000)}
             onClick={(e) => {
@@ -190,7 +195,7 @@ export function KickoffPicker({ value, onChange, now, error, className }: Kickof
           onClick={() => set(value === null ? (last.current ?? defaultKickoff(now)) : null)}
           className="flex h-12 min-w-0 flex-1 items-center justify-center gap-1.5 text-subhead font-bold text-ink-muted transition-colors hover:text-ink active:bg-ink/4"
         >
-          <span className="truncate">{value === null ? "Set a kickoff" : "No set time"}</span>
+          <span className="truncate">{value === null ? `Set a ${words.startLower}` : "No set time"}</span>
         </button>
       </div>
 

@@ -11,7 +11,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import type { GameState, Player } from "../../../shared/types";
-import { ChevronRightIcon, FlagIcon, FootballIcon, GridIcon, LockIcon, TrophyIcon } from "../../components/icons";
+import { ChevronRightIcon, FlagIcon, GridIcon, LockIcon, SportIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
 import { teamVars } from "../../lib/format";
 import { teamShort, type AlertChip, type AlertSubject } from "./activity";
@@ -21,9 +21,9 @@ import { useResolvedTheme } from "../../lib/theme";
 
 type Glyph = Extract<AlertSubject, { kind: "system" }>["glyph"];
 
-const GLYPH: Record<Glyph, { cls: string; icon: (px: number) => ReactNode }> = {
+const GLYPH: Record<Glyph, { cls: string; icon: (px: number, sport?: string | null) => ReactNode }> = {
   numbers: { cls: "bg-brand-400 text-ink-inverse", icon: (px) => <LockIcon size={px} /> },
-  score: { cls: "bg-live-500 text-white", icon: (px) => <FootballIcon size={px} /> },
+  score: { cls: "bg-live-500 text-white", icon: (px, sport) => <SportIcon sport={sport} size={px} /> },
   winner: { cls: "bg-gold-400 text-ink-inverse", icon: (px) => <TrophyIcon size={px} filled /> },
   final: { cls: "bg-ink text-canvas", icon: (px) => <FlagIcon size={px} /> },
   board: { cls: "bg-surface-4 text-ink", icon: (px) => <GridIcon size={px} /> },
@@ -80,7 +80,7 @@ export function AlertArt({
         {person ? (
           <Avatar name={person.name} color={person.color} emoji={person.emoji} size={face >= 36 ? "md" : "sm"} decorative className="!h-full !w-full" />
         ) : (
-          <span className={cx("grid h-full w-full place-items-center rounded-full", g.cls)}>{g.icon(Math.round(face * 0.5))}</span>
+          <span className={cx("grid h-full w-full place-items-center rounded-full", g.cls)}>{g.icon(Math.round(face * 0.5), state.game.sport)}</span>
         )}
       </span>
       {badge && (
@@ -92,7 +92,7 @@ export function AlertArt({
           )}
           style={{ width: dot, height: dot }}
         >
-          {GLYPH[badge].icon(Math.round(dot * 0.6))}
+          {GLYPH[badge].icon(Math.round(dot * 0.6), state.game.sport)}
         </span>
       )}
     </span>

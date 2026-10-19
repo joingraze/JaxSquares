@@ -17,7 +17,8 @@ import { COHOST_PARAM, cohostIdsOf, isCohostOf, isCohostToken } from "../../shar
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
 import { siblingCheckOf, siblingProblem } from "../../shared/siblings";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
-import type { Activity, GameState } from "../../shared/types";
+import { sportWords } from "../../shared/sportWords";
+import type { Activity, GameState, Sport } from "../../shared/types";
 import { BellIcon, GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
@@ -900,7 +901,7 @@ export default function GameView() {
     if (!state) return;
     const won = new Set(myWinIds(results, me).map((w) => w.split(":")[0]));
     const last = results.filter((r) => won.has(r.periodKey)).at(-1);
-    const when = last ? periodPhrase(last.periodKey, last.label).moment : "";
+    const when = last ? periodPhrase(last.periodKey, last.label, state.game.sport).moment : "";
     const outcome = await shareLink({
       title: state.game.name,
       text: `My square just hit${when ? ` ${when}` : ""} on ${state.game.name} 🏆`,
@@ -1090,6 +1091,7 @@ export default function GameView() {
               prize={takeLine(gloryResults)}
               onBrag={() => void brag()}
               onShow={() => showSpot(gloryResults[gloryResults.length - 1].periodKey)}
+              sport={state.game.sport}
             />
           ) : (
             phase === "final" &&
@@ -1147,7 +1149,7 @@ export default function GameView() {
                   {newcomer ? (
                     <b className="font-bold text-ink">Tap any open square, or let Jax choose.</b>
                   ) : (
-                    <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} waitingOnHost={waitingOnHost} />
+                    <BoardHint phase={phase} joined={joined} mineCount={mineCount} left={left} isHost={isHost} waitingOnHost={waitingOnHost} sport={state.game.sport} />
                   )}
                 </span>
                 {canJaxPick && <JaxPickButton onClick={letJaxPick} busy={jaxBusy} />}
@@ -1433,7 +1435,7 @@ export default function GameView() {
         />
         <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
-        {emailEnabled && <BoardNotifySheet gameId={game.id} boardName={game.name} open={boardNotify} onClose={() => setBoardNotify(false)} />}
+        {emailEnabled && <BoardNotifySheet gameId={game.id} boardName={game.name} sport={game.sport} open={boardNotify} onClose={() => setBoardNotify(false)} />}
         {(recapOpen || results.length > 0) && <RecapSheet state={state} open={recapOpen} onClose={() => setRecapOpen(false)} />}
         <RulesSheet
           open={rulesOpen}
@@ -1515,6 +1517,7 @@ function BoardHint({
   left,
   isHost,
   waitingOnHost,
+  sport,
 }: {
   phase: ReturnType<typeof boardPhase>;
   joined: boolean;
@@ -1523,6 +1526,8 @@ function BoardHint({
   isHost: boolean;
   /** Full, or a linked game on without its numbers: everyone's waiting on the host's draw. */
   waitingOnHost: boolean;
+  /** The board's sport ("the final buzzer" on a basketball board). */
+  sport?: Sport;
 }) {
   if (phase === "draft") return <span>{isHost ? "Your board opens shortly." : "The host is still setting this board up."}</span>;
   if (phase === "open") {
@@ -1543,7 +1548,7 @@ function BoardHint({
       </span>
     );
   }
-  if (phase === "final") return <span>That's the final whistle. Gold squares took the prizes.</span>;
+  if (phase === "final") return <span>That's {sportWords(sport).end}. Gold squares took the prizes.</span>;
   return mineCount > 0 ? (
     <span>
       <b className="font-bold text-ink-brand">Your {mineCount === 1 ? "square is" : `${mineCount} squares are`} highlighted.</b> Every period is decided.
@@ -1563,18 +1568,20 @@ function WinBanner({
   prize,
   onBrag,
   onShow,
+  sport,
 }: {
   anchorRef: Ref<HTMLElement>;
   periods: { key: string; label: string }[];
   prize: string | null;
   onBrag: () => void;
   onShow: () => void;
+  sport?: Sport;
 }) {
   // One win reads as a moment ("hit at halftime"); several list their periods like chips ("hit Q1 + Half").
   const line =
     periods.length > 1
       ? `Your squares hit ${periods.map((p) => periodPhrase(p.key, p.label).short).join(" + ")}`
-      : `Your square hit ${periods[0] ? periodPhrase(periods[0].key, periods[0].label).moment : ""}`.trim();
+      : `Your square hit ${periods[0] ? periodPhrase(periods[0].key, periods[0].label, sport).moment : ""}`.trim();
   return (
     <section
       ref={anchorRef}

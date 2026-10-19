@@ -21,6 +21,28 @@ export function dayHeading(ts: number, now = Date.now()): string {
   return new Date(ts).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
 }
 
+// ---- Basketball's days ("20260320", the schedule's `date`) ----
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+/** The local calendar day of `ts` as a schedule day id: "20260320". */
+export function dayIdOf(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+}
+
+/** A day id as a date input's value: "20260320" -> "2026-03-20". */
+export function dateInputValue(id: string): string {
+  return /^\d{8}$/.test(id) ? `${id.slice(0, 4)}-${id.slice(4, 6)}-${id.slice(6)}` : "";
+}
+
+/** A picked day for a label: "20260402" -> "Thu, Apr 2" (that calendar date, whatever the zone). */
+export function pickedDayLabel(id: string): string {
+  const m = /^(\d{4})(\d{2})(\d{2})$/.exec(id);
+  if (!m) return id;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
 /** "Oct 21 – 27" or "Oct 28 – Nov 3" (endsAt is exclusive). */
 export function weekRange(week: Pick<ScheduleWeek, "startsAt" | "endsAt">): string {
   const start = new Date(week.startsAt);

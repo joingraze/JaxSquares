@@ -6,15 +6,16 @@
 // gets "Edit rules & prizes", which opens the editor in the host tools.
 
 import { AMOUNTS_DISCLAIMER, BOARD_SIZE_INFO, freshNumbersAllowed, rulesOf, rulesSummary } from "../../../shared/formats";
+import { freshNumbersInfo } from "../../../shared/sports";
 import type { Game } from "../../../shared/types";
-import { FootballIcon, InfoIcon, PencilIcon, RefreshIcon, ShuffleIcon, TrophyIcon, UsersIcon } from "../../components/icons";
+import { InfoIcon, PencilIcon, RefreshIcon, ShuffleIcon, SportIcon, TrophyIcon, UsersIcon } from "../../components/icons";
 import { BottomSheet, Button, cx } from "../../components/ui";
 import { capLine, priceLine, ruleLines, type RuleLine } from "./rulesModel";
 
 export interface RulesSheetProps {
   open: boolean;
   onClose: () => void;
-  game: Pick<Game, "format" | "prizes" | "maxPerPlayer">;
+  game: Pick<Game, "format" | "prizes" | "maxPerPlayer"> & Partial<Pick<Game, "sport" | "league">>;
   /** Host only: open the editor. */
   onEdit?: () => void;
 }
@@ -76,7 +77,7 @@ export function RulesSheet({ open, onClose, game, onEdit }: RulesSheetProps) {
           {fresh && (
             <p className="flex items-start gap-2">
               <ShuffleIcon size={15} className="mt-px shrink-0 text-ink-subtle" />
-              New numbers are drawn for each quarter.
+              New numbers are drawn for each {freshNumbersInfo(game).each}.
             </p>
           )}
           <p className="flex items-start gap-2 text-ink-subtle">
@@ -96,7 +97,7 @@ function RuleRow({ line }: { line: RuleLine }) {
         aria-hidden
         className="grid h-10 min-w-10 shrink-0 place-items-center rounded-xl bg-gold-400 px-1.5 font-display text-footnote font-extrabold text-ink-inverse shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]"
       >
-        {line.moment === "score" ? <FootballIcon size={18} /> : line.short}
+        {line.moment === "score" ? <SportIcon size={18} /> : line.short}
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-callout font-bold text-ink">{line.label}</p>

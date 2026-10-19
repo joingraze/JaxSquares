@@ -22,7 +22,8 @@
 // Every primary confirm carries data-testid="pay-confirm".
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ACCOUNT_REQUIRED_CODE, type Game, type GameState, type HostPassState, type PaymentConfig } from "../../../shared/types";
+import { inSportWords } from "../../../shared/sportWords";
+import { ACCOUNT_REQUIRED_CODE, type Game, type GameState, type HostPassState, type PaymentConfig, type Sport } from "../../../shared/types";
 import { AlertIcon, CheckIcon, LiveIcon, PencilIcon } from "../../components/icons";
 import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, Skeleton, TeamMark } from "../../components/ui";
 import {
@@ -157,6 +158,14 @@ const PASS_COPY: Record<CheckoutPurpose, Copy> = {
   },
 };
 
+/** The sheet's copy in the board's sport's words ("tip-off" on a basketball board). */
+function inSport(copy: Copy, sport: Sport | undefined): Copy {
+  if (!sport) return copy;
+  const out = { ...copy };
+  for (const key of Object.keys(out) as (keyof Copy)[]) out[key] = inSportWords(out[key], sport);
+  return out;
+}
+
 export function CheckoutSheet({
   open,
   board,
@@ -201,7 +210,7 @@ export function CheckoutSheet({
   const passOffered = !!onPassActive && passMethod !== null;
   const amounts = useHostPrices(open && (passOffered || purpose === "pass"), payments);
   const forPass = purpose === "pass" || (passOffered && plan === "pass");
-  const copy = forPass ? PASS_COPY[purpose] : COPY[purpose === "ahead" ? "ahead" : "draw"];
+  const copy = inSport(forPass ? PASS_COPY[purpose] : COPY[purpose === "ahead" ? "ahead" : "draw"], board?.game.sport);
   const wantedMethod = payments ? (forPass ? passMethod : checkoutMethod(payments, on)) : null;
   // Buying the pass on the web needs an account (startPassPurchase's rule; the server says so too).
   const needsSignIn = forPass && (wantedMethod === "wallet" || wantedMethod === "card") && !signedIn;

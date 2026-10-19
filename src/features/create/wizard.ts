@@ -5,6 +5,7 @@
 // Pure apart from the storage passed in: no React.
 
 import { sanitizeFormat, withRules } from "../../../shared/formats";
+import { isBoardSport, isLinkedLeague, leagueSport, LINKED_LEAGUES, SPORT_LEAGUES, type BoardSport, type LinkedLeague } from "../../../shared/sports";
 import type { GameFormat, ScheduleEvent } from "../../../shared/types";
 import type { PrizeChoice } from "../rules/rulesModel";
 import { blockersOf, type CreateBlocker, type Matchup } from "./model";
@@ -137,15 +138,20 @@ export function readNav(state: unknown): WizardNav {
 
 // ---- The draft that survives a reload ----
 
-export type PickerTab = "nfl" | "ncaaf" | "custom";
+/** The game step's league chip: a league with a live feed, or two typed teams. */
+export type PickerTab = LinkedLeague | "custom";
 
 /** Everything the host has chosen so far. */
 export interface WizardDraft {
+  /** Football or basketball (absent in older drafts: football). The tab is one of its leagues, or custom. */
+  sport?: BoardSport;
+  /** The host picked the sport (the flow stops switching to basketball when football has nothing to link). */
+  sportTouched?: boolean;
   tab: PickerTab;
   /** The host chose the tab (the flow stops leading with whichever league has games). */
   tabTouched: boolean;
-  /** Games picked per league (any week); a league without one shows its soonest game. */
-  picked: Partial<Record<"nfl" | "ncaaf", ScheduleEvent>>;
+  /** Games picked per league (any week or day); a league without one shows its soonest game. */
+  picked: Partial<Record<LinkedLeague, ScheduleEvent>>;
   custom: { x: string; y: string };
   /** Custom boards: epoch ms, or null for no set time. */
   kickoff: number | null;
@@ -208,7 +214,7 @@ function liveEvent(v: unknown, now: number): ScheduleEvent | null {
   const e = v as unknown as ScheduleEvent;
   const ok =
     typeof e.eventId === "string" &&
-    (e.league === "nfl" || e.league === "ncaaf") &&
+    isLinkedLeague(e.league) &&
     typeof e.startsAt === "number" &&
     e.startsAt > now - 5 * 60_000 &&
     isObj(e.home) &&
@@ -240,10 +246,12 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
   if (!isObj(saved) || saved.v !== DRAFT_VERSION || typeof saved.savedAt !== "number" || now - saved.savedAt > DRAFT_TTL_MS) return null;
   const d = saved.draft;
   if (!isObj(d) || !isObj(d.format) || !isObj(d.custom)) return null;
-  const tab: PickerTab = d.tab === "ncaaf" || d.tab === "custom" ? d.tab : "nfl";
+  const sport: BoardSport = isBoardSport(d.sport) ? d.sport : "football";
+  // A league chip of the draft's sport, or custom (a stray league falls back to the sport's first).
+  const tab: PickerTab = d.tab === "custom" ? "custom" : isLinkedLeague(d.tab) && leagueSport(d.tab) === sport ? d.tab : SPORT_LEAGUES[sport][0];
   const picked: WizardDraft["picked"] = {};
   if (isObj(d.picked)) {
-    for (const league of ["nfl", "ncaaf"] as const) {
+    for (const league of LINKED_LEAGUES) {
       const e = liveEvent(d.picked[league], now);
       if (e && e.league === league) picked[league] = e;
     }
@@ -258,6 +266,8 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
     return null;
   }
   return {
+    sport,
+    sportTouched: d.sportTouched === true,
     tab,
     tabTouched: d.tabTouched === true,
     picked,

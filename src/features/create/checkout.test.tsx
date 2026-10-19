@@ -95,7 +95,7 @@ describe("CheckoutSheet on its own", () => {
     expect(screen.getByRole("dialog", { name: "Draw the numbers" })).toBeInTheDocument();
     expect(screen.getByText(/The host fee for this board\. Squares lock and the numbers get drawn right after\./)).toBeInTheDocument();
     expect(screen.getByText("Packers vs Bears Squares")).toBeInTheDocument();
-    expect(screen.getByText("No charge while checkout is in test mode.")).toBeInTheDocument();
+    expect(await screen.findByText("No charge while checkout is in test mode.", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "What's included" })).toBeNull();
 
     fireEvent.click(confirm);
@@ -109,6 +109,15 @@ describe("CheckoutSheet on its own", () => {
     expect(await screen.findByRole("button", { name: "Pay ahead" })).toHaveAttribute("data-testid", "pay-confirm");
     expect(screen.getByRole("dialog", { name: "Pay ahead for kickoff" })).toBeInTheDocument();
     expect(screen.getByText(/Jax draws the numbers at kickoff/)).toBeInTheDocument();
+  });
+
+  it("says tip-off on a basketball board", async () => {
+    const hoops = { ...game, sport: "basketball" as const };
+    render(<CheckoutSheet open purpose="ahead" board={{ game: hoops, adminToken: "tok" }} payments={TEST} onPaid={() => {}} onClose={() => {}} />);
+    expect(await screen.findByRole("button", { name: "Pay ahead" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Pay ahead for tip-off" })).toBeInTheDocument();
+    expect(screen.getByText(/Jax draws the numbers at tip-off/)).toBeInTheDocument();
+    expect(screen.queryByText(/kickoff/i)).toBeNull();
   });
 });
 

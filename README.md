@@ -4,7 +4,8 @@ A mobile-first app for playing football squares with friends. Create a board,
 share a link, and friends claim squares from their phones. No account or app
 install needed (there's an iPhone app too, and an optional Sign in with Apple /
 Google keeps your boards on every device), and every change shows up on every
-open board within a second.
+open board within a second. Basketball boards work the same way, for NBA,
+WNBA and men's and women's college games.
 
 **No money moves between players, ever.** There are no prices per square, pots,
 payouts or betting. A host can add a fun prize note per period ("Loser buys
@@ -16,8 +17,10 @@ inviting and picking squares are free, and so is drawing a board whose squares
 
 ## How the game works
 
-1. **Create** a board in five guided steps: pick a real NFL/college game
-   (scores then arrive automatically) or type in your own matchup and its
+1. **Create** a board in five guided steps: pick Football or Basketball, then
+   a real NFL / college football game (by week) or NBA / WNBA / men's or
+   women's college basketball game (by day; scores then arrive automatically)
+   or type in your own matchup and its
    kickoff, choose how squares win, show a square price and prizes (or keep it
    just for fun), name it and set a per-player square limit, review, and
    create it. It opens right away, free.
@@ -41,7 +44,12 @@ Formats (`shared/formats.ts`):
 | Every quarter | Q1, Half, Q3, Final |
 | Halftime + Final | Half, Final |
 | Final score | Final (overtime counts) |
-| Every score | each time the score changes |
+| Every score | each time the score changes (football only) |
+
+Basketball boards (`shared/sports.ts`) use the same moments: Every quarter,
+Halftime + Final or Final score, with tip-off and the final buzzer in the copy.
+Men's college basketball plays two halves, so its boards offer Halftime + Final
+or Final score. Every score and amounts by score type are football's.
 
 Options: **Classic 10×10** (100 squares) or **Quick 5×5** (25 squares, two digits
 per row/column), **reverse winners** (the square with the digits swapped wins
@@ -101,6 +109,7 @@ shared/          Types + pure game logic (used by client AND worker, unit-tested
   types.ts       Domain + API types
   squares.ts     Number drawing, winners, per-period results
   formats.ts     Formats, periods, prize-note rules
+  sports.ts      Sports and leagues: each game's moments, presets and schedule shape
   playerId.ts    Public player id derivation
 worker/          Cloudflare Worker
   index.ts       Core routes, well-known files, invite previews, cron
@@ -124,8 +133,9 @@ scripts/seo/     Static landing pages (/football-squares, ...) and printable PDF
 ## Landing pages and printables
 
 `/football-squares`, `/super-bowl-squares`, `/nfl-squares`,
-`/college-football-squares`, `/printable-football-squares` and
-`/how-to-play-football-squares` are static HTML written from
+`/college-football-squares`, `/basketball-squares`, `/march-madness-squares`,
+`/printable-football-squares` and `/how-to-play-football-squares` are static
+HTML written from
 `scripts/seo/content.ts` by `npm run build` (after `vite build`, into
 `dist/client` as `<slug>.html`, with `robots.txt`, `sitemap.xml` and the fonts),
 so a copy change ships with the next deploy. The asset server answers them

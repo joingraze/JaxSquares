@@ -7,6 +7,7 @@ import type { Game } from "../../../shared/types";
 import { ChevronRightIcon, TrophyIcon } from "../../components/icons";
 import { TextField } from "../../components/ui";
 import { useNow } from "../board/useNow";
+import { inSportWords } from "../../../shared/sportWords";
 import { KickoffPicker } from "../create/KickoffPicker";
 import { MaxSquares } from "../rules/MaxSquares";
 import { prizesSummary } from "../rules/rulesModel";
@@ -39,7 +40,13 @@ export function EditBoard({ game, draft, onChange, onRules }: EditBoardProps) {
       />
 
       {canEditKickoff(game) && (
-        <KickoffPicker value={draft.startsAt} onChange={(startsAt) => onChange({ ...draft, startsAt })} now={now} error={errors.kickoff} />
+        <KickoffPicker
+          value={draft.startsAt}
+          onChange={(startsAt) => onChange({ ...draft, startsAt })}
+          now={now}
+          error={errors.kickoff && inSportWords(errors.kickoff, game.sport)}
+          sport={game.sport}
+        />
       )}
 
       <MaxSquares

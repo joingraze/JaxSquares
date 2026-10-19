@@ -1,7 +1,7 @@
 // Small HTML building blocks for the landing pages' content (scripts/seo/content.ts).
 // Each returns a string of static HTML; the page template (render.ts) styles them.
 
-import { PRINTABLES, SHOT_SIZE, SHOTS, type ShotKey } from "./site.ts";
+import { PRINTABLES, SHOT_SIZE, SHOTS, type Printable, type ShotKey } from "./site.ts";
 
 /** Escape text for HTML element content and attribute values. */
 export function esc(s: string): string {
@@ -78,9 +78,9 @@ export function ctas(primary = "Make a board"): string {
   );
 }
 
-/** The printable templates as download cards. `sizes`: PDF size label per id ("62 KB"), when known. */
-export function printableCards(sizes: Record<string, string> = {}): string {
-  return `<div class="printables">${PRINTABLES.map((p) => {
+/** The printable templates for one game as download cards. `sizes`: PDF size label per id ("62 KB"), when known. */
+export function printableCards(sizes: Record<string, string> = {}, sport: Printable["sport"] = "football"): string {
+  return `<div class="printables">${PRINTABLES.filter((p) => p.sport === sport).map((p) => {
     const size = sizes[p.id] ? ` · ${sizes[p.id]}` : "";
     return (
       `<div class="card printable"><a class="thumb" href="${p.href}" aria-hidden="true" tabindex="-1">` +

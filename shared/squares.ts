@@ -16,6 +16,7 @@ import {
   ruleForPeriodKey,
   rulesOf,
 } from "./formats";
+import { isFootball, liveMomentIndex, periodName, periodsBefore, type GameKind } from "./sports";
 import type {
   BoardSize,
   Game,
@@ -293,7 +294,7 @@ export function entryPlayFor(scores: readonly Score[], key: string, scoreX: numb
 
 /** Plays for a board's entries: football boards only (another sport's points mean other things). */
 function boardPlays(game: Pick<Game, "sport">, scores: readonly Score[]): Map<string, ScorePlay> {
-  return !game.sport || game.sport === "football" ? entryPlays(scores) : new Map();
+  return isFootball(game) ? entryPlays(scores) : new Map();
 }
 
 export interface PeriodResult {
@@ -512,8 +513,6 @@ export interface PeriodScore {
   scoreY: number;
 }
 
-const PERIODS_COMPLETED_FOR: Record<string, number> = { q1: 1, q2: 2, q3: 3 };
-
 function cumulative(linescores: number[], n: number): number {
   let total = 0;
   for (let i = 0; i < n; i++) {
@@ -525,12 +524,14 @@ function cumulative(linescores: number[], n: number): number {
 
 /**
  * Cumulative scores for every fixed period a live update has completed.
- * Half = after 2 periods. Final only once the game is over and includes OT;
- * it uses the provider's game total, which is authoritative over linescores.
- * Only the fixed moments the rules award; every-score entries come from
- * nextEveryScoreEntries (a board with both gets both).
+ * Half = after 2 periods (after the 1st half in a game of halves: `kind`,
+ * see periodsBefore in shared/sports.ts; football quarters by default).
+ * Final only once the game is over and includes OT; it uses the provider's
+ * game total, which is authoritative over linescores. Only the fixed moments
+ * the rules award; every-score entries come from nextEveryScoreEntries (a
+ * board with both gets both).
  */
-export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdate): PeriodScore[] {
+export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdate, kind?: GameKind): PeriodScore[] {
   const out: PeriodScore[] = [];
   for (const p of fixedPeriods(rulesOf(format))) {
     if (p.key === "final") {
@@ -540,8 +541,8 @@ export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdat
       out.push({ periodKey: p.key, label: p.label, scoreX: x, scoreY: y });
       continue;
     }
-    const n = PERIODS_COMPLETED_FOR[p.key];
-    if (n === undefined || update.completedPeriods < n) continue;
+    const n = periodsBefore(p.key, kind);
+    if (n === null || update.completedPeriods < n) continue;
     out.push({
       periodKey: p.key,
       label: p.label,
@@ -611,12 +612,16 @@ export function retractedEntries(scores: Score[], scoreX: number, scoreY: number
   return out;
 }
 
-/** The fixed period in play for a live period number (1-4, 5+ = OT counts toward Final). null without fixed moments. */
-export function periodKeyForLive(format: GameFormat, livePeriod: number): string | null {
+/**
+ * The fixed period in play for a live period number (1-4, 5+ = OT counts
+ * toward Final; in a game of halves, `kind`: the 1st half plays for halftime,
+ * the 2nd half and OT for the Final). null without fixed moments.
+ */
+export function periodKeyForLive(format: GameFormat, livePeriod: number, kind?: GameKind): string | null {
   const keys = fixedPeriods(rulesOf(format)).map((p) => p.key);
   if (keys.length === 0) return null;
   const order = ["q1", "q2", "q3", "final"];
-  const idx = Math.min(Math.max(1, Math.trunc(livePeriod) || 1), 4) - 1;
+  const idx = liveMomentIndex(livePeriod, kind);
   // First period of this board that ends at or after the live period.
   for (const key of order.slice(idx)) if (keys.includes(key)) return key;
   return "final";
@@ -630,10 +635,11 @@ const decidedKeys = (state: Pick<GameState, "scores" | "manualWinners">) =>
  * period number, or the next undecided one once that's decided. ESPN keeps
  * the period number through a break (2 all through halftime, 1 at "End of
  * 1st") while the board has already recorded that period. null when no
- * fixed moment wins (every-score boards).
+ * fixed moment wins (every-score boards). The board's league says how its
+ * game splits (quarters, or halves).
  */
 export function periodInPlay(state: Pick<GameState, "game" | "scores" | "manualWinners">, livePeriod: number): string | null {
-  const key = periodKeyForLive(state.game.format, livePeriod);
+  const key = periodKeyForLive(state.game.format, livePeriod, state.game);
   if (key === null) return null;
   const done = decidedKeys(state);
   if (!done.has(key)) return key;
@@ -715,10 +721,12 @@ export function upcomingPeriod(state: ResultsInput): Period | null {
  * while the game is on, "Final" once it's over. A "post" that isn't final (the
  * board isn't, and the provider doesn't say so) is a postponed or canceled
  * game: it shows the provider's word for it ("Postponed"), never "Final".
+ * Without the provider's text, the period's name: "Q3", or "H2" in a game of
+ * halves (`kind`).
  */
-export function liveLabel(live: Pick<LiveStatus, "state" | "period" | "clock" | "detail">, status: Game["status"]): string {
+export function liveLabel(live: Pick<LiveStatus, "state" | "period" | "clock" | "detail">, status: Game["status"], kind?: GameKind): string {
   const detail = live.detail.trim();
-  if (live.state !== "post") return detail || `Q${live.period} ${live.clock}`.trim();
+  if (live.state !== "post") return detail || `${kind ? periodName(live.period, kind) : `Q${live.period}`} ${live.clock}`.trim();
   if (status === "final" || /^final\b/i.test(detail)) return "Final";
   return detail || "Postponed";
 }

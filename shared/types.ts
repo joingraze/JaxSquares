@@ -13,8 +13,13 @@
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
-/** Leagues we can pull live schedules/scores for. "custom" = typed-in matchup. */
-export type League = "nfl" | "ncaaf" | "custom";
+/**
+ * Leagues we can pull live schedules/scores for. "custom" = typed-in matchup.
+ * Football: "nfl", "ncaaf" (college). Basketball: "nba", "wnba", "ncaab"
+ * (men's college, played in halves) and "ncaaw" (women's college). Which
+ * sport each plays, and how its game splits, lives in shared/sports.ts.
+ */
+export type League = "nfl" | "ncaaf" | "nba" | "wnba" | "ncaab" | "ncaaw" | "custom";
 
 /**
  * draft  – legacy: a board waiting on its creator's payment before it opened,
@@ -36,11 +41,17 @@ export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "c
 /** 100 = classic 10x10 (one digit per row/col); 25 = 5x5 (two digits per row/col). */
 export type BoardSize = 100 | 25;
 
-/** A moment a square can win at: every score change, or the score at the end of Q1 / halftime / Q3 / the game. */
+/**
+ * A moment a square can win at: every score change, or the score at the end of
+ * Q1 / halftime / Q3 / the game. Every score is football only; a game played
+ * in halves (men's college basketball) has only halftime ("q2") and the final
+ * (shared/sports.ts `momentsFor`).
+ */
 export type Moment = "score" | "q1" | "q2" | "q3" | "final";
 
 /**
- * The kind of score an every-score entry was (football): derived on read from
+ * The kind of score an every-score entry was (football only: every score
+ * change isn't offered for basketball, so these never show there): derived on read from
  * its change versus the entry before it (`entryPlays` in shared/squares.ts),
  * never stored, so host corrections and overturned scores stay consistent.
  * Every entry has one. Boards saved before the extra point and the 2-point
@@ -139,13 +150,18 @@ export interface LinkedEvent {
   xIsHome: boolean;
 }
 
-/** Raw live data for a linked game, oriented to the board's X/Y teams. */
+/**
+ * Raw live data for a linked game, oriented to the board's X/Y teams. Periods
+ * are the feed's own: quarters (index 0 = Q1, 4+ = OT), or halves for men's
+ * college basketball (index 0 = 1st half, 2+ = OT); shared/sports.ts
+ * (`periodsBefore`) maps them to the board's moments.
+ */
 export interface LiveUpdate {
   live: LiveStatus;
-  /** Points scored in each period so far (index 0 = Q1, 4+ = OT), per team. */
+  /** Points scored in each period so far, per team. */
   linescoresX: number[];
   linescoresY: number[];
-  /** Number of fully completed periods (0-4, more with OT). */
+  /** Number of fully completed periods (0-4 for quarters, 0-2 for halves, more with OT). */
   completedPeriods: number;
   isFinal: boolean;
 }
@@ -286,10 +302,10 @@ export interface ManualWinner {
 /** Live game status from the score provider (linked boards only). */
 export interface LiveStatus {
   state: "pre" | "in" | "post";
-  /** Current period number (1-4, 5+ for OT). */
+  /** Current period number (1-4, 5+ for OT; men's college basketball: halves 1-2, 3+ for OT). */
   period: number;
   clock: string;
-  /** Provider's short status text, e.g. "Q3 4:12" or "Final". */
+  /** Provider's short status text, e.g. "Q3 4:12", "8:21 - 2nd Half" or "Final". */
   detail: string;
   scoreX: number;
   scoreY: number;
@@ -415,6 +431,12 @@ export interface GameSummary {
   id: string;
   name: string;
   sport: Sport;
+  /**
+   * The board's league (Game.league): how its game splits into periods (men's
+   * college basketball plays halves). Sent by `GET /api/me/games`; absent reads
+   * as a football league.
+   */
+  league?: League;
   teamX: Team;
   teamY: Team;
   status: GameStatus;
@@ -644,6 +666,10 @@ export interface ScheduleWeek {
  * still has games to link (this week, or next week once this one's are done)
  * plus the weeks after it, for picking further ahead. With `week`: that week's
  * games. `unavailable` is true when the provider couldn't be reached (still 200).
+ *
+ * Basketball has no weeks: GET /api/schedule?league=nba[&date=20260320].
+ * Without `date`: the games of the next 7 days, today first (`dates` lists
+ * them); with `date`: that day's games. Days are the provider's (US Eastern).
  */
 export interface ScheduleResponse {
   events: ScheduleEvent[];
@@ -652,6 +678,8 @@ export interface ScheduleResponse {
   week?: ScheduleWeek | null;
   /** Later weeks through the end of the season (only without `week`). */
   weeks?: ScheduleWeek[];
+  /** Date-based leagues (basketball): the days `events` covers, as YYYYMMDD, in order. */
+  dates?: string[];
 }
 
 /**

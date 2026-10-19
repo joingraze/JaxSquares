@@ -145,7 +145,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   holds the hibernatable WebSockets for that game, broadcasts state, tracks presence,
   and, for boards linked to a real game, polls live scores with an alarm while the
   game is on.
-- Durable Object `ScoreHub` (`SCORE_HUB`, one per league via `idFromName("espn:nfl")`)
+- Durable Object `ScoreHub` (`SCORE_HUB`, one per league via `idFromName("espn:nfl")`:
+  `nfl`, `ncaaf`, `nba`, `wnba`, `ncaab` and `ncaaw` each get their own)
   is the only thing that calls ESPN: every room's live poll and every
   `/api/schedule` request goes through it, so concurrent callers share one
   in-flight fetch and its memory is one cache for the whole app (ESPN sees about
@@ -186,7 +187,8 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Club Pass, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
-| GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
+| GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
+| GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` asks ESPN for Division I (`groups=50`, `limit=400`) |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
@@ -696,9 +698,44 @@ score, q1, q2, q3, final.
   period 2 through halftime). `liveCell`, the board's "Right now" and its draw
   tab follow it.
 
+## Sports: football and basketball (`shared/sports.ts`)
+
+- A board's `sport` is `football` or `basketball` (older boards without one
+  read as football); its `league` is `nfl`/`ncaaf` (football), `nba`, `wnba`,
+  `ncaab` (men's college), `ncaaw` (women's college) or `custom`.
+  `LEAGUE_INFO` holds each league's sport, chip label, schedule shape (by
+  `week` or by `day`) and whether it plays halves (only `ncaab`). Create
+  validates the pair (`leagueSportProblem`: 400 "That league plays basketball,
+  not football."; an unknown sport is 400 `SPORT_ERROR`); a linked board's
+  sport follows its league (`boardSportFor`).
+- Basketball maps onto the same moments, so results, prizes, suggestions
+  (`suggestPrizes`) and every amount path are unchanged: `q1` = end of Q1,
+  `q2` = halftime, `q3` = end of Q3, `final` (overtime included). Men's
+  college plays two 20-minute halves: only `q2` (halftime) and `final`
+  (`momentsFor`, `periodsBefore`: halftime is after period 1;
+  `liveMomentIndex`: period 1 plays for halftime, 2 and overtime for the
+  final). Presets (`presetsFor`): Every quarter, Halftime and final, Final
+  only for NBA/WNBA/women's college and custom basketball; Halftime and
+  final, Final only for men's college. Reverse works on all of them.
+- No every score for basketball: a `score` rule on a basketball board is a
+  400 (`EVERY_SCORE_SPORT_ERROR`) on create and on PATCH `format`
+  (`rulesProblemFor`), as is a quarter moment on a men's college board
+  (`HALVES_MOMENT_ERROR`). Score kinds (`Prize.byKind`, the score pad's
+  TD/FG/XP buttons, `entryPlays`) are football's: a basketball board never
+  shows them, and its score pad is the keypad (three-digit scores).
+  `freshNumbersInfo` says "each quarter" or "each half".
+- The words follow the sport (`shared/sportWords.ts`: `sportWords(sport)`,
+  `inSportWords(text)`): "Kickoff"/"the final whistle" or "Tip-off"/"the final
+  buzzer", in the board, Home, alerts, push (`worker/push/copy.ts`), email,
+  TV, print and the recap card (a court's center circle instead of yard
+  lines). Link previews (`worker/og.ts`) add "🏀 Basketball squares" to a
+  basketball board's description. The brand stays "football squares".
+- "How close am I" on the board (`playBookFor`): baskets (2), threes (3) and
+  free throws (1) instead of touchdowns and field goals.
+
 ## Module ownership (one owner per file)
 
-- `shared/*` – game rules + types (`playerId.ts` = public id derivation, `hostFee.ts` = the free tier: `FREE_PLAYER_LIMIT`, `isFreeDraw`).
+- `shared/*` – game rules + types (`playerId.ts` = public id derivation, `hostFee.ts` = the free tier: `FREE_PLAYER_LIMIT`, `isFreeDraw`; `sports.ts` = leagues, sports and each game's moments; `sportWords.ts` = kickoff or tip-off).
   `worker/db.ts`, `worker/index.ts`, `worker/service.ts`, `worker/room.ts`
   (GameRoom DO), `worker/playerIds.ts`, `worker/rateLimit.ts`,
   `worker/housekeeping.ts`, `migrations/*` – core API.
@@ -865,8 +902,11 @@ in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
 ## Create flow (client)
 
 `/new` is a five-step guided flow (`src/pages/CreateGame.tsx`, model in
-`src/features/create/wizard.ts`): `game` (NFL / College by week, soonest
-picked, or Custom teams + kickoff), `format` (how squares win), `prizes` (the
+`src/features/create/wizard.ts`): `game` (Football or Basketball at the top
+(`sport-picker`), then the league chips: NFL / College by week, soonest
+picked; NBA / WNBA / Men's college / Women's college by day, the next 7 days
+grouped under day headers with a date picker for later days; or Custom teams
++ kickoff), `format` (how squares win), `prizes` (the
 rules & prizes editor; skippable, Review then flags "Square price: not set"),
 `details` (board name, max per player, the host's name on a device without
 one) and `review` (a card per step, then Create). Every step starts filled
@@ -1268,7 +1308,9 @@ applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 scheduleRoutes: Hono<{ Bindings: Env }>          // GET /schedule (through the ScoreHub)
 liveVia(env: Env, event: LinkedEvent): Promise<LiveUpdate | null>  // through the ScoreHub; never throws
 fetchLiveForEvent(event: LinkedEvent): Promise<LiveUpdate | null>  // direct; what the hub runs
-getSchedule(league, week?): Promise<ScheduleResult | null>         // direct; what the hub runs
+getSchedule(league, week?): Promise<ScheduleResult | null>         // direct; what the hub runs (football, by week)
+getDaySchedule(league, date?): Promise<ScheduleResult | null>      // direct; what the hub runs (basketball, by day)
+scheduleFor(league, { week?, date? }): Promise<ScheduleResult | null>  // either, by the league's schedule shape
 ```
 `worker/payments/index.ts` (payments):
 ```ts

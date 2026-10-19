@@ -12,6 +12,7 @@
 // an amount; a host's prize note is quoted only the way a push quotes it.
 
 import { drawKeys, everyScoreIndex, hasScoreMoment, periodNote, periodPhrase, rulesOf, SHARED_DRAW_KEY } from "../../shared/formats";
+import { freshNumbersInfo } from "../../shared/sports";
 import { drawFor, fixedPeriodsOf, resolveResults, winnersOf, type PeriodResult } from "../../shared/squares";
 import type { GameState, Team } from "../../shared/types";
 import { getGameState } from "../db";
@@ -168,7 +169,15 @@ export async function composeNotice(plan: NoticePlan, state: GameState, setup: E
   let rendered: Rendered;
   if (plan.key === "numbers") {
     const { squares, freshLabel } = numbersOf(state, plan.to.playerId);
-    rendered = numbersEmail(frame, { teamX, teamY, squares, freshLabel, everyScore: hasScoreMoment(rulesOf(game.format)), boardUrl });
+    rendered = numbersEmail(frame, {
+      teamX,
+      teamY,
+      squares,
+      freshLabel,
+      freshEach: freshNumbersInfo(game).each,
+      everyScore: hasScoreMoment(rulesOf(game.format)),
+      boardUrl,
+    });
   } else if (plan.key === "final") {
     rendered = finalEmail(frame, finalFactsOf(state, plan.to.playerId, boardUrl));
   } else {

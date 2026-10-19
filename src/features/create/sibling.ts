@@ -40,6 +40,7 @@ export function siblingSeed(state: GameState): SiblingSeed {
         teamX: game.teamX,
         teamY: game.teamY,
         league: game.league,
+        sport: game.sport,
         linkedEvent: game.linkedEvent,
         startsAt: game.linkedEvent ? null : gameKickoff(game),
       },
