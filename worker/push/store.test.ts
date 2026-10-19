@@ -110,6 +110,16 @@ describe("subscriptionsFor", () => {
     expect(rows.map((r) => r.client_id)).toEqual(["client-a-0001"]);
   });
 
+  it("counts a mute on a season board for each of its games", async () => {
+    await upsertSubscription(t.d1, "client-a-0001", web(1), 100);
+    await upsertSubscription(t.d1, "client-b-0002", ios("tok-b"), 100);
+    insertGame("season01");
+    await setMuted(t.d1, "season01", "client-b-0002", true, 100);
+    expect((await subscriptionsFor(t.d1, ["game0001", "season01"], ["client-a-0001", "client-b-0002"])).map((r) => r.client_id)).toEqual(["client-a-0001"]);
+    // The game on its own isn't muted.
+    expect(await subscriptionsFor(t.d1, "game0001", ["client-a-0001", "client-b-0002"])).toHaveLength(2);
+  });
+
   it("handles boards with more players than D1 allows bound parameters", async () => {
     const ids = Array.from({ length: 205 }, (_, i) => `client-${String(i).padStart(4, "0")}`);
     for (const [i, id] of ids.entries()) await upsertSubscription(t.d1, id, ios(`tok-${i}`), 100);

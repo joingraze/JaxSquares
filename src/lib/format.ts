@@ -112,8 +112,10 @@ export function shortTeam(team: Team, league: Game["league"]): string {
   return shortTeamName(team, league) || name;
 }
 
-/** "Packers vs Bears": the matchup in the words people text; the board name if teams are missing. */
-export function shortMatchup(game: Pick<Game, "teamX" | "teamY" | "name" | "league">): string {
+/** "Packers vs Bears": the matchup in the words people text; the board name if teams are missing. A season board: "Jaguars season". */
+export function shortMatchup(game: Pick<Game, "teamX" | "teamY" | "name" | "league" | "kind">): string {
+  // A season board's axes are its team and "Opponent" (a team's season), or "Away" and "Home" (picked games).
+  if (game.kind === "season") return game.teamX.abbr === "AWAY" ? "season" : `${shortTeam(game.teamX, game.league)} season`;
   const x = shortTeam(game.teamX, game.league);
   const y = shortTeam(game.teamY, game.league);
   if (x && y) return `${x} vs ${y}`;

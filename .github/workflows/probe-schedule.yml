@@ -16,6 +16,10 @@ name: Probe schedule
 #     counted, halftime + final for the men's halves and Q1/Half/Q3/Final for
 #     the rest), the latest finals and any game on now; plus how many college
 #     games each slate lists with and without ESPN's Division I filter.
+#   - Season boards: the NFL's and the NBA's team lists and one team's season
+#     each (the Jaguars, the Lakers: regular season and playoffs, the team on
+#     one side of every game, results on finished games, a final's live data),
+#     and the college and WNBA team lists.
 #   An empty schedule in a league's off-season is logged, not a failure.
 on:
   push:
@@ -87,6 +91,16 @@ jobs:
           test "$(code "/api/schedule?league=hockey")" = 400
           # Football is unchanged.
           curl -fsS "$SITE/api/schedule?league=nfl" | grep -q '"events"'
+          # Season boards: a league's teams and one team's season.
+          curl -fsS "$SITE/api/season/teams?league=nfl" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (r.unavailable || r.teams.length < 32) throw new Error(`nfl teams: ${r.teams.length}`);
+            console.log(`nfl: ${r.teams.length} teams`);'
+          curl -fsS "$SITE/api/season/schedule?league=nba&team=13" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (r.unavailable || !r.team || r.events.length === 0) throw new Error("nba team season unavailable");
+            console.log(`${r.team.name} ${r.year}: ${r.events.length} games`);'
+          test "$(code "/api/season/schedule?league=nfl&team=x%2Fy")" = 400
           # The basketball landing pages and the sitemap.
           for slug in basketball-squares march-madness-squares; do
             curl -fsS "$SITE/$slug" | grep -q "rel=\"canonical\" href=\"https://jaxsquares.com/$slug\""

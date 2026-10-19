@@ -39,6 +39,7 @@ const MIGRATIONS = [
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
   "migrations/0016_club.sql",
+  "migrations/0017_season.sql",
 ];
 
 /** A Resend request as the mock saw it: one message, or a batch. */
@@ -596,5 +597,77 @@ describe("privacy", () => {
     expect(masked.length).toBeGreaterThan(0);
     for (const s of masked) expect(Object.keys(JSON.parse(s)).sort()).toEqual(["email", "status"]);
     expect((await statusOf(id, ANA)).email).toBe("a•••@gmail.com");
+  });
+});
+
+describe("a season board", () => {
+  const DAY = 86_400_000;
+  const game = (eventId: string, days: number) => ({
+    eventId,
+    startsAt: Date.now() + days * DAY,
+    home: { name: "Kansas City Chiefs", abbr: "KC" },
+    away: { name: "Philadelphia Eagles", abbr: "PHI" },
+  });
+
+  async function season(numbers: "same" | "fresh") {
+    const created = await call<CreateGameResponse>("POST", "/games", {
+      body: {
+        name: "Office Season",
+        sport: "football",
+        league: "nfl",
+        teamX: { name: "x" },
+        teamY: { name: "y" },
+        format: formatWithAmounts,
+        prizes: {},
+        maxPerPlayer: 0,
+        linkedEvent: null,
+        host: profile("Jordan"),
+        season: { scope: "games", numbers, events: [game("401900001", 2), game("401900002", 9)] },
+      },
+    });
+    expect(created.status).toBe(201);
+    const { game: g, adminToken } = created.body;
+    for (const [client, who, cells] of [
+      [ANA, "Ana", [{ row: 0, col: 0 }, { row: 0, col: 1 }]],
+      [BEN, "Ben", [{ row: 1, col: 1 }]],
+    ] as const) {
+      expect((await call("POST", `/games/${g.id}/join`, { client, body: profile(who) })).status).toBe(200);
+      expect((await call("POST", `/games/${g.id}/claim`, { client, body: { cells } })).status).toBe(200);
+    }
+    return { id: g.id, admin: adminToken };
+  }
+
+  it("emails the season's numbers once at the draw, then each game's wins to the season board's addresses", async () => {
+    const { id, admin } = await season("same");
+    await subscribeConfirmed(id, ANA, ANA_EMAIL);
+    resend = [];
+    expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(200);
+    await settle();
+    // One numbers email for the whole season, none per game.
+    expect(emails().map((e) => e.subject)).toEqual(["Numbers are in for Office Season"]);
+    expect(emails()[0].text).toContain("They're your numbers for every game of the season.");
+    const kid = t.query<{ id: string }>("SELECT id FROM games WHERE season_id = ? ORDER BY starts_at", id)[0].id;
+    fixNumbers(kid);
+    resend = [];
+    expect((await call("POST", `/games/${kid}/scores`, { admin, body: { periodKey: "q1", scoreX: 10, scoreY: 0 } })).status).toBe(200);
+    await settle();
+    expect(emails().map((e) => [e.to[0], e.subject])).toEqual([[ANA_EMAIL, "You won Q1! 🎉 Office Season · PHI @ KC"]]);
+    // Once per game: the same score again sends nothing.
+    expect((await call("POST", `/games/${kid}/scores`, { admin, body: { periodKey: "q1", scoreX: 10, scoreY: 0 } })).status).toBe(200);
+    await settle();
+    expect(emails()).toHaveLength(1);
+    for (const e of emails()) for (const part of [e.subject, e.text, e.html]) expect(visible(part)).not.toMatch(/\$|1,?234|4,?321|\b777\b|\b37\b/);
+    // Its unsubscribe link stops the season board's email.
+    expect((await page("POST", unsubscribeUrlOf(emails()[0]), { scope: "board" })).status).toBe(200);
+    expect((await statusOf(id, ANA)).status).toBe("unsubscribed");
+  });
+
+  it("sends no numbers email when each game draws its own", async () => {
+    const { id, admin } = await season("fresh");
+    await subscribeConfirmed(id, ANA, ANA_EMAIL);
+    resend = [];
+    expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(200);
+    await settle();
+    expect(emails()).toEqual([]);
   });
 });

@@ -217,6 +217,8 @@ export interface NumbersFacts {
   freshEach?: "quarter" | "half";
   /** Every score wins: the summary comes at the end instead of a win email. */
   everyScore: boolean;
+  /** A season board: the same numbers for every game of the season. */
+  season?: boolean;
   boardUrl: string;
 }
 
@@ -235,9 +237,11 @@ export function numbersEmail(frame: EmailFrame, f: NumbersFacts): Rendered {
   }
   blocks.push({
     kind: "p",
-    text: f.everyScore
-      ? "When the game ends, we'll email you how many scores your squares won."
-      : "We'll email you if one of your squares wins, and when the game ends.",
+    text: f.season
+      ? "They're your numbers for every game of the season. We'll email you if one of your squares wins, and when each game ends."
+      : f.everyScore
+        ? "When the game ends, we'll email you how many scores your squares won."
+        : "We'll email you if one of your squares wins, and when the game ends.",
     muted: true,
   });
   return render(frame, {

@@ -109,7 +109,9 @@ export async function notify(env: Env, gameId: string, event: NotifyEvent): Prom
     const deliveries = buildDeliveries(game, members, event, Date.now(), await feeContext(env, game, members, event));
     if (deliveries.length === 0) return;
 
-    const subs = await subscriptionsFor(env.DB, gameId, [...new Set(deliveries.map((d) => d.clientId))]);
+    // A season's game board: a mute on its season board counts too.
+    const muteScope = game.seasonId ? [gameId, game.seasonId] : gameId;
+    const subs = await subscriptionsFor(env.DB, muteScope, [...new Set(deliveries.map((d) => d.clientId))]);
     const jobs = jobsFor(deliveries, subs, channels);
     if (jobs.length === 0) return;
 

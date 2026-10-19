@@ -22,6 +22,7 @@ import {
 } from "../shared/formats";
 import { COHOST_INVITE_TTL_MS, COHOST_PARAM, cohostLimitOf, hasCohostRoom, isCohostOf, isCohostToken, type HostRole } from "../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
+import { SEASON_ERRORS, isSeasonBoard, isSeasonGame, seasonGameName, seasonNumbers } from "../shared/season";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
@@ -39,14 +40,15 @@ import type {
   LinkedEvent,
   Period,
   Sport,
-  Team,
 } from "../shared/types";
 import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
+import { cleanColor, cleanTeam, cleanText } from "./clean";
 import { clubRoutes, csvFilename, playersCsv } from "./clubs";
 import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
+import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
 import { activePass, getPaymentConfig, holdersOfActivePass, paymentsRoutes } from "./payments";
 import { playerIdOf } from "./playerIds";
@@ -54,7 +56,19 @@ import { pushRoutes, type NotifyEvent } from "./push";
 import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLimit";
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
-import { broadcast, closeRoom, loadState, newActivity, notifyAll, pushToRoom, roomStub, scoreEvents, tokenMatches } from "./service";
+import { hasGamesAhead, parseSeasonInput, seasonSchedule, syncSeasonGames, syncSeasons, type SeasonSchedule } from "./season";
+import {
+  broadcast,
+  closeRoom,
+  loadState,
+  newActivity,
+  notifyAll,
+  pushToRoom,
+  roomStub,
+  scoreEvents,
+  tokenMatches,
+  touchSeason,
+} from "./service";
 
 export { GameRoom } from "./room";
 export { ScoreHub } from "./scores/hub";
@@ -69,7 +83,6 @@ export { ScoreHub } from "./scores/hub";
 type AppEnv = { Bindings: Env; Variables: { clientId: string; playerId: string } };
 type Ctx = Context<AppEnv>;
 
-const ID_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"; // no easily-confused characters
 const GAME_ID_RE = /^[a-z0-9]{4,16}$/;
 /** Most boards a device may ask about with `GET /api/me/games?seen=` (it keeps about this many). */
 const SEEN_MAX = 50;
@@ -86,27 +99,10 @@ const DRAW_REMINDER_MIN_AGE_MS = 15 * 60_000;
 
 // ---- small validation helpers ----
 
-function makeId(len = 6): string {
-  let s = "";
-  for (const b of crypto.getRandomValues(new Uint8Array(len))) s += ID_ALPHABET[b % ID_ALPHABET.length];
-  return s;
-}
-
 function makeToken(): string {
   return crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 }
 
-/** Single-line text: control chars stripped, whitespace collapsed, capped by code points. */
-function cleanText(v: unknown, max: number): string {
-  if (typeof v !== "string") return "";
-  // Control and bidi-override characters; ZWJ is kept so emoji sequences survive.
-  const s = v.replace(/[\p{Cc}‪-‮⁦-⁩]/gu, "").replace(/\s+/g, " ").trim();
-  return Array.from(s).slice(0, max).join("").trim();
-}
-
-function cleanColor(v: unknown): string | null {
-  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toLowerCase() : null;
-}
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -117,18 +113,6 @@ function cleanEmoji(v: unknown): string {
   return first.length <= 16 && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(first) ? first : "";
 }
 
-function cleanTeam(v: unknown): Team | null {
-  if (!v || typeof v !== "object") return null;
-  const t = v as Record<string, unknown>;
-  const name = cleanText(t.name, 40);
-  if (!name) return null;
-  const team: Team = { name };
-  const abbr = cleanText(t.abbr, 6).toUpperCase();
-  if (/^[A-Z0-9&.]{1,6}$/.test(abbr)) team.abbr = abbr;
-  const color = cleanColor(t.color);
-  if (color) team.color = color;
-  return team;
-}
 
 function cleanLinkedEvent(v: unknown, now: number): LinkedEvent | null {
   if (!v || typeof v !== "object") return null;
@@ -285,6 +269,13 @@ function publish(c: Ctx, state: GameState, activityIds: string[] = [], notificat
     .filter((a): a is Activity => !!a);
   defer(c, pushToRoom(c.env, state.game.id, state, activities));
   if (notifications.length > 0) defer(c, notifyAll(c.env, state.game.id, notifications));
+  // A season's game board: its season board's schedule and standings follow it.
+  if (state.game.seasonId) defer(c, touchSeason(c.env, state.game.seasonId));
+}
+
+/** 409 on a season's game board: its players, squares, rules and co-hosts belong to its season board. */
+function notOnSeasonGame(game: Game, message: string): void {
+  if (isSeasonGame(game)) fail(409, message);
 }
 
 async function stateOr404(c: Ctx, id: string): Promise<GameState> {
@@ -347,6 +338,7 @@ async function groupSourceFor(c: Ctx, raw: unknown, now: number): Promise<db.Gro
     (await db.isCohost(c.env.DB, id, clientId));
   if (!runsIt) fail(403, "Only the host can do that");
   const { game } = source;
+  if (isSeasonBoard(game) || isSeasonGame(game)) fail(409, SEASON_ERRORS.sibling);
   const problem = siblingProblem(
     { status: game.status, linkedEvent: game.linkedEvent, scored: source.scored, live: source.live, groupSize: source.groupSize },
     now,
@@ -426,18 +418,23 @@ api.post("/games", requireClient, async (c) => {
   const formatProblem = formatError(body.format);
   if (formatProblem) fail(400, formatProblem);
   const requested = sanitizeFormat(body.format);
+  // A season board (worker/season.ts): a team's season or picked games; each game gets its own board at the draw.
+  const season = body.season == null ? null : parseSeasonInput(body.season, body.league, now);
+  if (typeof season === "string") fail(400, season);
+  if (season && body.fromGameId != null) fail(400, SEASON_ERRORS.sibling);
   // Another board for the game of one the caller hosts: the game (teams, link, kickoff) comes from that board.
   const source = body.fromGameId == null ? null : await groupSourceFor(c, body.fromGameId, now);
-  const teamX = source ? source.game.teamX : cleanTeam(body.teamX);
-  const teamY = source ? source.game.teamY : cleanTeam(body.teamY);
+  const teamX = season ? season.teamX : source ? source.game.teamX : cleanTeam(body.teamX);
+  const teamY = season ? season.teamY : source ? source.game.teamY : cleanTeam(body.teamY);
   if (!teamX || !teamY) fail(400, "Pick both teams");
   if ([teamX, teamY].some((t) => mentionsMoney(t.name) || mentionsMoney(t.abbr ?? ""))) fail(400, MONEY_ERRORS.team);
-  const linkedEvent = source ? source.game.linkedEvent : body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
-  if (!source && body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
-  let league: League = source ? source.game.league : isLeague(body.league) ? body.league : "custom";
+  // A season board has no game of its own: its games' boards are linked, one each.
+  const linkedEvent = season ? null : source ? source.game.linkedEvent : body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
+  if (!source && !season && body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
+  let league: League = season ? season.league : source ? source.game.league : isLeague(body.league) ? body.league : "custom";
   if (linkedEvent) league = linkedEvent.league;
-  // A custom board's kickoff is the host's (optional); a linked board's is its event's.
-  const startsAt = linkedEvent ? linkedEvent.startsAt : source ? (source.game.startsAt ?? null) : cleanKickoff(body.startsAt, now);
+  // A custom board's kickoff is the host's (optional); a linked board's is its event's; a season board's, its first game's.
+  const startsAt = season ? season.firstKickoff : linkedEvent ? linkedEvent.startsAt : source ? (source.game.startsAt ?? null) : cleanKickoff(body.startsAt, now);
   // A league plays one sport (NBA: basketball); a custom board is football or basketball.
   const sportProblem = source ? null : leagueSportProblem(body.sport, league);
   if (sportProblem) fail(400, sportProblem);
@@ -478,10 +475,12 @@ api.post("/games", requireClient, async (c) => {
       createdAt: now,
       lockedAt: null,
       paid: false,
+      ...(season ? { kind: "season" as const } : {}),
     };
     try {
       const created = newActivity("created", me, {}, now);
       const writes = db.insertGame(c.env.DB, game, clientId, adminToken, { ...host, joinedAt: now }, created);
+      if (season) writes.push(db.markSeasonStatement(c.env.DB, game.id, season.stored));
       // In its source board's group (the source's own id when it had none). Unpaid like any new board.
       if (source) writes.push(...db.joinGroupStatements(c.env.DB, game.id, source.game.id, source.group ?? source.game.id, now));
       await c.env.DB.batch(writes);
@@ -517,6 +516,9 @@ api.patch("/games/:id", requireClient, async (c) => {
   const state = await hostState(c, id);
   const body = await readJson(c);
   const { game } = state;
+  // A season's game board follows its season board: its name, rules and prizes are edited there.
+  notOnSeasonGame(game, SEASON_ERRORS.childEdit);
+  const season = isSeasonBoard(game);
   const fields: db.GameFieldUpdate = {};
   if (body.name !== undefined) {
     fields.name = cleanText(body.name, 60);
@@ -550,8 +552,8 @@ api.patch("/games/:id", requireClient, async (c) => {
     }
   }
   if (body.startsAt !== undefined) {
-    // Display only, so it can change any time; a linked board's comes from its schedule.
-    if (game.linkedEvent) fail(400, KICKOFF_ERRORS.linked);
+    // Display only, so it can change any time; a linked board's comes from its schedule (a season board's, its games').
+    if (game.linkedEvent || season) fail(400, KICKOFF_ERRORS.linked);
     fields.startsAt = cleanKickoff(body.startsAt, Date.now());
   }
   if (body.maxPerPlayer !== undefined) {
@@ -565,8 +567,23 @@ api.patch("/games/:id", requireClient, async (c) => {
   const writes = [stmt];
   // Shows in the feed; never pushed.
   if (rulesActivity) writes.push(db.insertActivity(c.env.DB, id, rulesActivity));
-  const { state: next } = await commitOr404(c, id, writes);
+  // A season board's games follow it: new rules and prizes reach each game board
+  // with no score or host pick yet (who wins locks at the first score), and a new
+  // name renames them all ("Office Season · JAX @ MIA").
+  const now = Date.now();
+  const renamed = season && !!fields.name && fields.name !== game.name;
+  const children = season && (fields.format || renamed) ? await db.seasonChildren(c.env.DB, id) : [];
+  if (season && fields.format && fields.periods) writes.push(db.seasonFormatStatement(c.env.DB, id, fields.format, fields.periods, now));
+  if (renamed && fields.name) {
+    for (const k of children) {
+      writes.push(db.renameStatement(c.env.DB, k.id, seasonGameName(fields.name, k.teamX, k.teamY, k.linkedEvent?.xIsHome ?? false), now));
+    }
+  }
+  const { state: next } = await commitOr404(c, id, writes, now);
   publish(c, next, rulesActivity ? [rulesActivity.id] : []);
+  // Their open boards take the change: the games on now or this week (a later one reads it when opened).
+  const soon = now + 7 * 24 * 3_600_000;
+  for (const k of children) if (k.status === "locked" && (k.linkedEvent?.startsAt ?? 0) < soon) defer(c, broadcast(c.env, k.id));
   return c.json({ state: next });
 });
 
@@ -574,9 +591,13 @@ api.delete("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
   // Host only: a co-host can do everything else.
   const state = await hostOnlyState(c, id, "Only the host can delete the board");
+  // A season's game board goes with its season board, never on its own.
+  notOnSeasonGame(state.game, SEASON_ERRORS.childDelete);
+  const children = isSeasonBoard(state.game) ? await db.seasonChildIds(c.env.DB, id) : [];
   await db.deleteGame(c.env.DB, id);
-  // Open boards get { type: "deleted" } and a 4404 close.
+  // Open boards get { type: "deleted" } and a 4404 close (a season board's games' too).
   defer(c, closeRoom(c.env, id));
+  for (const kid of children) defer(c, closeRoom(c.env, kid));
   // The other boards for its game stop listing it.
   for (const s of state.siblings ?? []) defer(c, broadcast(c.env, s.id));
   return c.json({ ok: true });
@@ -587,6 +608,8 @@ api.post("/games/:id/join", requireClient, async (c) => {
   const clientId = c.get("clientId");
   const me = c.get("playerId");
   const state = await stateOr404(c, id);
+  // A season's game board takes its players from its season board.
+  notOnSeasonGame(state.game, SEASON_ERRORS.childJoin);
   const isHostDevice = me === state.game.hostPlayerId;
   if (state.game.status === "draft" && !isHostDevice) fail(409, "This board isn't open yet");
   const profile = cleanProfile(await readJson(c));
@@ -639,6 +662,8 @@ api.delete("/games/:id/players/:playerId", requireClient, async (c) => {
 });
 
 function requireOpen(state: GameState): void {
+  // A season's game board never takes claims: its squares are the season board's.
+  notOnSeasonGame(state.game, SEASON_ERRORS.childClaim);
   if (state.game.status === "draft") fail(409, "This board isn't open yet");
   if (state.game.status !== "open") fail(409, "Squares are locked");
 }
@@ -715,6 +740,20 @@ api.post("/games/:id/release", requireClient, async (c) => {
 api.post("/games/:id/lock", requireClient, async (c) => {
   const id = gameIdParam(c);
   let state = await hostState(c, id);
+  // A season board (worker/season.ts) draws once for the whole season: its
+  // games come from the team's schedule as ESPN has it now (or the games the
+  // host picked), and a season with no game left to play isn't drawn (or paid
+  // for through a pass).
+  let schedule: SeasonSchedule | null = null;
+  let seasonMode: "same" | "fresh" = "same";
+  if (isSeasonBoard(state.game) && (state.game.status === "open" || state.game.status === "draft")) {
+    const row = await db.getGameRow(c.env.DB, id);
+    const stored = row ? db.storedSeasonOf(row) : null;
+    if (!stored) fail(404, "Game not found");
+    seasonMode = stored.numbers;
+    schedule = await seasonSchedule(c.env, stored);
+    if (!hasGamesAhead(schedule, [], Date.now())) fail(409, SEASON_ERRORS.noGames);
+  }
   // At most twice: a free draw that a 6th player's claim beat (see below) is
   // decided once more with that player counted.
   for (let attempt = 0; ; attempt++) {
@@ -741,13 +780,15 @@ api.post("/games/:id/lock", requireClient, async (c) => {
     }
     const me = c.get("playerId");
     const locked = newActivity("locked", me, {}, now);
-    writes.push(db.lockGame(c.env.DB, id, drawNumbers(game.format), now), db.insertActivityIfChanged(c.env.DB, id, locked));
+    // A season board's numbers: the one draw every game uses, or none when each game draws its own.
+    const numbers = schedule ? seasonNumbers(game.format, seasonMode) : drawNumbers(game.format);
+    writes.push(db.lockGame(c.env.DB, id, numbers, now), db.insertActivityIfChanged(c.env.DB, id, locked));
     // A linked game that ended before its host paid and drew: the room stopped
     // polling at the final whistle, so the board goes final with the draw.
     const over = !!game.linkedEvent && state.live?.state === "post" && liveLabel(state.live, game.status) === "Final";
     const final = over ? newActivity("final", null, {}, now) : null;
     if (final) writes.push(db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final));
-    const { state: next } = await commitOr404(c, id, writes, now);
+    let { state: next } = await commitOr404(c, id, writes, now);
     const recorded = next.activity.some((a) => a.id === locked.id);
     // A claim committed between the read above and this batch and made the
     // board a 6th player's: the free mark counted them and changed nothing, so
@@ -759,6 +800,9 @@ api.post("/games/:id/lock", requireClient, async (c) => {
       continue;
     }
     const ended = !!final && next.activity.some((a) => a.id === final.id);
+    // A season board's draw gives every game still to come a board of its own,
+    // made quietly: the season board's one "numbers drawn" below covers them all.
+    if (schedule && recorded) next = (await syncSeasonGames(c.env, id, now, schedule)).state ?? next;
     // The host who drew the numbers isn't pushed about it; a game already over gets the wrap-up instead.
     const notifications: NotifyEvent[] = ended ? [{ kind: "final", actor: me }] : recorded ? [{ kind: "numbers-drawn", actor: me }] : [];
     publish(c, next, final ? [locked.id, final.id] : [locked.id], notifications);
@@ -773,6 +817,7 @@ function requireLocked(state: GameState): void {
 api.post("/games/:id/scores", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
+  if (isSeasonBoard(state.game)) fail(409, SEASON_ERRORS.seasonScores);
   const { game } = state;
   requireLocked(state);
   const body = await readJson(c);
@@ -838,6 +883,7 @@ api.delete("/games/:id/scores/:periodKey", requireClient, async (c) => {
 api.post("/games/:id/winners", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
+  if (isSeasonBoard(state.game)) fail(409, SEASON_ERRORS.seasonScores);
   requireLocked(state);
   const body = await readJson(c);
   const period = resolvePeriodKey(state, body.periodKey, false);
@@ -899,8 +945,9 @@ api.post("/games/:id/final", requireClient, async (c) => {
     now,
   );
   const recorded = next.activity.some((a) => a.id === final.id);
-  // The host who ended the game isn't pushed about it.
-  publish(c, next, [final.id], recorded ? [{ kind: "final", actor: me }] : []);
+  // The host who ended the game isn't pushed about it. Ending a season board
+  // early isn't pushed at all: each game's board says its own final.
+  publish(c, next, [final.id], recorded && !isSeasonBoard(state.game) ? [{ kind: "final", actor: me }] : []);
   return c.json({ state: next });
 });
 
@@ -939,6 +986,7 @@ async function cohostTokenHash(token: string): Promise<string> {
 api.post("/games/:id/cohost-invites", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostOnlyState(c, id, "Only the host can invite co-hosts");
+  notOnSeasonGame(state.game, SEASON_ERRORS.childCohost);
   if (!hasCohostRoom(state.game)) fail(409, `A board can have up to ${cohostLimitOf(state.game)} co-hosts. Remove one to invite someone new.`);
   const limited = await deviceLimited(c, RATE_LIMITS.cohostInvite, RATE_LIMITS.cohostInviteIp);
   if (limited) return limited;
@@ -1198,7 +1246,8 @@ async function housekeep(env: Env, now: number): Promise<void> {
 
 async function scheduled(controller: ScheduledController, env: Env): Promise<void> {
   const now = Date.now();
-  const jobs = [wakeLinkedGames(env, now), remindUnpaidHosts(env, now)];
+  // Season boards: new games (playoffs) as they're scheduled, about twice a day each (worker/season.ts).
+  const jobs = [wakeLinkedGames(env, now), remindUnpaidHosts(env, now), syncSeasons(env, now)];
   if (isHousekeepingTick(controller.scheduledTime || now)) jobs.push(housekeep(env, now));
   const results = await Promise.allSettled(jobs);
   for (const r of results) if (r.status === "rejected") console.error("cron job failed", r.reason);

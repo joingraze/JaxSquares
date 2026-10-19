@@ -2,18 +2,21 @@
 // and change it (Next from there comes straight back here). The prizes card
 // shows exactly the lineup players will see, or flags "Square price: not
 // set" when the host skipped it. Amounts stay in the app (this is the app).
+// A season board's game card is its season ("Jaguars 2026 season · 17 games
+// so far"), its next game and how numbers work; its prizes are every game's.
 
 import type { ReactNode } from "react";
 import { rulesOf } from "../../../shared/formats";
+import { SEASON_NUMBERS_INFO } from "../../../shared/season";
 import { playsHalves, regulationPeriods, wordsFor, type GameKind } from "../../../shared/sports";
-import type { GameFormat, LinkedEvent, Team } from "../../../shared/types";
-import { ChevronRightIcon, ClockIcon, LiveIcon, PencilIcon, TrophyIcon } from "../../components/icons";
+import type { GameFormat, LinkedEvent, SeasonEvent, SeasonNumbers, SeasonTeam, Team } from "../../../shared/types";
+import { CalendarIcon, ChevronRightIcon, ClockIcon, GridIcon, LiveIcon, PencilIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx, TeamMark } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { capLine, prizeLineup } from "../rules/rulesModel";
 import { FormatGlyph } from "./FormatPicker";
 import { kickoffLine } from "./kickoff";
-import { boardHeadline, rulesTitle } from "./model";
+import { boardHeadline, rulesTitle, seasonEventMatchup } from "./model";
 import { STEP_INFO, STEPS, stepNumber, type Steps, type WizardStep } from "./wizard";
 
 export interface ReviewStepProps {
@@ -41,9 +44,34 @@ export interface ReviewStepProps {
   steps?: Steps;
   /** The board's sport and league ("Tips off" for basketball, a game of halves drawn as two). */
   kind?: GameKind;
+  /** A season board: its line, team, next game and numbers (absent for one game's board). */
+  season?: ReviewSeason | null;
 }
 
-export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name, maxPerPlayer, host, now, onEdit, sibling = null, steps = STEPS, kind }: ReviewStepProps) {
+export interface ReviewSeason {
+  /** "Jaguars 2026 season · 17 games so far", "6 NFL games". */
+  line: string;
+  team: SeasonTeam | null;
+  next: SeasonEvent | null;
+  numbers: SeasonNumbers;
+}
+
+export function ReviewStep({
+  teams,
+  matchupLabel,
+  linked,
+  kickoff,
+  format,
+  name,
+  maxPerPlayer,
+  host,
+  now,
+  onEdit,
+  sibling = null,
+  steps = STEPS,
+  kind,
+  season = null,
+}: ReviewStepProps) {
   const words = wordsFor(kind);
   const rules = rulesOf(format);
   const lineup = prizeLineup(format);
@@ -77,36 +105,42 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
         </section>
       ) : (
         <>
-          <ReviewCard step="game" steps={steps} summary={`${matchupLabel}, ${when}`} onEdit={onEdit}>
-            <div className="flex items-center gap-3">
-              {teams && (
-                <span aria-hidden className="flex shrink-0 gap-1">
-                  <TeamMark team={teams.teamX} size="sm" />
-                  <TeamMark team={teams.teamY} size="sm" />
-                </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
-                {linked ? (
-                  <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
-                    <LiveIcon size={14} className="shrink-0 text-ink-brand" />
-                    <span className="truncate">Live scores · {kickoffLine(linked.startsAt, now)}</span>
+          {season ? (
+            <ReviewCard step="game" steps={steps} summary={season.line} onEdit={onEdit}>
+              <SeasonSummary season={season} teams={teams} now={now} />
+            </ReviewCard>
+          ) : (
+            <ReviewCard step="game" steps={steps} summary={`${matchupLabel}, ${when}`} onEdit={onEdit}>
+              <div className="flex items-center gap-3">
+                {teams && (
+                  <span aria-hidden className="flex shrink-0 gap-1">
+                    <TeamMark team={teams.teamX} size="sm" />
+                    <TeamMark team={teams.teamY} size="sm" />
                   </span>
-                ) : (
-                  <>
-                    <span data-testid="review-kickoff" className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink">
-                      <ClockIcon size={14} className="shrink-0 text-ink-brand" />
-                      <span className="truncate">{kickoff === null ? "No set time" : `${words.starts} ${kickoffLine(kickoff, now)}`}</span>
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
-                      <PencilIcon size={14} className="shrink-0 text-ink-subtle" />
-                      <span className="truncate">You run the score</span>
-                    </span>
-                  </>
                 )}
-              </span>
-            </div>
-          </ReviewCard>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
+                  {linked ? (
+                    <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+                      <LiveIcon size={14} className="shrink-0 text-ink-brand" />
+                      <span className="truncate">Live scores · {kickoffLine(linked.startsAt, now)}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span data-testid="review-kickoff" className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink">
+                        <ClockIcon size={14} className="shrink-0 text-ink-brand" />
+                        <span className="truncate">{kickoff === null ? "No set time" : `${words.starts} ${kickoffLine(kickoff, now)}`}</span>
+                      </span>
+                      <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+                        <PencilIcon size={14} className="shrink-0 text-ink-subtle" />
+                        <span className="truncate">You run the score</span>
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
+            </ReviewCard>
+          )}
 
           <ReviewCard step="format" steps={steps} summary={`${rulesTitle(format)}, ${boardHeadline(format)}`} onEdit={onEdit}>
             <div className="flex items-center gap-3">
@@ -142,7 +176,7 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
                 </>
               ) : (
                 <>
-                  <span className="block text-caption font-bold text-ink-subtle">What players see</span>
+                  <span className="block text-caption font-bold text-ink-subtle">{season ? "What players see, every game" : "What players see"}</span>
                   <span className="mt-0.5 block text-callout font-bold leading-snug tabular-nums text-ink">
                     {/* Each part stays whole; lines break between parts. */}
                     {lineup.parts.map((p, i) => (
@@ -187,6 +221,40 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
           </span>
         </div>
       </ReviewCard>
+    </div>
+  );
+}
+
+/** A season board's game card: the season, its next game, live scores and how numbers work. */
+function SeasonSummary({ season, teams, now }: { season: ReviewSeason; teams: { teamX: Team; teamY: Team } | null; now: number }) {
+  return (
+    <div data-testid="review-season" className="flex items-center gap-3">
+      {season.team ? (
+        <TeamMark team={season.team} logo={season.team.logo} size="md" />
+      ) : (
+        teams && (
+          <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4 text-ink-brand">
+            <CalendarIcon size={18} />
+          </span>
+        )
+      )}
+      <span className="min-w-0 flex-1">
+        <span data-testid="review-season-line" className="block font-display text-headline font-extrabold leading-tight text-ink">
+          {season.line}
+        </span>
+        {season.next && (
+          <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+            <LiveIcon size={14} className="shrink-0 text-ink-brand" />
+            <span>
+              Live scores · Next {seasonEventMatchup(season.next, season.team)}, {kickoffLine(season.next.startsAt, now)}
+            </span>
+          </span>
+        )}
+        <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+          <GridIcon size={14} className="shrink-0 text-ink-subtle" />
+          <span className="truncate">{SEASON_NUMBERS_INFO[season.numbers].label}</span>
+        </span>
+      </span>
     </div>
   );
 }

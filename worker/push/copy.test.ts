@@ -38,6 +38,14 @@ describe("buildDeliveries", () => {
     expect(ds[0].content.body).toBe("🔢 Numbers are in. Find your squares.");
   });
 
+  it("says a season board's draw once, for the whole season, never with an amount", () => {
+    const same = buildDeliveries(makeGame({ kind: "season", numbers: { "*": { x: [[0]], y: [[0]] } } }), players, { kind: "numbers-drawn" }, NOW);
+    expect(same[0].content.body).toBe("🔢 Numbers are in for the whole season. Find your squares.");
+    const fresh = buildDeliveries(makeGame({ kind: "season", numbers: {} }), players, { kind: "numbers-drawn" }, NOW);
+    expect(fresh[0].content.body).toBe("🗓️ The season is set. Each game draws its own numbers.");
+    for (const d of [...same, ...fresh]) expect(d.content.body).not.toMatch(/\$|\d+ ?pts/);
+  });
+
   it("never tells the actor about their own action", () => {
     const ds = buildDeliveries(makeGame(), players, { kind: "numbers-drawn", actor: pid(HOST) }, NOW);
     expect(recipients(ds)).toEqual(["client-jax-001", "client-sam-002"]);

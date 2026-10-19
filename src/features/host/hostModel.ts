@@ -36,6 +36,7 @@ import {
 import { cohostIdsOf } from "../../../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
+import { isSeasonBoard } from "../../../shared/season";
 import { isFootball, periodsBefore, wordsFor } from "../../../shared/sports";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Player, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
@@ -105,9 +106,14 @@ export function needsHostFee(game: Pick<Game, "status" | "paid">): boolean {
   return isPicking(game) && game.paid === false;
 }
 
-/** The draw action on a board whose fee is due: "Draw the numbers · $4.99" (no price when it can't be said). */
-export function payToDrawLabel(price: string | null | undefined): string {
-  return price ? `Draw the numbers · ${price}` : "Draw the numbers";
+/**
+ * The draw action on a board whose fee is due: "Draw the numbers · $4.99" (no
+ * price when it can't be said); on a season board, whose one fee covers every
+ * game, "Draw the numbers · $14.99 for the season".
+ */
+export function payToDrawLabel(price: string | null | undefined, season = false): string {
+  if (!price) return "Draw the numbers";
+  return season ? `Draw the numbers · ${price} for the season` : `Draw the numbers · ${price}`;
 }
 
 /**
@@ -166,7 +172,7 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
             ? "Board's full. Draw time!"
             : `${left} ${left === 1 ? "square" : "squares"} left · ready to draw`,
         progress: claimed / total,
-        action: { kind: "lock", label: fee ? payToDrawLabel(price) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw" },
+        action: { kind: "lock", label: fee ? payToDrawLabel(price, isSeasonBoard(game)) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw" },
         slim: false,
         fee,
         covered,
@@ -179,6 +185,17 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
       progress: claimed / total,
       action: { kind: "invite", label: invitedAnyone(state) ? `Invite (${left} left)` : "Invite friends" },
       slim: false,
+    };
+  }
+  // A season board drawn: its games play on their own boards; it just keeps count.
+  if (isSeasonBoard(game)) {
+    const games = state.season?.games ?? [];
+    const played = games.filter((g) => g.status === "final").length;
+    return {
+      status: game.status === "final" ? `Season over · ${pluralWord(games.length, "game")}` : `${played} of ${pluralWord(games.length, "game")} played`,
+      progress: games.length ? played / games.length : 0,
+      action: { kind: "auto", label: "Schedule" },
+      slim: true,
     };
   }
   if (game.status === "final") {
@@ -222,6 +239,8 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
   const next = upcomingPeriod(state);
   return { status, progress, action: { kind: "score", label: next ? `${next.label} score` : "Scores" }, slim: false };
 }
+
+const pluralWord = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /** Share of the board taken at which locking becomes the host's main move. */
 export const LOCK_READY_SHARE = 0.9;

@@ -3,11 +3,15 @@
 // (Stripe on the web, Apple IAP in the iOS app); anything less runs the clearly
 // labeled no-charge test checkout.
 
-import type { ClubPassOffer, HostPassOffer, PaymentConfig } from "../../shared/types";
+import type { ClubPassOffer, Game, HostPassOffer, PaymentConfig, SeasonFeeOffer } from "../../shared/types";
 import type { Env } from "../env";
 
 export const DEFAULT_PRICE_CENTS = 499;
 export const DEFAULT_IAP_PRODUCT_ID = "com.jaxsquares.app.board";
+/** A season board's host fee: $14.99, once, at its draw (wrangler.jsonc SEASON_BOARD_PRICE_CENTS sets it). */
+export const DEFAULT_SEASON_PRICE_CENTS = 1499;
+/** The App Store consumable for a season board's host fee. */
+export const DEFAULT_IAP_SEASON_PRODUCT_ID = "com.jaxsquares.app.seasonboard";
 /** The Host Pass: $19.99 a year on the web (wrangler.jsonc HOST_PASS_PRICE_CENTS sets it); the App Store sets its own localized price. */
 export const DEFAULT_HOST_PASS_PRICE_CENTS = 1999;
 export const DEFAULT_IAP_HOST_PASS_PRODUCT_ID = "com.jaxsquares.app.hostpass.yearly";
@@ -43,6 +47,27 @@ export function boardPriceCents(env: Env): number {
 
 export function iapProductId(env: Env): string {
   return env.IAP_PRODUCT_ID?.trim() || DEFAULT_IAP_PRODUCT_ID;
+}
+
+export function seasonPriceCents(env: Env): number {
+  const n = Number(env.SEASON_BOARD_PRICE_CENTS);
+  return Number.isInteger(n) && n >= MIN_PRICE_CENTS ? n : DEFAULT_SEASON_PRICE_CENTS;
+}
+
+export function iapSeasonProductId(env: Env): string {
+  return env.IAP_SEASON_PRODUCT_ID?.trim() || DEFAULT_IAP_SEASON_PRODUCT_ID;
+}
+
+/** A season board's host fee (one fee for every game of the season). */
+export function seasonFeeOffer(env: Env): SeasonFeeOffer {
+  return { priceCents: seasonPriceCents(env), iapProductId: iapSeasonProductId(env) };
+}
+
+/** What a board's host fee is: a season board's (Game.kind "season"), else one board's. */
+export function boardFeeFor(env: Env, game: Pick<Game, "kind">): { amountCents: number; iapProductId: string } {
+  return game.kind === "season"
+    ? { amountCents: seasonPriceCents(env), iapProductId: iapSeasonProductId(env) }
+    : { amountCents: boardPriceCents(env), iapProductId: iapProductId(env) };
 }
 
 export function hostPassPriceCents(env: Env): number {
@@ -109,5 +134,6 @@ export function getPaymentConfig(env: Env): PaymentConfig {
     iapProductId: iapProductId(env),
     hostPass: hostPassOffer(env, live),
     clubPass: clubPassOffer(env, live),
+    season: seasonFeeOffer(env),
   };
 }

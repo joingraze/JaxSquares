@@ -10,7 +10,7 @@
 import type { NativePurchasesPlugin, Transaction } from "@capgo/native-purchases";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { Appearance, ClickResolveDetails, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
-import type { AppConfig, GameState, HostPassIntent, HostPassState, HostPassTransaction, PassPlan, PaymentConfig } from "../../shared/types";
+import type { AppConfig, BoardKind, GameState, HostPassIntent, HostPassState, HostPassTransaction, PassPlan, PaymentConfig } from "../../shared/types";
 import { getClientId, isSignedIn } from "./identity";
 import { getResolvedTheme, type ResolvedTheme } from "./theme";
 
@@ -138,9 +138,18 @@ export function formatPrice(cents: number, currency = "usd", locale?: string): s
  * localized string (App Store guideline 3.1.1: the in-app price is Apple's;
  * never the web price), null when StoreKit can't say.
  */
-export async function hostFeePrice(config: PaymentConfig, platform: Platform): Promise<string | null> {
-  if (platform === "ios") return appStorePrice(platform, config.iapProductId);
-  return formatPrice(config.priceCents, config.currency);
+export async function hostFeePrice(config: PaymentConfig, platform: Platform, kind: BoardKind = "board"): Promise<string | null> {
+  const fee = feeOf(config, kind);
+  if (platform === "ios") return appStorePrice(platform, fee.iapProductId);
+  return formatPrice(fee.priceCents, config.currency);
+}
+
+/**
+ * What a board's host fee is and its App Store product: a season board's one
+ * fee for the whole season (PaymentConfig.season), else one board's.
+ */
+export function feeOf(config: PaymentConfig, kind: BoardKind = "board"): { priceCents: number; iapProductId: string } {
+  return kind === "season" && config.season ? config.season : { priceCents: config.priceCents, iapProductId: config.iapProductId };
 }
 
 /** A price to compare with another one in the same currency: cents on the web, StoreKit's decimal amount in the iOS app. */
@@ -289,9 +298,10 @@ function errorMessage(err: unknown): string {
   return String(err ?? "");
 }
 
-/** The board an App Store transaction paid for, or null when it isn't a board purchase. */
-function boardOf(tx: Pick<Transaction, "productIdentifier" | "appAccountToken">, productId: string): string | null {
-  if (tx.productIdentifier !== productId || !tx.appAccountToken) return null;
+/** The board an App Store transaction paid for, or null when it isn't a board purchase (one of `productIds`: a board's, a season board's). */
+function boardOf(tx: Pick<Transaction, "productIdentifier" | "appAccountToken">, productIds: string | readonly string[]): string | null {
+  const ids = typeof productIds === "string" ? [productIds] : productIds;
+  if (!ids.includes(tx.productIdentifier) || !tx.appAccountToken) return null;
   return gameIdFromAccountToken(tx.appAccountToken);
 }
 
@@ -420,7 +430,8 @@ async function redeemBoardPurchases(
       await redeemPassTransaction(store, tx).then(onPass, () => {});
       continue;
     }
-    const gameId = boardOf(tx, payments.iapProductId);
+    // A board's fee or a season board's: both pay for one board (its id rides in the purchase).
+    const gameId = boardOf(tx, [payments.iapProductId, ...(payments.season ? [payments.season.iapProductId] : [])]);
     if (!gameId || redeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
     try {
       // Sent even without this device's admin token (the board was deleted here): if

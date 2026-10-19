@@ -35,6 +35,7 @@ import {
   confirmStripePaid,
   createPassIntent,
   createStripeIntent,
+  feeOf,
   fetchAppConfig,
   formatPrice,
   mountCardForm,
@@ -204,6 +205,9 @@ export function CheckoutSheet({
   const gameId = board?.game.id ?? null;
   const adminToken = board?.adminToken ?? null;
   const on = platform();
+  // A season board's one fee covers every game of the season: its own price and App Store product.
+  const season = board?.game.kind === "season";
+  const fee = payments ? feeOf(payments, season ? "season" : "board") : null;
 
   // The pass is offered where it's sold and the caller takes it; Profile's sheet is the pass alone.
   const passMethod = payments ? passCheckoutMethod(payments, on) : null;
@@ -249,12 +253,12 @@ export function CheckoutSheet({
   useEffect(() => {
     if (!open || on !== "ios" || !payments) return;
     let live = true;
-    void appStorePrice(on, payments.iapProductId).then((p) => live && setStorePrice(p));
+    void appStorePrice(on, feeOf(payments, season ? "season" : "board").iapProductId).then((p) => live && setStorePrice(p));
     if (payments.hostPass) void appStorePrice(on, payments.hostPass.iapProductId).then((p) => live && setStorePassPrice(p));
     return () => {
       live = false;
     };
-  }, [open, on, payments]);
+  }, [open, on, payments, season]);
 
   useEffect(() => () => {
     if (paidTimer.current) clearTimeout(paidTimer.current);
@@ -344,12 +348,12 @@ export function CheckoutSheet({
     if (!open || method !== "wallet" || !clientSecret || !el || !payments) return;
     let handle: MountedCheckout | null = null;
     let disposed = false;
-    const amountCents = charge?.amountCents ?? (forPass ? (payments.hostPass?.priceCents ?? 0) : payments.priceCents);
+    const amountCents = charge?.amountCents ?? (forPass ? (payments.hostPass?.priceCents ?? 0) : feeOf(payments, season ? "season" : "board").priceCents);
     const origin = typeof location !== "undefined" ? location.origin : "https://jaxsquares.com";
     void mountWalletButton(el, {
       clientSecret,
       amountCents,
-      label: forPass ? "Host Pass (1 year)" : "Squares board",
+      label: forPass ? "Host Pass (1 year)" : season ? "Season board" : "Squares board",
       publishableKey: payments.stripePublishableKey,
       // Apple Pay shows a subscription's yearly billing in its sheet.
       applePay: forPass
@@ -379,7 +383,7 @@ export function CheckoutSheet({
       disposed = true;
       handle?.destroy();
     };
-  }, [open, method, clientSecret, charge, payments, forPass, confirmPaid, fail, copy.walletCancel]);
+  }, [open, method, clientSecret, charge, payments, forPass, season, confirmPaid, fail, copy.walletCancel]);
 
   // Card form fallback.
   useEffect(() => {
@@ -415,7 +419,7 @@ export function CheckoutSheet({
         if (forPass) succeedPass(await startTestPass());
         else succeed(await payTest(gameId!, adminToken));
       } else if (method === "iap") {
-        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken, payments?.iapProductId);
+        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken, fee?.iapProductId);
         if (r.status === "paid") succeed(r.state);
         else if (r.status === "active") succeedPass(r.state);
         else if (r.status === "pending") setPhase("pending");
@@ -453,12 +457,14 @@ export function CheckoutSheet({
 
   const busy = phase === "paying" || phase === "paid";
   // The board's price and the pass's, as this device shows them (the App Store's in the iOS app).
-  const boardPrice = on === "ios" ? storePrice : !forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments ? formatPrice(payments.priceCents, payments.currency) : null;
+  const boardPrice =
+    on === "ios" ? storePrice : !forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments && fee ? formatPrice(fee.priceCents, payments.currency) : null;
   const passPrice =
     on === "ios" ? storePassPrice : forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments?.hostPass ? formatPrice(payments.hostPass.priceCents, payments.hostPass.currency) : null;
   const price = forPass ? passPrice : boardPrice;
-  // "Pays for itself by your fifth board", from the same two prices (StoreKit's in the iOS app); hidden when either is unknown.
-  const paysOffAt = passPaysOffAt(amounts.pass, amounts.board);
+  // "Pays for itself by your fifth board", from the same two prices (StoreKit's in the iOS app); hidden when either is unknown, and on a season board (its fee isn't a board's).
+  const paysOffAt = season ? null : passPaysOffAt(amounts.pass, amounts.board);
+  const once = season ? "once for the whole season" : "once for this board";
 
   let action: ReactNode;
   if (!payments) {
@@ -548,10 +554,10 @@ export function CheckoutSheet({
       ? "No charge while checkout is in test mode."
       : method === "iap"
         ? price
-          ? `${price} host fee, once for this board. You'll confirm with the App Store.`
-          : "Once for this board. You'll confirm with the App Store."
+          ? `${price} host fee, ${once}. You'll confirm with the App Store.`
+          : `${once[0].toUpperCase()}${once.slice(1)}. You'll confirm with the App Store.`
         : price
-          ? `${price} host fee, once for this board.`
+          ? `${price} host fee, ${once}.`
           : null;
   const settled = phase === "paid" || phase === "pending";
 
@@ -580,7 +586,7 @@ export function CheckoutSheet({
       {board && purpose !== "pass" && <Ticket game={board.game} />}
       {purpose === "pass" && <PassCard price={passPrice} test={passMethod === "test"} paysOffAt={paysOffAt} />}
       {passOffered && purpose !== "pass" && (
-        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} paysOffAt={paysOffAt} disabled={busy} />
+        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} paysOffAt={paysOffAt} disabled={busy} season={season} />
       )}
       {method === "card" && !needsSignIn && !(error && !cardReady) && (
         <div className="relative mt-4 min-h-40">
@@ -620,7 +626,12 @@ function Ticket({ game }: { game: Game }) {
         <span className="absolute -right-2.5 -top-2.5 h-5 w-5 rounded-full bg-surface-2" />
       </div>
       <div className="flex items-center justify-center gap-2 px-4 py-2.5 text-footnote font-semibold text-ink-muted">
-        {linked ? (
+        {game.kind === "season" ? (
+          <>
+            <LiveIcon size={15} className="shrink-0 text-ink-subtle" />
+            Live scores · every game of the season
+          </>
+        ) : linked ? (
           <>
             <LiveIcon size={15} className="shrink-0 text-ink-subtle" />
             Live scores · {kickoffLabel(linked.startsAt)}

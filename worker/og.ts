@@ -61,7 +61,9 @@ function withSport(state: GameState, meta: InviteMeta): InviteMeta {
 
 function boardMeta(state: GameState, origin: string, page: BoardPage): InviteMeta {
   const { game } = state;
-  const matchup = `${teamLabel(game.teamX)} vs ${teamLabel(game.teamY)}`;
+  // A season board names its season ("Jaguars 2026 season"), not its axes.
+  const season = state.season ?? null;
+  const matchup = season ? season.label : `${teamLabel(game.teamX)} vs ${teamLabel(game.teamY)}`;
   let status: string;
   switch (game.status) {
     case "draft":
@@ -76,9 +78,13 @@ function boardMeta(state: GameState, origin: string, page: BoardPage): InviteMet
       break;
     }
     case "locked":
-      status = "Numbers are drawn. Follow along live";
+      status = season ? `${gamesLine(season.games.length)} · Follow the season live` : "Numbers are drawn. Follow along live";
       break;
     case "final": {
+      if (season) {
+        status = "The season's over";
+        break;
+      }
       const final = finalScoreOf(state);
       status = final
         ? `Final: ${teamLabel(game.teamX)} ${final.scoreX}, ${teamLabel(game.teamY)} ${final.scoreY}`
@@ -96,12 +102,15 @@ function boardMeta(state: GameState, origin: string, page: BoardPage): InviteMet
   }
   if (game.status === "final") {
     // The recap: "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won, never what).
-    const winners = Object.keys(winCounts(resolveResults(state))).length;
+    const winners = season ? season.standings.filter((r) => r.wins > 0).length : Object.keys(winCounts(resolveResults(state))).length;
     const description = winners > 0 ? `${status} · ${winners} ${winners === 1 ? "winner" : "winners"}` : status;
     return { title: `See who won ${game.name} on JaxSquares`, description, url, image };
   }
   return { title: `Join ${game.name} on JaxSquares`, description: `${matchup} · ${status}`, url, image };
 }
+
+/** "17 games", "1 game". */
+const gamesLine = (n: number) => `${n} ${n === 1 ? "game" : "games"}`;
 
 /** A finished board's final score: the Final's, else the feed's, else the last one recorded in game order. */
 function finalScoreOf(state: GameState): { scoreX: number; scoreY: number } | null {

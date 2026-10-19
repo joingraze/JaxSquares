@@ -25,6 +25,16 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `day-see-all` | "See all N games" in an open day with more than 6 |
 | `day-picker` | "Another date": the date input (`type=date`) that loads one day's games, up to a year ahead |
 | `no-games` | a league with nothing to link ("No NBA games to link in the next 7 days"), with the custom matchup as the way out |
+| `board-scope` | the game step's One game / A whole season switch (segments `board-scope-game`, `board-scope-season`); a season hides the Custom chip and shows `season-picker` |
+| `season-picker` | the season picker under the league chips (season boards) |
+| `season-scope` | A team's season / Pick games (segments `season-scope-team`, `season-scope-games`) |
+| `season-team-search`, `season-teams`, `season-team` | a team's season: the team search, the grid (`role=radiogroup`) and each team (`data-team-id=<ESPN id>`, `aria-checked`) |
+| `season-team-card`, `season-team-line`, `season-team-change` | the picked team's season (`data-team-id`): "Jaguars 2026 season · 3 games so far", and Change (the grid again, with Cancel) |
+| `season-next-game`, `season-playoffs-note` | the team's next three games ("Next vs MIA · Sun · 1:00 PM") and "Playoff games join the season as they're set." |
+| `season-retry` | Try again when the teams or a team's schedule can't load (next to Pick games) |
+| `season-picks` | Pick games: "2 games picked" (`data-count`); the rows are `game-option` with `aria-pressed` per game, and a tap never moves on |
+| `season-numbers` | Same numbers all season / New numbers every game (`season-numbers-same`, `season-numbers-fresh`, `aria-checked`) |
+| `review-season`, `review-season-line` | Review's game card for a season board: "Jaguars 2026 season · 17 games so far", the next game, the numbers choice |
 | `host-name` | the creator's name field on Final touches, if the create flow asks for it (a device with no name yet) |
 | `board-name` | the board name field on Final touches (auto-filled from the matchup) |
 | `custom-kickoff` | the kickoff card under custom teams (and in Edit board for a custom board) |
@@ -197,3 +207,19 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `print-rules`, `print-amount` | "Who wins": one line per moment (`data-moment`), with each square's amount (`print-amount`) only when amounts are on |
 | `print-winners` | a line per fixed moment to write each winner on, filled in once decided |
 | `print-qr`, `print-follow`, `print-signup` | the QR code to the live board, "Follow it live: jaxsquares.com/g/…", and (while squares are open) "Grab a square on your phone, or write your name in a box." |
+
+## Season boards
+
+| testid | where |
+|---|---|
+| `season-header`, `season-label` | a season board's header: the team's logo, "Jaguars 2026 season", "17 games so far · Same numbers all season · 4 of 17 played" |
+| `season-featured` | the game on now (live score) or next in the header; a link to its board once it has one |
+| `season-join` | "Join the season" for a newcomer while squares are picked |
+| `season-my-place` | "You're 2nd of 12" (after the draw, for a player holding squares) |
+| `season-tabs` | Squares / Schedule / Standings (`season-tab-squares`, `season-tab-schedule`, `season-tab-standings`); Squares first while squares are picked, Schedule after the draw |
+| `season-schedule`, `season-game` | the schedule (on now, coming up, played) and each game (`data-status=planned\|locked\|final`; a link to its board once made) |
+| `season-game-won` | "You won" on a game where one of my squares won |
+| `season-standings`, `season-standing` | the standings and each player's row (`data-rank`, ties share one) |
+| `season-podium`, `season-podium-place` | once the season's over: its top 3 above the standings (`data-rank`) |
+| `season-nav` | a season's game board: "Game 3 of 17 · Office Season" (`season-nav-season`, back to the season board) between `season-nav-prev` and `season-nav-next` (`data-disabled` at either end) |
+| `host-season`, `host-season-next`, `host-season-link` | the host sheet: a season board's season card (played count, the game on now or next) and, on a game's board, the link back to its season board |

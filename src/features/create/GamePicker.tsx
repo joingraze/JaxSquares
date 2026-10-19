@@ -5,6 +5,11 @@
 // Basketball has no weeks: the next 7 days, a row per day (today first, the
 // first day with games open), and any other date from a date picker. Custom is
 // two typed teams the host scores by hand, as football or basketball.
+//
+// "One game | A whole season" (season boards): with a season, the league's
+// list gives way to the season picker (the create flow's `seasonPanel`: a
+// team's season, or several games picked from these same lists, `LeagueGames`
+// with `multi`). Custom teams have no season.
 
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { LEAGUE_INFO, SPORT_LEAGUES, type BoardSport } from "../../../shared/sports";
@@ -31,6 +36,17 @@ import { useDayGames, useWeekGames, type LeagueSchedule, type Schedule, type Sch
 
 export type PickerTab = ScheduleLeague | "custom";
 
+/** One game's board, or a season board (a team's season or picked games). */
+export type BoardScope = "game" | "season";
+
+/** Picking several games (a season of picked games): which are in, and a tap to add or drop one. */
+export interface MultiPick {
+  has: (e: ScheduleEvent) => boolean;
+  onToggle: (e: ScheduleEvent) => void;
+  /** How many are picked (the error under the list when there are none). */
+  count: number;
+}
+
 export interface GamePickerProps {
   schedule: Schedule;
   /** The sport whose leagues show (football by default). */
@@ -47,6 +63,11 @@ export interface GamePickerProps {
   colors?: TeamColors;
   /** Under the typed teams on the Custom tab (the create flow's kickoff picker). */
   customFooter?: ReactNode;
+  /** One game or a whole season (shown when `onBoardScope` is given). */
+  boardScope?: BoardScope;
+  onBoardScope?: (scope: BoardScope) => void;
+  /** With a season: what shows under the league chips instead of the games (the season picker). */
+  seasonPanel?: ReactNode;
 }
 
 const leagueLabel = (league: ScheduleLeague) => LEAGUE_INFO[league].label;
@@ -64,8 +85,12 @@ export function GamePicker({
   showErrors,
   colors,
   customFooter,
+  boardScope = "game",
+  onBoardScope,
+  seasonPanel,
 }: GamePickerProps) {
   const leagues = SPORT_LEAGUES[sport];
+  const season = boardScope === "season";
   const noGamesAnywhere = leagues.every((l) => !schedule[l].loading && !schedule[l].events.length);
   const count = (league: ScheduleLeague) =>
     !schedule[league].loading && schedule[league].events.length > 0 ? schedule[league].events.length : null;
@@ -83,6 +108,20 @@ export function GamePicker({
         ]}
       />
 
+      {onBoardScope && (
+        <SegmentedControl<BoardScope>
+          aria-label="One game or a whole season"
+          data-testid="board-scope"
+          size="sm"
+          value={boardScope}
+          onChange={(next) => onBoardScope(next)}
+          options={[
+            { value: "game", label: "One game", testId: "board-scope-game" },
+            { value: "season", icon: <CalendarIcon />, label: "A whole season", testId: "board-scope-season" },
+          ]}
+        />
+      )}
+
       <div
         role="radiogroup"
         aria-label="League"
@@ -94,12 +133,18 @@ export function GamePicker({
             {leagueLabel(league)}
           </LeagueChip>
         ))}
-        <LeagueChip on={tab === "custom"} onClick={() => onTab("custom")} league="custom" testId="custom-matchup" icon={<PencilIcon size={16} />}>
-          Custom
-        </LeagueChip>
+        {!season && (
+          <LeagueChip on={tab === "custom"} onClick={() => onTab("custom")} league="custom" testId="custom-matchup" icon={<PencilIcon size={16} />}>
+            Custom
+          </LeagueChip>
+        )}
       </div>
 
-      {tab === "custom" ? (
+      {season && tab !== "custom" ? (
+        <div key={`season-${tab}`} className="animate-fade-in">
+          {seasonPanel}
+        </div>
+      ) : tab === "custom" ? (
         <div key={`custom-${sport}`} className="animate-fade-in">
           <CustomMatchup
             x={custom.x}
@@ -122,29 +167,28 @@ export function GamePicker({
         </div>
       ) : (
         <div key={tab} className="animate-fade-in">
-          {LEAGUE_INFO[tab].schedule === "day" ? (
-            <DayList
-              league={tab}
-              schedule={schedule[tab]}
-              selected={selected}
-              onPick={onPickEvent}
-              onCustom={() => onTab("custom")}
-              showErrors={showErrors}
-            />
-          ) : (
-            <GameList
-              league={tab}
-              schedule={schedule[tab]}
-              selected={selected}
-              onPick={onPickEvent}
-              onCustom={() => onTab("custom")}
-              showErrors={showErrors}
-            />
-          )}
+          <LeagueGames league={tab} schedule={schedule[tab]} selected={selected} onPick={onPickEvent} onCustom={() => onTab("custom")} showErrors={showErrors} />
         </div>
       )}
     </div>
   );
+}
+
+export interface LeagueGamesProps {
+  league: ScheduleLeague;
+  schedule: LeagueSchedule;
+  selected: ScheduleEvent | null;
+  onPick: (e: ScheduleEvent) => void;
+  /** "Type teams" when a league has nothing to link (absent: no such way out, as in a season's picks). */
+  onCustom?: () => void;
+  showErrors?: boolean;
+  /** Several games at once (a season of picked games): checks instead of one pick. */
+  multi?: MultiPick;
+}
+
+/** One league's games to pick from: a week at a time (football) or a day at a time (basketball). */
+export function LeagueGames(props: LeagueGamesProps) {
+  return LEAGUE_INFO[props.league].schedule === "day" ? <DayList {...props} /> : <GameList {...props} />;
 }
 
 /** One league chip: its name and how many games it has to link. */
@@ -196,21 +240,9 @@ const FIRST_ROWS = 3;
 const NEXT_WEEKS = 3;
 const LEAD = "lead";
 
-function GameList({
-  league,
-  schedule,
-  selected,
-  onPick,
-  onCustom,
-  showErrors,
-}: {
-  league: ScheduleLeague;
-  schedule: LeagueSchedule;
-  selected: ScheduleEvent | null;
-  onPick: (e: ScheduleEvent) => void;
-  onCustom: () => void;
-  showErrors?: boolean;
-}) {
+function GameList({ league, schedule, selected: picked, onPick, onCustom, showErrors, multi }: LeagueGamesProps) {
+  // Several games at once: each row checks on its own, and nothing is pinned to the top.
+  const selected = multi ? null : picked;
   const { loading, events, week, weeks } = schedule;
   const leadId = week?.id ?? LEAD;
   const [query, setQuery] = useState("");
@@ -264,7 +296,13 @@ function GameList({
   };
 
   const row = (e: ScheduleEvent, grouped = false) => (
-    <GameRow key={e.eventId} event={e} grouped={grouped} selected={e.eventId === selected?.eventId} onPick={() => pick(e)} />
+    <GameRow
+      key={e.eventId}
+      event={e}
+      grouped={grouped}
+      selected={multi ? multi.has(e) : e.eventId === selected?.eventId}
+      onPick={() => (multi ? multi.onToggle(e) : pick(e))}
+    />
   );
 
   return (
@@ -369,13 +407,17 @@ function GameList({
 
       <p className="px-1 text-caption text-ink-subtle">Times in {zoneLabel()}</p>
 
-      {showErrors && !selected && (
-        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
-          <AlertIcon size={14} />
-          Tap a game to put it on your board.
-        </p>
-      )}
+      {showErrors && (multi ? multi.count === 0 : !selected) && <PickError multi={!!multi} />}
     </div>
+  );
+}
+
+function PickError({ multi }: { multi: boolean }) {
+  return (
+    <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
+      <AlertIcon size={14} />
+      {multi ? "Tap the games your season covers." : "Tap a game to put it on your board."}
+    </p>
   );
 }
 
@@ -393,7 +435,7 @@ function ListSkeleton() {
   );
 }
 
-function NoGames({ league, onCustom, when = "right now", children }: { league: ScheduleLeague; onCustom: () => void; when?: string; children?: ReactNode }) {
+function NoGames({ league, onCustom, when = "right now", children }: { league: ScheduleLeague; onCustom?: () => void; when?: string; children?: ReactNode }) {
   return (
     <div data-testid="no-games" className="flex flex-col gap-3 rounded-card bg-surface-2 p-4 ring-1 ring-inset ring-line">
       <div className="flex items-center gap-3">
@@ -402,24 +444,30 @@ function NoGames({ league, onCustom, when = "right now", children }: { league: S
           <p className="text-callout font-bold text-ink">
             No {leagueLabel(league)} games to link {when}
           </p>
-          <p className="text-footnote text-ink-muted">Jax is napping. Type your teams and run the score yourself.</p>
+          <p className="text-footnote text-ink-muted">
+            {onCustom ? "Jax is napping. Type your teams and run the score yourself." : "Jax is napping. Check back once the schedule is out."}
+          </p>
         </div>
       </div>
       {children}
-      <button type="button" onClick={onCustom} className="pressable h-11 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
-        Type teams
-      </button>
+      {onCustom && (
+        <button type="button" onClick={onCustom} className="pressable h-11 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+          Type teams
+        </button>
+      )}
     </div>
   );
 }
 
-function NoMatch({ onCustom, children }: { onCustom: () => void; children: ReactNode }) {
+function NoMatch({ onCustom, children }: { onCustom?: () => void; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-surface-2 px-4 py-3 ring-1 ring-inset ring-line">
       <p className="min-w-0 flex-1 text-footnote text-ink-muted">{children}</p>
-      <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
-        Type teams
-      </button>
+      {onCustom && (
+        <button type="button" onClick={onCustom} className="pressable h-11 shrink-0 rounded-full bg-surface-4 px-4 text-subhead font-bold text-ink ring-1 ring-inset ring-line-strong">
+          Type teams
+        </button>
+      )}
     </div>
   );
 }
@@ -482,21 +530,8 @@ const daySlug = (day: string) => day.toLowerCase().replace(/[^a-z0-9]+/g, "-");
  * day with games, today first; the first one open), a search across them, and
  * another date from the phone's date picker (that day loads when picked).
  */
-function DayList({
-  league,
-  schedule,
-  selected,
-  onPick,
-  onCustom,
-  showErrors,
-}: {
-  league: ScheduleLeague;
-  schedule: LeagueSchedule;
-  selected: ScheduleEvent | null;
-  onPick: (e: ScheduleEvent) => void;
-  onCustom: () => void;
-  showErrors?: boolean;
-}) {
+function DayList({ league, schedule, selected: chosen, onPick, onCustom, showErrors, multi }: LeagueGamesProps) {
+  const selected = multi ? null : chosen;
   const { loading, events } = schedule;
   const [query, setQuery] = useState("");
   const [openState, setOpen] = useState<string | null | undefined>(undefined);
@@ -538,7 +573,13 @@ function DayList({
     }
   };
   const row = (e: ScheduleEvent, grouped = false) => (
-    <GameRow key={e.eventId} event={e} grouped={grouped} selected={e.eventId === selected?.eventId} onPick={() => pick(e)} />
+    <GameRow
+      key={e.eventId}
+      event={e}
+      grouped={grouped}
+      selected={multi ? multi.has(e) : e.eventId === selected?.eventId}
+      onPick={() => (multi ? multi.onToggle(e) : pick(e))}
+    />
   );
   const datePicker = <DatePickerRow date={date} onDate={setDate} />;
 
@@ -632,12 +673,7 @@ function DayList({
 
       <p className="px-1 text-caption text-ink-subtle">Times in {zoneLabel()}</p>
 
-      {showErrors && !selected && (
-        <p role="alert" className="flex items-center gap-1.5 px-1 text-footnote font-semibold text-ink-danger">
-          <AlertIcon size={14} />
-          Tap a game to put it on your board.
-        </p>
-      )}
+      {showErrors && (multi ? multi.count === 0 : !selected) && <PickError multi={!!multi} />}
     </div>
   );
 }

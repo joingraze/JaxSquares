@@ -78,6 +78,7 @@ export function PlanPicker({
   passPrice,
   paysOffAt,
   disabled,
+  season = false,
 }: {
   plan: CheckoutPlan;
   onChange: (plan: CheckoutPlan) => void;
@@ -85,14 +86,17 @@ export function PlanPicker({
   passPrice: string | null;
   paysOffAt: number | null;
   disabled?: boolean;
+  /** A season board: its one fee covers every game of the season. */
+  season?: boolean;
 }) {
+  const what = season ? "This season" : "This board";
   return (
     <div role="radiogroup" aria-label="How to pay" data-testid="plan-picker" className={cx("mt-4 flex flex-col gap-2.5", disabled && "pointer-events-none opacity-60")}>
       <PlanOption
         plan="board"
         selected={plan === "board"}
-        title={boardPrice ? `This board · ${boardPrice}` : "This board"}
-        detail="Once, for this board"
+        title={boardPrice ? `${what} · ${boardPrice}` : what}
+        detail={season ? "Once, for every game of the season" : "Once, for this board"}
         onSelect={onChange}
       />
       <PlanOption

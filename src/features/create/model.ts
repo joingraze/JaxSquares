@@ -16,10 +16,25 @@ import {
   tidyNote,
   type FixedPreset,
 } from "../../../shared/formats";
-import { leagueSport, playsHalves, wordsFor, type BoardSport, type GameKind } from "../../../shared/sports";
+import { seasonAxes, seasonLabel, teamIsHome, teamShortName, upcomingSeasonEvents, MAX_SEASON_GAMES } from "../../../shared/season";
+import { LEAGUE_INFO, leagueSport, playsHalves, wordsFor, type BoardSport, type GameKind, type LinkedLeague } from "../../../shared/sports";
 import { nflTeamToTeam, teamsForSport, type NflTeam, type ProTeam } from "../../../shared/teams";
 import { shortTeam, shortTeamName } from "../../lib/format";
-import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Sport, Team } from "../../../shared/types";
+import type {
+  CreateGameInput,
+  GameFormat,
+  League,
+  LinkedEvent,
+  Moment,
+  ScheduleEvent,
+  SeasonEvent,
+  SeasonInput,
+  SeasonNumbers,
+  SeasonScope,
+  SeasonTeam,
+  Sport,
+  Team,
+} from "../../../shared/types";
 import { capLine, firstNoteProblem, formatOf, isEveryScoreSetup, isEveryScoreWithReverseQuarters, noteInputId, type PrizeChoice } from "../rules/rulesModel";
 
 /**
@@ -311,10 +326,12 @@ export function detailsSummary(maxPerPlayer: number): string {
 /**
  * The line under Review's Create button: what the host pays, and when.
  * `price` is the host fee as this device shows it (the App Store's in the iOS
- * app, never the web price there); null leaves the amount out.
+ * app, never the web price there); null leaves the amount out. A season
+ * board's one fee covers the whole season.
  */
-export function createFeeLine(price: string | null): string {
+export function createFeeLine(price: string | null, season = false): string {
   const free = `Free to set up and invite. Free to draw with up to ${FREE_PLAYER_LIMIT} players`;
+  if (season) return price ? `${free}, ${price} for the whole season with more.` : `${free}; bigger seasons have one host fee when you draw.`;
   return price ? `${free}, ${price} for bigger boards.` : `${free}; bigger boards have a host fee when you draw.`;
 }
 
@@ -344,15 +361,37 @@ export interface BoardMatchup {
   startsAt: number | null;
 }
 
+/**
+ * A season board (src/features/create/SeasonPicker): a team's season or
+ * games the host picked, in a league with live scores. `events` are the
+ * games it covers as the host sees them (a team's whole schedule, or the
+ * picks); the server keeps the ones still to come.
+ */
+export interface SeasonMatchup {
+  kind: "season";
+  league: LinkedLeague;
+  scope: SeasonScope;
+  numbers: SeasonNumbers;
+  /** A team's season: the team (null until picked). */
+  team: SeasonTeam | null;
+  /** A team's season: the provider's season year. */
+  year: number | null;
+  events: ScheduleEvent[];
+  /** A team's season still loading, or it couldn't be loaded (the picker offers a retry). */
+  pending?: "loading" | "error";
+}
+
 export type Matchup =
   | { kind: "linked"; event: ScheduleEvent }
   /** Two typed teams the host scores by hand, as football (the default) or basketball. */
   | { kind: "custom"; x: string; y: string; sport?: BoardSport }
-  | { kind: "board"; from: BoardMatchup };
+  | { kind: "board"; from: BoardMatchup }
+  | SeasonMatchup;
 
 /** The sport and league a matchup's board is played as (its moments, presets, words). */
 export function matchupKind(m: Matchup | null): { sport: Sport; league: League } {
   if (!m) return { sport: "football", league: "custom" };
+  if (m.kind === "season") return { sport: leagueSport(m.league) ?? "football", league: m.league };
   if (m.kind === "board") return { sport: m.from.sport ?? leagueSport(m.from.league) ?? "football", league: m.from.league };
   if (m.kind === "linked") return { sport: leagueSport(m.event.league) ?? "football", league: m.event.league };
   return { sport: m.sport ?? "football", league: "custom" };
@@ -365,6 +404,11 @@ export function matchupTeams(
 ): { teamX: Team; teamY: Team; league: League; sport: Sport; linkedEvent: LinkedEvent | null } | null {
   if (!m) return null;
   const { sport } = matchupKind(m);
+  if (m.kind === "season") {
+    if (m.scope === "team" && !m.team) return null;
+    const axes = seasonAxes(m.scope, m.team);
+    return { ...withSideColors(axes.teamX, axes.teamY), league: m.league, sport, linkedEvent: null };
+  }
   if (m.kind === "board") return { ...withSideColors(m.from.teamX, m.from.teamY), league: m.from.league, sport, linkedEvent: m.from.linkedEvent };
   if (m.kind === "linked") {
     const o = orientEvent(m.event);
@@ -384,6 +428,7 @@ export function withSideColors(teamX: Team, teamY: Team): { teamX: Team; teamY: 
 /** Short names for the auto board name. */
 export function matchupShortNames(m: Matchup | null): [string, string] | null {
   if (!m) return null;
+  if (m.kind === "season") return null;
   if (m.kind === "board") return [shortTeam(m.from.teamX, m.from.league), shortTeam(m.from.teamY, m.from.league)];
   if (m.kind === "linked") {
     return [shortTeamName(m.event.away, m.event.league), shortTeamName(m.event.home, m.event.league)];
@@ -406,6 +451,8 @@ export interface CreateDraft {
   name: string;
   maxPerPlayer: number;
   host: { name: string; color: string; emoji: string };
+  /** For a season board's games (the ones not started by now); defaults to now. */
+  now?: number;
 }
 
 /** The format a create draft sends: canonical rules, amounts only with "$" or points, notes trimmed. */
@@ -418,12 +465,64 @@ export function createFormat(format: GameFormat, choice: PrizeChoice = null): Ga
   return formatOf(format, { rules, choice, squarePrice: format.squarePrice ?? null, freshNumbers: format.freshNumbers });
 }
 
+// ---- Season boards ----
+
+/** A schedule's game as a season board keeps it. */
+export function seasonEventOf(e: ScheduleEvent): SeasonEvent {
+  const out: SeasonEvent = { eventId: e.eventId, startsAt: e.startsAt, home: e.home, away: e.away };
+  if (e.homeId) out.homeId = e.homeId;
+  if (e.awayId) out.awayId = e.awayId;
+  if (e.label) out.label = e.label;
+  if (e.playoff) out.playoff = true;
+  return out;
+}
+
+/** The games a season board would cover now: on its schedule, not started, up to the cap. */
+export function seasonGamesAhead(m: Pick<SeasonMatchup, "events">, now = Date.now()): SeasonEvent[] {
+  return upcomingSeasonEvents(m.events.map(seasonEventOf), now).slice(0, MAX_SEASON_GAMES);
+}
+
+/** The season's name as the board will show it ("Jaguars 2026 season", "6 NFL games"). */
+export function seasonMatchupLabel(m: SeasonMatchup, now = Date.now()): string {
+  return seasonLabel({ scope: m.scope, league: m.league, team: m.team, year: m.year }, seasonGamesAhead(m, now).length);
+}
+
+/**
+ * One game of a season as the create flow lists it: the opponent from the
+ * team's side ("vs MIA", "@ HOU"), or away at home for picked games ("JAX @ MIA").
+ */
+export function seasonEventMatchup(e: Pick<SeasonEvent, "home" | "away" | "homeId" | "awayId">, team: SeasonTeam | null): string {
+  const tag = (t: Team) => t.abbr?.trim() || t.name.trim();
+  if (team) {
+    const home = teamIsHome(team, e);
+    return `${home ? "vs" : "@"} ${tag(home ? e.away : e.home)}`;
+  }
+  return `${tag(e.away)} @ ${tag(e.home)}`;
+}
+
+/** A season board's suggested name: "Jaguars Season Squares", "NFL Season Squares". */
+export function seasonBoardName(m: Pick<SeasonMatchup, "scope" | "team" | "league">): string {
+  const who = m.scope === "team" && m.team ? teamShortName(m.team) : LEAGUE_INFO[m.league].label;
+  return `${who} Season Squares`.slice(0, BOARD_NAME_MAX);
+}
+
+/** CreateGameInput.season for a season matchup. */
+export function seasonInputOf(m: SeasonMatchup, now = Date.now()): SeasonInput {
+  return {
+    scope: m.scope,
+    numbers: m.numbers,
+    ...(m.scope === "team" && m.team ? { team: m.team, ...(m.year ? { year: m.year } : {}) } : {}),
+    events: seasonGamesAhead(m, now),
+  };
+}
+
 /** The POST /api/games body, or null while the matchup is incomplete. Notes travel inside the rules. */
 export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
   const teams = matchupTeams(d.matchup, d.colors);
   if (!teams) return null;
   const short = matchupShortNames(d.matchup);
-  const name = d.name.trim().slice(0, BOARD_NAME_MAX) || (short ? boardNameFor(short[0], short[1]) : "") || "Squares";
+  const auto = d.matchup?.kind === "season" ? seasonBoardName(d.matchup) : short ? boardNameFor(short[0], short[1]) : "";
+  const name = d.name.trim().slice(0, BOARD_NAME_MAX) || auto || "Squares";
   const format = createFormat(d.format, d.prizeChoice ?? null);
   const total = format.boardSize;
   return {
@@ -440,6 +539,8 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
     host: { ...d.host, name: d.host.name.trim() },
     // Another board for this game: it joins that board's group (the server checks this device hosts it).
     ...(d.matchup?.kind === "board" ? { fromGameId: d.matchup.from.id } : {}),
+    // A season board: its team or games, and how numbers work (each game gets its own board at the draw).
+    ...(d.matchup?.kind === "season" ? { season: seasonInputOf(d.matchup, d.now) } : {}),
   };
 }
 
@@ -469,7 +570,14 @@ export function blockersOf(d: BlockerInput): CreateBlocker[] {
   const out: CreateBlocker[] = [];
   const m = d.matchup;
   if (!m) out.push({ field: "game", label: "Pick a game to continue" });
-  else if (m.kind === "custom") {
+  else if (m.kind === "season") {
+    if (m.scope === "team" && !m.team) out.push({ field: "game", label: "Pick a team to continue" });
+    else if (m.scope === "team" && m.pending === "loading") out.push({ field: "game", label: "Loading the team's games" });
+    else if (m.scope === "team" && m.pending === "error") out.push({ field: "game", label: "Couldn't load the team's games. Try again" });
+    else if (seasonGamesAhead(m, d.now ?? Date.now()).length === 0) {
+      out.push({ field: "game", label: m.scope === "team" ? "No games left this season. Pick another team" : "Pick at least one game to continue" });
+    }
+  } else if (m.kind === "custom") {
     const x = Boolean(m.x.trim());
     const y = Boolean(m.y.trim());
     if (!x && !y) out.push({ field: "team-x", label: "Add both teams to continue" });

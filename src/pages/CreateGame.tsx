@@ -29,6 +29,14 @@
 // first rewinds the flow's steps, so Back from the board goes where the host
 // started, not into a finished flow.
 //
+// "A whole season" (season boards, docs/ARCHITECTURE.md "Season boards"):
+// on the game step, after the sport and league, the host picks one game or a
+// whole season. A season is a team's season (its schedule, playoffs joining
+// as they're set) or games picked from the league's lists, plus whether the
+// numbers stay the same all season (features/create/SeasonPicker). The other
+// steps are the same: the rules and prizes apply to every game. Review shows
+// "Jaguars 2026 season · 17 games so far" and the season's one host fee.
+//
 // "Add another board for this game" (/new?from=<board id>, host only) runs
 // the same flow from that board (features/create/sibling.ts): its game, rules,
 // board size and max per player, three steps (Square price & prizes, Final
@@ -38,8 +46,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
+import { MAX_SEASON_GAMES, seasonReviewLine } from "../../shared/season";
 import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
-import type { Game, GameFormat, GameState, ScheduleEvent } from "../../shared/types";
+import type { Game, GameFormat, GameState, ScheduleEvent, SeasonNumbers, SeasonScope, SeasonTeam } from "../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -69,7 +78,7 @@ import { useNow } from "../features/board/useNow";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, TEAM_INPUT_ID } from "../features/create/CustomMatchup";
 import { BOARD_NAME_INPUT_ID, DetailsPanel } from "../features/create/DetailsSection";
 import { FormatPicker } from "../features/create/FormatPicker";
-import { GamePicker, type PickerTab } from "../features/create/GamePicker";
+import { GamePicker, type BoardScope, type PickerTab } from "../features/create/GamePicker";
 import { defaultKickoff, kickoffError } from "../features/create/kickoff";
 import { KICKOFF_INPUT_ID, KickoffPicker } from "../features/create/KickoffPicker";
 import {
@@ -80,14 +89,20 @@ import {
   matchupKind,
   matchupShortNames,
   matchupTeams,
+  seasonBoardName,
+  seasonGamesAhead,
+  seasonMatchupLabel,
   teamColorsFrom,
   type CreateBlocker,
   type Matchup,
+  type SeasonMatchup,
 } from "../features/create/model";
 import { ReviewStep } from "../features/create/ReviewStep";
+import { SeasonPicker } from "../features/create/SeasonPicker";
 import { siblingSeed, siblingSeedProblem, type SiblingSeed } from "../features/create/sibling";
 import { SiblingIntro } from "../features/create/SiblingIntro";
 import { useSchedule, type ScheduleLeague } from "../features/create/useSchedule";
+import { useSeasonTeams, useTeamSeason } from "../features/create/useSeason";
 import {
   blockerStep,
   clearDraft,
@@ -251,9 +266,25 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const [hostName, setHostName] = useState(restored?.hostName || profile.name);
   const [shake, setShake] = useState(0);
 
+  // ---- a season board (one game's board by default; never for another board for a game) ----
+  const [boardScope, setBoardScope] = useState<BoardScope>(sibling ? "game" : (restored?.boardScope ?? "game"));
+  const [seasonScope, setSeasonScope] = useState<SeasonScope>(restored?.seasonScope ?? "team");
+  const [seasonNumbers, setSeasonNumbers] = useState<SeasonNumbers>(restored?.seasonNumbers ?? "same");
+  /** The team picked per league, and the games picked per league. */
+  const [seasonTeams, setSeasonTeams] = useState<Partial<Record<ScheduleLeague, SeasonTeam>>>(restored?.seasonTeams ?? {});
+  const [seasonPicks, setSeasonPicks] = useState<Partial<Record<ScheduleLeague, ScheduleEvent[]>>>(restored?.seasonPicks ?? {});
+  const [teamsAttempt, setTeamsAttempt] = useState(0);
+  const [seasonAttempt, setSeasonAttempt] = useState(0);
+  const seasonMode = !sibling && boardScope === "season";
+  const seasonLeague: ScheduleLeague | null = seasonMode && tab !== "custom" ? tab : null;
+  const teamScope = seasonLeague && seasonScope === "team" ? seasonLeague : null;
+  const seasonTeam = seasonLeague ? (seasonTeams[seasonLeague] ?? null) : null;
+  const leagueTeams = useSeasonTeams(teamScope, teamsAttempt);
+  const teamSeason = useTeamSeason(teamScope, seasonTeam?.id ?? null, seasonAttempt);
+
   // ---- create ----
-  // The host fee, for Review's line (due at the draw of a board of 6 or more, not now).
-  const { price } = useHostFee();
+  // The host fee, for Review's line (due at the draw of a board of 6 or more, not now; a season's once for the season).
+  const { price } = useHostFee(true, seasonMode ? "season" : "board");
   const [phase, setPhase] = useState<Phase>("idle");
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** False once the host has left the page: a create still in flight then doesn't pull them back. */
@@ -311,6 +342,26 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     setTab("custom");
   }, [schedule, sport, wantBasketball]);
 
+  /** One game or a whole season: a season needs a league with live scores (custom teams have no season). */
+  const pickBoardScope = (next: BoardScope) => {
+    if (next === boardScope) return;
+    setBoardScope(next);
+    if (next === "season" && tab === "custom") {
+      tabTouched.current = true;
+      setTab(SPORT_LEAGUES[sport].find((l) => !schedule[l].loading && schedule[l].events.length) ?? SPORT_LEAGUES[sport][0]);
+    }
+  };
+
+  /** Adds a game to the season's picks, or drops it (kept by kickoff). */
+  const toggleSeasonGame = (e: ScheduleEvent) =>
+    setSeasonPicks((p) => {
+      const list = p[e.league] ?? [];
+      const next = list.some((x) => x.eventId === e.eventId)
+        ? list.filter((x) => x.eventId !== e.eventId)
+        : [...list, e].sort((a, b) => a.startsAt - b.startsAt).slice(0, MAX_SEASON_GAMES);
+      return { ...p, [e.league]: next };
+    });
+
   /** The host picks a sport: its leagues show (custom stays custom, now scored as that sport). */
   const pickSport = (next: BoardSport) => {
     if (next === sport) return;
@@ -327,21 +378,48 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const leagueEvents = tab === "custom" ? [] : schedule[tab].events;
   const explicit = tab === "custom" ? undefined : picked[tab];
   const event: ScheduleEvent | null = explicit ?? leagueEvents[0] ?? null;
-  const scheduleLoading = !sibling && tab !== "custom" && schedule[tab].loading && !explicit;
+  // A season board: its team's schedule (once loaded) or the games picked in this league.
+  const teamReady = teamSeason.status === "ready" ? teamSeason.value : null;
+  const seasonMatchup: SeasonMatchup | null = seasonLeague
+    ? {
+        kind: "season",
+        league: seasonLeague,
+        scope: seasonScope,
+        numbers: seasonNumbers,
+        team: seasonScope === "team" ? seasonTeam : null,
+        year: seasonScope === "team" ? (teamReady?.year ?? null) : null,
+        events: seasonScope === "team" ? (teamReady?.events ?? []) : (seasonPicks[seasonLeague] ?? []),
+        ...(seasonScope === "team" && seasonTeam && !teamReady ? { pending: teamSeason.status === "error" ? ("error" as const) : ("loading" as const) } : {}),
+      }
+    : null;
+  const scheduleLoading =
+    !sibling &&
+    tab !== "custom" &&
+    (seasonMatchup
+      ? seasonMatchup.pending === "loading" || (seasonScope === "games" && schedule[tab].loading)
+      : schedule[tab].loading && !explicit);
 
   const matchup: Matchup | null = sibling
     ? sibling.matchup
-    : tab === "custom"
-      ? { kind: "custom", x: custom.x, y: custom.y, sport }
-      : event
-        ? { kind: "linked", event }
-        : null;
+    : seasonMatchup
+      ? seasonMatchup
+      : tab === "custom"
+        ? { kind: "custom", x: custom.x, y: custom.y, sport }
+        : event
+          ? { kind: "linked", event }
+          : null;
   // What the board is played as: its moments, preset cards and words follow it.
   const kind = sibling ? matchupKind(sibling.matchup) : tab === "custom" ? { sport, league: "custom" as const } : { sport, league: tab };
   const teams = matchupTeams(matchup, colors);
   const shortNames = matchupShortNames(matchup);
-  // Another board for a game is "Office Squares · Board 2", never named for its price.
-  const autoName = sibling ? sibling.name : shortNames ? boardNameFor(shortNames[0], shortNames[1]) : "";
+  // Another board for a game is "Office Squares · Board 2", never named for its price; a season "Jaguars Season Squares".
+  const autoName = sibling
+    ? sibling.name
+    : seasonMatchup
+      ? seasonBoardName(seasonMatchup)
+      : shortNames
+        ? boardNameFor(shortNames[0], shortNames[1])
+        : "";
   const shownName = nameTouched ? name : autoName;
   const customKickoff = sibling ? (sibling.matchup.from.linkedEvent ? null : sibling.matchup.from.startsAt) : tab === "custom" ? kickoff : null;
   const check: WizardCheck = { matchup, kickoff: customKickoff, hostName: needsName ? hostName : null, format, name: nameTouched ? name : "", now };
@@ -384,9 +462,29 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       nameTouched,
       maxPerPlayer,
       hostName,
-      ...(from ? { from } : {}),
+      ...(from ? { from } : { boardScope, seasonScope, seasonNumbers, seasonTeams, seasonPicks }),
     });
-  }, [sport, tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen, from]);
+  }, [
+    sport,
+    tab,
+    picked,
+    custom,
+    kickoff,
+    format,
+    prizeChoice,
+    prizesAuto,
+    name,
+    nameTouched,
+    maxPerPlayer,
+    hostName,
+    frozen,
+    from,
+    boardScope,
+    seasonScope,
+    seasonNumbers,
+    seasonTeams,
+    seasonPicks,
+  ]);
 
   // Opening the board: rewind the flow's steps first (Back from the board then
   // goes where the host started), then replace the first one with the board.
@@ -411,7 +509,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       return showBlocker(blocker);
     }
     // The soonest game was showing as picked: make it the pick, so a reload keeps it.
-    if (step === "game" && tab !== "custom" && event && picked[tab]?.eventId !== event.eventId) setPicked((p) => ({ ...p, [tab]: event }));
+    if (step === "game" && !seasonMode && tab !== "custom" && event && picked[tab]?.eventId !== event.eventId) setPicked((p) => ({ ...p, [tab]: event }));
     if (nav.fromReview) {
       if (nav.wizardDepth > 0) return navigate(-1);
       return navigate({ search: stepSearch("review", from) }, { replace: true, state: { wizardDepth: 0, appBack } satisfies WizardNav });
@@ -506,6 +604,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       name: nameTouched ? name : sibling ? autoName : "",
       maxPerPlayer,
       host: { name: hostName, color: profile.color, emoji: profile.emoji },
+      now: Date.now(),
     });
     if (!input) return;
     if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
@@ -558,12 +657,26 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only when the game's sport or league changes
   }, [kind.sport, kind.league]);
   const linkedMatchup = matchup?.kind === "linked" || (matchup?.kind === "board" && !!matchup.from.linkedEvent);
-  const matchupLabel = shortNames ? (linkedMatchup ? `${shortNames[0]} @ ${shortNames[1]}` : `${shortNames[0]} vs ${shortNames[1]}`) : "";
+  const matchupLabel = seasonMatchup
+    ? seasonMatchupLabel(seasonMatchup, now)
+    : shortNames
+      ? linkedMatchup
+        ? `${shortNames[0]} @ ${shortNames[1]}`
+        : `${shortNames[0]} vs ${shortNames[1]}`
+      : "";
   // Another board for a game: the price step says what's carried over and asks for this board's price.
+  // A season: its game step picks the season, and every game has the same rules and prizes.
   const info =
     sibling && step === "prizes"
       ? { ...STEP_INFO.prizes, title: "This board's square price", subtitle: "Pick what a square costs on this board. The suggested prizes follow it." }
-      : STEP_INFO[step];
+      : seasonMode && step === "game"
+        ? { ...STEP_INFO.game, title: "Pick the season", subtitle: "A team's season or the games you pick, scored live." }
+        : seasonMode && step === "format"
+          ? { ...STEP_INFO.format, subtitle: "The same rules for every game of the season. Prizes come next." }
+          : seasonMode && step === "prizes"
+            ? { ...STEP_INFO.prizes, subtitle: "One square price, and the same prizes every game. Or keep it just for fun." }
+            : STEP_INFO[step];
+  const seasonAhead = seasonMatchup ? seasonGamesAhead(seasonMatchup, now) : [];
 
   let body: ReactNode;
   switch (step) {
@@ -583,6 +696,28 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
             showErrors={shake > 0 && !teams}
             colors={colors}
             customFooter={<KickoffPicker value={kickoff} onChange={setKickoff} now={now} error={kickoffError(kickoff, now, sport)} sport={sport} />}
+            boardScope={boardScope}
+            onBoardScope={sibling ? undefined : pickBoardScope}
+            seasonPanel={
+              seasonLeague &&
+              seasonMatchup && (
+                <SeasonPicker
+                  league={seasonLeague}
+                  matchup={seasonMatchup}
+                  onScope={setSeasonScope}
+                  onNumbers={setSeasonNumbers}
+                  teams={leagueTeams}
+                  onTeam={(t) => setSeasonTeams((cur) => ({ ...cur, [seasonLeague]: t ?? undefined }))}
+                  onRetryTeams={() => setTeamsAttempt((n) => n + 1)}
+                  season={teamSeason}
+                  onRetrySeason={() => setSeasonAttempt((n) => n + 1)}
+                  schedule={schedule[seasonLeague]}
+                  onToggleGame={toggleSeasonGame}
+                  showErrors={shake > 0 && blocker?.field === "game"}
+                  now={now}
+                />
+              )
+            }
           />
         </section>
       );
@@ -659,6 +794,16 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
           sibling={sibling ? { sourceName: sibling.source.name } : null}
           kind={kind}
           steps={steps}
+          season={
+            seasonMatchup
+              ? {
+                  line: seasonReviewLine(seasonMatchup, seasonAhead.length),
+                  team: seasonMatchup.team,
+                  next: seasonAhead[0] ?? null,
+                  numbers: seasonMatchup.numbers,
+                }
+              : null
+          }
         />
       );
       break;
@@ -674,7 +819,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   } else if (phase === "live") {
     createLabel = "You're live!";
     createLeading = <CheckIcon size={20} strokeWidth={3} />;
-  } else createLabel = "Create board";
+  } else createLabel = seasonMode ? "Create season board" : "Create board";
   const nextLabel = nav.fromReview ? "Done" : step === "prizes" && prizeChoice === null ? "Skip for now" : "Next";
 
   return (
@@ -760,7 +905,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
         </div>
         {step === "review" && (
           <p data-testid="create-fee" className="mt-2 text-center text-caption text-ink-subtle">
-            {createFeeLine(price)}
+            {createFeeLine(price, seasonMode)}
           </p>
         )}
       </ActionBar>

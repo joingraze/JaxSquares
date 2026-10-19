@@ -13,6 +13,7 @@ squares; the fee is for creating and managing the board.
 |---|---|---|
 | A board held by 5 or fewer players | Free | `FREE_PLAYER_LIMIT` (`shared/hostFee.ts`) |
 | A bigger board, once | $4.99 | `BOARD_PRICE_CENTS` (499) on the web, the App Store product's price in the iOS app |
+| A bigger season board, once for the whole season | $14.99 | `SEASON_BOARD_PRICE_CENTS` (1499) on the web, the season App Store product's price in the iOS app (see "Season boards") |
 | Host Pass, every board for a year | $19.99 a year | `HOST_PASS_PRICE_CENTS` (1999) on the web, the App Store subscription's price in the iOS app |
 | Club Pass, the Host Pass plus club features, for a year | $49 a year | `CLUB_PASS_PRICE_CENTS` (4900), web only (see "Club Pass" below) |
 
@@ -136,6 +137,39 @@ already over when they do, the draw also ends the board (`final`), with one
 - *Kickoff* on an undrawn board: the host hears "Draw the numbers to get your
   board going", everyone else "Waiting on the host to draw the numbers".
 
+### Season boards
+
+A season board (docs/ARCHITECTURE.md "Season boards") pays **one** host fee,
+at its own draw, for every game of the season: $14.99
+(`SEASON_BOARD_PRICE_CENTS`, 1499; below 50 or not a whole number falls back
+to 1499) on the web, the App Store product `com.jaxsquares.app.seasonboard`
+(`IAP_SEASON_PRODUCT_ID`) in the iOS app. Everything else is the board's
+pay-at-draw flow unchanged:
+
+- `POST /api/games/:id/lock` on the season board answers 402 until it's paid,
+  draws free with 5 or fewer players holding its squares (the free tier counts
+  the season board's players), and an active Host Pass or Club Pass covers it
+  (provider `pass`), exactly like any board. The host's button reads "Draw the
+  numbers · $14.99 for the season" (`payToDrawLabel(price, true)`).
+- `GET /api/config` → `payments.season` is `{ priceCents, iapProductId }`
+  (`SeasonFeeOffer`, `seasonFeeOffer`). The client picks the fee by the
+  board's kind (`feeOf(config, kind)`, `hostFeePrice(config, platform,
+  kind)`, `useHostFee(enabled, kind)`); the checkout sheet says "Season board"
+  and "once for the whole season", and hides "Pays for itself by your fifth
+  board" (a season isn't a board).
+- Stripe: `/pay/stripe` charges `boardFeeFor(env, game)` (the season price for
+  a season board), the PaymentIntent's description "JaxSquares host fee
+  (season board)" and metadata `season: true`. IAP: `/pay/iap` expects the
+  season product for a season board (the board product for any other; a
+  deleted board's purchase may be either), and the purchase recovery at launch
+  (`watchIAPPurchases`) redeems both products.
+- Each game's own board is made at the draw (and by the cron as games join the
+  schedule) already paid through its season: `payment_provider` `season`
+  (`SEASON_PROVIDER`), `payment_reference` the season board's id,
+  `payment_amount_cents` 0. A game's board never asks for a fee, never has a
+  `purchases` row, and the cron never sends it a draw reminder.
+- Single boards' prices and copy are unchanged.
+
 ## Setup checklist
 
 Do these steps in order. Payments stay in test mode until step 4.
@@ -153,6 +187,8 @@ Do these steps in order. Payments stay in test mode until step 4.
   so change it there and ship both together.
 - The Host Pass price is `HOST_PASS_PRICE_CENTS` (`1999`, $19.99 a year); see
   "Setup (Host Pass)".
+- A season board's one fee is `SEASON_BOARD_PRICE_CENTS` (`1499`, $14.99 for
+  the whole season). Set its App Store product to the same amount (step 3).
 
 ### 2. Stripe (web)
 
@@ -219,6 +255,18 @@ Do these steps in order. Payments stay in test mode until step 4.
      board: draw the numbers and run the game with your friends."
    - Add the review screenshot.
    - The first IAP has to be submitted together with an app version.
+   - **Season board product** (season boards; until it's approved the iOS app
+     can't pay for a season board of 6 or more, which then shows the
+     store's error, while the web, the free tier and the passes work): **+**
+     again, Type **Consumable** (every season board is a new purchase).
+     Reference name `Season board`; Product ID
+     `com.jaxsquares.app.seasonboard`, which must equal
+     `IAP_SEASON_PRODUCT_ID` in `wrangler.jsonc`; Price the tier matching
+     `SEASON_BOARD_PRICE_CENTS`, i.e. $14.99; Display name "Season board";
+     Description "The host fee for one season board: one set of squares for
+     every game of a team's season." Add the review screenshot (the season
+     board's "Draw the numbers · $14.99 for the season") and submit it with
+     the app version that ships season boards.
 3. **In-App Purchase key**, which lets the server ask Apple about transactions.
    Go to App Store Connect → Users and Access → Integrations → In-App Purchase
    → Generate In-App Purchase Key.

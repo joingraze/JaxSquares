@@ -46,20 +46,25 @@ export async function deleteSubscription(db: D1Database, clientId: string, key: 
 
 const SUB_COLUMNS = `s.endpoint_or_token, s.client_id, s.platform, s.p256dh, s.auth, s.unread`;
 
-/** Devices of these clients that haven't muted the game. */
-export async function subscriptionsFor(db: D1Database, gameId: string, clientIds: string[]): Promise<SubscriptionRow[]> {
+/**
+ * Devices of these clients that haven't muted the game. `gameId` may list
+ * several boards: a season's game board passes its season board too, so
+ * muting the season board mutes every one of its games.
+ */
+export async function subscriptionsFor(db: D1Database, gameId: string | readonly string[], clientIds: string[]): Promise<SubscriptionRow[]> {
   const chunks: string[][] = [];
   for (let i = 0; i < clientIds.length; i += IN_CHUNK) chunks.push(clientIds.slice(i, i + IN_CHUNK));
   if (chunks.length === 0) return [];
+  const games = JSON.stringify(typeof gameId === "string" ? [gameId] : [...gameId]);
   const results = await db.batch(
     chunks.map((ids) =>
       db
         .prepare(
           `SELECT ${SUB_COLUMNS} FROM push_subscriptions s
            WHERE s.client_id IN (${ids.map(() => "?").join(", ")})
-             AND NOT EXISTS (SELECT 1 FROM game_mutes m WHERE m.game_id = ? AND m.client_id = s.client_id)`,
+             AND NOT EXISTS (SELECT 1 FROM game_mutes m WHERE m.game_id IN (SELECT value FROM json_each(?)) AND m.client_id = s.client_id)`,
         )
-        .bind(...ids, gameId),
+        .bind(...ids, games),
     ),
   );
   return results.flatMap((r) => r.results as SubscriptionRow[]);

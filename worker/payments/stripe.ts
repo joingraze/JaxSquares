@@ -217,6 +217,8 @@ export interface BoardIntentInput {
   currency: string;
   /** Same key => Stripe returns the same intent instead of creating a second one. */
   idempotencyKey: string;
+  /** A season board's one fee (every game of its season): its own line on the receipt. */
+  season?: boolean;
 }
 
 export function createBoardPaymentIntent(secretKey: string, input: BoardIntentInput): Promise<PaymentIntent> {
@@ -229,7 +231,7 @@ export function createBoardPaymentIntent(secretKey: string, input: BoardIntentIn
       currency: input.currency,
       // Wallets and cards only: everything completes in the sheet, never via a redirect.
       automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-      description: "JaxSquares host fee (one board)",
+      description: input.season ? "JaxSquares host fee (season board)" : "JaxSquares host fee (one board)",
       metadata: { game_id: input.gameId, product: BOARD_PRODUCT },
     },
     input.idempotencyKey,

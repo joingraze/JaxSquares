@@ -23,6 +23,8 @@ import type {
   PushRegistration,
   ScheduleResponse,
   ScoreInput,
+  SeasonTeamsResponse,
+  TeamScheduleResponse,
   SignInInput,
   SignOutInput,
   UpdateGameInput,
@@ -212,6 +214,13 @@ export const api = {
       `/schedule?league=${league}${week ? `&week=${encodeURIComponent(week)}` : ""}${date ? `&date=${encodeURIComponent(date)}` : ""}`,
       { signal },
     ),
+
+  /** A season board's team picker: the league's teams (logos and colors). */
+  seasonTeams: (league: Exclude<League, "custom">, signal?: AbortSignal) =>
+    request<SeasonTeamsResponse>("GET", `/season/teams?league=${league}`, { signal }),
+  /** One team's season: every game, regular season and playoffs, finished ones with their result. */
+  teamSchedule: (league: Exclude<League, "custom">, teamId: string, signal?: AbortSignal) =>
+    request<TeamScheduleResponse>("GET", `/season/schedule?league=${league}&team=${encodeURIComponent(teamId)}`, { signal }),
 
   // ---- Boards ----
   /**

@@ -8,21 +8,36 @@
 
 import { Hono } from "hono";
 import { isDayLeague, isLinkedLeague as isKnownLeague } from "../../shared/sports";
-import type { LinkedEvent, LiveUpdate, ScheduleEvent, ScheduleResponse, ScheduleWeek } from "../../shared/types";
+import type {
+  LinkedEvent,
+  LiveUpdate,
+  ScheduleEvent,
+  ScheduleResponse,
+  ScheduleWeek,
+  SeasonTeam,
+  SeasonTeamsResponse,
+  Team,
+  TeamScheduleResponse,
+} from "../../shared/types";
 import type { Env } from "../env";
 import { cached, type CachedValue } from "./cache";
 import {
   espnDate,
   fetchEspnJson,
   isScoreboard,
+  isTeamSchedule,
   parseCalendar,
   parseDayId,
   parseSchedule,
   parseScoreboardSnapshots,
   parseSummarySnapshot,
+  parseTeamSchedule,
+  parseTeamsList,
   scoreboardUrl,
   summaryUrl,
   parseWeekId,
+  teamScheduleUrl,
+  teamsUrl,
   toLiveUpdate,
   type GameSnapshot,
   type LinkedLeague,
@@ -222,6 +237,94 @@ export function scheduleFor(league: LinkedLeague, query: { week?: string; date?:
   return isDayLeague(league) ? getDaySchedule(league, query.date, opts) : getSchedule(league, query.week, opts);
 }
 
+// ---- A team's season (season boards) ----
+
+/** A league's team list barely changes during a season. */
+const TEAMS_TTL_S = 24 * 60 * 60;
+/** A team's schedule: games move (flexed games, playoff times) but not by the minute. */
+const TEAM_SCHEDULE_TTL_S = 30 * 60;
+/** Season types read for a team's games: the regular season and the postseason (the NBA's play-in too). */
+function seasonTypesFor(league: LinkedLeague): number[] {
+  return league === "nba" ? [2, 5, 3] : [2, 3];
+}
+
+/** A team id as ESPN writes them ("30", "2579"); anything else is refused. */
+export function isTeamId(v: unknown): v is string {
+  return typeof v === "string" && /^[A-Za-z0-9-]{1,16}$/.test(v);
+}
+
+/** A season year ESPN could know (the route's `year`). */
+export function isSeasonYear(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 2000 && v <= 2100;
+}
+
+/** The league's teams (logos and colors), or null when ESPN can't be reached. */
+export async function getSeasonTeams(league: LinkedLeague, opts: ScoresOptions = {}): Promise<SeasonTeam[] | null> {
+  const url = teamsUrl(league);
+  const res = await cached<SeasonTeam[]>({
+    key: cacheKey(url, "schedule"),
+    ttlSeconds: TEAMS_TTL_S,
+    staleSeconds: 7 * TEAMS_TTL_S,
+    inflight: opts.inflight,
+    load: async () => {
+      const teams = parseTeamsList(await fetchEspnJson(url, SCHEDULE_TIMEOUT_MS));
+      if (teams.length === 0) throw new Error("ESPN teams response had no teams");
+      return teams;
+    },
+  });
+  return res?.value ?? null;
+}
+
+function loadTeamSchedule(league: LinkedLeague, teamId: string, year: number | null, seasonType: number, opts: ScoresOptions) {
+  const url = teamScheduleUrl(league, teamId, { year, seasonType });
+  return cached<ReturnType<typeof parseTeamSchedule>>({
+    key: cacheKey(url, "schedule"),
+    ttlSeconds: TEAM_SCHEDULE_TTL_S,
+    staleSeconds: SCHEDULE_STALE_S,
+    inflight: opts.inflight,
+    load: async () => {
+      const json = await fetchEspnJson(url, SCHEDULE_TIMEOUT_MS);
+      if (!isTeamSchedule(json)) throw new Error("ESPN team schedule response had no events array");
+      return parseTeamSchedule(json, league);
+    },
+  });
+}
+
+/**
+ * One team's season: the regular season (ESPN's current one when `year` is
+ * null, which also says which year that is) and the postseason games
+ * scheduled so far, every game in order, finished ones with their result.
+ * Opponents get their colors from the league's team list. Null when the
+ * regular season can't be read; a postseason read that fails is left out.
+ */
+export async function getTeamSeason(
+  league: LinkedLeague,
+  teamId: string,
+  year: number | null = null,
+  opts: ScoresOptions = {},
+): Promise<TeamScheduleResponse | null> {
+  const [first, ...more] = seasonTypesFor(league);
+  const [regular, teams] = await Promise.all([loadTeamSchedule(league, teamId, year, first, opts), getSeasonTeams(league, opts).catch(() => null)]);
+  if (!regular) return null;
+  const seasonYear = year ?? regular.value.year;
+  const later = await Promise.all(more.map((t) => (seasonYear ? loadTeamSchedule(league, teamId, seasonYear, t, opts).catch(() => null) : null)));
+  const colors = new Map((teams ?? []).filter((t) => t.color).map((t) => [t.id, t.color!]));
+  const known = new Map((teams ?? []).map((t) => [t.id, t]));
+  const seen = new Set<string>();
+  const events: ScheduleEvent[] = [];
+  for (const part of [regular, ...later]) {
+    for (const e of part?.value.events ?? []) {
+      if (seen.has(e.eventId)) continue;
+      seen.add(e.eventId);
+      const paint = (t: Team, id?: string): Team => (t.color || !id || !colors.has(id) ? t : { ...t, color: colors.get(id) });
+      events.push({ ...e, home: paint(e.home, e.homeId), away: paint(e.away, e.awayId) });
+    }
+  }
+  events.sort((a, b) => a.startsAt - b.startsAt);
+  const team = regular.value.team ? { ...known.get(teamId), ...regular.value.team } : (known.get(teamId) ?? null);
+  return { team, year: seasonYear ?? null, events };
+}
+
 // ---- Through the ScoreHub ----
 // Every request for a league goes through one ScoreHub Durable Object (hub.ts),
 // so ESPN sees one fetch per scoreboard per TTL however many boards and pickers
@@ -248,6 +351,43 @@ export async function scheduleVia(env: Env | undefined, league: LinkedLeague, we
     }
   }
   return scheduleFor(league, { week, date });
+}
+
+/** getSeasonTeams through the league's ScoreHub (a direct fetch without it). */
+export async function seasonTeamsVia(env: Env | undefined, league: LinkedLeague): Promise<SeasonTeam[] | null> {
+  const hub = hubFor(env, league);
+  if (hub) {
+    try {
+      const res = await hub.fetch(`https://hub/teams?${new URLSearchParams({ league })}`);
+      if (res.ok) return (await res.json()) as SeasonTeam[] | null;
+      console.warn(`score hub answered ${res.status} for the ${league} teams`);
+    } catch (err) {
+      console.warn("score hub unavailable", err);
+    }
+  }
+  return getSeasonTeams(league);
+}
+
+/** getTeamSeason through the league's ScoreHub (a direct fetch without it). Never throws. */
+export async function teamSeasonVia(env: Env | undefined, league: LinkedLeague, teamId: string, year: number | null = null): Promise<TeamScheduleResponse | null> {
+  const hub = hubFor(env, league);
+  if (hub) {
+    try {
+      const q = new URLSearchParams({ league, team: teamId });
+      if (year) q.set("year", String(year));
+      const res = await hub.fetch(`https://hub/team-schedule?${q}`);
+      if (res.ok) return (await res.json()) as TeamScheduleResponse | null;
+      console.warn(`score hub answered ${res.status} for the ${league} team ${teamId}`);
+    } catch (err) {
+      console.warn("score hub unavailable", err);
+    }
+  }
+  try {
+    return await getTeamSeason(league, teamId, year);
+  } catch (err) {
+    console.warn(`team schedule failed for ${league}/${teamId}`, err);
+    return null;
+  }
 }
 
 /** fetchLiveForEvent through the league's ScoreHub. Never throws. */
@@ -299,6 +439,39 @@ scheduleRoutes.get("/schedule", async (c) => {
   }
   c.header("cache-control", `public, max-age=${week ? 300 : 60}`);
   return c.json<ScheduleResponse>(week ? { events: result.events, week: result.week } : result);
+});
+
+// A team's season, for the create flow's season boards: the league's teams
+// (logos and colors), then one team's schedule. 200 with `unavailable` when
+// ESPN can't be reached, like the schedule.
+
+scheduleRoutes.get("/season/teams", async (c) => {
+  const league = c.req.query("league") ?? "";
+  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
+  const teams = await seasonTeamsVia(c.env, league);
+  if (!teams) {
+    c.header("cache-control", "no-store");
+    return c.json<SeasonTeamsResponse>({ teams: [], unavailable: true });
+  }
+  c.header("cache-control", "public, max-age=3600");
+  return c.json<SeasonTeamsResponse>({ teams });
+});
+
+scheduleRoutes.get("/season/schedule", async (c) => {
+  const league = c.req.query("league") ?? "";
+  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
+  const team = c.req.query("team") ?? "";
+  if (!isTeamId(team)) return c.json({ error: "team must be a team id, like 30" }, 400);
+  const rawYear = c.req.query("year");
+  const year = rawYear === undefined ? null : Number(rawYear);
+  if (year !== null && !isSeasonYear(year)) return c.json({ error: "year must look like 2026" }, 400);
+  const result = await teamSeasonVia(c.env, league, team, year);
+  if (!result) {
+    c.header("cache-control", "no-store");
+    return c.json<TeamScheduleResponse>({ team: null, year, events: [], unavailable: true });
+  }
+  c.header("cache-control", "public, max-age=300");
+  return c.json<TeamScheduleResponse>(result);
 });
 
 // ---- Live ----

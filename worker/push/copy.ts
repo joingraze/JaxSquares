@@ -85,11 +85,16 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
   const id = game.id;
 
   switch (event.kind) {
-    case "numbers-drawn":
-      return to(
-        everyone,
-        base(game, event.kind, { body: "🔢 Numbers are in. Find your squares.", tag: `${id}:numbers`, ttlSeconds: 6 * HOUR }),
-      );
+    case "numbers-drawn": {
+      // A season board's draw is one push for the whole season (its games' boards are made quietly).
+      const body =
+        game.kind !== "season"
+          ? "🔢 Numbers are in. Find your squares."
+          : Object.keys(game.numbers ?? {}).length > 0
+            ? "🔢 Numbers are in for the whole season. Find your squares."
+            : "🗓️ The season is set. Each game draws its own numbers.";
+      return to(everyone, base(game, event.kind, { body, tag: `${id}:numbers`, ttlSeconds: 6 * HOUR }));
+    }
 
     case "game-starting": {
       const kickoff = KICKOFF[game.sport] ?? KICKOFF.other;

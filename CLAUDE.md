@@ -106,6 +106,12 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   it at the draw or at kickoff, as does the web-only Club Pass (`plan` 'club',
   never offered or linked in the iOS app), which adds the club features. Its
   tables join the sign-in merge, and buying it on the web needs a sign-in.
+- Season boards (`Game.kind` "season", `shared/season.ts`, docs/ARCHITECTURE.md
+  "Season boards"): squares are picked once, on the season board, which pays
+  one fee (`SEASON_BOARD_PRICE_CENTS`) at its draw and sends one numbers-drawn
+  notice. Each game's board (`Game.seasonId`) is made at the draw or by the
+  cron, locked and paid through the season (provider `season`), and never
+  takes claims, joins or edits (409); its host and co-hosts are the season's.
 
 ## Conventions
 

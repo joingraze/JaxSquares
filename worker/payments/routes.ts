@@ -17,7 +17,7 @@ import { SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
 import { isHostOrCohost, loadState, markPaid } from "../service";
 import { fetchAppStoreTransaction, transactionProblem, type AppStoreTransaction } from "./apple";
 import { gameIdFromAccountToken } from "./boardToken";
-import { CURRENCY, boardPriceCents, getPaymentConfig, iapProductId } from "./config";
+import { CURRENCY, boardFeeFor, boardPriceCents, getPaymentConfig, iapProductId, iapSeasonProductId, seasonPriceCents } from "./config";
 import { milliunitsToMinor } from "./encoding";
 import { appStoreCredentials } from "./passApple";
 import { passRoutes } from "./passRoutes";
@@ -143,7 +143,8 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
   if (!secretKey) return c.json({ error: "Checkout isn't set up yet" }, 503);
   if (game.paid) return alreadyPaid(c, gameId);
 
-  const amountCents = boardPriceCents(c.env);
+  // A season board's one fee covers every game of the season.
+  const amountCents = boardFeeFor(c.env, game).amountCents;
   try {
     // Reuse the board's open intent so retries and reloads never create a second charge.
     const pending = await store.latestPending(c.env.DB, gameId, "stripe");
@@ -172,6 +173,7 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
         amountCents,
         currency: CURRENCY,
         idempotencyKey: boardIdempotencyKey(gameId, amountCents, CURRENCY, replacing),
+        ...(game.kind === "season" ? { season: true } : {}),
       });
       await store.recordPending(c.env.DB, {
         reference: intent.id,
@@ -286,7 +288,10 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     return c.json({ error: "Couldn't reach the App Store. Try again." }, 502);
   }
   if (!tx) return c.json({ error: "Apple has no record of that purchase" }, 400);
-  const problem = transactionProblem(tx, { transactionId, bundleId: creds.bundleId, productId: iapProductId(c.env), gameId });
+  // A season board's fee is its own product; a deleted board's purchase may be either.
+  const seasonProduct = iapSeasonProductId(c.env);
+  const productId = game ? boardFeeFor(c.env, game).iapProductId : tx.productId === seasonProduct ? seasonProduct : iapProductId(c.env);
+  const problem = transactionProblem(tx, { transactionId, bundleId: creds.bundleId, productId, gameId });
   if (problem) return c.json({ error: problem }, 400);
   if (!game && gameIdFromAccountToken(tx.appAccountToken ?? "") !== gameId) return c.json({ error: "Game not found" }, 404);
 
@@ -296,7 +301,7 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     gameId,
     provider: "iap",
     // Apple leaves price off some older transactions; fall back to the list price.
-    amountCents: typeof tx.price === "number" ? milliunitsToMinor(tx.price, currency) : boardPriceCents(c.env),
+    amountCents: typeof tx.price === "number" ? milliunitsToMinor(tx.price, currency) : productId === seasonProduct ? seasonPriceCents(c.env) : boardPriceCents(c.env),
     currency,
     livemode: tx.environment === "Production",
   };

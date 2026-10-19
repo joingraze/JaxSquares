@@ -18,6 +18,16 @@ import { clubBrandOf } from "./clubs/brand";
 import { isFreeHolderCount } from "../shared/hostFee";
 import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
+import {
+  SEASON_PROVIDER,
+  isSeasonNumbers,
+  isSeasonScope,
+  plannedGame,
+  seasonPositionOf,
+  seasonStateOf,
+  seasonSummaryOf,
+  type SeasonGameSource,
+} from "../shared/season";
 import { MAX_GROUP_BOARDS, siblingSummary } from "../shared/siblings";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
 import type {
@@ -35,6 +45,12 @@ import type {
   Period,
   Player,
   Score,
+  SeasonEvent,
+  SeasonGame,
+  SeasonPosition,
+  SeasonSpec,
+  SeasonState,
+  SeasonSummary,
   SiblingBoard,
   Sport,
   Square,
@@ -85,6 +101,15 @@ export interface GameRow {
   draw_reminder_at?: number | null;
   /** Boards for the same game share it: the group's first board's id (migration 0012); null = on its own. */
   board_group?: string | null;
+  /** 'board' or 'season' (migration 0017). Absent before it: a board. */
+  kind?: string | null;
+  /** A season board: what it covers (StoredSeason JSON, public). */
+  season?: string | null;
+  /** A season's game board: its season board's id, and its game's event id. */
+  season_id?: string | null;
+  season_event?: string | null;
+  /** A season board: when its team's schedule was last read for new games. Server-only. */
+  season_synced_at?: number | null;
 }
 
 interface PlayerRow {
@@ -170,6 +195,9 @@ export function rowToGame(r: GameRow, hostPlayerId: string): Game {
     lockedAt: r.locked_at,
     // Grandfathered boards (made under pay-to-open) were stamped by migration 0009.
     paid: r.paid_at != null,
+    // Season boards (migration 0017): only said where it's so, so every other board reads as before.
+    ...(r.kind === "season" ? { kind: "season" as const } : {}),
+    ...(r.season_id ? { seasonId: r.season_id } : {}),
   };
 }
 
@@ -300,6 +328,9 @@ export async function getAdminToken(db: D1Database, gameId: string): Promise<str
   return row?.admin_token ?? null;
 }
 
+/** The board whose co-hosts run board ?1: its season board for a season's game board, else itself. */
+const RUN_BY = `COALESCE((SELECT season_id FROM games WHERE id = ?1), ?1)`;
+
 function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
   return [
     db.prepare(`SELECT * FROM games WHERE id = ?`).bind(id),
@@ -311,8 +342,9 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
     db
       .prepare(`SELECT id, type, at, actor, data FROM activity WHERE game_id = ? ORDER BY at DESC, rowid DESC LIMIT ${ACTIVITY_LIMIT}`)
       .bind(id),
-    // Co-hosts (migration 0014), in the order they became co-hosts.
-    db.prepare(`SELECT client_id FROM cohosts WHERE game_id = ? ORDER BY added_at, rowid`).bind(id),
+    // Co-hosts (migration 0014), in the order they became co-hosts. A season's
+    // game board is run by its season board's co-hosts (migration 0017).
+    db.prepare(`SELECT client_id FROM cohosts WHERE game_id = ${RUN_BY} ORDER BY added_at, rowid`).bind(id),
   ];
 }
 
@@ -326,12 +358,14 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
   const playerRows = players.results as PlayerRow[];
   const squareRows = squares.results as SquareRow[];
   const cohosts = cohostRowsOf(results);
-  const [ids, siblings, club] = await Promise.all([
+  const [ids, siblings, club, position] = await Promise.all([
     playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts]),
     // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
     row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
     // The host's club while their Club Pass is active (worker/clubs, cached per isolate): its public branding only.
     clubBrandOf(db, row.host_client_id),
+    // A season's game board (migration 0017): where it sits in its season, one more round trip.
+    row.season_id ? seasonPositionFor(db, row.id, row.season_id) : null,
   ]);
   const liveRow = live.results[0] as LiveRow | undefined;
   const state: GameState = {
@@ -346,6 +380,9 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
     version: row.version,
   };
   if (siblings) state.siblings = siblings;
+  if (position) state.seasonGame = position;
+  // A season board (migration 0017): its games and standings, one more round trip.
+  if (row.kind === "season") state.season = await seasonOf(db, row, state.squares);
   return state;
 }
 
@@ -397,9 +434,13 @@ export async function getGameStateWithToken(
   return { state, adminToken: (results[0].results[0] as GameRow).admin_token, cohost };
 }
 
-/** Whether `clientId` (a request's canonical one) co-hosts the board. Server-only (the payment routes' host check). */
+/**
+ * Whether `clientId` (a request's canonical one) co-hosts the board (a
+ * season's game board: its season board). Server-only (the payment routes'
+ * host check).
+ */
 export async function isCohost(db: D1Database, gameId: string, clientId: string): Promise<boolean> {
-  const row = await db.prepare(`SELECT 1 AS ok FROM cohosts WHERE game_id = ? AND client_id = ?`).bind(gameId, clientId).first<{ ok: number }>();
+  const row = await db.prepare(`SELECT 1 AS ok FROM cohosts WHERE game_id = ${RUN_BY} AND client_id = ?2`).bind(gameId, clientId).first<{ ok: number }>();
   return !!row;
 }
 
@@ -581,7 +622,11 @@ export function updateGameFields(db: D1Database, gameId: string, fields: GameFie
 
 export async function deleteGame(db: D1Database, gameId: string): Promise<boolean> {
   const tables = ["activity", "live_status", "manual_winners", "scores", "squares", "cohost_invites", "cohosts", "players"];
+  // A season board's game boards go with it (migration 0017), first.
+  const kids = `SELECT id FROM games WHERE season_id = ?1`;
   const results = await db.batch([
+    ...tables.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id IN (${kids})`).bind(gameId)),
+    db.prepare(`DELETE FROM games WHERE season_id = ?1`).bind(gameId),
     ...tables.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id = ?`).bind(gameId)),
     db.prepare(`DELETE FROM games WHERE id = ?`).bind(gameId),
   ]);
@@ -626,6 +671,312 @@ export async function removePlayer(db: D1Database, gameId: string, playerId: str
     db.prepare(`DELETE FROM cohosts WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
     db.prepare(`DELETE FROM players WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
   ];
+}
+
+// ---- Season boards (migration 0017; shared/season.ts) ----
+
+/**
+ * What a season board keeps in games.season: what it covers, and every game
+ * known for it (the ones the host saw at create, plus games the draw and the
+ * cron found since: labels like "Wild Card" come from here). Public data.
+ */
+export interface StoredSeason extends SeasonSpec {
+  events: SeasonEvent[];
+}
+
+/** A season board's stored season (null for any other board, or one that can't be read). */
+export function storedSeasonOf(row: Pick<GameRow, "season">): StoredSeason | null {
+  const s = json<StoredSeason | null>(row.season, null);
+  if (!s || typeof s !== "object" || !isSeasonScope(s.scope) || !isSeasonNumbers(s.numbers)) return null;
+  return { ...s, events: Array.isArray(s.events) ? s.events : [] };
+}
+
+/** Marks a board just inserted (insertGame, same batch) as a season board covering `season`. */
+export function markSeasonStatement(db: D1Database, gameId: string, season: StoredSeason): D1PreparedStatement {
+  return db.prepare(`UPDATE games SET kind = 'season', season = ?2 WHERE id = ?1`).bind(gameId, JSON.stringify(season));
+}
+
+/** Rewrites a season board's stored season (new games found, labels). */
+export function storeSeasonStatement(db: D1Database, gameId: string, season: StoredSeason): D1PreparedStatement {
+  return db.prepare(`UPDATE games SET season = ?2 WHERE id = ?1 AND kind = 'season'`).bind(gameId, JSON.stringify(season));
+}
+
+/** The columns of a season's game board the season reads. */
+const SEASON_GAME_COLUMNS = `id, name, status, numbers, format, periods, prizes, sport, league, team_x, team_y, linked_event, starts_at, season_event`;
+type SeasonGameRow = Pick<
+  GameRow,
+  "id" | "name" | "status" | "numbers" | "format" | "periods" | "prizes" | "sport" | "league" | "team_x" | "team_y" | "linked_event" | "starts_at" | "season_event"
+>;
+
+const inSeason = `game_id IN (SELECT id FROM games WHERE season_id = ?1)`;
+
+/** A season's game board as a Game (enough of it for results). */
+function seasonGameOfRow(r: SeasonGameRow): Game {
+  return rowToGame({ ...(r as GameRow), host_client_id: "", admin_token: "", created_at: 0, locked_at: null, version: 0, updated_at: 0 } as GameRow, "");
+}
+
+/**
+ * A season board's public season: what it covers, its games (each game
+ * board's results, decided by that board, with the season's squares: every
+ * game board holds the same ones) and the standings. Planned games before
+ * the draw. One round trip; public ids only.
+ */
+async function seasonOf(db: D1Database, row: GameRow, squares: Square[]): Promise<SeasonState> {
+  const stored = storedSeasonOf(row) ?? { scope: "games", numbers: "same", league: "nfl", team: null, year: null, label: row.name, events: [] };
+  const { events, ...spec } = stored;
+  const [kids, scores, manual, live] = await db.batch([
+    db.prepare(`SELECT ${SEASON_GAME_COLUMNS} FROM games WHERE season_id = ?1 ORDER BY starts_at, id`).bind(row.id),
+    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inSeason}`).bind(row.id),
+    db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inSeason}`).bind(row.id),
+    db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inSeason}`).bind(row.id),
+  ]);
+  const by = <T extends { game_id: string }>(list: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const r of list) m.set(r.game_id, [...(m.get(r.game_id) ?? []), r]);
+    return m;
+  };
+  const scoresBy = by(scores.results as (ScoreRow & { game_id: string })[]);
+  const manualBy = by(manual.results as (ManualWinnerRow & { game_id: string })[]);
+  const liveBy = by(live.results as (LiveRow & { game_id: string })[]);
+  const known = new Map(events.map((e) => [e.eventId, e]));
+  const games: SeasonGameSource[] = (kids.results as SeasonGameRow[]).map((k) => {
+    const event = known.get(k.season_event ?? "");
+    const liveRow = liveBy.get(k.id)?.[0];
+    return {
+      game: seasonGameOfRow(k),
+      eventId: k.season_event ?? "",
+      ...(event?.label ? { label: event.label } : {}),
+      ...(event?.playoff ? { playoff: true } : {}),
+      scores: (scoresBy.get(k.id) ?? []).map(rowToScore),
+      manualWinners: (manualBy.get(k.id) ?? []).map(rowToManual),
+      live: liveRow ? rowToLive(liveRow) : null,
+    };
+  });
+  return seasonStateOf(spec, { planned: events, games, squares });
+}
+
+/** Where a season's game board sits in its season (its season board's name, which game of how many). */
+async function seasonPositionFor(db: D1Database, id: string, seasonId: string): Promise<SeasonPosition | null> {
+  const [parent, kids] = await db.batch([
+    db.prepare(`SELECT id, name FROM games WHERE id = ?`).bind(seasonId),
+    db.prepare(`SELECT id FROM games WHERE season_id = ? ORDER BY starts_at, id`).bind(seasonId),
+  ]);
+  const p = parent.results[0] as { id: string; name: string } | undefined;
+  if (!p) return null;
+  return seasonPositionOf(p, (kids.results as { id: string }[]).map((k) => k.id), id);
+}
+
+/** One game board of a season, as the draw, the cron and the season board's edits need it. Server-only. */
+export interface SeasonChild {
+  id: string;
+  eventId: string;
+  status: Game["status"];
+  linkedEvent: LinkedEvent | null;
+  teamX: Team;
+  teamY: Team;
+  /** A score or a host pick is in (its rules are locked then). */
+  scored: boolean;
+  /** The feed has said the game started (or is over). */
+  started: boolean;
+}
+
+/** A season board's game boards, by kickoff. */
+export async function seasonChildren(db: D1Database, seasonId: string): Promise<SeasonChild[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT g.id, g.season_event, g.status, g.linked_event, g.team_x, g.team_y,
+              (EXISTS (SELECT 1 FROM scores s WHERE s.game_id = g.id) OR EXISTS (SELECT 1 FROM manual_winners m WHERE m.game_id = g.id)) AS scored,
+              EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = g.id AND l.state <> 'pre') AS started
+       FROM games g WHERE g.season_id = ? ORDER BY g.starts_at, g.id`,
+    )
+    .bind(seasonId)
+    .all<{ id: string; season_event: string | null; status: string; linked_event: string | null; team_x: string; team_y: string; scored: number; started: number }>();
+  return results.map((r) => ({
+    id: r.id,
+    eventId: r.season_event ?? "",
+    status: r.status as Game["status"],
+    linkedEvent: json<LinkedEvent | null>(r.linked_event, null),
+    teamX: json<Team>(r.team_x, { name: "Team X" }),
+    teamY: json<Team>(r.team_y, { name: "Team Y" }),
+    scored: !!r.scored,
+    started: !!r.started,
+  }));
+}
+
+/** A new game board for a season: what the route decided (its id, teams, link, name, numbers). */
+export interface NewSeasonGame {
+  id: string;
+  eventId: string;
+  name: string;
+  teamX: Team;
+  teamY: Team;
+  linkedEvent: LinkedEvent;
+  numbers: Record<string, NumberDraw>;
+}
+
+/**
+ * A game board for a drawn season board, in one batch: the board (locked,
+ * paid through its season board: provider SEASON_PROVIDER, reference = the
+ * season board's id, amount 0; the season board's host, admin token, sport,
+ * league, rules and prizes, read from it in SQL so they're current), then
+ * the season's players and squares copied, then a "locked" activity. The
+ * board goes in only while the season board is drawn and the game has none
+ * yet (the unique season_id + season_event index, OR IGNORE); every copy
+ * after it checks the board went in as this season's board, so a lost race
+ * (or an id that's taken) copies nothing anywhere.
+ */
+export function seasonGameStatements(db: D1Database, seasonId: string, g: NewSeasonGame, now: number): D1PreparedStatement[] {
+  const made = `EXISTS (SELECT 1 FROM games WHERE id = ?1 AND season_id = ?2 AND season_event = ?3)`;
+  return [
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO games
+          (id, name, sport, league, team_x, team_y, format, periods, prizes, max_per_player, numbers, status,
+           linked_event, starts_at, host_client_id, admin_token, created_at, locked_at, activated_at, updated_at, version,
+           paid_at, payment_provider, payment_reference, payment_amount_cents, board_full_at, kind, season_id, season_event)
+         SELECT ?1, ?4, p.sport, p.league, ?5, ?6, p.format, p.periods, '{}', p.max_per_player, ?7, 'locked',
+           ?8, ?9, p.host_client_id, p.admin_token, ?10, ?10, ?10, ?10, 1,
+           ?10, ?11, p.id, 0, ?10, 'board', p.id, ?3
+         FROM games p WHERE p.id = ?2 AND p.kind = 'season' AND p.status = 'locked'`,
+      )
+      .bind(
+        g.id,
+        seasonId,
+        g.eventId,
+        g.name,
+        JSON.stringify(g.teamX),
+        JSON.stringify(g.teamY),
+        JSON.stringify(g.numbers),
+        JSON.stringify(g.linkedEvent),
+        g.linkedEvent.startsAt,
+        now,
+        SEASON_PROVIDER,
+      ),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO players (game_id, client_id, name, color, emoji, joined_at)
+         SELECT ?1, client_id, name, color, emoji, joined_at FROM players WHERE game_id = ?2 AND ${made}`,
+      )
+      .bind(g.id, seasonId, g.eventId),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO squares (game_id, row, col, client_id, claimed_at)
+         SELECT ?1, row, col, client_id, claimed_at FROM squares WHERE game_id = ?2 AND ${made}`,
+      )
+      .bind(g.id, seasonId, g.eventId),
+    db
+      .prepare(`INSERT INTO activity (id, game_id, type, at, actor, data) SELECT ?4, ?1, 'locked', ?5, NULL, '{"auto":true}' WHERE ${made}`)
+      .bind(g.id, seasonId, g.eventId, newActivityId(), now),
+  ];
+}
+
+/**
+ * The season board's new rules and prizes reach its game boards that haven't
+ * had a score or a host pick yet (the edit-lock rules: who wins locks at the
+ * first score), and aren't over. Same batch as the season board's own edit.
+ */
+export function seasonFormatStatement(db: D1Database, seasonId: string, format: GameFormat, periods: Period[], now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE games SET format = ?2, periods = ?3, prizes = '{}', version = version + 1, updated_at = ?4
+       WHERE season_id = ?1 AND status = 'locked'
+         AND NOT EXISTS (SELECT 1 FROM scores s WHERE s.game_id = games.id)
+         AND NOT EXISTS (SELECT 1 FROM manual_winners m WHERE m.game_id = games.id)`,
+    )
+    .bind(seasonId, JSON.stringify(format), JSON.stringify(periods), now);
+}
+
+/** A game board's new name (its season board was renamed). */
+export function renameStatement(db: D1Database, gameId: string, name: string, now: number): D1PreparedStatement {
+  return db.prepare(`UPDATE games SET name = ?2, version = version + 1, updated_at = ?3 WHERE id = ?1`).bind(gameId, name, now);
+}
+
+/** A game the provider moved (a flexed kickoff): its board's link and kickoff, only before it starts. */
+export function moveSeasonGameStatement(db: D1Database, gameId: string, linkedEvent: LinkedEvent, now: number): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE games SET linked_event = ?2, starts_at = ?3, version = version + 1, updated_at = ?4
+       WHERE id = ?1 AND status = 'locked' AND NOT EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = ?1 AND l.state <> 'pre')`,
+    )
+    .bind(gameId, JSON.stringify(linkedEvent), linkedEvent.startsAt, now);
+}
+
+/** Drawn season boards due a schedule read (never read, or read before `before`), oldest first. */
+export async function seasonsDue(db: D1Database, before: number, limit: number): Promise<string[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT id FROM games WHERE kind = 'season' AND status = 'locked' AND (season_synced_at IS NULL OR season_synced_at <= ?1)
+       ORDER BY season_synced_at LIMIT ?2`,
+    )
+    .bind(before, limit)
+    .all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+/** When a season board's schedule was (or counts as) last read: the cron reads it again SEASON_SYNC_MS later. */
+export function seasonSyncedStatement(db: D1Database, gameId: string, at: number): D1PreparedStatement {
+  return db.prepare(`UPDATE games SET season_synced_at = ?2 WHERE id = ?1`).bind(gameId, at);
+}
+
+/** A season's game board's season board id, else null (email notices go to the season board's addresses). */
+export async function seasonIdOf(db: D1Database, gameId: string): Promise<string | null> {
+  const row = await db.prepare(`SELECT season_id FROM games WHERE id = ?`).bind(gameId).first<{ season_id: string | null }>();
+  return row?.season_id ?? null;
+}
+
+/** Ids of a season board's game boards (deleting the season board deletes them too). */
+export async function seasonChildIds(db: D1Database, seasonId: string): Promise<string[]> {
+  const { results } = await db.prepare(`SELECT id FROM games WHERE season_id = ?`).bind(seasonId).all<{ id: string }>();
+  return results.map((r) => r.id);
+}
+
+/**
+ * Season boards on Home: each one's games at a glance (no results: the
+ * season page has those), from its game boards and their live feeds.
+ */
+async function seasonSummariesFor(db: D1Database, parents: GameRow[], now: number): Promise<Map<string, SeasonSummary>> {
+  const out = new Map<string, SeasonSummary>();
+  if (parents.length === 0) return out;
+  const ids = JSON.stringify(parents.map((p) => p.id));
+  const [kids, live] = await db.batch([
+    db
+      .prepare(`SELECT ${SEASON_GAME_COLUMNS}, season_id FROM games WHERE season_id IN (SELECT value FROM json_each(?1)) ORDER BY starts_at, id`)
+      .bind(ids),
+    db
+      .prepare(
+        `SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status
+         WHERE game_id IN (SELECT id FROM games WHERE season_id IN (SELECT value FROM json_each(?1)))`,
+      )
+      .bind(ids),
+  ]);
+  const liveBy = new Map((live.results as (LiveRow & { game_id: string })[]).map((l) => [l.game_id, rowToLive(l)]));
+  const kidsBy = new Map<string, (SeasonGameRow & { season_id: string })[]>();
+  for (const k of kids.results as (SeasonGameRow & { season_id: string })[]) kidsBy.set(k.season_id, [...(kidsBy.get(k.season_id) ?? []), k]);
+  for (const p of parents) {
+    const stored = storedSeasonOf(p);
+    if (!stored) continue;
+    const rows = kidsBy.get(p.id) ?? [];
+    const games: SeasonGame[] = rows.length
+      ? rows.map((k, i) => {
+          const g = seasonGameOfRow(k);
+          const l = liveBy.get(k.id) ?? null;
+          return {
+            id: k.id,
+            eventId: k.season_event ?? "",
+            index: i + 1,
+            startsAt: g.startsAt ?? 0,
+            teamX: g.teamX,
+            teamY: g.teamY,
+            status: g.status,
+            live: l?.state ?? null,
+            score: l && l.state !== "pre" ? { scoreX: l.scoreX, scoreY: l.scoreY, label: liveLabel(l, g.status, g) } : null,
+            winners: [],
+          };
+        })
+      : [...stored.events].sort((a, b) => a.startsAt - b.startsAt).map((e, i) => plannedGame(stored, e, i + 1));
+    out.set(p.id, seasonSummaryOf({ label: stored.label, games }, now));
+  }
+  return out;
 }
 
 // ---- Co-hosts (migration 0014; shared/cohosts.ts) ----
@@ -987,16 +1338,19 @@ export async function listGamesForClient(
          hp.name AS host_name, hp.color AS host_color, hp.emoji AS host_emoji
        FROM games g
        LEFT JOIN players hp ON hp.game_id = g.id AND hp.client_id = g.host_client_id
-       WHERE g.id IN (
+       WHERE (g.id IN (
                SELECT m.id FROM games m
-               WHERE m.host_client_id = ?1
+               WHERE m.season_id IS NULL
+                 AND (m.host_client_id = ?1
                   OR EXISTS (SELECT 1 FROM players p WHERE p.game_id = m.id AND p.client_id = ?1)
-                  OR EXISTS (SELECT 1 FROM cohosts c WHERE c.game_id = m.id AND c.client_id = ?1)
+                  OR EXISTS (SELECT 1 FROM cohosts c WHERE c.game_id = m.id AND c.client_id = ?1))
                ORDER BY m.updated_at DESC
                LIMIT ?2
              )
           -- Every seen board that exists, whatever the cap did to mine (a missing one reads as deleted).
-          OR g.id IN (SELECT value FROM json_each(?3))
+          OR g.id IN (SELECT value FROM json_each(?3)))
+         -- A season's game boards never show on Home: their season board does (migration 0017).
+         AND g.season_id IS NULL
        ORDER BY g.updated_at DESC`,
     )
     .bind(clientId, limit, JSON.stringify(seen))
@@ -1023,6 +1377,12 @@ export async function listGamesForClient(
     return m;
   };
   const liveBy = group(live.results as (LiveRow & { game_id: string })[]);
+  // Season boards (migration 0017): the game on now or next, from their game boards.
+  const seasons = await seasonSummariesFor(
+    db,
+    rows.filter((r) => r.kind === "season"),
+    Date.now(),
+  );
   const scoresBy = group(scores.results as (ScoreRow & { game_id: string })[]);
   const manualBy = group(manual.results as (ManualWinnerRow & { game_id: string })[]);
   const squareRows = drawnSquares.results as (SquareRow & { game_id: string })[];
@@ -1037,7 +1397,8 @@ export async function listGamesForClient(
     const boardScores = (scoresBy.get(r.id) ?? []).map(rowToScore);
     const manualWinners = (manualBy.get(r.id) ?? []).map(rowToManual);
     const results = resolveResults({ game, squares, scores: boardScores, manualWinners });
-    return {
+    const season = seasons.get(r.id) ?? null;
+    const summary: GameSummary = {
       id: game.id,
       name: game.name,
       sport: game.sport,
@@ -1072,6 +1433,17 @@ export async function listGamesForClient(
       version: r.version,
       // Boards for the same game (migration 0012): Home shows them together.
       group: r.board_group ?? null,
+    };
+    if (r.kind !== "season") return summary;
+    // A season board reads as the game on now or next: its kickoff, its feed and score.
+    const current = season?.current ?? null;
+    return {
+      ...summary,
+      kind: "season",
+      season,
+      startsAt: current?.startsAt ?? null,
+      latestScore: current?.score ?? null,
+      leaderPlayerId: null,
     };
   });
 }
@@ -1174,7 +1546,7 @@ const HOST_TOKENS_MAX = 200;
  */
 export async function hostTokensFor(db: D1Database, clientId: string): Promise<Record<string, string>> {
   const { results } = await db
-    .prepare(`SELECT id, admin_token FROM games WHERE host_client_id = ? ORDER BY created_at DESC LIMIT ?`)
+    .prepare(`SELECT id, admin_token FROM games WHERE host_client_id = ? AND season_id IS NULL ORDER BY created_at DESC LIMIT ?`)
     .bind(clientId, HOST_TOKENS_MAX)
     .all<{ id: string; admin_token: string }>();
   return Object.fromEntries(results.map((r) => [r.id, r.admin_token]));
@@ -1184,6 +1556,8 @@ export async function hostTokensFor(db: D1Database, clientId: string): Promise<R
 
 /** A board that hasn't moved in this long, with its kickoff past (or none), no longer goes round on the club's TV. */
 const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
+/** A season's game board goes round on the club's TV from this long before its kickoff (and while it's on). */
+const CLUB_SEASON_SOON_MS = 6 * 60 * 60_000;
 
 /**
  * The open and live boards `clientId` (a Club Pass holder's canonical
@@ -1201,11 +1575,17 @@ export async function clubBoards(db: D1Database, clientId: string, now: number, 
        FROM games g
        WHERE g.host_client_id = ?1 AND g.status IN ('open', 'locked')
          AND (g.updated_at >= ?2 OR g.starts_at >= ?3)
+         -- A season board shows while squares are picked; then its game boards do, only the
+         -- one on now or kicking off within the next few hours (migration 0017).
+         AND NOT (g.kind = 'season' AND g.status <> 'open')
+         AND (g.season_id IS NULL
+              OR EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = g.id AND l.state = 'in')
+              OR (g.starts_at BETWEEN ?5 AND ?6 AND NOT EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = g.id AND l.state = 'post')))
        ORDER BY EXISTS (SELECT 1 FROM live_status l WHERE l.game_id = g.id AND l.state = 'in') DESC,
                 g.status = 'locked' DESC, g.starts_at IS NULL, g.starts_at, g.created_at DESC
        LIMIT ?4`,
     )
-    .bind(clientId, now - CLUB_BOARD_STALE_MS, now - 12 * 60 * 60_000, limit)
+    .bind(clientId, now - CLUB_BOARD_STALE_MS, now - 12 * 60 * 60_000, limit, now - 6 * 60 * 60_000, now + CLUB_SEASON_SOON_MS)
     .all<{ id: string; name: string; status: string; format: string; starts_at: number | null; linked_event: string | null; claimed: number }>();
   return results.map((r) => {
     const format = json<GameFormat>(r.format, { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false });

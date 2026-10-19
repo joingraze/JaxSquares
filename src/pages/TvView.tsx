@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { unitOf } from "../../shared/formats";
+import { featuredSeasonGame } from "../../shared/season";
 import { drawFor, gridSize, resolveResults } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
 import { ChevronLeftIcon, ExpandIcon, MoonIcon, ShrinkIcon, SunIcon, WifiOffIcon } from "../components/icons";
@@ -177,6 +178,13 @@ export function TvScreen({ id, onExit, hideClub, panelFooter, celebrate: arrived
       </Button>
     </div>
   );
+
+  // A drawn season board on the TV shows its game on now, else the next one (its own board, live);
+  // the season board's state, followed here, moves it on to the next game when this one's over.
+  const seasonGame = state?.season && state.game.status !== "open" && state.game.status !== "draft" ? (featuredSeasonGame(state.season.games, Date.now())?.id ?? null) : null;
+  if (seasonGame && seasonGame !== id) {
+    return <TvScreen key={seasonGame} id={seasonGame} onExit={onExit} hideClub={hideClub} panelFooter={panelFooter} />;
+  }
 
   if (notFound || (!state && (error || loading))) {
     return (

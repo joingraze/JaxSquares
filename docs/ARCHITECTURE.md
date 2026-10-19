@@ -32,7 +32,9 @@ exception so far: the public-id rename below, which closed an impersonation hole
   TV; never offered in the iOS app; see "The Club Pass"). Creating a board, inviting and picking
   squares are free, and so is drawing a board whose squares 5 or fewer players
   hold (the free tier: `FREE_PLAYER_LIMIT` / `isFreeDraw` in
-  `shared/hostFee.ts`); JaxSquares never sells squares. With `PAYMENTS_MODE` unset
+  `shared/hostFee.ts`); JaxSquares never sells squares. A **season board** pays
+  one fee ($14.99) at its own draw for every game of the season (see "Season
+  boards"). With `PAYMENTS_MODE` unset
   the app runs a clearly labeled no-charge test checkout (and test pass). See
   docs/payments.md and "The host fee" below.
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
@@ -161,7 +163,10 @@ Model, merge rules and setup: docs/auth.md. In short:
   stamped in `games.draw_reminder_at`, migration 0009), unless the board is
   free (5 or fewer players hold squares; left out in SQL, unstamped) or the
   host's Host Pass covers it (`holdersOfActivePass`): Jax draws those at
-  kickoff. Once an hour (UTC minute
+  kickoff. Each minute it also reads up to 5 drawn season boards' schedules
+  that are due (about every 12 hours each, within the hour after a failed
+  read) and gives new games their boards (`syncSeasons`, see "Season boards").
+  Once an hour (UTC minute
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
@@ -189,20 +194,22 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
 | GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full |
+| GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color, logo on ESPN's CDN), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
+| GET | `/api/season/schedule?league=<linked league>&team=<id>[&year=2026]` | – | – | `TeamScheduleResponse` `{ team, year, events }`: one team's season (regular season, then the postseason games scheduled so far; the NBA's play-in too), every game in order, a finished one with its `result`; `homeId`/`awayId`, `label` ("Week 7", "Wild Card"), `playoff`. 200 `unavailable` when ESPN is down; 400 bad league, team or year |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push |
-| DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board |
-| POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push. A season's game board: 409 (`SEASON_ERRORS.childEdit`); a season board's `format` and `name` reach its games' boards (see "Season boards") |
+| DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board. A season board takes its games' boards with it; a season's game board is 409 (`SEASON_ERRORS.childDelete`) |
+| POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them, or on a season's game board (`SEASON_ERRORS.childJoin`: players join the season board); 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
-| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has its host's plan's limit (`cohostLimitOf`: `MAX_COHOSTS`, 3, or `CLUB_MAX_COHOSTS`, 10, on a Club Pass holder's board); 429 |
+| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`; 409 on a season's game board: invite on the season board, `SEASON_ERRORS.childCohost`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has its host's plan's limit (`cohostLimitOf`: `MAX_COHOSTS`, 3, or `CLUB_MAX_COHOSTS`, 10, on a Club Pass holder's board); 429 |
 | POST | `/api/games/:id/cohosts/accept` | C | `CohostAcceptInput` `{ token }` | `{ state }`: the caller (a player on the board, not its host) becomes a co-host; the invite is used up in the same transaction, which re-checks it's unused and unexpired and that the board has room. Already a co-host: `{ state }`, the link stays unused. 400 malformed token, 403 not on the board ("Join the board first…"), 404 unknown link, 409 the host's own link or the board is full, 410 used or expired; 429. Logs a `cohost` activity and pushes `cohost-accepted` to the host |
 | DELETE | `/api/games/:id/cohosts/:playerId` | C H | – | `{ state }`: the host removes a co-host (public id), or a co-host steps down (their own id; any other id is 403 for a co-host). They stay on the board. 404 when that id isn't a co-host |
-| POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
+| POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 409 on a season's game board (`SEASON_ERRORS.childClaim`; release too); 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
-| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers; a co-host too). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's, by canonical clientId, so a co-host's own pass counts, or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
-| POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
+| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers; a co-host too). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's, by canonical clientId, so a co-host's own pass counts, or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`). A season board's draw (its season fee) reads the schedule again, gives every game ahead a board and sends one `numbers-drawn`; 409 when no game is left to play (`SEASON_ERRORS.noGames`) |
+| POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`; 409 on a season board (`SEASON_ERRORS.seasonScores`: scores go on its games' boards, like winners). Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
 | DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
@@ -738,10 +745,15 @@ score, q1, q2, q3, final.
 - `shared/*` – game rules + types (`playerId.ts` = public id derivation, `hostFee.ts` = the free tier: `FREE_PLAYER_LIMIT`, `isFreeDraw`; `sports.ts` = leagues, sports and each game's moments; `sportWords.ts` = kickoff or tip-off).
   `worker/db.ts`, `worker/index.ts`, `worker/service.ts`, `worker/room.ts`
   (GameRoom DO), `worker/playerIds.ts`, `worker/rateLimit.ts`,
-  `worker/housekeeping.ts`, `migrations/*` – core API.
+  `worker/housekeeping.ts`, `worker/season.ts` (season boards), `worker/clean.ts`,
+  `worker/ids.ts`, `migrations/*` – core API. `shared/season.ts` = season
+  boards' pure rules.
 - `worker/scores/*` – ESPN schedule + live score provider and the `ScoreHub`
-  Durable Object. Exports `scheduleRoutes` (Hono), `liveVia(env, event)`
-  (live scores through the hub) and `fetchLiveForEvent(event)`.
+  Durable Object. Exports `scheduleRoutes` (Hono, with `/season/teams` and
+  `/season/schedule`), `liveVia(env, event)` (live scores through the hub),
+  `fetchLiveForEvent(event)`, and for season boards `teamSeasonVia(env,
+  league, teamId, year)` (never throws; null when ESPN can't say),
+  `isTeamId`, `isSeasonYear`.
 - `worker/payments/*` – Stripe + IAP + test checkout, and the Host Pass
   (`pass.ts`, `passStripe.ts`, `passApple.ts`, `passRoutes.ts`; the App Store
   JWS check in `appleJws.ts` / `x509.ts`). Exports `paymentsRoutes` (Hono),
@@ -929,6 +941,28 @@ the game and rules as one fixed card (`review-same-game`). Create sends
 `fromGameId` (with that board's admin token when this device holds it). Its
 draft is kept apart (`WizardDraft.from`): a flow only picks up its own kind.
 
+"A whole season" (season boards, see "Season boards"): under the sport, "One
+game | A whole season" (`board-scope`). With a season the Custom chip goes
+away and the league's games give way to `SeasonPicker`
+(`src/features/create/SeasonPicker.tsx`, the game step's `seasonPanel`): "A
+team's season | Pick games" (`season-scope`); a team's season shows the
+league's teams (`GET /api/season/teams`, `useSeasonTeams`: logos, a search),
+then the team's season (`GET /api/season/schedule`, `useTeamSeason`: games
+left, the next three, "Playoff games join the season as they're set"), with a
+retry and "Pick games" when it can't load; picked games are the league's own
+week or day lists with each row a check (`LeagueGames` with `multi`). Then
+"Same numbers all season | New numbers every game" (`season-numbers`). The
+matchup is a `season` one (`SeasonMatchup`: the axes from `seasonAxes`, the
+games ahead from `seasonGamesAhead`); Next waits for a team, its schedule, or
+a game ahead. The other steps are the same (rules and prizes for every
+game). Review's game card says "Jaguars 2026 season · 17 games so far", the
+next game and the numbers choice (`review-season`); the board is named
+"Jaguars Season Squares" until the host types one; Create reads "Create
+season board" and the fee line "… $14.99 for the whole season with more."
+(`createFeeLine(price, true)`, `useHostFee(true, "season")`). The draft keeps
+the scope, numbers, each league's team and picks (`WizardDraft.boardScope`,
+`seasonScope`, `seasonNumbers`, `seasonTeams`, `seasonPicks`).
+
 - The step is the URL, `/new?step=game|format|prizes|details|review`; Next
   pushes a history entry, so the browser's back and the iOS swipe go back a
   step. Each entry's state carries `wizardDepth` (entries pushed since the
@@ -1099,6 +1133,97 @@ square prices (a $1, a $5 and a $20 board). Pure rules in `shared/siblings.ts`.
   boards by name (`invite-boards`); share text adds only the count
   (`inviteMessage`: "Grab a square on my Chiefs vs Bills board 🏈 · This game
   has 3 boards", `boardCountLine`).
+
+## Season boards
+
+One board for a whole season: a team's games, playoffs included as they're
+scheduled, or games the host picks from a league's lists. Players pick
+squares once, on the season board; at its draw (and its one host fee) every
+game still to come gets a board of its own, scored live like any linked
+board. Pure rules in `shared/season.ts` (tested in `shared/season.test.ts`),
+orchestration in `worker/season.ts`, the provider in `worker/scores`, D1 in
+`worker/db.ts`.
+
+- **What it covers** (`SeasonInput` on `POST /api/games`, `parseSeasonInput`):
+  `scope` `team` (a team's season: `team` with its provider id, `year`) or
+  `games` (the picks); `numbers` `same` (one draw for every game, the classic
+  season grid) or `fresh` (each game's board draws its own when it's made);
+  `events`, the games as the host saw them (`SeasonEvent`, the ones not
+  started, at most `MAX_SEASON_GAMES`, 120). A league with live scores only
+  (no custom season). Every game uses the season board's rules and prizes
+  (one `GameFormat`). The axes: the team across the top and "Opponent" down
+  the side for a team's season (each game's board puts the team on X and the
+  opponent on Y, whichever is home), "Away" and "Home" for picked games.
+  `games.starts_at` is the first game's kickoff; `linked_event` stays NULL (a
+  season board has no feed of its own: no room polling, no draw reminder, no
+  draw at kickoff; the host draws it).
+- **Data** (migration `0017_season.sql`, core, only `worker/db.ts`):
+  `games.kind` (`board` | `season`), `games.season` (the season board's
+  `SeasonSpec` plus the events it knows, JSON), `games.season_id` and
+  `games.season_event` on each game's board (unique together: one board per
+  game, so the draw and the cron can't both make one), `games.season_synced_at`
+  (the cron's last read; indexed for drawn season boards). No new table keyed
+  by a clientId: a game's board copies the season board's `players` and
+  `squares` rows, which the sign-in merge already moves (every board's).
+- **The draw** (`POST /lock` on the season board): the fee as any board (402,
+  the free tier counting the season board's players, a Host or Club Pass;
+  `SEASON_BOARD_PRICE_CENTS`, docs/payments.md "Season boards"). It reads the
+  team's schedule again (`seasonSchedule`; picks as stored), refuses a season
+  with nothing left to play (409), draws the season's numbers
+  (`seasonNumbers`: one draw, or none with `fresh`) and then
+  `syncSeasonGames` makes each game's board in one batch
+  (`db.seasonGameStatements`: locked, paid through the season board, provider
+  `season`, reference its id, amount 0, the season board's host, admin token,
+  rules, prizes, players and squares, numbers `gameNumbers`, a quiet `locked`
+  activity, linked to its event so its room polls the score). One
+  `numbers-drawn` push and email for the season board ("Numbers are in for
+  the whole season"), none per game.
+- **The cron** (`syncSeasons`, every minute, 5 due season boards a tick,
+  `SEASON_SYNC_MS` 12 h apart, `SEASON_RETRY_MS` after a failed read): a
+  team's season gets boards for new games (playoffs) and moved kickoffs
+  (flexed games not started), a picked season only what's stored. It ends
+  the season board (`final`) once every game's board is final and nothing more
+  is scheduled, a team's season 14 days after its last game (a late playoff
+  game still lands). Season boards that fail (provider down) are read again
+  within the hour; the cron fails open on a database without 0017.
+- **A game's board** (`Game.seasonId`): never takes claims, joins, releases,
+  edits, co-host invites or deletion (409, `SEASON_ERRORS`), never shows on
+  Home or in `/api/me` host tokens, is never a group's sibling, and its
+  winners are its own (`applyLiveUpdate` decides them, then touches the season
+  board so its schedule and standings move: `touchSeason`, one commit and a
+  room push, no notification). Its players get its winner and final pushes
+  like any board's; a mute on the season board covers its games
+  (`subscriptionsFor` checks both ids), and its email notices go to the
+  season board's subscribers. The season board's host and co-hosts run it:
+  the admin token is the season board's (the host's devices adopt it,
+  `adoptSeasonToken`), and a co-host check reads the season board's co-hosts
+  (`RUN_BY`). Club branding follows the season board's host. `PATCH` on the
+  season board sends a new `format` to every game's board without a score yet
+  (`seasonFormatStatement`) and a new name to all of them ("Office Season ·
+  JAX @ MIA", `seasonGameName`), broadcasting the ones within a week.
+- **Public state**: `GameState.season` on the season board (`SeasonState`:
+  the spec, `games` as `SeasonGame` with each board's id, status, live state,
+  latest score and winners by moment, planned games before the draw, and
+  `standings`, `seasonStandings`: wins, games won and the display-only amount
+  through `PeriodResult`, ranked by wins then amount; public ids only);
+  `GameState.seasonGame` on a game's board (`SeasonPosition`: "Game 3 of 17",
+  the season board's id and name, the games either side). `GameSummary.kind`
+  and `.season` (`SeasonSummary`) for Home.
+- **Client**: the create flow's "One game | A whole season"
+  (`board-scope`), then `SeasonPicker` (a team grid with logos and a search,
+  the team's games left and next games, or the league's lists as checks; the
+  numbers choice) and Review's "Jaguars 2026 season · 17 games so far" (see
+  "Create flow"). The season board's page (`src/features/season`): the
+  `SeasonHeader` (the season, the game on now or next, "Join the season", my
+  place), the tabs Squares / Schedule / Standings (`SeasonSchedule`: on now,
+  coming up, played with winners, each a link to its board;
+  `SeasonStandings`, with the top 3 once the season's over), and on a game's
+  board `SeasonNav` ("Game 3 of 17 · Office Season", back to the season, the
+  games either side). Home lists the season board, as its game on now while
+  one is live (`seasonCardOf`). `/g/<season>/tv` opens the game on now or
+  next; the club TV shows a season's games while live or within 6 hours of
+  kickoff, never the drawn season board itself. Link previews: "Jaguars 2026
+  season · 17 games · Follow the season live", never an amount.
 
 ## The recap card (client)
 
@@ -1376,7 +1501,9 @@ game") and `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `stripe_customers`), push `0004_*`, auth `0010_accounts.sql`, email
 `0013_email.sql` (`email_subscriptions`, `email_suppressions`), and
 `0016_club.sql` (payments' `host_passes.plan` and clubs' `clubs`; 0015 is
-left to a parallel change).
+left to a parallel change), and `0017_season.sql` (core: `games.kind`,
+`season`, `season_id`, `season_event`, `season_synced_at`; see "Season
+boards").
 
 `worker/email/index.ts` (email notices, docs/email.md):
 ```ts

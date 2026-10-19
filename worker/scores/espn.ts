@@ -10,7 +10,7 @@
 // after either; toLiveUpdate reports them as the feed counts them and
 // shared/sports.ts maps them onto the board's moments.
 
-import type { LiveUpdate, ScheduleEvent, ScheduleWeek, Team } from "../../shared/types";
+import type { LiveUpdate, ScheduleEvent, ScheduleWeek, SeasonTeam, Team } from "../../shared/types";
 import type { LinkedLeague } from "../../shared/sports";
 
 export type { LinkedLeague };
@@ -252,6 +252,167 @@ export function parseSchedule(json: unknown, league: LinkedLeague): ScheduleEven
     out.push(item);
   }
   return out;
+}
+
+// ---- A team's season (season boards) ----
+//
+// The league's teams: GET /apis/site/v2/sports/<sport>/<league>/teams
+//   { sports: [{ leagues: [{ teams: [{ team: { id, abbreviation, displayName,
+//     shortDisplayName, name, location, color, alternateColor, isActive,
+//     logos: [{ href, rel: ["full", "default"] }] } }] }] }] }
+// (college leagues take `groups` and `limit` like the scoreboard).
+//
+// One team's schedule: GET .../teams/<id>/schedule?season=<year>&seasontype=<n>
+//   { season: { year, type, name }, requestedSeason: { year, type },
+//     team: { id, abbreviation, location, name, displayName, color, logo },
+//     events: [{ id, date, name, shortName, seasonType: { id, type, abbreviation },
+//       week: { number, text }, timeValid,
+//       competitions: [{ id, date, neutralSite, venue,
+//         competitors: [{ id, homeAway, winner, team: { id, abbreviation,
+//           displayName, shortDisplayName, location, nickname, logos: [{ href }] },
+//           score: { value, displayValue } }],
+//         status: { type: { state, completed, name, shortDetail } } }] }] }
+// Without `season` ESPN answers the current season; `seasontype` 2 is the
+// regular season, 3 the postseason (5 the NBA's play-in). A competitor's team
+// has no color here, so the season route takes colors from the teams list.
+
+interface RawSeasonTeam extends RawTeam {
+  id?: string | number;
+  shortDisplayName?: string;
+  nickname?: string;
+  logo?: string;
+  logos?: { href?: string; rel?: string[] }[];
+  isActive?: boolean;
+}
+
+/** A team's logo: the "default" one, else the first https one. Only ESPN's CDN. */
+function logoOf(raw: RawSeasonTeam): string | undefined {
+  const candidates = [...(raw.logos ?? []).filter((l) => l?.rel?.includes("default")), ...(raw.logos ?? []), { href: raw.logo }];
+  for (const l of candidates) {
+    const href = typeof l?.href === "string" ? l.href.trim() : "";
+    if (/^https:\/\/[a-z0-9.-]*espncdn\.com\/[^\s"'<>]+$/i.test(href)) return href;
+  }
+  return undefined;
+}
+
+/** A team with its provider id, short name and logo (season boards). */
+export function parseSeasonTeam(raw: RawSeasonTeam | undefined): SeasonTeam | null {
+  if (!raw) return null;
+  const id = raw.id === undefined || raw.id === null ? "" : String(raw.id).trim();
+  const team = parseTeam(raw);
+  if (!team || !/^[A-Za-z0-9-]{1,16}$/.test(id)) return null;
+  const out: SeasonTeam = { id, ...team };
+  const short = raw.shortDisplayName?.trim() || raw.nickname?.trim() || raw.name?.trim();
+  if (short) out.shortName = short;
+  const logo = logoOf(raw);
+  if (logo) out.logo = logo;
+  return out;
+}
+
+export function teamsUrl(league: LinkedLeague): string {
+  const params = new URLSearchParams(LEAGUE_PARAMS[league] ?? {});
+  // The whole list in one page (college has hundreds of teams).
+  params.set("limit", "1000");
+  return `${SITE_API}/${LEAGUE_PATH[league]}/teams?${params}`;
+}
+
+export function teamScheduleUrl(league: LinkedLeague, teamId: string, opts: { year?: number | null; seasonType?: number } = {}): string {
+  const params = new URLSearchParams();
+  if (opts.year) params.set("season", String(opts.year));
+  if (opts.seasonType) params.set("seasontype", String(opts.seasonType));
+  const query = params.toString();
+  return `${SITE_API}/${LEAGUE_PATH[league]}/teams/${encodeURIComponent(teamId)}/schedule${query ? `?${query}` : ""}`;
+}
+
+/** The league's teams from the teams endpoint, by name (inactive ones left out). */
+export function parseTeamsList(json: unknown): SeasonTeam[] {
+  const root = asRecord(json);
+  const sport = asRecord(Array.isArray(root?.sports) ? root.sports[0] : null);
+  const league = asRecord(Array.isArray(sport?.leagues) ? sport.leagues[0] : null);
+  const rows = Array.isArray(league?.teams) ? league.teams : [];
+  const seen = new Set<string>();
+  const out: SeasonTeam[] = [];
+  for (const row of rows) {
+    const raw = asRecord(asRecord(row)?.team) as RawSeasonTeam | null;
+    if (!raw || raw.isActive === false) continue;
+    const team = parseSeasonTeam(raw);
+    if (!team || seen.has(team.id) || isPlaceholderTeam(team)) continue;
+    seen.add(team.id);
+    out.push(team);
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** True when the body looks like a team schedule (an `events` array, possibly empty). */
+export const isTeamSchedule = isScoreboard;
+
+interface RawScheduleCompetitor extends Omit<RawCompetitor, "score" | "team"> {
+  id?: string | number;
+  team?: RawSeasonTeam;
+  score?: string | number | { value?: number; displayValue?: string };
+}
+
+interface RawScheduleEvent extends Omit<RawEvent, "competitions"> {
+  seasonType?: { id?: string | number; type?: number; abbreviation?: string };
+  week?: { number?: number; text?: string };
+  competitions?: (Omit<RawCompetition, "competitors"> & { competitors?: RawScheduleCompetitor[] })[];
+}
+
+function scoreValue(raw: RawScheduleCompetitor["score"]): number | null {
+  if (raw && typeof raw === "object") return toNumber(raw.value) ?? toNumber(raw.displayValue);
+  return toNumber(raw);
+}
+
+/**
+ * One team's schedule: its team, the season year ESPN filed it under, and
+ * every game (finished ones with their result). Playoff games carry
+ * `playoff`; a week's name ("Week 7", "Wild Card") is the label. TBD
+ * playoff slots are skipped, like the scoreboard's.
+ */
+export function parseTeamSchedule(json: unknown, league: LinkedLeague): { team: SeasonTeam | null; year: number | null; events: ScheduleEvent[] } {
+  const root = asRecord(json);
+  const team = parseSeasonTeam(asRecord(root?.team) as RawSeasonTeam | undefined);
+  const year = toNumber(asRecord(root?.requestedSeason)?.year) ?? toNumber(asRecord(root?.season)?.year);
+  const events: ScheduleEvent[] = [];
+  const raws = Array.isArray(root?.events) ? (root.events.filter((e) => asRecord(e)) as RawScheduleEvent[]) : [];
+  for (const event of raws) {
+    const competition = event.competitions?.[0];
+    const sides = homeAndAway(competition?.competitors as RawCompetitor[] | undefined) as [RawScheduleCompetitor, RawScheduleCompetitor] | null;
+    const startsAt = Date.parse(competition?.date ?? event.date ?? "");
+    if (!event.id || !sides || !Number.isFinite(startsAt)) continue;
+    const home = parseSeasonTeam(sides[0].team);
+    const away = parseSeasonTeam(sides[1].team);
+    if (!home || !away || isPlaceholderTeam(home) || isPlaceholderTeam(away)) continue;
+    const plain = (t: SeasonTeam): Team => ({ name: t.name, ...(t.abbr ? { abbr: t.abbr } : {}), ...(t.color ? { color: t.color } : {}) });
+    const state = parseState(competition?.status ?? event.status);
+    const item: ScheduleEvent = {
+      eventId: String(event.id),
+      league,
+      name: event.name || `${away.name} at ${home.name}`,
+      shortName: event.shortName || `${away.abbr ?? away.name} @ ${home.abbr ?? home.name}`,
+      startsAt,
+      home: plain(home),
+      away: plain(away),
+      state,
+      homeId: home.id,
+      awayId: away.id,
+    };
+    const seasonType = toNumber(event.seasonType?.type) ?? toNumber(event.seasonType?.id);
+    if (seasonType === 3 || seasonType === 5) item.playoff = true;
+    const label = event.week?.text?.trim();
+    if (label && label.length <= 40) item.label = label;
+    const venue = parseVenue(competition?.venue);
+    if (venue) item.venue = venue;
+    if (competition?.neutralSite === true) item.neutralSite = true;
+    if (state === "post") {
+      const h = scoreValue(sides[0].score);
+      const a = scoreValue(sides[1].score);
+      if (h !== null && a !== null) item.result = { home: h, away: a };
+    }
+    events.push(item);
+  }
+  events.sort((a, b) => a.startsAt - b.startsAt);
+  return { team, year: year !== null && Number.isInteger(year) && year > 1900 ? year : null, events };
 }
 
 // ---- Season calendar ----

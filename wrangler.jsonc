@@ -37,7 +37,8 @@
     { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
     { "tag": "v2", "new_sqlite_classes": ["ScoreHub"] }
   ],
-  // Wake rooms of linked games that are about to start or in progress.
+  // Wake rooms of linked games that are about to start or in progress, and
+  // read season boards' team schedules for new games (about twice a day each).
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
     "APP_ORIGIN": "https://jaxsquares.com",
@@ -45,6 +46,10 @@
     // App Store keys are added as secrets; then set it to "live".
     "BOARD_PRICE_CENTS": "499",
     "IAP_PRODUCT_ID": "com.jaxsquares.app.board",
+    // A season board's one host fee, at its draw, for every game of the season
+    // (docs/payments.md "Season boards"). Its own App Store consumable.
+    "SEASON_BOARD_PRICE_CENTS": "1499",
+    "IAP_SEASON_PRODUCT_ID": "com.jaxsquares.app.seasonboard",
     // The Host Pass, yearly (docs/payments.md "Host Pass"). In live mode the web
     // sells it only once STRIPE_HOST_PASS_PRICE_ID names the Stripe Price.
     "HOST_PASS_PRICE_CENTS": "1999",

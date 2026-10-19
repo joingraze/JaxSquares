@@ -138,8 +138,8 @@ function HostPanel({
   const hostPass = useHostPass(unpaid);
   const covered = unpaid && !free && hostPass.active;
   const fee = unpaid && !free && !covered;
-  // Have the price (and the checkout config) ready while the fee is due.
-  const { price, payments } = useHostFee(fee);
+  // Have the price (and the checkout config) ready while the fee is due: a season board's one fee is its own.
+  const { price, payments } = useHostFee(fee, game.kind ?? "board");
   const summary = hostSummary(state, price, Date.now(), hostPass.active);
 
   // No confetti over the host's own controls: bursts (a win on the board, a
@@ -299,7 +299,9 @@ function HostPanel({
   const draw = async (from: GameState, probe = false) => {
     setOpen(false);
     revealClosed.current = false;
-    if (!probe) setReveal({ draw: null, label: null, state: from });
+    // A season whose games each draw their own numbers has nothing to reveal here: its games' boards do.
+    const freshSeason = from.season?.numbers === "fresh";
+    if (!probe && !freshSeason) setReveal({ draw: null, label: null, state: from });
     const next = await actions.lock();
     if (next === PAY_FIRST) {
       // The fee turned out to be due (an older copy of the board said paid, or
@@ -314,6 +316,17 @@ function HostPanel({
     if (!next) {
       setReveal(null);
       later(() => openSheet("lock"), 60);
+      return;
+    }
+    if (freshSeason) {
+      void haptic("success");
+      const n = next.season?.games.filter((g) => g.id).length ?? 0;
+      toast.show({
+        id: "host-saved",
+        tone: "success",
+        title: "The season is set",
+        description: `${n} ${n === 1 ? "game has" : "games have"} a board. Each draws its own numbers.`,
+      });
       return;
     }
     const { key, draw } = revealDraw(next.game);

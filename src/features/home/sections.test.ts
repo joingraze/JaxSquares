@@ -19,6 +19,7 @@ import {
   primaryActionId,
   relationOf,
   sectionOf,
+  seasonCardOf,
   withState,
 } from "./sections";
 
@@ -533,5 +534,46 @@ describe("boardBuzz", () => {
     expect(boardBuzz(open([act({ actor: null, type: "locked", data: {} })]), ME, now)).toBeNull();
     expect(boardBuzz(open([act({ at: now - BUZZ_WINDOW_MS - 1 })]), ME, now)).toBeNull();
     expect(boardBuzz(open([act({ type: "released" })]), ME, now)).toBeNull();
+  });
+});
+
+describe("a season board on Home", () => {
+  const NOW = Date.UTC(2026, 9, 18, 17);
+  const next = {
+    id: "c3",
+    eventId: "e3",
+    index: 3,
+    startsAt: NOW + 2 * 3_600_000,
+    teamX: { name: "Jacksonville Jaguars", abbr: "JAX" },
+    teamY: { name: "Houston Texans", abbr: "HOU" },
+    status: "locked" as const,
+    live: null,
+    score: null,
+    winners: [],
+  };
+  const season = (over: Partial<GameSummary> = {}) =>
+    summary({ kind: "season", status: "locked", mySquares: 3, season: { label: "Jaguars 2026 season", games: 17, played: 2, current: next }, ...over });
+
+  it("waits under Up next between games, with its next game and how far along it is", () => {
+    const g = season();
+    expect(sectionOf(g)).toBe("next");
+    const card = cardModel(g, NOW);
+    expect(card.meta).toBe("2 of 17 games played");
+    expect(card.statusTone).toBe("brand");
+    expect(card.action).toBeNull();
+  });
+
+  it("is live while one of its games is on, as that game's teams and score", () => {
+    const g = season({ season: { label: "Jaguars 2026 season", games: 17, played: 2, current: { ...next, live: "in", score: { scoreX: 7, scoreY: 3, label: "Q2 4:12" } } } });
+    expect(sectionOf(g)).toBe("live");
+    const shown = seasonCardOf(g);
+    expect(shown.teamY.name).toBe("Houston Texans");
+    expect(shown.live).toMatchObject({ state: "in", scoreX: 7, scoreY: 3, detail: "Q2 4:12" });
+    // Any other board as it is.
+    expect(seasonCardOf(summary())).toEqual(summary());
+  });
+
+  it("invites with the season's name", () => {
+    expect(inviteModel(season({ status: "open", joined: false, mySquares: 0 }), NOW).matchup).toBe("Jaguars 2026 season");
   });
 });

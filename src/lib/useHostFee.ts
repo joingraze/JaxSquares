@@ -4,7 +4,7 @@
 // price (App Store guideline 3.1.1), never the web one.
 
 import { useEffect, useState } from "react";
-import type { PaymentConfig } from "../../shared/types";
+import type { BoardKind, PaymentConfig } from "../../shared/types";
 import { fetchAppConfig, hostFeePrice } from "./checkout";
 import { platform } from "./native";
 
@@ -15,8 +15,11 @@ export interface HostFee {
   payments: PaymentConfig | null;
 }
 
-/** Loads the fee when `enabled` (e.g. only on a board whose fee is still due). */
-export function useHostFee(enabled = true): HostFee {
+/**
+ * Loads the fee when `enabled` (e.g. only on a board whose fee is still due):
+ * one board's, or a season board's one fee for the season (`kind` "season").
+ */
+export function useHostFee(enabled = true, kind: BoardKind = "board"): HostFee {
   const [payments, setPayments] = useState<PaymentConfig | null>(null);
   const [price, setPrice] = useState<string | null>(null);
   useEffect(() => {
@@ -26,13 +29,13 @@ export function useHostFee(enabled = true): HostFee {
       .then(async ({ payments: config }) => {
         if (!live) return;
         setPayments(config);
-        const shown = await hostFeePrice(config, platform());
+        const shown = await hostFeePrice(config, platform(), kind);
         if (live) setPrice(shown);
       })
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [enabled]);
+  }, [enabled, kind]);
   return { price, payments };
 }

@@ -15,6 +15,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { COHOST_PARAM, cohostIdsOf, isCohostOf, isCohostToken } from "../../shared/cohosts";
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
+import { isSeasonBoard, isSeasonGame } from "../../shared/season";
 import { siblingCheckOf, siblingProblem } from "../../shared/siblings";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import { sportWords } from "../../shared/sportWords";
@@ -63,6 +64,8 @@ import { Ticker } from "../features/board/Ticker";
 import { useTicker } from "../features/board/useTicker";
 import { useNow } from "../features/board/useNow";
 import { SiblingBoards } from "../features/board/SiblingBoards";
+import { SeasonHeader, SeasonNav, SeasonSchedule, SeasonStandings, SeasonTabs } from "../features/season/SeasonParts";
+import { defaultSeasonTab, type SeasonTab } from "../features/season/seasonView";
 import { siblingCreatePath } from "../features/create/sibling";
 import { HostControls, loadHostTools } from "../features/host/hostTools";
 import { RecapCta, RecapPill } from "../features/recap/RecapCta";
@@ -78,7 +81,7 @@ import { boardViewPath } from "../lib/boardViews";
 import { useEmailEnabled } from "../lib/emailNotices";
 import { pluralize, teamVars } from "../lib/format";
 import { useHostRole } from "../lib/hostRole";
-import { getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
+import { adoptSeasonToken, getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -198,6 +201,8 @@ export default function GameView() {
   const [pick, setPick] = useState<{ prompt: string } | null>(null);
   const pickResolve = useRef<((cell: Cell | null) => void) | null>(null);
   const [busy, setBusy] = useState(false);
+  /** A season board's tab (Squares, Schedule, Standings); null = where its status says to start. */
+  const [seasonTab, setSeasonTab] = useState<SeasonTab | null>(null);
   // Host tapped remove on a player's row: the host tools open the confirm.
   const [removeRequest, setRemoveRequest] = useState<string | null>(null);
   const clearRemoveRequest = useCallback(() => setRemoveRequest(null), []);
@@ -249,7 +254,12 @@ export default function GameView() {
   const wantHostTools = hostDevice || isHost;
   // A board I'm neither on nor hosting (an invite link, including one whose state came with the
   // page) is remembered as "seen", so Home can offer it back until I pick squares or hide it.
-  const seenGameId = game && !joined && !isHost && !hostDevice && game.status !== "final" ? game.id : null;
+  // A season's game board runs on its season board's admin token: the host's device takes it here.
+  const seasonOf = game?.seasonId ?? null;
+  useEffect(() => {
+    if (id && seasonOf) adoptSeasonToken(id, seasonOf);
+  }, [id, seasonOf]);
+  const seenGameId = game && !joined && !isHost && !hostDevice && game.status !== "final" && !game.seasonId ? game.id : null;
   useEffect(() => {
     if (seenGameId) rememberSeen(seenGameId);
   }, [seenGameId]);
@@ -970,6 +980,10 @@ export default function GameView() {
   // ---- render: the board ----
 
   const open = game.status === "open";
+  // A season board: its header, then Squares, Schedule and Standings (src/features/season).
+  const season = isSeasonBoard(game) && state.season ? state.season : null;
+  const tab: SeasonTab = seasonTab ?? defaultSeasonTab(game.status);
+  const seasonPage = !!season && tab !== "squares";
   // Host tools render only on a device that runs the board: the host's (the admin token) or a co-host's.
   const hostBar = role !== null;
   // The host on another device (opened the host link) isn't invited to their own board.
@@ -1017,6 +1031,9 @@ export default function GameView() {
     scoreHidden && headline && phase !== "open" && phase !== "draft"
       ? `${abbr(game.teamX)} ${headline.scoreX}–${headline.scoreY} ${abbr(game.teamY)}${phase === "live" ? ` · ${headline.detail}` : phase === "final" ? " · Final" : ""}`
       : null;
+  // A season's game: its matchup up top ("JAX @ HOU"); the season bar under it names the season.
+  const seasonPrefix = state.seasonGame ? `${state.seasonGame.name} · ` : null;
+  const barTitle = seasonPrefix && game.name.startsWith(seasonPrefix) ? game.name.slice(seasonPrefix.length) : game.name;
   const sectionTitle = "eyebrow mb-2 px-1 text-ink-subtle";
   const wonKeys = new Set(
     myWinResults.flatMap((r) => [
@@ -1038,7 +1055,7 @@ export default function GameView() {
   return (
     <div style={teamVars(game.teamX, game.teamY, theme)} className="flex flex-1 flex-col">
       <TopBar
-        title={compactTitle ?? game.name}
+        title={compactTitle ?? barTitle}
         large={false}
         back
         trailing={
@@ -1052,7 +1069,7 @@ export default function GameView() {
               haptic="light"
             />
             {/* Email notices (docs/email.md) for players: shown once the server has email set up. */}
-            {joined && emailEnabled && (
+            {joined && emailEnabled && !game.seasonId && (
               <IconButton data-testid="board-notify" label="Notifications for this board" icon={<BellIcon size={21} />} onClick={() => setBoardNotify(true)} haptic="light" />
             )}
             <IconButton label="Invite friends" icon={<ShareIcon size={22} />} onClick={share} haptic="light" />
@@ -1068,19 +1085,35 @@ export default function GameView() {
           </p>
         )}
 
+        {/* A season's game board: which game of how many, the season board and the games either side. */}
+        {state.seasonGame && <SeasonNav position={state.seasonGame} />}
+
         {/* A Club Pass holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
         <ClubBanner game={game} />
 
-        {/* A newcomer gets the invite hero (matchup, who's in, squares left) in place of the scoreboard. */}
+        {/* A newcomer gets the invite hero (matchup, who's in, squares left) in place of the scoreboard; a season board, its season. */}
         <div ref={scoreRef}>
-          {newcomer ? (
+          {season ? (
+            <SeasonHeader state={state} season={season} me={me} now={now} onJoin={newcomer ? () => setJoinOpen(true) : undefined} />
+          ) : newcomer ? (
             <InviteHero state={state} watching={watching} onJoin={() => setJoinOpen(true)} />
           ) : (
             <Scorebug state={state} watching={watching} connection={connection} nextLabel={next?.label ?? null} now={now} />
           )}
         </div>
 
-        {picking && !pick && <PrizeLineup game={game} onOpen={openRules} />}
+        {season && (
+          <SeasonTabs
+            tab={tab}
+            onTab={(t) => {
+              setSeasonTab(t);
+              setSpot(null);
+              setCallout(null);
+            }}
+          />
+        )}
+
+        {picking && !pick && !seasonPage && <PrizeLineup game={game} onOpen={openRules} />}
 
         {/* My wins, one slim row. Out of the way while the host taps a square. */}
         {!pick &&
@@ -1121,10 +1154,13 @@ export default function GameView() {
           </div>
         )}
 
-        {welcome && joined && <JoinedCard state={state} onDismiss={dismissWelcome} />}
+        {welcome && joined && !seasonPage && <JoinedCard state={state} onDismiss={dismissWelcome} />}
+
+        {season && tab === "schedule" && <SeasonSchedule season={season} players={state.players} me={me} now={now} />}
+        {season && tab === "standings" && <SeasonStandings state={state} season={season} me={me} />}
 
         {/* ---- the grid ---- */}
-        <section ref={boardRef} aria-label="Squares" className="-mx-2 scroll-mt-24">
+        <section ref={boardRef} aria-label="Squares" hidden={seasonPage} className="-mx-2 scroll-mt-24">
           {nowView && !pick ? (
             <div className="mb-2 px-2">
               <RightNow
@@ -1250,8 +1286,8 @@ export default function GameView() {
         {/* ---- the other boards for this game ($1, $5, $20 boards): name, price, squares left ---- */}
         {!pick && state.siblings && state.siblings.length > 0 && <SiblingBoards siblings={state.siblings} boardName={game.name} />}
 
-        {/* ---- results ---- */}
-        {cards.length > 0 && (
+        {/* ---- results (a season board's are on its schedule) ---- */}
+        {cards.length > 0 && !season && (
           <section aria-label="Results">
             <div className="mb-2 flex items-center gap-2 px-1">
               <p className="eyebrow text-ink-subtle">{phase === "open" || phase === "draft" ? "What's up for grabs" : "Winners"}</p>
@@ -1307,7 +1343,7 @@ export default function GameView() {
         )}
 
         {/* ---- players ---- */}
-        <section aria-label="Players">
+        <section aria-label="Players" hidden={seasonPage}>
           <p className={sectionTitle}>
             Players · {state.players.length}
             {phase !== "open" && phase !== "draft" && state.squares.length > 0 ? <span className="normal-case tracking-normal"> · tap one to find their squares</span> : null}
@@ -1335,7 +1371,7 @@ export default function GameView() {
         </section>
 
         {/* ---- activity ---- */}
-        {state.activity.length > 0 && (
+        {state.activity.length > 0 && !seasonPage && (
           <section aria-label="Activity">
             <p className={sectionTitle}>Activity</p>
             <ActivityFeed state={state} me={me} now={now} />
@@ -1395,7 +1431,9 @@ export default function GameView() {
           justCreated={justCreated}
           onShowTv={() => navigate(boardViewPath(game.id, "tv"))}
           onPrint={() => navigate(boardViewPath(game.id, "print"))}
-          onAddBoard={hostBar && !siblingProblem(siblingCheckOf(state), now) ? () => navigate(siblingCreatePath(game.id)) : undefined}
+          onAddBoard={
+            hostBar && !isSeasonBoard(game) && !isSeasonGame(game) && !siblingProblem(siblingCheckOf(state), now) ? () => navigate(siblingCreatePath(game.id)) : undefined
+          }
           onClose={() => {
             setInviteOpen(false);
             // Fresh from creating the board: now's the moment to offer notifications.

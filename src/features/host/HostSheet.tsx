@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import { PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { freshNumbersInfo, isFootball, presetsFor, wordsFor, type GameKind } from "../../../shared/sports";
 import { squareHolders } from "../../../shared/hostFee";
+import { SEASON_NUMBERS_INFO, currentSeasonGame, isSeasonBoard, isSeasonGame, seasonPositionLine } from "../../../shared/season";
 import { boardCountLine, siblingCheckOf, siblingProblem } from "../../../shared/siblings";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
 import { cohostIdsOf, isCohostOf } from "../../../shared/cohosts";
@@ -202,12 +203,15 @@ export function HostSheet(props: HostSheetProps) {
   const everyScore = entriesOnly(game);
   const entries = hasEntries(game);
   const started = gameStarted(state);
+  // A season board keeps its games on their own boards; a season's game follows its season board.
+  const season = isSeasonBoard(game);
+  const seasonGame = isSeasonGame(game);
 
   // ---- score entry (kept here so the footer can preview + save) ----
   const entry = useScoreEntry(state, defaultTargetKey(state));
   const [fixing, setFixing] = useState(false);
   const scoreRef = useRef<HTMLElement>(null);
-  const typedBoard = game.status === "locked" && !linked;
+  const typedBoard = game.status === "locked" && !linked && !season;
   const scoring = (game.status === "locked" || game.status === "final") && (typedBoard || fixing);
 
   // ---- "saved" line in the footer (a toast would land on the sheet's header) ----
@@ -443,7 +447,7 @@ export function HostSheet(props: HostSheetProps) {
     const f = lockFacts(state);
     const low = lockReadiness(f) === "low";
     title = <>{back()}{low ? `Lock with only ${f.claimed} in?` : "Lock & draw numbers?"}</>;
-    body = <LockConfirm state={state} fee={props.fee} covered={!!props.covered} free={!!props.free} price={props.price} />;
+    body = <LockConfirm state={state} fee={props.fee} covered={!!props.covered} free={!!props.free} price={props.price} season={season} />;
     footer = (
       <div className="flex flex-col gap-1">
         <Button
@@ -458,7 +462,7 @@ export function HostSheet(props: HostSheetProps) {
           {props.fee
             ? low
               ? `Lock & draw anyway${props.price ? ` · ${props.price}` : ""}`
-              : payToDrawLabel(props.price)
+              : payToDrawLabel(props.price, season)
             : props.free
               ? low
                 ? "Lock & draw anyway · Free"
@@ -645,7 +649,7 @@ export function HostSheet(props: HostSheetProps) {
     // One identity for the sheet the "Host tools" bar opens, whatever the state.
     title = "Host tools";
     description = hostStatusLine(state);
-    const showWinners = game.status === "locked" || game.status === "final";
+    const showWinners = (game.status === "locked" || game.status === "final") && !season;
     const rows = showWinners ? winnerRows(state) : [];
     body = (
       <div className="flex flex-col gap-6 pb-2">
@@ -660,10 +664,12 @@ export function HostSheet(props: HostSheetProps) {
               free={!!props.free}
               price={props.price}
               onPayAhead={props.onPayAhead}
+              season={season}
             />
           )}
+          {season && !picking && <SeasonHero state={state} />}
           {game.status === "locked" && linked && !fixing && <AutoHero state={state} started={started} onFix={() => setFixing(true)} />}
-          {game.status === "final" && !fixing && <FinalHero state={state} onFix={() => setFixing(true)} />}
+          {game.status === "final" && !fixing && !season && <FinalHero state={state} onFix={() => setFixing(true)} />}
 
           {scoring && (
             <section ref={scoreRef} aria-label="Score entry" className="flex scroll-mt-2 flex-col gap-3">
@@ -784,7 +790,19 @@ export function HostSheet(props: HostSheetProps) {
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
         </Link>
 
-        {(isHost || isCohostOf(game, me)) && (
+        {seasonGame && game.seasonId ? (
+          <ListGroup title="Season">
+            <ListRow
+              data-testid="host-season-link"
+              leading={<RowIcon tone="gold"><TrophyIcon size={18} /></RowIcon>}
+              title={state.seasonGame ? `${seasonPositionLine(state.seasonGame)} · ${state.seasonGame.name}` : "The season board"}
+              subtitle="Players, rules, prizes and co-hosts are set on the season board"
+              chevron
+              to={`/g/${game.seasonId}`}
+              onClick={() => void haptic("selection")}
+            />
+          </ListGroup>
+        ) : (isHost || isCohostOf(game, me)) && (
           <CohostsSection
             state={state}
             role={role}
@@ -805,7 +823,7 @@ export function HostSheet(props: HostSheetProps) {
 
         <ListGroup title="Board">
           {/* Several boards for one game ($1, $5, $20): same game and rules, another square price. */}
-          {!siblingProblem(siblingCheckOf(state), Date.now()) && (
+          {!season && !seasonGame && !siblingProblem(siblingCheckOf(state), Date.now()) && (
             <ListRow
               data-testid="host-add-board"
               leading={<RowIcon tone="gold"><PlusIcon size={18} /></RowIcon>}
@@ -816,21 +834,31 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => void haptic("selection")}
             />
           )}
-          <ListRow
-            data-testid="host-rules"
-            leading={<RowIcon tone="gold"><GiftIcon size={18} /></RowIcon>}
-            title="Rules & prizes"
-            subtitle={prizeLineup(game.format) ? prizesSummary(game.format) : rulesSummary(rulesOf(game.format, game.prizes))}
-            chevron
-            onClick={() => onView("rules")}
-          />
-          <ListRow
-            leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
-            title="Edit board"
-            subtitle={["Name", canEditKickoff(game) && wordsFor(game).startLower, picking && "max squares per player"].filter(Boolean).join(", ")}
-            chevron
-            onClick={() => onView("edit")}
-          />
+          {!seasonGame && (
+            <ListRow
+              data-testid="host-rules"
+              leading={<RowIcon tone="gold"><GiftIcon size={18} /></RowIcon>}
+              title="Rules & prizes"
+              subtitle={
+                season
+                  ? `${prizeLineup(game.format) ? prizesSummary(game.format) : rulesSummary(rulesOf(game.format, game.prizes))} · every game still to play`
+                  : prizeLineup(game.format)
+                    ? prizesSummary(game.format)
+                    : rulesSummary(rulesOf(game.format, game.prizes))
+              }
+              chevron
+              onClick={() => onView("rules")}
+            />
+          )}
+          {!seasonGame && (
+            <ListRow
+              leading={<RowIcon><PencilIcon size={18} /></RowIcon>}
+              title="Edit board"
+              subtitle={["Name", canEditKickoff(game) && !season && wordsFor(game).startLower, picking && "max squares per player"].filter(Boolean).join(", ")}
+              chevron
+              onClick={() => onView("edit")}
+            />
+          )}
           {picking && state.players.some((p) => canRemovePlayer(game, p.id, me, role)) && (
             <ListRow
               leading={<RowIcon><UsersIcon size={18} /></RowIcon>}
@@ -862,10 +890,10 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("end")}
             />
           )}
-          {isHost && (
+          {isHost && !seasonGame && (
             <ListRow
               leading={<RowIcon tone="danger"><TrashIcon size={18} /></RowIcon>}
-              title="Delete board"
+              title={season ? "Delete season board" : "Delete board"}
               destructive
               chevron
               onClick={() => onView("delete")}
@@ -1052,6 +1080,7 @@ function OpenHero({
   free,
   price,
   onPayAhead,
+  season = false,
 }: {
   state: GameState;
   onInvite: () => void;
@@ -1061,6 +1090,8 @@ function OpenHero({
   free: boolean;
   price: string | null;
   onPayAhead: () => void;
+  /** A season board: one draw (and one fee) for every game of the season. */
+  season?: boolean;
 }) {
   const { game } = state;
   const now = Date.now();
@@ -1089,13 +1120,20 @@ function OpenHero({
       disabled={nobody}
       haptic="medium"
     >
-      {fee ? payToDrawLabel(price) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw"}
+      {fee ? payToDrawLabel(price, season) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw"}
     </Button>
   );
   // Right under the draw: what a price would say on a free board, or one the Host Pass covers.
   const drawNote = free ? <FreeDrawNote key="note" className="-mt-1" /> : covered ? <PassIncluded key="note" className="-mt-1" /> : null;
   // Until it's paid for, the hint says boards with up to 5 players are free.
-  const hint = nobody
+  const upcoming = state.season?.games.filter((g) => g.startsAt > now).length ?? 0;
+  const hint = season
+    ? nobody
+      ? `Drawing turns on once someone picks a square.${fee || free ? ` ${FREE_TIER_LINE}` : ""}`
+      : upcoming === 0
+        ? "No games left to play this season, so there's nothing to draw."
+        : `Draw once everyone's in: every game still to play gets its own board.${fee ? " Bigger season boards pay once, for the whole season." : free ? ` ${FREE_TIER_LINE}` : ""}`
+    : nobody
     ? fee || free
       ? `Drawing turns on once someone picks a square.${free ? ` ${FREE_TIER_LINE}` : ""}`
       : "Lock & draw turns on once someone picks a square."
@@ -1278,7 +1316,50 @@ function Fact({ icon, children, tone = "default" }: { icon: ReactNode; children:
   );
 }
 
-function LockConfirm({ state, fee, covered, free, price }: { state: GameState; fee: boolean; covered: boolean; free: boolean; price: string | null }) {
+/** A drawn season board: how many games are played, and the one on now or next (a tap opens it). */
+function SeasonHero({ state }: { state: GameState }) {
+  const games = state.season?.games ?? [];
+  const played = games.filter((g) => g.status === "final").length;
+  const current = currentSeasonGame(games, Date.now());
+  return (
+    <div data-testid="host-season" className="rounded-card bg-surface-3 p-4 shadow-card ring-1 ring-inset ring-line-strong">
+      <p className="font-display text-title-3 font-extrabold text-ink">{state.game.status === "final" ? "The season's over" : `${played} of ${pluralize(games.length, "game")} played`}</p>
+      <p className="mt-0.5 text-footnote text-ink-muted">Each game runs on its own board: live scores, winners and fixes happen there.</p>
+      {current?.id && (
+        <Link
+          to={`/g/${current.id}`}
+          data-testid="host-season-next"
+          onClick={() => void haptic("selection")}
+          className="pressable mt-3 flex min-h-12 items-center gap-3 rounded-2xl bg-surface-4/70 px-3.5 py-2 ring-1 ring-inset ring-line"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-subhead font-extrabold text-ink">
+              {current.live === "in" ? "On now" : "Next"} · {current.teamX.abbr ?? current.teamX.name} vs {current.teamY.abbr ?? current.teamY.name}
+            </span>
+            <span className="block truncate text-footnote text-ink-muted">{current.live === "in" && current.score ? current.score.label : kickoffLabel(current.startsAt)}</span>
+          </span>
+          <ChevronRightIcon size={16} strokeWidth={2.6} className="shrink-0 text-ink-subtle" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+function LockConfirm({
+  state,
+  fee,
+  covered,
+  free,
+  price,
+  season = false,
+}: {
+  state: GameState;
+  fee: boolean;
+  covered: boolean;
+  free: boolean;
+  price: string | null;
+  season?: boolean;
+}) {
   const f = lockFacts(state);
   const low = lockReadiness(f) === "low";
   const fresh = drawKeys(state.game.format).length > 1;
@@ -1287,7 +1368,10 @@ function LockConfirm({ state, fee, covered, free, price }: { state: GameState; f
     <ul className="flex flex-col gap-3.5 pb-2 pt-1">
       {fee && (
         <Fact icon={<SparklesIcon size={16} />}>
-          <b className="font-bold text-ink">{price ? `${price} host fee` : "The host fee"}, once for this board.</b> {FREE_TIER_LINE} This one has {holders}. Setting up, inviting and picking squares are always free.
+          <b className="font-bold text-ink">
+            {price ? `${price} host fee` : "The host fee"}, {season ? "once for the whole season" : "once for this board"}.
+          </b>{" "}
+          {FREE_TIER_LINE} This one has {holders}. Setting up, inviting and picking squares are always free.
         </Fact>
       )}
       {free && (
@@ -1297,7 +1381,7 @@ function LockConfirm({ state, fee, covered, free, price }: { state: GameState; f
       )}
       {covered && (
         <Fact icon={<SparklesIcon size={16} />}>
-          <b className="font-bold text-ink">Included with your Host Pass.</b> No host fee for this board.
+          <b className="font-bold text-ink">Included with your Host Pass.</b> No host fee for this {season ? "season" : "board"}.
         </Fact>
       )}
       {low && (
@@ -1308,9 +1392,20 @@ function LockConfirm({ state, fee, covered, free, price }: { state: GameState; f
       <Fact icon={<LockIcon size={16} />}>
         <b className="font-bold text-ink">Squares freeze.</b> No more picking or dropping.
       </Fact>
-      <Fact icon={<ShuffleIcon size={16} />}>
-        <b className="font-bold text-ink">0–9 drawn at random</b> for each team{fresh ? `, fresh every ${freshNumbersInfo(state.game).each}` : ""}, live for everyone.
-      </Fact>
+      {season && state.season ? (
+        <>
+          <Fact icon={<TrophyIcon size={16} />}>
+            <b className="font-bold text-ink">Every game still to play gets its own board</b>, {state.season.scope === "team" ? "and playoff games join as they're scheduled" : "with the same squares and live scores"}.
+          </Fact>
+          <Fact icon={<ShuffleIcon size={16} />}>
+            <b className="font-bold text-ink">{SEASON_NUMBERS_INFO[state.season.numbers].label}.</b> {SEASON_NUMBERS_INFO[state.season.numbers].description}
+          </Fact>
+        </>
+      ) : (
+        <Fact icon={<ShuffleIcon size={16} />}>
+          <b className="font-bold text-ink">0–9 drawn at random</b> for each team{fresh ? `, fresh every ${freshNumbersInfo(state.game).each}` : ""}, live for everyone.
+        </Fact>
+      )}
       {f.empty > 0 ? (
         !low && (
           <Fact icon={<CrownIcon size={16} />} tone="warn">
@@ -1405,7 +1500,9 @@ function DeleteConfirm({ state }: { state: GameState }) {
       <p className="text-callout text-ink-muted">
         <b className="font-bold text-ink">{game.name}</b> disappears for everyone:{" "}
         {pluralize(f.claimed, "square")}, {pluralize(f.players, "player")}
-        {state.scores.length > 0 ? `, ${pluralize(state.scores.length, "score")} and every winner` : ""}. Anyone opening the link sees that it was deleted.
+        {state.scores.length > 0 ? `, ${pluralize(state.scores.length, "score")} and every winner` : ""}
+        {state.season && state.season.games.some((g) => g.id) ? `, and the boards of all ${pluralize(state.season.games.filter((g) => g.id).length, "game")} of the season` : ""}. Anyone
+        opening the link sees that it was deleted.
       </p>
       <p className="rounded-2xl bg-danger-500/10 px-3.5 py-3 text-subhead font-semibold text-ink-danger ring-1 ring-inset ring-danger-500/30">
         This can't be undone.

@@ -11,7 +11,7 @@ import { periodKeyForLive, periodScoresFromLinescores } from "../../shared/squar
 import { BASKETBALL_LEAGUES, defaultPresetFor, playsHalves, regulationPeriods, type BasketballLeague } from "../../shared/sports";
 import type { LinkedEvent, LiveUpdate, ScheduleEvent } from "../../shared/types";
 import { espnDate, fetchEspnJson, parseDayId, parseSchedule, scoreboardUrl } from "./espn";
-import { fetchLiveForEvent, getDaySchedule, getSchedule, SCHEDULE_DAYS } from "./index";
+import { fetchLiveForEvent, getDaySchedule, getSchedule, getSeasonTeams, getTeamSeason, SCHEDULE_DAYS } from "./index";
 
 const DAY_MS = 86_400_000;
 const NOW = Date.now();
@@ -162,6 +162,57 @@ describe.each(BASKETBALL_LEAGUES)("%s (basketball, by day)", (league) => {
     }
     if (live.length === 0) console.log(`  ${league}: no game on right now`);
   }, 120_000);
+});
+
+// Season boards: the league's team list and one team's season (regular season
+// and playoffs, the NBA's play-in too), read the way the create flow and the
+// season board's draw and cron read them.
+describe.each([
+  { league: "nfl" as const, team: "30", name: "Jaguars", minTeams: 32, minGames: 17 },
+  { league: "nba" as const, team: "13", name: "Lakers", minTeams: 30, minGames: 82 },
+])("$league team season ($name)", ({ league, team, name, minTeams, minGames }) => {
+  it("reads the teams list and the team's schedule", async () => {
+    const teams = await getSeasonTeams(league);
+    expect(teams, `${league} teams`).not.toBeNull();
+    console.log(`${league}: ${teams!.length} teams; first ${teams!.slice(0, 3).map((t) => `${t.id} ${t.abbr} ${t.color ?? "-"} ${t.logo ? "logo" : "no logo"}`).join(" | ")}`);
+    expect(teams!.length).toBeGreaterThanOrEqual(minTeams);
+    expect(teams!.every((t) => t.id && t.name)).toBe(true);
+    expect(teams!.find((t) => t.id === team)?.shortName).toBe(name);
+
+    const season = await getTeamSeason(league, team);
+    expect(season, `${league} team ${team} schedule`).not.toBeNull();
+    const { events, year } = season!;
+    const playoff = events.filter((e) => e.playoff);
+    console.log(`${league} ${name} ${year}: ${events.length} games (${playoff.length} playoff), ${events.filter((e) => e.state === "post").length} played`);
+    for (const e of events.slice(0, 4)) console.log(`  ${e.eventId} ${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state} ${e.label ?? ""} ${JSON.stringify(e.result ?? {})} home ${e.home.color ?? "-"} away ${e.away.color ?? "-"}`);
+    expect(year).toBeGreaterThanOrEqual(2025);
+    // Off-season the current season can be the one that just ended; it still lists its games.
+    expect(events.length).toBeGreaterThanOrEqual(Math.min(minGames, 10));
+    for (const e of events) {
+      // The team is on one side of every game, by id.
+      expect([e.homeId, e.awayId]).toContain(team);
+      expect(e.home.name && e.away.name).toBeTruthy();
+      if (e.state === "post") expect(e.result, `${e.eventId} result`).toBeDefined();
+    }
+    // Sorted, one row per game.
+    expect(events.map((e) => e.startsAt)).toEqual([...events.map((e) => e.startsAt)].sort((a, b) => a - b));
+    expect(new Set(events.map((e) => e.eventId)).size).toBe(events.length);
+    // A finished game's live data parses like any linked board's.
+    const done = events.filter((e) => e.state === "post").at(-1);
+    if (done) {
+      const u = await fetchLiveForEvent(linkOf(done));
+      console.log(`  final ${done.shortName}: ${u ? line(u) : "null"}`);
+      expect(u?.isFinal).toBe(true);
+    }
+  }, 60_000);
+});
+
+describe.each(["ncaaf", "ncaab", "ncaaw", "wnba"] as const)("%s teams list", (league) => {
+  it("lists the league's teams for a team's season", async () => {
+    const teams = await getSeasonTeams(league);
+    console.log(`${league}: ${teams?.length ?? "unavailable"} teams`);
+    expect(teams?.length ?? 0).toBeGreaterThan(10);
+  }, 60_000);
 });
 
 describe("college basketball's Division I filter", () => {

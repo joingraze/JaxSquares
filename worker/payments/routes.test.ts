@@ -157,6 +157,19 @@ describe("POST /games/:id/pay/stripe", () => {
     ]);
   });
 
+  it("charges a season board's one fee for the season, with its own receipt line", async () => {
+    games.set("s1", { ...unpaid("s1"), kind: "season" });
+    fetchMock.mockResolvedValueOnce(Response.json(intent({ id: "pi_s", amount: 1499, metadata: { game_id: "s1", product: "board" } })));
+    const res = await call("/games/s1/pay/stripe", { env: makeEnv({ SEASON_BOARD_PRICE_CENTS: "1499" }) });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ amountCents: 1499 });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const params = new URLSearchParams(init.body as string);
+    expect(params.get("amount")).toBe("1499");
+    expect(params.get("description")).toBe("JaxSquares host fee (season board)");
+    expect((init.headers as Record<string, string>)["idempotency-key"]).toBe("board-s1-1499usd");
+  });
+
   it("reuses the open intent on retry instead of creating another", async () => {
     fetchMock.mockResolvedValueOnce(Response.json(intent()));
     await call("/games/g1/pay/stripe");
@@ -390,6 +403,22 @@ describe("POST /games/:id/pay/iap", () => {
     expect(res.status).toBe(400);
     expect(((await res.json()) as { error: string }).error).toMatch(/different board/);
     expect(purchases()).toEqual([]);
+  });
+
+  it("takes a season board's fee only with the season product, and the board's only with the board product", async () => {
+    const SEASON = "com.jaxsquares.app.seasonboard";
+    games.set("s1", { ...unpaid("s1"), kind: "season" });
+    fetchMock.mockResolvedValueOnce(Response.json(signedTransaction({ appAccountToken: boardAccountToken("s1") })));
+    expect((await call("/games/s1/pay/iap", { body: { transactionId: TX } })).status).toBe(400);
+    fetchMock.mockResolvedValueOnce(Response.json(signedTransaction({ productId: SEASON, transactionId: "2000000812345679" })));
+    expect((await call("/games/g1/pay/iap", { body: { transactionId: "2000000812345679" } })).status).toBe(400);
+    fetchMock.mockResolvedValueOnce(
+      Response.json(signedTransaction({ productId: SEASON, transactionId: "2000000812345680", appAccountToken: boardAccountToken("s1"), price: undefined })),
+    );
+    const res = await call("/games/s1/pay/iap", { body: { transactionId: "2000000812345680" } });
+    expect(res.status).toBe(200);
+    // Without a price from Apple, the season's list price is recorded.
+    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "s1", { provider: "iap", reference: "2000000812345680", amountCents: 1499 });
   });
 
   it("rejects the wrong product, the wrong app, and refunds", async () => {

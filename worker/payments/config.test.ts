@@ -1,7 +1,16 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../env";
-import { DEFAULT_IAP_HOST_PASS_PRODUCT_ID, DEFAULT_IAP_PRODUCT_ID, boardPriceCents, getPaymentConfig, hostPassPriceCents, missingLiveKeys } from "./config";
+import {
+  DEFAULT_IAP_HOST_PASS_PRODUCT_ID,
+  DEFAULT_IAP_PRODUCT_ID,
+  DEFAULT_IAP_SEASON_PRODUCT_ID,
+  boardFeeFor,
+  boardPriceCents,
+  getPaymentConfig,
+  hostPassPriceCents,
+  missingLiveKeys,
+} from "./config";
 
 const LIVE_KEYS: Partial<Env> = {
   STRIPE_SECRET_KEY: "sk_live_x",
@@ -34,6 +43,8 @@ describe("getPaymentConfig", () => {
       hostPass: { priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: false },
       // Nor for the Club Pass (web only).
       clubPass: { priceCents: 4900, currency: "usd", web: false },
+      // A season board's one host fee, at its draw.
+      season: { priceCents: 1499, iapProductId: DEFAULT_IAP_SEASON_PRODUCT_ID },
     });
     expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: " LIVE " })).mode).toBe("live");
   });
@@ -56,6 +67,27 @@ describe("getPaymentConfig", () => {
 
   it("uses the configured IAP product id", () => {
     expect(getPaymentConfig(env({ IAP_PRODUCT_ID: "com.example.board" })).iapProductId).toBe("com.example.board");
+  });
+});
+
+describe("a season board's host fee", () => {
+  it("is SEASON_BOARD_PRICE_CENTS ($14.99 by default) with its own App Store product, and leaves the board's alone", () => {
+    expect(getPaymentConfig(env({})).season).toEqual({ priceCents: 1499, iapProductId: "com.jaxsquares.app.seasonboard" });
+    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "1999", IAP_SEASON_PRODUCT_ID: "com.example.season" })).season).toEqual({
+      priceCents: 1999,
+      iapProductId: "com.example.season",
+    });
+    // Below Stripe's minimum or not whole cents: the default.
+    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "20" })).season?.priceCents).toBe(1499);
+    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "14.99" })).season?.priceCents).toBe(1499);
+    expect(getPaymentConfig(env({})).priceCents).toBe(499);
+  });
+
+  it("is what a season board's checkout charges; any other board pays the board fee", () => {
+    const e = env({ BOARD_PRICE_CENTS: "499", SEASON_BOARD_PRICE_CENTS: "1499" });
+    expect(boardFeeFor(e, { kind: "season" })).toEqual({ amountCents: 1499, iapProductId: DEFAULT_IAP_SEASON_PRODUCT_ID });
+    expect(boardFeeFor(e, { kind: "board" })).toEqual({ amountCents: 499, iapProductId: DEFAULT_IAP_PRODUCT_ID });
+    expect(boardFeeFor(e, {})).toEqual({ amountCents: 499, iapProductId: DEFAULT_IAP_PRODUCT_ID });
   });
 });
 

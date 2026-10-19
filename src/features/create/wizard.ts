@@ -5,8 +5,9 @@
 // Pure apart from the storage passed in: no React.
 
 import { sanitizeFormat, withRules } from "../../../shared/formats";
+import { isSeasonNumbers, isSeasonScope, MAX_SEASON_GAMES } from "../../../shared/season";
 import { isBoardSport, isLinkedLeague, leagueSport, LINKED_LEAGUES, SPORT_LEAGUES, type BoardSport, type LinkedLeague } from "../../../shared/sports";
-import type { GameFormat, ScheduleEvent } from "../../../shared/types";
+import type { GameFormat, ScheduleEvent, SeasonNumbers, SeasonScope, SeasonTeam } from "../../../shared/types";
 import type { PrizeChoice } from "../rules/rulesModel";
 import { blockersOf, type CreateBlocker, type Matchup } from "./model";
 
@@ -167,6 +168,15 @@ export interface WizardDraft {
   nameTouched: boolean;
   maxPerPlayer: number;
   hostName: string;
+  /** One game's board or a season board (absent in older drafts: one game). */
+  boardScope?: "game" | "season";
+  /** A season board: a team's season or picked games, and how numbers work. */
+  seasonScope?: SeasonScope;
+  seasonNumbers?: SeasonNumbers;
+  /** A team's season: the team picked per league. */
+  seasonTeams?: Partial<Record<LinkedLeague, SeasonTeam>>;
+  /** Picked games per league (the ones not started yet survive a reload). */
+  seasonPicks?: Partial<Record<LinkedLeague, ScheduleEvent[]>>;
   /**
    * The board this draft adds another board to (/new?from=), or absent for a
    * board of its own: a draft is only picked up again by the same kind of flow.
@@ -222,6 +232,43 @@ function liveEvent(v: unknown, now: number): ScheduleEvent | null {
     typeof e.home.name === "string" &&
     typeof e.away.name === "string";
   return ok ? e : null;
+}
+
+/** A saved season team (the provider's id and a name at least). */
+function seasonTeam(v: unknown): SeasonTeam | null {
+  if (!isObj(v) || typeof v.id !== "string" || !/^[A-Za-z0-9-]{1,16}$/.test(v.id) || typeof v.name !== "string" || !v.name.trim()) return null;
+  const t: SeasonTeam = { id: v.id, name: str(v.name, 60) };
+  if (typeof v.abbr === "string") t.abbr = str(v.abbr, 8);
+  if (typeof v.color === "string" && /^#[0-9a-fA-F]{6}$/.test(v.color)) t.color = v.color;
+  if (typeof v.shortName === "string") t.shortName = str(v.shortName, 40);
+  if (typeof v.logo === "string" && /^https:\/\/[a-z0-9.-]+\.espncdn\.com\//.test(v.logo)) t.logo = str(v.logo, 300);
+  return t;
+}
+
+/** The season parts of a saved draft (each league's team and picks; started games dropped). */
+function seasonDraft(d: Record<string, unknown>, now: number): Pick<WizardDraft, "boardScope" | "seasonScope" | "seasonNumbers" | "seasonTeams" | "seasonPicks"> {
+  const teams: NonNullable<WizardDraft["seasonTeams"]> = {};
+  const picks: NonNullable<WizardDraft["seasonPicks"]> = {};
+  for (const league of LINKED_LEAGUES) {
+    const t = isObj(d.seasonTeams) ? seasonTeam(d.seasonTeams[league]) : null;
+    if (t) teams[league] = t;
+    const list = isObj(d.seasonPicks) ? d.seasonPicks[league] : null;
+    if (Array.isArray(list)) {
+      const kept = list
+        .slice(0, MAX_SEASON_GAMES)
+        .map((e) => liveEvent(e, now))
+        .filter((e): e is ScheduleEvent => !!e && e.league === league);
+      if (kept.length) picks[league] = kept;
+    }
+  }
+  // Only what was saved (an older draft reads back as it was).
+  return {
+    ...(d.boardScope === "season" || d.boardScope === "game" ? { boardScope: d.boardScope } : {}),
+    ...(isSeasonScope(d.seasonScope) ? { seasonScope: d.seasonScope } : {}),
+    ...(isSeasonNumbers(d.seasonNumbers) ? { seasonNumbers: d.seasonNumbers } : {}),
+    ...(Object.keys(teams).length ? { seasonTeams: teams } : {}),
+    ...(Object.keys(picks).length ? { seasonPicks: picks } : {}),
+  };
 }
 
 /**
@@ -280,6 +327,8 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
     nameTouched: d.nameTouched === true,
     maxPerPlayer: max,
     hostName: str(d.hostName, 24),
+    // Another board for a game is never a season.
+    ...(typeof d.from === "string" ? {} : seasonDraft(d, now)),
     ...(typeof d.from === "string" && parseFrom(`?from=${encodeURIComponent(d.from)}`) ? { from: d.from } : {}),
   };
 }

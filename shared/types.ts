@@ -237,6 +237,158 @@ export interface Game {
    * board. Never says who owns the club beyond the host's public id.
    */
   club?: ClubBrand | null;
+  /**
+   * "season": a season board (docs/ARCHITECTURE.md "Season boards"): players
+   * claim squares once on it, the host draws (and pays) once, and each game
+   * of the season gets a board of its own (`seasonId` points back here).
+   * Absent or "board": one game's board. Always sent by the API for a season
+   * board; optional so older fixtures and cached states type-check.
+   */
+  kind?: BoardKind;
+  /** A game of a season board: the season board's id (absent or null on every other board). */
+  seasonId?: string | null;
+}
+
+/** One game's board, or a season board (Game.kind). */
+export type BoardKind = "board" | "season";
+
+// ---- Season boards (docs/ARCHITECTURE.md "Season boards", shared/season.ts) ----
+// One board for a whole season: a team's games (playoffs included as they're
+// scheduled) or games the host picked. Players claim squares once, on the
+// season board; at its draw (and its one host fee) each game gets its own
+// board ("child"): the same players and squares, the same numbers or fresh
+// ones per game, the same rules and prizes, linked to that game's live feed.
+
+/** What a season board covers: a team's season, or games the host picked. */
+export type SeasonScope = "team" | "games";
+/** The same numbers for every game (drawn once, the classic season grid), or new numbers for each game. */
+export type SeasonNumbers = "same" | "fresh";
+
+/** A team whose season a board covers, as the provider lists it (public). */
+export interface SeasonTeam extends Team {
+  /** The provider's (ESPN's) team id: its schedule is /teams/<id>/schedule. */
+  id: string;
+  /** "Jaguars", "Alabama", "Lakers": what the season's name uses. */
+  shortName?: string;
+  /** The team's logo (an https URL on the provider's CDN), when it has one. */
+  logo?: string;
+}
+
+/** One game on a season's schedule, as the season board keeps it. */
+export interface SeasonEvent {
+  eventId: string;
+  /** Kickoff, epoch ms. */
+  startsAt: number;
+  home: Team;
+  away: Team;
+  /** The provider's team ids, so a team's season knows its side. */
+  homeId?: string;
+  awayId?: string;
+  /** "Week 7", "Wild Card", when the provider says. */
+  label?: string;
+  /** A postseason game. */
+  playoff?: boolean;
+}
+
+/** What a season board covers, as stored on it (games.season) and shown in its state. */
+export interface SeasonSpec {
+  scope: SeasonScope;
+  numbers: SeasonNumbers;
+  league: Exclude<League, "custom">;
+  /** scope "team": the team; null when the host picked games. */
+  team: SeasonTeam | null;
+  /** The provider's season year (2026; a season that spans two years is named for the year it ends). */
+  year: number | null;
+  /** "Jaguars 2026 season", "Lakers 2026-27 season", "6 NFL games". */
+  label: string;
+}
+
+/**
+ * CreateGameInput.season: make a season board. The games the host saw (a
+ * team's schedule, or the games they picked) ride along; at the draw a team's
+ * season is read again from the provider, and new games (playoffs) are added
+ * as they're scheduled.
+ */
+export interface SeasonInput {
+  scope: SeasonScope;
+  numbers: SeasonNumbers;
+  /** scope "team": the team (its provider id). */
+  team?: SeasonTeam;
+  /** scope "team": the provider's season year. */
+  year?: number;
+  events: SeasonEvent[];
+}
+
+/** One moment's winners in one game of a season (public ids). */
+export interface SeasonWinner {
+  periodKey: string;
+  label: string;
+  playerIds: string[];
+}
+
+/** One game of a season board, as its page lists it. */
+export interface SeasonGame {
+  /** That game's board; null before the season board's draw (a planned game). */
+  id: string | null;
+  eventId: string;
+  /** 1-based place in the season, by kickoff. */
+  index: number;
+  startsAt: number;
+  /** As that game's board shows them (across the top, down the side). */
+  teamX: Team;
+  teamY: Team;
+  label?: string;
+  playoff?: boolean;
+  /** "planned" before the draw; then that game's board's status. */
+  status: GameStatus | "planned";
+  /** The live feed's state, null before it says anything. */
+  live: LiveStatus["state"] | null;
+  /** The latest score ("Q3 4:12", "Final", "Half"), null before any. */
+  score: { scoreX: number; scoreY: number; label: string } | null;
+  /** Who won each moment so far, in game order. */
+  winners: SeasonWinner[];
+}
+
+/** One player's line in a season's standings (public id only). */
+export interface SeasonStanding {
+  playerId: string;
+  /** 1-based; players level on wins and amount share a rank. */
+  rank: number;
+  /** Winning squares across the season (a square and its reverse count apart, like winCounts). */
+  wins: number;
+  /** Games with at least one winning square. */
+  games: number;
+  /** Display-only prize total in the board's unit (in-app only), null without amounts. */
+  amount: number | null;
+}
+
+/** GameState.season: a season board's schedule and standings. */
+export interface SeasonState extends SeasonSpec {
+  games: SeasonGame[];
+  standings: SeasonStanding[];
+}
+
+/** GameState.seasonGame: where a season's game sits ("Game 3 of 17 · Office Season"). */
+export interface SeasonPosition {
+  /** The season board. */
+  id: string;
+  name: string;
+  /** 1-based. */
+  index: number;
+  count: number;
+  prevId: string | null;
+  nextId: string | null;
+}
+
+/** GameSummary.season: a season board on Home. */
+export interface SeasonSummary {
+  label: string;
+  /** Games on its schedule so far. */
+  games: number;
+  /** Games that are over. */
+  played: number;
+  /** The game on now, else the next one (null once the season's done). */
+  current: SeasonGame | null;
 }
 
 /** A club's branding as every one of its boards shows it. Public. */
@@ -396,6 +548,10 @@ export interface GameState {
    * board's next state. Public data only: no clientId, no admin token.
    */
   siblings?: SiblingBoard[];
+  /** A season board (Game.kind "season"): its schedule and standings, public ids only. */
+  season?: SeasonState;
+  /** A game of a season board (Game.seasonId): which game of how many, and its neighbors. */
+  seasonGame?: SeasonPosition;
 }
 
 /**
@@ -506,6 +662,10 @@ export interface GameSummary {
    * null for a board on its own. Sent by `GET /api/me/games`.
    */
   group?: string | null;
+  /** Game.kind: "season" for a season board (its games' boards never show on Home). */
+  kind?: BoardKind;
+  /** A season board's schedule at a glance (absent on every other board). */
+  season?: SeasonSummary | null;
 }
 
 // ---- Live socket messages (server -> client) ----
@@ -564,6 +724,13 @@ export interface CreateGameInput {
    * own draw, like any board.
    */
   fromGameId?: string;
+  /**
+   * A season board: a team's season or picked games (shared/season.ts). Its
+   * league must have a live feed; teamX/teamY and linkedEvent are ignored
+   * (the server names the axes: the team and "Opponent", or "Away" and
+   * "Home"), and each game gets its own board at the draw.
+   */
+  season?: SeasonInput;
 }
 
 export interface CreateGameResponse {
@@ -646,6 +813,37 @@ export interface ScheduleEvent {
   neutralSite?: boolean;
   /** Poll ranks (college top 25) at kickoff time, when ranked. */
   ranks?: { home?: number; away?: number };
+  /** A team's schedule only (GET /api/season/schedule): the provider's team ids. */
+  homeId?: string;
+  awayId?: string;
+  /** A team's schedule only: "Week 7", "Wild Card". */
+  label?: string;
+  /** A team's schedule only: a postseason game. */
+  playoff?: boolean;
+  /** A team's schedule only: the final score, home and away, for a game that's over. */
+  result?: { home: number; away: number };
+}
+
+/**
+ * GET /api/season/teams?league=nfl: the league's teams for a team's season
+ * (logos and colors from the provider). `unavailable` when the provider
+ * couldn't be reached (still 200).
+ */
+export interface SeasonTeamsResponse {
+  teams: SeasonTeam[];
+  unavailable?: boolean;
+}
+
+/**
+ * GET /api/season/schedule?league=nfl&team=30: one team's season, regular
+ * season and playoffs, every game (finished ones with their result).
+ */
+export interface TeamScheduleResponse {
+  team: SeasonTeam | null;
+  /** The provider's season year. */
+  year: number | null;
+  events: ScheduleEvent[];
+  unavailable?: boolean;
 }
 
 /**
@@ -697,6 +895,19 @@ export interface PaymentConfig {
   hostPass?: HostPassOffer;
   /** How the Club Pass is sold (the web only). Always sent; optional only so older fixtures type-check. */
   clubPass?: ClubPassOffer;
+  /**
+   * A season board's host fee (one fee, at its draw, for every game of the
+   * season): `priceCents` on the web, the App Store product's own price in
+   * the iOS app. Always sent; optional only so older fixtures type-check.
+   */
+  season?: SeasonFeeOffer;
+}
+
+/** A season board's host fee: due once, at the season board's draw (docs/payments.md "Season boards"). */
+export interface SeasonFeeOffer {
+  priceCents: number;
+  /** App Store product id of the consumable (com.jaxsquares.app.seasonboard). */
+  iapProductId: string;
 }
 
 // ---- The Host Pass (docs/payments.md "Host Pass") ----

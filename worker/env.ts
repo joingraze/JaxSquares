@@ -2,7 +2,8 @@
 // unset in local dev; every integration must degrade gracefully without them.
 //
 // This file only declares names. Never put values here (it is committed):
-// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE,
+// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, SEASON_BOARD_PRICE_CENTS,
+//   IAP_SEASON_PRODUCT_ID, PAYMENTS_MODE,
 //   HOST_PASS_PRICE_CENTS, STRIPE_HOST_PASS_PRICE_ID, IAP_HOST_PASS_PRODUCT_ID,
 //   CLUB_PASS_PRICE_CENTS, STRIPE_CLUB_PASS_PRICE_ID, the sign-in client ids,
 //   EMAIL_FROM) go in wrangler.jsonc "vars".
@@ -42,6 +43,10 @@ export interface Env {
   /** Apple developer team id, for apple-app-site-association (universal links). */
   APPLE_TEAM_ID?: string;
   IAP_PRODUCT_ID?: string;
+  /** A season board's host fee in cents (default 1499): one fee, at its draw, for every game of the season. */
+  SEASON_BOARD_PRICE_CENTS?: string;
+  /** App Store product id of a season board's host fee, a consumable (default "com.jaxsquares.app.seasonboard"). */
+  IAP_SEASON_PRODUCT_ID?: string;
 
   // ---- The Host Pass (a yearly subscription covering the host fee of every board its holder hosts) ----
   /** The web price per year in cents (default 999). Must match the Stripe Price. */

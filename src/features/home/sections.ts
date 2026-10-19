@@ -12,6 +12,7 @@ import { lockIsTheMove } from "../host/hostModel";
 import { clusterGroups } from "./boardGroups";
 import { prizeLineup } from "../rules/rulesModel";
 import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
+import { seasonSummaryOf } from "../../../shared/season";
 
 export type SectionKey = "live" | "invites" | "needs" | "next" | "final";
 
@@ -69,7 +70,12 @@ export function hostAction(g: Pick<GameSummary, "status" | "claimed" | "totalSqu
   return "invite";
 }
 
-const inPlay = (g: Pick<GameSummary, "status" | "live">) => g.status === "locked" || g.live?.state === "in";
+/**
+ * In play: drawn, or a linked game on. A season board is in play only while
+ * one of its games is on; between games it waits under Up next.
+ */
+const inPlay = (g: Pick<GameSummary, "status" | "live" | "kind" | "season">) =>
+  g.kind === "season" ? g.status === "locked" && g.season?.current?.live === "in" : g.status === "locked" || g.live?.state === "in";
 /** A linked game kicked off before its numbers were drawn (squares still open). */
 const undrawnInPlay = (g: Pick<GameSummary, "status" | "live">) => (g.status === "open" || g.status === "draft") && g.live?.state === "in";
 
@@ -189,6 +195,21 @@ export function cardModel(g: GameSummary, now: number): CardModel {
   const action = actionFor(g);
   const relation = relationOf(g);
   const role = relation === "host" ? (g.isHost ? "Your board" : "Co-host") : relation === "playing" ? squaresYours(g.mySquares) : "Watching";
+  // A drawn season board between games: its next game, and how far along the season is.
+  if (g.kind === "season" && g.season && g.status === "locked") {
+    const next = g.season.current;
+    return {
+      relation,
+      role,
+      action: null,
+      status: next ? kickoffText(next.startsAt, now, false, g.sport) : "Season's done",
+      statusTone: next && next.startsAt - now < DAY ? "brand" : "muted",
+      statusIsLeft: false,
+      meta: `${g.season.played} of ${pluralize(g.season.games, "game")} played`,
+      meter: false,
+      buzz: false,
+    };
+  }
   // A playing card's role already says how many are mine; a host's card says it here.
   const mine = relation !== "host" ? null : g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
   const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true, g.sport) : null;
@@ -245,7 +266,7 @@ export function inviteModel(g: GameSummary, now: number): InviteModel {
     inviter: g.host,
     from: name ? `${name} invited you` : "You're invited",
     left: Math.max(0, g.totalSquares - g.claimed),
-    matchup: `${g.teamX.name} vs ${g.teamY.name}`,
+    matchup: g.season?.label ?? `${g.teamX.name} vs ${g.teamY.name}`,
     kickoff: g.startsAt !== null ? kickoffText(g.startsAt, now, true, g.sport) : null,
     lineup: prizeLineup(g.format),
     canHide: !g.joined && !g.isHost,
@@ -261,6 +282,26 @@ export function inviteModel(g: GameSummary, now: number): InviteModel {
  * grabs a square, without waiting for the next summary refresh.
  */
 export function withState(g: GameSummary, s: GameState, me: string): GameSummary {
+  // A season board: its counts from the state, its games from the state's season (its own feed is its games').
+  if (s.season && s.game.kind === "season") {
+    const season = seasonSummaryOf(s.season, Date.now());
+    return {
+      ...g,
+      name: s.game.name,
+      status: s.game.status,
+      format: s.game.format,
+      kind: "season",
+      season,
+      mySquares: s.squares.filter((q) => q.playerId === me).length,
+      claimed: s.squares.length,
+      playerCount: s.players.length,
+      live: null,
+      startsAt: season.current?.startsAt ?? null,
+      latestScore: season.current?.score ?? null,
+      leaderPlayerId: null,
+      lastActivityAt: Math.max(g.lastActivityAt, s.activity[0]?.at ?? 0),
+    };
+  }
   const results = resolveResults(s);
   return {
     ...g,
@@ -291,6 +332,25 @@ function latestScoreOf(s: GameState, results: PeriodResult[]): GameSummary["late
   const p = boardPeriods(s.game, s.scores).filter((x) => byKey.has(x.key)).at(-1);
   const score = p ? byKey.get(p.key) : undefined;
   return p && score ? { scoreX: score.scoreX, scoreY: score.scoreY, label: p.label } : null;
+}
+
+/**
+ * A season board on a card in play reads as its game on now: that game's
+ * teams, score and feed (the card links to the season board). Any other
+ * board, or a season board between games, as it is.
+ */
+export function seasonCardOf(g: GameSummary): GameSummary {
+  const cur = g.season?.current;
+  if (g.kind !== "season" || !cur || g.status !== "locked" || cur.live !== "in") return g;
+  const score = cur.score;
+  return {
+    ...g,
+    teamX: cur.teamX,
+    teamY: cur.teamY,
+    startsAt: cur.startsAt,
+    latestScore: score,
+    live: { state: "in", period: 0, clock: "", detail: score?.label ?? "", scoreX: score?.scoreX ?? 0, scoreY: score?.scoreY ?? 0, updatedAt: 0 },
+  };
 }
 
 // ---- Team colors ----

@@ -91,6 +91,27 @@ export async function broadcast(env: Env, gameId: string, activity?: Activity): 
 }
 
 /**
+ * A season's game board changed what its season board shows (a score, a
+ * winner, the final, its feed starting, scoring or ending): the season board's
+ * version moves (its standings and schedule are read from its game boards)
+ * and its open boards get the new state. Never pushed: the game board's own
+ * events notify its players. Never throws.
+ */
+export async function touchSeason(env: Env, seasonId: string): Promise<void> {
+  try {
+    const { state } = await db.commit(env.DB, seasonId, []);
+    if (state) await pushToRoom(env, seasonId, state);
+  } catch (err) {
+    console.error(`season ${seasonId} update failed`, err);
+  }
+}
+
+/** The feed moved in a way a season's schedule shows: it started or ended, or the score changed (not just the clock). */
+function liveMoved(prev: LiveStatus | null, next: LiveStatus): boolean {
+  return !prev || prev.state !== next.state || prev.scoreX !== next.scoreX || prev.scoreY !== next.scoreY;
+}
+
+/**
  * The board's host fee is paid (the purchase the ledger chose): the host can
  * draw the numbers now, and a linked board draws its own at kickoff. A
  * legacy draft opens too. Idempotent; pushes the new state.
@@ -324,6 +345,9 @@ export async function applyLiveUpdate(
   if (!state) return;
   const recorded = new Set(state.activity.map((a) => a.id));
   for (const [id, event] of conditional) if (recorded.has(id)) notifications.push(event);
-  await deliver(state, activities.filter((a) => recorded.has(a.id)));
+  const delivered = activities.filter((a) => recorded.has(a.id));
+  await deliver(state, delivered);
   await notifyAll(env, gameId, notifications);
+  // A season's game board: its season board's schedule and standings follow (not on every tick of the clock).
+  if (state.game.seasonId && (delivered.length > 0 || liveMoved(prev.live, live))) await touchSeason(env, state.game.seasonId);
 }

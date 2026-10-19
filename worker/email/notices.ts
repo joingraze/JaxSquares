@@ -15,7 +15,7 @@ import { drawKeys, everyScoreIndex, hasScoreMoment, periodNote, periodPhrase, ru
 import { freshNumbersInfo } from "../../shared/sports";
 import { drawFor, fixedPeriodsOf, resolveResults, winnersOf, type PeriodResult } from "../../shared/squares";
 import type { GameState, Team } from "../../shared/types";
-import { getGameState } from "../db";
+import { getGameState, seasonIdOf } from "../db";
 import type { Env } from "../env";
 import { playerIdOf } from "../playerIds";
 import type { NotifyEvent } from "../push/types";
@@ -64,7 +64,8 @@ export function planNotices(state: Pick<GameState, "game" | "players" | "squares
   for (const event of events) {
     switch (event.kind) {
       case "numbers-drawn":
-        if (!game.numbers) break;
+        // A season board whose games each draw their own numbers has none of its own to send.
+        if (!game.numbers || Object.keys(game.numbers).length === 0) break;
         for (const r of players) if (r.playerId !== event.actor && holders.has(r.playerId)) add(r, "numbers");
         break;
       case "winner":
@@ -144,8 +145,9 @@ export function finalFactsOf(state: GameState, playerId: string, boardUrl: strin
 
 // ---- Composing ----
 
-async function frameFor(setup: EmailSetup, state: Pick<GameState, "game">, emailKey: string): Promise<EmailFrame> {
-  const token = await unsubscribeToken(setup.secret, state.game.id, emailKey);
+/** `listId`: the board whose addresses these are (a season's game board emails its season board's), for the unsubscribe link. */
+async function frameFor(setup: EmailSetup, state: Pick<GameState, "game">, emailKey: string, listId = state.game.id): Promise<EmailFrame> {
+  const token = await unsubscribeToken(setup.secret, listId, emailKey);
   return { boardName: state.game.name, origin: setup.origin, unsubscribeUrl: `${setup.origin}/api/email/unsubscribe?token=${token}` };
 }
 
@@ -160,9 +162,9 @@ function message(to: string, frame: EmailFrame, rendered: Rendered): OutgoingEma
   };
 }
 
-export async function composeNotice(plan: NoticePlan, state: GameState, setup: EmailSetup): Promise<OutgoingEmail> {
+export async function composeNotice(plan: NoticePlan, state: GameState, setup: EmailSetup, listId = state.game.id): Promise<OutgoingEmail> {
   const { game } = state;
-  const frame = await frameFor(setup, state, plan.to.email_key);
+  const frame = await frameFor(setup, state, plan.to.email_key, listId);
   const boardUrl = `${setup.origin}/g/${game.id}`;
   const teamX = teamLabel(game.teamX);
   const teamY = teamLabel(game.teamY);
@@ -176,6 +178,7 @@ export async function composeNotice(plan: NoticePlan, state: GameState, setup: E
       freshLabel,
       freshEach: freshNumbersInfo(game).each,
       everyScore: hasScoreMoment(rulesOf(game.format)),
+      season: game.kind === "season",
       boardUrl,
     });
   } else if (plan.key === "final") {
@@ -226,21 +229,26 @@ export async function emailNotices(env: Env, gameId: string, events: NotifyEvent
   if (!setup) return;
   const kinds = events.map((e) => e.kind).join(",");
   try {
-    const recipients = await confirmedOn(env.DB, gameId);
+    // A season's game board emails its season board's addresses (players ask for
+    // email on the season board), each notice once per address and game.
+    const seasonId = await seasonIdOf(env.DB, gameId);
+    const listId = seasonId ?? gameId;
+    const recipients = await confirmedOn(env.DB, listId);
     if (recipients.length === 0) return;
     const state = await getGameState(env.DB, gameId);
     if (!state) return;
     const addressees = await Promise.all(recipients.map(async (r) => ({ ...r, playerId: await playerIdOf(r.client_id) })));
     const plans = planNotices(state, addressees, events);
     if (plans.length === 0) return;
+    const keyOf = (p: NoticePlan) => (seasonId ? `${gameId}/${p.key}` : p.key);
     const won = await claimNotices(
       env.DB,
-      gameId,
-      plans.map((p) => ({ id: p.to.id, key: p.key })),
+      listId,
+      plans.map((p) => ({ id: p.to.id, key: keyOf(p) })),
     );
-    const due = plans.filter((p) => won.has(`${p.to.id}:${p.key}`));
+    const due = plans.filter((p) => won.has(`${p.to.id}:${keyOf(p)}`));
     if (due.length === 0) return;
-    const messages = await Promise.all(due.map((p) => composeNotice(p, state, setup)));
+    const messages = await Promise.all(due.map((p) => composeNotice(p, state, setup, listId)));
     const t = await resendSender(setup.apiKey, setup.from).send(messages);
     console.log(`email ${gameId} ${kinds}: ${t.sent} sent, ${t.failed} failed`);
   } catch (err) {

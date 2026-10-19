@@ -478,6 +478,21 @@ export function getAdminToken(gameId: string): string | null {
   return readLocal(STORAGE_KEYS.admin(gameId));
 }
 
+/**
+ * A season's game board shares its season board's admin token (the server
+ * makes it so): a device that hosts the season takes the token for the game
+ * when it opens it, so the host tools show there too. Never overwrites a token
+ * already held. Returns whether it took one.
+ */
+export function adoptSeasonToken(gameId: string, seasonId: string): boolean {
+  if (!GAME_ID_RE.test(gameId) || !GAME_ID_RE.test(seasonId) || getAdminToken(gameId) !== null) return false;
+  const token = getAdminToken(seasonId);
+  if (!token) return false;
+  persist(STORAGE_KEYS.admin(gameId), token);
+  emit();
+  return true;
+}
+
 export function isHostOf(gameId: string): boolean {
   return getAdminToken(gameId) !== null;
 }

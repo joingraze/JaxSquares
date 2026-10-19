@@ -47,6 +47,7 @@ import {
   primaryActionId,
   runsBoard,
   scoreWithTeams,
+  seasonCardOf,
   withState,
   type BoardAction,
 } from "./sections";
@@ -226,13 +227,13 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
             <SectionHeader id="home-live" icon={<LiveDot tone="live" />} title="Live now" tone="live" count={sections.live.length} />
             {sections.live.length === 1 ? (
               <div className="home-enter" style={enter()}>
-                <LiveCard game={sections.live[0]} state={details[sections.live[0].id]} me={me} />
+                <LiveCard game={seasonCardOf(sections.live[0])} state={sections.live[0].kind === "season" ? undefined : details[sections.live[0].id]} me={me} />
               </div>
             ) : (
               <div className="home-enter" style={enter()}>
                 <LiveCarousel label="Live boards">
                   {sections.live.map((g) => (
-                    <LiveCard key={g.id} game={g} state={details[g.id]} me={me} compact />
+                    <LiveCard key={g.id} game={seasonCardOf(g)} state={g.kind === "season" ? undefined : details[g.id]} me={me} compact />
                   ))}
                 </LiveCarousel>
               </div>

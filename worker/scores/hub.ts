@@ -13,7 +13,7 @@ import { isDayLeague } from "../../shared/sports";
 import type { LinkedEvent } from "../../shared/types";
 import type { Env } from "../env";
 import { parseDayId, parseWeekId } from "./espn";
-import { fetchLiveForEvent, isLinkedLeague, scheduleFor } from "./index";
+import { fetchLiveForEvent, getSeasonTeams, getTeamSeason, isLinkedLeague, isSeasonYear, isTeamId, scheduleFor } from "./index";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -59,6 +59,20 @@ export class ScoreHub implements DurableObject {
         : date !== undefined || (week !== undefined && !parseWeekId(week));
       if (bad) return json({ error: "bad query" }, 400);
       return json(await scheduleFor(league, { week, date }, { inflight: this.inflight }));
+    }
+    // Season boards: the league's teams, and one team's season.
+    if (url.pathname === "/teams" && request.method === "GET") {
+      const league = url.searchParams.get("league") ?? "";
+      if (!isLinkedLeague(league)) return json({ error: "bad query" }, 400);
+      return json(await getSeasonTeams(league, { inflight: this.inflight }));
+    }
+    if (url.pathname === "/team-schedule" && request.method === "GET") {
+      const league = url.searchParams.get("league") ?? "";
+      const team = url.searchParams.get("team") ?? "";
+      const rawYear = url.searchParams.get("year");
+      const year = rawYear === null ? null : Number(rawYear);
+      if (!isLinkedLeague(league) || !isTeamId(team) || (year !== null && !isSeasonYear(year))) return json({ error: "bad query" }, 400);
+      return json(await getTeamSeason(league, team, year, { inflight: this.inflight }));
     }
     return json({ error: "not found" }, 404);
   }
