@@ -1,0 +1,36 @@
+@import "tailwindcss" source(none);
+@import "../../src/theme.css";
+
+/* Scan the studio plus the app components it renders. */
+@source "./";
+@source "../../src/components";
+
+html,
+body {
+  margin: 0;
+  background: #060a16;
+  color: #e6edf6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Renders are captured frame by frame, so all motion is computed from the frame
+   number. Time-based CSS animation would make captures non-deterministic. */
+.stage *,
+.stage *::before,
+.stage *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+}
+
+.font-black-display {
+  font-family: "Inter Display", "Inter", ui-sans-serif, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}

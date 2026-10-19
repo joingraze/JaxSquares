@@ -18,4 +18,9 @@ export default tseslint.config(
       "@typescript-eslint/no-non-null-assertion": "off",
     },
   },
+  {
+    // The marketing studio renders frames headlessly; fast refresh doesn't apply.
+    files: ["marketing/**/*.{ts,tsx}"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
 );

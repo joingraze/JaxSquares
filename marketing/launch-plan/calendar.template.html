@@ -1,0 +1,640 @@
+<title>JaxSquares Launch Calendar</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a broadcast-style run sheet. Sticky scoreboard bar, "up next" rail,
+   then one row of seven days per week; collapses to a day-by-day agenda on phones. */
+:root {
+  --bg: #f3f6f2;
+  --surface: #ffffff;
+  --surface-2: #eaf0e8;
+  --ink: #0b1120;
+  --muted: #566173;
+  --line: #d7dfd4;
+  --brand: #15803d;
+  --brand-soft: #dcf3e3;
+  --accent: #0369a1;
+  --gold: #a16207;
+  --gold-soft: #fbefd0;
+  --rose: #be123c;
+  --k-reel: #15803d;
+  --k-carousel: #0369a1;
+  --k-story: #a16207;
+  --k-task: #475569;
+  --k-film: #be123c;
+  --shadow: 0 1px 2px rgba(11, 17, 32, 0.06), 0 8px 24px rgba(11, 17, 32, 0.06);
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #060a16; --surface: #0e1528; --surface-2: #131c30; --ink: #e6edf6; --muted: #93a1b6;
+    --line: #1f2b45; --brand: #4ade80; --brand-soft: #12301f; --accent: #38bdf8; --gold: #fbbf24;
+    --gold-soft: #33270b; --rose: #fb7185; --k-reel: #4ade80; --k-carousel: #38bdf8; --k-story: #fbbf24;
+    --k-task: #94a3b8; --k-film: #fb7185; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #060a16; --surface: #0e1528; --surface-2: #131c30; --ink: #e6edf6; --muted: #93a1b6;
+  --line: #1f2b45; --brand: #4ade80; --brand-soft: #12301f; --accent: #38bdf8; --gold: #fbbf24;
+  --gold-soft: #33270b; --rose: #fb7185; --k-reel: #4ade80; --k-carousel: #38bdf8; --k-story: #fbbf24;
+  --k-task: #94a3b8; --k-film: #fb7185; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--surface);
+}
+.wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabnum { font-variant-numeric: tabular-nums; }
+
+/* ---- scoreboard bar ---- */
+.bar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.bar .wrap { display: flex; align-items: center; gap: 14px; padding-block: 10px; flex-wrap: wrap; }
+.mark { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 30px; height: 30px; padding: 4px; border-radius: 8px; background: #131c30; flex: none; }
+.mark span { border-radius: 2px; }
+.brandname { font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1; }
+.brandname em { font-style: normal; color: var(--brand); }
+.brandsub { font-size: 12px; color: var(--muted); }
+.progress { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.meter { width: 140px; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--brand); border-radius: 99px; width: 0; }
+.progress b { font-family: var(--display); font-size: 20px; }
+.nav { display: flex; gap: 6px; flex-wrap: wrap; }
+.nav a, .chipbtn {
+  text-decoration: none; color: var(--ink); font-weight: 600; font-size: 13px;
+  padding: 6px 11px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface);
+}
+.nav a:hover, .chipbtn:hover { border-color: var(--brand); }
+.chipbtn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+main { padding-block: 22px 60px; display: flex; flex-direction: column; gap: 34px; }
+.sectionhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.sectionhead h2 { font-size: 30px; font-weight: 800; text-transform: uppercase; }
+.sectionhead p { margin: 0; color: var(--muted); font-size: 14px; }
+
+/* ---- up next ---- */
+.next { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.nextcard {
+  text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 14px; display: flex; flex-direction: column; gap: 8px; box-shadow: var(--shadow); min-width: 0;
+}
+.nextcard:hover { border-color: var(--brand); }
+.nextcard .when { font-family: var(--display); font-weight: 700; font-size: 18px; }
+.nextcard .t { font-weight: 700; font-size: 16px; line-height: 1.25; }
+.nextcard .tie { font-size: 12.5px; color: var(--muted); }
+.kind {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--kc);
+}
+.kind::before { content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--kc); }
+[data-kind="reel"] { --kc: var(--k-reel); }
+[data-kind="carousel"] { --kc: var(--k-carousel); }
+[data-kind="story"] { --kc: var(--k-story); }
+[data-kind="task"] { --kc: var(--k-task); }
+[data-kind="film"] { --kc: var(--k-film); }
+
+/* ---- calendar ---- */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.weeks { display: flex; flex-direction: column; gap: 22px; }
+.week { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.weekhead { display: flex; gap: 14px; align-items: baseline; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.weekhead .lbl { font-family: var(--display); font-size: 26px; font-weight: 800; text-transform: uppercase; line-height: 1; }
+.weekhead .dates { font-family: var(--display); font-size: 18px; color: var(--muted); font-weight: 600; }
+.weekhead .theme { font-weight: 700; }
+.weekhead .goal { flex-basis: 100%; color: var(--muted); font-size: 13.5px; }
+.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.day { border-right: 1px solid var(--line); min-height: 120px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.day:last-child { border-right: 0; }
+.day.empty { background: repeating-linear-gradient(135deg, transparent 0 8px, var(--surface-2) 8px 9px); }
+.day.today { box-shadow: inset 0 3px 0 var(--brand); background: var(--brand-soft); }
+.dayhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--muted); font-weight: 600; }
+.dayhead b { font-family: var(--display); font-size: 20px; color: var(--ink); }
+.post {
+  text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 9px;
+  padding: 6px 7px; display: flex; flex-direction: column; gap: 2px; border-left: 4px solid var(--kc); min-width: 0;
+}
+.post:hover { border-color: var(--kc); }
+.post .tm { font-size: 11px; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; gap: 4px; }
+.post .tt { font-size: 12.5px; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; }
+.post.done { opacity: 0.55; }
+.post.done .tt { text-decoration: line-through; }
+.tick { color: var(--brand); font-weight: 800; }
+
+/* ---- detail sheet ---- */
+.scrim { position: fixed; inset: 0; background: rgba(6, 10, 22, 0.55); z-index: 40; }
+.sheet {
+  position: fixed; z-index: 41; top: max(24px, env(safe-area-inset-top, 0px)); bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  right: max(24px, env(safe-area-inset-right, 0px)); width: min(560px, calc(100vw - 48px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.sheethead { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+.sheethead h3 { font-size: 28px; font-weight: 800; line-height: 1.05; }
+.sheethead .meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.close { margin-left: auto; border: 1px solid var(--line); background: var(--surface); border-radius: 99px; width: 34px; height: 34px; flex: none; font-size: 16px; }
+.sheetbody { padding: 16px 18px 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.tiein { background: var(--gold-soft); border-radius: 10px; padding: 9px 12px; font-size: 13.5px; font-weight: 600; }
+.media { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.media video, .media img.cover { width: 200px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 12px; background: #060a16; object-fit: cover; }
+.slides { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.slides figure { margin: 0; flex: none; width: 150px; display: flex; flex-direction: column; gap: 4px; }
+.slides img { width: 150px; aspect-ratio: 3 / 4; border-radius: 10px; object-fit: cover; background: #060a16; }
+.storyimg { width: 180px; max-width: 100%; aspect-ratio: 9 / 16; border-radius: 12px; object-fit: cover; background: #060a16; }
+.block h4 { margin: 0 0 6px; font-size: 11.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.copybox {
+  white-space: pre-wrap; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; font-size: 14.5px; line-height: 1.5; overflow-wrap: anywhere;
+}
+.tags { color: var(--accent); font-weight: 600; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px;
+  font-weight: 700; font-size: 13.5px;
+}
+.btn:hover { border-color: var(--brand); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--bg); }
+.btn.done { background: var(--brand-soft); border-color: var(--brand); color: var(--ink); }
+ul.clean { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+ol.clean { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.note { font-size: 12.5px; color: var(--muted); }
+.toast {
+  position: fixed; left: 50%; bottom: max(20px, env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 99px; font-weight: 700; font-size: 13.5px; z-index: 60;
+}
+
+/* ---- strategy ---- */
+.strategy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+details.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0 16px; min-width: 0; }
+details.panel summary { cursor: pointer; list-style: none; padding: 14px 0; font-family: var(--display); font-weight: 800; font-size: 21px; text-transform: uppercase; display: flex; justify-content: space-between; }
+details.panel summary::after { content: "+"; color: var(--muted); }
+details.panel[open] summary::after { content: "–"; }
+details.panel > div { padding-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+details.panel p { margin: 0; }
+table.pillars { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.pillars td { padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+table.pillars td:first-child { font-weight: 700; white-space: nowrap; }
+table.pillars td.share { font-family: var(--display); font-size: 18px; font-weight: 700; color: var(--brand); }
+code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--surface-2); padding: 8px; border-radius: 8px; }
+
+/* ---- assets ---- */
+.assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+.asset { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.asset video, .asset img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; background: #060a16; }
+.asset.portrait img { aspect-ratio: 3 / 4; }
+.asset .nm { font-size: 13px; font-weight: 700; line-height: 1.25; }
+.asset .used { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 860px) {
+  .next { grid-template-columns: minmax(0, 1fr); }
+  .strategy { grid-template-columns: minmax(0, 1fr); }
+  .days { grid-template-columns: minmax(0, 1fr); }
+  .day { border-right: 0; border-bottom: 1px solid var(--line); min-height: 0; }
+  .day.empty { display: none; }
+  .day:last-child { border-bottom: 0; }
+  .sheet { inset: auto 0 0 0; top: max(40px, env(safe-area-inset-top, 0px)); width: auto; border-radius: 18px 18px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .meter { width: 80px; }
+  .brandsub { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nextcard, .post, .btn { transition: border-color 0.15s ease; }
+}
+</style>
+
+<header class="bar">
+  <div class="wrap">
+    <span class="mark" aria-hidden="true"><span style="background:#22c55e"></span><span style="background:#0ea5e9"></span><span style="background:#f59e0b"></span><span style="background:#f43f5e"></span></span>
+    <div>
+      <div class="brandname">Jax<em>Squares</em> launch</div>
+      <div class="brandsub">Instagram · Oct 20 – Nov 29, 2026 · all times ET</div>
+    </div>
+    <div class="progress">
+      <div class="meter" aria-hidden="true"><i id="meterfill"></i></div>
+      <b id="donecount" class="tabnum">0/0</b>
+    </div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#upnext">Up next</a>
+      <a href="#calendar">Calendar</a>
+      <a href="#playbook">Playbook</a>
+      <a href="#library">Assets</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="upnext" aria-labelledby="upnext-h">
+    <div class="sectionhead">
+      <h2 id="upnext-h">Up next</h2>
+      <p id="syncnote">Loading posted status…</p>
+    </div>
+    <div class="next" id="next"></div>
+  </section>
+
+  <section id="calendar" aria-labelledby="cal-h">
+    <div class="sectionhead">
+      <h2 id="cal-h">Calendar</h2>
+      <div class="filters" role="group" aria-label="Filter posts">
+        <button class="chipbtn" data-filter="all" aria-pressed="true">All</button>
+        <button class="chipbtn" data-filter="reel" aria-pressed="false">Reels</button>
+        <button class="chipbtn" data-filter="carousel" aria-pressed="false">Carousels</button>
+        <button class="chipbtn" data-filter="story" aria-pressed="false">Stories</button>
+        <button class="chipbtn" data-filter="task" aria-pressed="false">Tasks</button>
+        <button class="chipbtn" id="hidedone" aria-pressed="false">Hide posted</button>
+      </div>
+    </div>
+    <div class="weeks" id="weeks"></div>
+  </section>
+
+  <section id="playbook" aria-labelledby="pb-h">
+    <div class="sectionhead">
+      <h2 id="pb-h">Playbook</h2>
+      <p>The research-backed rules behind every post.</p>
+    </div>
+    <div class="strategy" id="strategy"></div>
+  </section>
+
+  <section id="library" aria-labelledby="lib-h">
+    <div class="sectionhead">
+      <h2 id="lib-h">Asset library</h2>
+      <p id="libnote">Every video, carousel and story frame, rendered from code.</p>
+    </div>
+    <div class="assets" id="assets"></div>
+  </section>
+</main>
+
+<div id="sheetroot"></div>
+<script type="application/json" id="plan">/*PLAN_JSON*/</script>
+<script>
+(() => {
+  const PLAN = JSON.parse(document.getElementById("plan").textContent);
+  const items = PLAN.items;
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const KIND = { reel: "Reel", carousel: "Carousel", story: "Story", task: "Task", film: "Film it" };
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const h = (tag, attrs = {}, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k === "class") el.className = v;
+      else if (k === "text") el.textContent = v;
+      else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? "" : v);
+    }
+    for (const kid of kids.flat()) if (kid !== null && kid !== undefined && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
+    return el;
+  };
+
+  // ---------- dates (plan is in US Eastern) ----------
+  const nowET = () => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+    return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+  };
+  const dayLabel = (d) => new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  const fmtTime = (t) => { const [hh, mm] = t.split(":").map(Number); return `${((hh + 11) % 12) + 1}:${String(mm).padStart(2, "0")} ${hh < 12 ? "AM" : "PM"}`; };
+  const addDays = (d, n) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const mondayOf = (d) => { const x = new Date(d + "T12:00:00Z"); const wd = (x.getUTCDay() + 6) % 7; return addDays(d, -wd); };
+
+  // ---------- assets ----------
+  const assetUrl = (it) => {
+    if (!it.asset) return null;
+    if (it.asset.startsWith("s-story-frames/")) return { story: `assets/${it.asset}.jpg` };
+    if (it.slides) return { slides: Array.from({ length: it.slides }, (_, i) => `assets/${it.asset}/${String(i + 1).padStart(2, "0")}.jpg`) };
+    return { video: `assets/${it.asset}.mp4`, cover: `assets/${it.asset}-cover.jpg` };
+  };
+
+  // ---------- posted state: shared db, else this device ----------
+  const done = new Map();
+  let db = null;
+  let canWrite = true;
+  const LOCAL_KEY = "jaxsquares-launch-posted";
+  const loadLocal = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}"); } catch { return {}; } };
+  const saveLocal = () => { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(Object.fromEntries(done))); } catch { /* storage blocked */ } };
+  for (const [k, v] of Object.entries(loadLocal())) if (v) done.set(k, true);
+
+  async function setDone(id, value) {
+    if (value) done.set(id, true); else done.delete(id);
+    renderAll();
+    if (db && canWrite) {
+      try {
+        await db.collection("posted").doc(id).set({ done: value, at: new Date().toISOString() });
+      } catch (e) {
+        if (e && e.code === "invalid_argument") { canWrite = false; syncNote(); }
+        toast("Couldn't sync that change. It's saved on this device.");
+        saveLocal();
+      }
+    } else saveLocal();
+  }
+
+  function syncNote() {
+    const el = $("#syncnote");
+    if (db && canWrite) el.textContent = "Posted status syncs across your devices.";
+    else if (db) el.textContent = "View only: you can't change posted status here.";
+    else el.textContent = "Posted status is saved on this device.";
+  }
+
+  (async () => {
+    try {
+      db = window.claude && window.claude.use ? await window.claude.use("db") : null;
+    } catch { db = null; }
+    syncNote();
+    if (!db) return;
+    db.collection("posted").onSnapshot((snap) => {
+      done.clear();
+      for (const d of snap.docs) if (d.data() && d.data().done) done.set(d.id, true);
+      renderAll();
+    }, () => { db = null; syncNote(); });
+  })();
+  syncNote();
+
+  let downloads = null;
+  (async () => {
+    try { downloads = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch { downloads = null; }
+    $("#libnote").textContent = downloads
+      ? "Every video, carousel and story frame, rendered from code. Save sends a file to your device (on iPhone: Save Video → Photos)."
+      : "Every video, carousel and story frame, rendered from code. Open this page in claude.ai to save files.";
+    renderAssets();
+    if (openId) renderSheet();
+  })();
+
+  async function saveFile(url, filename) {
+    if (!downloads) { toast("Saving works when this page is open in claude.ai."); return; }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(String(res.status));
+      await downloads.save({ filename, data: await res.blob() });
+      toast(`Saved ${filename}`);
+    } catch (e) {
+      if (e && e.code === "declined") return;
+      if (e && e.code === "rate_limited") { toast("Finish the open save first."); return; }
+      toast("That file didn't save. Try again.");
+    }
+  }
+
+  // ---------- copy ----------
+  let toastTimer = 0;
+  function toast(msg) {
+    let el = $(".toast");
+    if (!el) { el = h("div", { class: "toast", role: "status" }); document.body.append(el); }
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 1800);
+  }
+  async function copy(text, box) {
+    try { await navigator.clipboard.writeText(text); toast("Copied"); }
+    catch {
+      if (box) { const r = document.createRange(); r.selectNodeContents(box); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      toast("Selected. Press copy on your keyboard.");
+    }
+  }
+
+  // ---------- filters ----------
+  let filter = "all";
+  let hideDone = false;
+  document.querySelectorAll("[data-filter]").forEach((b) => b.addEventListener("click", () => {
+    filter = b.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderCalendar();
+  }));
+  $("#hidedone").addEventListener("click", (e) => { hideDone = !hideDone; e.currentTarget.setAttribute("aria-pressed", String(hideDone)); renderCalendar(); });
+  const visible = (it) => (filter === "all" || it.kind === filter || (filter === "reel" && it.kind === "film") || (filter === "task" && it.kind === "film")) && !(hideDone && done.has(it.id));
+
+  // ---------- render ----------
+  function renderProgress() {
+    const n = items.filter((it) => done.has(it.id)).length;
+    $("#donecount").textContent = `${n}/${items.length}`;
+    $("#meterfill").style.width = `${(100 * n) / items.length}%`;
+  }
+
+  function renderNext() {
+    const now = nowET();
+    const key = now.date + " " + now.time;
+    const upcoming = items.filter((it) => !done.has(it.id) && it.kind !== "story" && it.date + " " + it.time >= (key < PLAN.start ? "" : now.date + " 00:00"));
+    const pick = (upcoming.length ? upcoming : items.filter((it) => !done.has(it.id))).slice(0, 3);
+    const box = $("#next");
+    box.replaceChildren();
+    if (!pick.length) { box.append(h("p", { class: "note", text: "Everything is posted. Time for the retro." })); return; }
+    for (const it of pick) {
+      box.append(h("button", { class: "nextcard", "data-kind": it.kind, onclick: () => openSheet(it.id) },
+        h("span", { class: "kind", text: KIND[it.kind] }),
+        h("span", { class: "when tabnum", text: `${dayLabel(it.date)} · ${fmtTime(it.time)}` }),
+        h("span", { class: "t", text: it.title }),
+        it.tieIn ? h("span", { class: "tie", text: it.tieIn }) : null,
+      ));
+    }
+  }
+
+  function renderCalendar() {
+    const today = nowET().date;
+    const root = $("#weeks");
+    root.replaceChildren();
+    for (const w of PLAN.weeks) {
+      const wkItems = items.filter((it) => it.week === w.key);
+      const monday = mondayOf(wkItems[0].date);
+      const days = h("div", { class: "days" });
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(monday, i);
+        const its = wkItems.filter((it) => it.date === d && visible(it));
+        const cell = h("div", { class: `day${its.length ? "" : " empty"}${d === today ? " today" : ""}` },
+          h("div", { class: "dayhead" }, h("span", { text: new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }) }), h("b", { class: "tabnum", text: new Date(d + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) })),
+        );
+        for (const it of its) {
+          cell.append(h("button", { class: `post${done.has(it.id) ? " done" : ""}`, "data-kind": it.kind, onclick: () => openSheet(it.id), "aria-label": `${KIND[it.kind]} ${fmtTime(it.time)}: ${it.title}` },
+            h("span", { class: "tm tabnum" }, h("span", { text: `${fmtTime(it.time)} · ${KIND[it.kind]}` }), done.has(it.id) ? h("span", { class: "tick", text: "✓" }) : null),
+            h("span", { class: "tt", text: it.title }),
+          ));
+        }
+        days.append(cell);
+      }
+      root.append(h("article", { class: "week" },
+        h("div", { class: "weekhead" },
+          h("span", { class: "lbl", text: w.label }),
+          h("span", { class: "dates", text: w.dates }),
+          h("span", { class: "theme", text: w.theme }),
+          h("span", { class: "goal", text: w.goal }),
+        ),
+        days,
+      ));
+    }
+  }
+
+  function list(arr, ordered) { return h(ordered ? "ol" : "ul", { class: "clean" }, arr.map((x) => h("li", { text: x }))); }
+
+  function renderStrategy() {
+    const s = PLAN.strategy;
+    const panel = (title, open, ...kids) => h("details", { class: "panel", open }, h("summary", { text: title }), h("div", {}, ...kids));
+    const bioBox = h("div", { class: "copybox", text: s.setup.bio });
+    const out = [
+      panel("Positioning", true, h("p", { text: s.positioning }),
+        h("table", { class: "pillars" }, h("tbody", {}, s.pillars.map((p) => h("tr", {}, h("td", { text: p.name }), h("td", { class: "share tabnum", text: p.share }), h("td", { text: p.what })))))),
+      panel("Cadence and timing", true, list(s.cadence)),
+      panel("Rules that drive reach", false, list(s.rules)),
+      panel("Stay out of trouble", false, list(s.compliance)),
+      panel("Measure", false,
+        ...s.kpis.map((k) => h("div", {}, h("b", { text: k.metric }), k.how.startsWith("npx") ? h("code", { class: "cmd", text: k.how }) : h("p", { text: k.how }))),
+        h("p", { class: "note", text: s.targets })),
+      panel("Profile setup", false,
+        h("p", {}, h("b", { text: "Name field: " }), s.setup.name),
+        h("div", { class: "block" }, h("h4", { text: "Bio" }), bioBox, h("div", { class: "row" }, h("button", { class: "btn", onclick: () => copy(s.setup.bio, bioBox), text: "Copy bio" }))),
+        h("p", {}, h("b", { text: "Link: " }), s.setup.link),
+        h("p", {}, h("b", { text: "Highlights: " }), s.setup.highlights.join(" · "))),
+      panel("Outreach templates", false,
+        ...[["Creators", s.outreach.creator], ["Bars and offices", s.outreach.bar], ["Ask for user boards", s.outreach.ugc]].map(([t, txt]) => {
+          const b = h("div", { class: "copybox", text: txt });
+          return h("div", { class: "block" }, h("h4", { text: t }), b, h("div", { class: "row" }, h("button", { class: "btn", onclick: () => copy(txt, b), text: "Copy" })));
+        })),
+    ];
+    $("#strategy").replaceChildren(...out);
+  }
+
+  function renderAssets() {
+    const seen = new Map();
+    for (const it of items) if (it.asset) { if (!seen.has(it.asset)) seen.set(it.asset, []); seen.get(it.asset).push(it); }
+    const cards = [];
+    for (const [asset, uses] of seen) {
+      const it = uses[0];
+      const u = assetUrl(it);
+      const used = `Used ${uses.map((x) => dayLabel(x.date)).join(", ")}`;
+      if (u.video) {
+        cards.push(h("div", { class: "asset" },
+          h("video", { src: u.video, poster: u.cover, preload: "none", controls: true, playsinline: true, muted: true }),
+          h("span", { class: "nm", text: asset }), h("span", { class: "used", text: used }),
+          downloads ? h("div", { class: "row" }, h("button", { class: "btn", onclick: () => saveFile(u.video, `${asset}.mp4`), text: "Save video" }), h("button", { class: "btn", onclick: () => saveFile(u.cover, `${asset}-cover.jpg`), text: "Cover" })) : null));
+      } else if (u.slides) {
+        cards.push(h("div", { class: "asset portrait" },
+          h("img", { src: u.slides[0], alt: `${asset} first slide`, loading: "lazy" }),
+          h("span", { class: "nm", text: `${asset} (${u.slides.length} slides)` }), h("span", { class: "used", text: used }),
+          h("button", { class: "btn", onclick: () => openSheet(it.id), text: "Open slides" })));
+      }
+    }
+    const storyFrames = [...new Set(items.filter((x) => x.asset && x.asset.startsWith("s-story-frames/")).map((x) => x.asset))].sort();
+    for (const a of storyFrames) {
+      const url = `assets/${a}.jpg`;
+      const name = `story-${a.split("/")[1]}.jpg`;
+      cards.push(h("div", { class: "asset" },
+        h("img", { src: url, alt: `Story frame ${a.split("/")[1]}`, loading: "lazy" }),
+        h("span", { class: "nm", text: `Story frame ${a.split("/")[1]}` }),
+        downloads ? h("button", { class: "btn", onclick: () => saveFile(url, name), text: "Save image" }) : null));
+    }
+    $("#assets").replaceChildren(...cards);
+  }
+
+  // ---------- sheet ----------
+  let openId = null;
+  function openSheet(id) { openId = id; renderSheet(); }
+  function closeSheet() { openId = null; renderSheet(); }
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && openId) closeSheet(); });
+
+  function renderSheet() {
+    const root = $("#sheetroot");
+    root.replaceChildren();
+    if (!openId) return;
+    const it = byId.get(openId);
+    const u = assetUrl(it);
+    const body = h("div", { class: "sheetbody" });
+    if (it.tieIn) body.append(h("div", { class: "tiein", text: it.tieIn }));
+
+    if (u && u.video) {
+      body.append(h("div", { class: "block" }, h("h4", { text: "Video" }),
+        h("div", { class: "media" },
+          h("video", { src: u.video, poster: u.cover, controls: true, playsinline: true, muted: true, preload: "metadata" }),
+          h("div", { class: "row", style: "flex-direction:column;align-items:flex-start" },
+            h("button", { class: "btn primary", onclick: () => saveFile(u.video, `${it.asset}.mp4`), text: "Save video" }),
+            h("button", { class: "btn", onclick: () => saveFile(u.cover, `${it.asset}-cover.jpg`), text: "Save cover" }),
+            h("span", { class: "note", text: it.kind === "story" ? "Post as a Story; add the sticker below." : "1080×1920 · silent, add audio in the Reels editor." })))));
+    }
+    if (u && u.slides) {
+      body.append(h("div", { class: "block" }, h("h4", { text: `Slides (${u.slides.length}), post in this order` }),
+        h("div", { class: "slides" }, u.slides.map((src, i) => h("figure", {},
+          h("img", { src, alt: `Slide ${i + 1}`, loading: "lazy" }),
+          h("button", { class: "btn", onclick: () => saveFile(src, `${it.asset}-${String(i + 1).padStart(2, "0")}.jpg`), text: `Save ${i + 1}` }))))));
+    }
+    if (u && u.story) {
+      body.append(h("div", { class: "block" }, h("h4", { text: "Story frame" }),
+        h("div", { class: "media" }, h("img", { class: "storyimg", src: u.story, alt: "Story frame" }),
+          h("button", { class: "btn primary", onclick: () => saveFile(u.story, `story-${it.asset.split("/")[1]}.jpg`), text: "Save image" }))));
+    }
+    if (it.script) body.append(h("div", { class: "block" }, h("h4", { text: "Script" }), list(it.script, true)));
+    if (it.checklist) body.append(h("div", { class: "block" }, h("h4", { text: "Checklist" }), list(it.checklist)));
+    if (it.caption) {
+      const full = `${it.caption}\n\n${it.hashtags.join(" ")}`;
+      const box = h("div", { class: "copybox" }, it.caption, "\n\n", h("span", { class: "tags", text: it.hashtags.join(" ") }));
+      body.append(h("div", { class: "block" }, h("h4", { text: "Caption" }), box,
+        h("div", { class: "row", style: "margin-top:8px" },
+          h("button", { class: "btn primary", onclick: () => copy(full, box), text: "Copy caption + hashtags" }),
+          h("button", { class: "btn", onclick: () => copy(it.hashtags.join(" ")), text: "Copy hashtags" }))));
+    }
+    if (it.altText) {
+      const b = h("div", { class: "copybox", text: it.altText });
+      body.append(h("div", { class: "block" }, h("h4", { text: "Alt text (Advanced settings)" }), b, h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => copy(it.altText, b), text: "Copy alt text" }))));
+    }
+    if (it.story) {
+      const b = h("div", { class: "copybox", text: it.story.text });
+      body.append(h("div", { class: "block" }, h("h4", { text: `Story text · sticker: ${it.story.sticker}` }), b,
+        h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => copy(it.story.text, b), text: "Copy story text" }))));
+    }
+    if (it.notes) body.append(h("div", { class: "block" }, h("h4", { text: "Notes" }), list(it.notes)));
+
+    doneBtn = h("button", { class: "btn", onclick: () => setDone(it.id, !done.has(it.id)) });
+    updateDoneBtn();
+    root.append(
+      h("div", { class: "scrim", onclick: closeSheet }),
+      h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": "sheet-title", "data-kind": it.kind },
+        h("div", { class: "sheethead" },
+          h("div", { style: "min-width:0" },
+            h("span", { class: "kind", text: KIND[it.kind] }),
+            h("h3", { id: "sheet-title", text: it.title }),
+            h("div", { class: "meta tabnum", text: `${dayLabel(it.date)} · ${fmtTime(it.time)} ET` }),
+            h("div", { class: "row", style: "margin-top:10px" }, doneBtn)),
+          h("button", { class: "close", onclick: closeSheet, "aria-label": "Close", text: "✕" })),
+        body));
+    $(".close", root).focus();
+  }
+
+  let doneBtn = null;
+  function updateDoneBtn() {
+    if (!doneBtn || !openId) return;
+    const isDone = done.has(openId);
+    doneBtn.className = `btn ${isDone ? "done" : "primary"}`;
+    doneBtn.textContent = isDone ? "✓ Posted (undo)" : "Mark as posted";
+  }
+
+  // Status changes re-render the lists only; the open sheet and the asset
+  // library keep their video elements (and playback) intact.
+  function renderAll() { renderProgress(); renderNext(); renderCalendar(); updateDoneBtn(); }
+  renderStrategy();
+  renderAll();
+  renderAssets();
+  if (location.hash && byId.has(location.hash.slice(1))) openSheet(location.hash.slice(1));
+})();
+</script>
