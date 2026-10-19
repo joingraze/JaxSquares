@@ -47,7 +47,12 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   (`src/lib/auth.ts`) wipes the device: a new clientId.
 - The host also holds a per-game `adminToken` (`x-admin-token`) for host routes.
   `GET /api/me` returns the tokens of the boards the caller's (canonical)
-  identity hosts, never anyone else's.
+  identity hosts, never anyone else's. Co-hosts (up to `MAX_COHOSTS`,
+  `shared/cohosts.ts`, table `cohosts`) authorize by their canonical clientId,
+  not by a token: `hostAccess` in `worker/index.ts` accepts the admin token or
+  a co-host's `c.get("clientId")` and says which (host-only routes 403 a
+  co-host); they never get the admin token (`/api/me` lists `cohostGames`
+  without one). The app asks `useHostRole(state)` (`src/lib/hostRole.ts`).
 - Grep check before shipping: `clientId` may only appear in request headers,
   server internals and identity storage.
 

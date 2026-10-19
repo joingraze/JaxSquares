@@ -344,6 +344,13 @@ export function describeActivity(activity: Activity, state: GameState, myPlayerI
         tone: "info",
         subject: activity.actor ? { kind: "player", id: activity.actor } : { kind: "system", glyph: "board" },
       };
+    case "cohost":
+      // Someone accepted the host's co-host invite: who's running the board now.
+      return {
+        text: `${str((activity.data as Data).name) ?? nameOf(state, activity.actor)} is now a co-host`,
+        tone: "info",
+        subject: activity.actor ? { kind: "player", id: activity.actor } : { kind: "system", glyph: "board" },
+      };
     default:
       return null;
   }

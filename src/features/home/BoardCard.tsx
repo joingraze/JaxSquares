@@ -67,7 +67,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
           <div className="flex items-baseline gap-2">
             <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
             {/* On a board I'm playing, my squares say it (next to the count) instead of a role. */}
-            {model.relation !== "playing" && <RoleLabel relation={model.relation} className="self-center" />}
+            {model.relation !== "playing" && <RoleLabel relation={model.relation} cohost={!game.isHost && !!game.isCohost} className="self-center" />}
           </div>
           {/* One count ("42 left") with the fill meter right under it, and the action beside them. */}
           <div className="flex min-h-7 items-center gap-3">

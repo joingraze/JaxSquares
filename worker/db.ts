@@ -3,7 +3,7 @@
 // worker/payments/store.ts and worker/push/store.ts.)
 //
 // Identity: rows store the device's secret clientId (players.client_id,
-// squares.client_id, games.host_client_id); for a signed-in device that is its
+// squares.client_id, games.host_client_id, cohosts.client_id); for a signed-in device that is its
 // account's canonical clientId (worker/auth/canonical.ts resolves it before
 // any route reads it). Every domain object built here for clients carries the
 // public player id instead (worker/playerIds.ts); the clientId never leaves
@@ -305,8 +305,13 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
     db
       .prepare(`SELECT id, type, at, actor, data FROM activity WHERE game_id = ? ORDER BY at DESC, rowid DESC LIMIT ${ACTIVITY_LIMIT}`)
       .bind(id),
+    // Co-hosts (migration 0014), in the order they became co-hosts.
+    db.prepare(`SELECT client_id FROM cohosts WHERE game_id = ? ORDER BY added_at, rowid`).bind(id),
   ];
 }
+
+/** The co-hosts' clientIds from a stateReads batch (server-only). */
+const cohostRowsOf = (results: D1Result[]): string[] => ((results[7]?.results ?? []) as { client_id: string }[]).map((r) => r.client_id);
 
 async function stateFrom(results: D1Result[]): Promise<GameState | null> {
   const [games, players, squares, scores, manual, live, activity] = results;
@@ -314,10 +319,17 @@ async function stateFrom(results: D1Result[]): Promise<GameState | null> {
   if (!row) return null;
   const playerRows = players.results as PlayerRow[];
   const squareRows = squares.results as SquareRow[];
-  const ids = await playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id)]);
+  const cohosts = cohostRowsOf(results);
+  const ids = await playerIdMap([
+    row.host_client_id,
+    ...playerRows.map((p) => p.client_id),
+    ...squareRows.map((s) => s.client_id),
+    ...cohosts,
+  ]);
   const liveRow = live.results[0] as LiveRow | undefined;
   return {
-    game: rowToGame(row, publicId(ids, row.host_client_id)),
+    // Co-hosts by public id only.
+    game: { ...rowToGame(row, publicId(ids, row.host_client_id)), cohostIds: cohosts.map((c) => publicId(ids, c)) },
     players: playerRows.map(rowToPlayer(ids, row.host_client_id)),
     squares: squareRows.map(rowToSquare(ids)),
     scores: (scores.results as ScoreRow[]).map(rowToScore),
@@ -333,15 +345,27 @@ export async function getGameState(db: D1Database, id: string): Promise<GameStat
   return stateFrom(await db.batch(stateReads(db, id)));
 }
 
-/** State plus the host's admin token (never sent to clients), in one round trip. */
+/**
+ * State plus the host's admin token (never sent to clients), in one round
+ * trip, and whether `clientId` (the request's canonical one) co-hosts the
+ * board: the host routes accept either.
+ */
 export async function getGameStateWithToken(
   db: D1Database,
   id: string,
-): Promise<{ state: GameState; adminToken: string } | null> {
+  clientId = "",
+): Promise<{ state: GameState; adminToken: string; cohost: boolean } | null> {
   const results = await db.batch(stateReads(db, id));
   const state = await stateFrom(results);
   if (!state) return null;
-  return { state, adminToken: (results[0].results[0] as GameRow).admin_token };
+  const cohost = !!clientId && cohostRowsOf(results).includes(clientId);
+  return { state, adminToken: (results[0].results[0] as GameRow).admin_token, cohost };
+}
+
+/** Whether `clientId` (a request's canonical one) co-hosts the board. Server-only (the payment routes' host check). */
+export async function isCohost(db: D1Database, gameId: string, clientId: string): Promise<boolean> {
+  const row = await db.prepare(`SELECT 1 AS ok FROM cohosts WHERE game_id = ? AND client_id = ?`).bind(gameId, clientId).first<{ ok: number }>();
+  return !!row;
 }
 
 /**
@@ -466,7 +490,7 @@ export function updateGameFields(db: D1Database, gameId: string, fields: GameFie
 }
 
 export async function deleteGame(db: D1Database, gameId: string): Promise<boolean> {
-  const tables = ["activity", "live_status", "manual_winners", "scores", "squares", "players"];
+  const tables = ["activity", "live_status", "manual_winners", "scores", "squares", "cohost_invites", "cohosts", "players"];
   const results = await db.batch([
     ...tables.map((t) => db.prepare(`DELETE FROM ${t} WHERE game_id = ?`).bind(gameId)),
     db.prepare(`DELETE FROM games WHERE id = ?`).bind(gameId),
@@ -499,7 +523,8 @@ export function upsertPlayer(
 /**
  * Host removes a player (by public id) and frees their squares; null when
  * nobody on the board has that id. Only while squares are still being picked
- * (re-checked inside the transaction), and never the host.
+ * (re-checked inside the transaction), and never the host. A co-host taken off
+ * the board stops being one too (the route decides who may remove a co-host).
  */
 export async function removePlayer(db: D1Database, gameId: string, playerId: string): Promise<D1PreparedStatement[] | null> {
   const { rows, ids } = await memberRows(db, gameId);
@@ -508,8 +533,85 @@ export async function removePlayer(db: D1Database, gameId: string, playerId: str
   const picking = `EXISTS (SELECT 1 FROM games WHERE id = ?1 AND status IN ('draft', 'open') AND host_client_id <> ?2)`;
   return [
     db.prepare(`DELETE FROM squares WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
+    db.prepare(`DELETE FROM cohosts WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
     db.prepare(`DELETE FROM players WHERE game_id = ?1 AND client_id = ?2 AND ${picking}`).bind(gameId, clientId),
   ];
+}
+
+// ---- Co-hosts (migration 0014; shared/cohosts.ts) ----
+
+/** A new single-use co-host invite. Only the token's hash is stored. */
+export function insertCohostInvite(db: D1Database, gameId: string, tokenHash: string, expiresAt: number): D1PreparedStatement {
+  return db
+    .prepare(`INSERT INTO cohost_invites (token_hash, game_id, expires_at, used_at) VALUES (?, ?, ?, NULL)`)
+    .bind(tokenHash, gameId, expiresAt);
+}
+
+/** This board's co-host invite with that token hash (null when there's none), to say why it can't be used. */
+export async function cohostInvite(
+  db: D1Database,
+  gameId: string,
+  tokenHash: string,
+): Promise<{ expiresAt: number; usedAt: number | null } | null> {
+  const row = await db
+    .prepare(`SELECT expires_at, used_at FROM cohost_invites WHERE token_hash = ? AND game_id = ?`)
+    .bind(tokenHash, gameId)
+    .first<{ expires_at: number; used_at: number | null }>();
+  return row ? { expiresAt: row.expires_at, usedAt: row.used_at } : null;
+}
+
+/**
+ * Accepting a co-host invite, in one transaction (run it through commit, with
+ * insertActivityIfChanged right after): the invite is used up only while it's
+ * unused and unexpired, the board has fewer than `max` co-hosts, and
+ * `clientId` is a player there who isn't its host or a co-host already; then,
+ * only if it was, `clientId` becomes a co-host. All checked inside the
+ * statements, so racing accepts can't go past `max` or use one link twice.
+ */
+export function acceptCohostInvite(
+  db: D1Database,
+  a: { gameId: string; tokenHash: string; clientId: string; now: number; max: number },
+): D1PreparedStatement[] {
+  return [
+    db
+      .prepare(
+        `UPDATE cohost_invites SET used_at = ?3
+         WHERE token_hash = ?2 AND game_id = ?1 AND used_at IS NULL AND expires_at > ?3
+           AND (SELECT COUNT(*) FROM cohosts WHERE game_id = ?1) < ?5
+           AND EXISTS (SELECT 1 FROM players WHERE game_id = ?1 AND client_id = ?4)
+           AND NOT EXISTS (SELECT 1 FROM games WHERE id = ?1 AND host_client_id = ?4)
+           AND NOT EXISTS (SELECT 1 FROM cohosts WHERE game_id = ?1 AND client_id = ?4)`,
+      )
+      .bind(a.gameId, a.tokenHash, a.now, a.clientId, a.max),
+    db.prepare(`INSERT INTO cohosts (game_id, client_id, added_at) SELECT ?1, ?2, ?3 WHERE changes() > 0`).bind(a.gameId, a.clientId, a.now),
+  ];
+}
+
+/** Takes a co-host (by public id) off the board's co-hosts; they stay a player. Null when nobody co-hosts with that id. */
+export async function removeCohost(db: D1Database, gameId: string, playerId: string): Promise<D1PreparedStatement | null> {
+  const { results } = await db.prepare(`SELECT client_id FROM cohosts WHERE game_id = ?`).bind(gameId).all<{ client_id: string }>();
+  const ids = await playerIdMap(results.map((r) => r.client_id));
+  const clientId = results.find((r) => publicId(ids, r.client_id) === playerId)?.client_id;
+  if (!clientId) return null;
+  return db.prepare(`DELETE FROM cohosts WHERE game_id = ? AND client_id = ?`).bind(gameId, clientId);
+}
+
+/** Most board ids GET /api/me lists as co-hosted. */
+const COHOST_GAMES_MAX = 200;
+
+/** Ids of the boards `clientId` (the caller's own, resolved identity: never anyone else's) co-hosts, newest first. */
+export async function cohostGamesFor(db: D1Database, clientId: string): Promise<string[]> {
+  const { results } = await db
+    .prepare(`SELECT game_id FROM cohosts WHERE client_id = ? ORDER BY added_at DESC LIMIT ?`)
+    .bind(clientId, COHOST_GAMES_MAX)
+    .all<{ game_id: string }>();
+  return results.map((r) => r.game_id);
+}
+
+/** Housekeeping: drops co-host invites that expired or were used before `before`. Returns how many went. */
+export async function pruneCohostInvites(db: D1Database, before: number): Promise<number> {
+  const res = await db.prepare(`DELETE FROM cohost_invites WHERE expires_at < ?1 OR used_at < ?1`).bind(before).run();
+  return res.meta.changes ?? 0;
 }
 
 /**
@@ -763,6 +865,8 @@ interface DashboardRow extends GameRow {
   /** Players holding at least one square (the free tier's count). */
   holders: number;
   joined: number;
+  /** This identity co-hosts the board. */
+  cohost: number;
   /** The host's player row (null when there is none). */
   host_name: string | null;
   host_color: string | null;
@@ -770,7 +874,7 @@ interface DashboardRow extends GameRow {
 }
 
 /**
- * Boards this device hosts or has joined, plus the boards it only opened
+ * Boards this device hosts, co-hosts or has joined, plus the boards it only opened
  * (`seen`: invite links it hasn't acted on, already validated by the route),
  * most recently active first. Seen ids that no longer exist are simply absent.
  * Everything returned is public: the caller's clientId only selects rows.
@@ -789,6 +893,7 @@ export async function listGamesForClient(
          (SELECT COUNT(*) FROM players p WHERE p.game_id = g.id) AS player_count,
          (SELECT COUNT(DISTINCT s.client_id) FROM squares s WHERE s.game_id = g.id) AS holders,
          EXISTS (SELECT 1 FROM players p WHERE p.game_id = g.id AND p.client_id = ?1) AS joined,
+         EXISTS (SELECT 1 FROM cohosts c WHERE c.game_id = g.id AND c.client_id = ?1) AS cohost,
          hp.name AS host_name, hp.color AS host_color, hp.emoji AS host_emoji
        FROM games g
        LEFT JOIN players hp ON hp.game_id = g.id AND hp.client_id = g.host_client_id
@@ -796,6 +901,7 @@ export async function listGamesForClient(
                SELECT m.id FROM games m
                WHERE m.host_client_id = ?1
                   OR EXISTS (SELECT 1 FROM players p WHERE p.game_id = m.id AND p.client_id = ?1)
+                  OR EXISTS (SELECT 1 FROM cohosts c WHERE c.game_id = m.id AND c.client_id = ?1)
                ORDER BY m.updated_at DESC
                LIMIT ?2
              )
@@ -850,6 +956,7 @@ export async function listGamesForClient(
       status: game.status,
       format: game.format,
       isHost: r.host_client_id === clientId,
+      isCohost: !!r.cohost,
       joined: !!r.joined,
       linked: game.linkedEvent !== null,
       paid: game.paid,
@@ -915,19 +1022,25 @@ export interface ClientIds {
  * account) to `to` (the account's canonical clientId), run in one batch with
  * the device's link (worker/auth/store.ts linkDevice). In order:
  * 0. reads the ids of the boards it touches (so their rooms can be sent the
- *    new state): hosted, joined or holding squares;
+ *    new state): hosted, co-hosted, joined or holding squares;
  * 1. bumps those boards' versions, so every client takes the new state;
  * 2. renames the device's public id in their feed (`actor`, or a legacy row's
  *    clientId) and in winner rows' `playerIds`;
  * 3. moves its players rows (where both are on a board, the canonical row
- *    stays and the device's goes), squares and hosted boards.
- * A board can end up with more of the account's squares than its
- * squares-per-player cap: they were each picked within it.
+ *    stays and the device's goes), squares and hosted boards;
+ * 4. moves its co-host rows the same way, so a co-host who signs in on another
+ *    device stays one, then drops the account's co-host row on a board the
+ *    account now hosts (one device hosted it, another co-hosted it: it's the
+ *    host). No board gains a co-host here, so each stays within MAX_COHOSTS.
+ * `cohost_invites` has no client column (an invite is the board host's), so
+ * nothing there moves. A board can end up with more of the account's squares
+ * than its squares-per-player cap: they were each picked within it.
  */
 export function mergeClientStatements(db: D1Database, from: ClientIds, to: ClientIds, now: number): D1PreparedStatement[] {
   const touched = `SELECT id FROM games WHERE host_client_id = ?1
     UNION SELECT game_id FROM players WHERE client_id = ?1
-    UNION SELECT game_id FROM squares WHERE client_id = ?1`;
+    UNION SELECT game_id FROM squares WHERE client_id = ?1
+    UNION SELECT game_id FROM cohosts WHERE client_id = ?1`;
   return [
     db.prepare(touched).bind(from.clientId),
     db.prepare(`UPDATE games SET version = version + 1, updated_at = ?2 WHERE id IN (${touched})`).bind(from.clientId, now),
@@ -949,6 +1062,13 @@ export function mergeClientStatements(db: D1Database, from: ClientIds, to: Clien
     db.prepare(`DELETE FROM players WHERE client_id = ?`).bind(from.clientId),
     db.prepare(`UPDATE squares SET client_id = ?2 WHERE client_id = ?1`).bind(from.clientId, to.clientId),
     db.prepare(`UPDATE games SET host_client_id = ?2 WHERE host_client_id = ?1`).bind(from.clientId, to.clientId),
+    db
+      .prepare(`INSERT OR IGNORE INTO cohosts (game_id, client_id, added_at) SELECT game_id, ?2, added_at FROM cohosts WHERE client_id = ?1`)
+      .bind(from.clientId, to.clientId),
+    db.prepare(`DELETE FROM cohosts WHERE client_id = ?`).bind(from.clientId),
+    db
+      .prepare(`DELETE FROM cohosts WHERE client_id = ?1 AND game_id IN (SELECT id FROM games WHERE host_client_id = ?1)`)
+      .bind(to.clientId),
   ];
 }
 

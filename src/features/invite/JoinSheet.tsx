@@ -29,13 +29,15 @@ export interface JoinSheetProps {
   selectedCount?: number;
   /** Open the board's rules sheet (from the price/prize line). */
   onRules?: () => void;
+  /** The button's words when joining is for something else too ("Join & become a co-host"). */
+  submitLabel?: string;
 }
 
 const COLOR_VALUES = PLAYER_COLORS.map((c) => c.value);
 /** Pale "Chalk" reads as an empty circle, so it's never the default (still pickable). */
 const AVOID_DEFAULT_COLORS = PLAYER_COLORS.filter((c) => c.name === "Chalk").map((c) => c.value);
 
-export function JoinSheet({ state, open, onJoined, onClose, selectedCount, onRules }: JoinSheetProps) {
+export function JoinSheet({ state, open, onJoined, onClose, selectedCount, onRules, submitLabel }: JoinSheetProps) {
   const { game } = state;
   const formId = useId();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -96,7 +98,7 @@ export function JoinSheet({ state, open, onJoined, onClose, selectedCount, onRul
   const host = hostOf(state);
   const clash = useMemo(() => nameClash(name, players, getPlayerId()), [name, players]);
   const full = boardStats(state).left === 0;
-  const label = joinLabel(game.status, selectedCount, full);
+  const label = submitLabel ?? joinLabel(game.status, selectedCount, full);
   const welcome = returningName !== null;
 
   const pick = (patch: Partial<Look>) => {

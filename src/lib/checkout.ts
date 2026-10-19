@@ -49,7 +49,7 @@ export class UnconfirmedPurchaseError extends CheckoutError {}
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const gamePath = (gameId: string, rest: string) => `/games/${encodeURIComponent(gameId)}${rest}`;
 
-async function request<T>(method: "GET" | "POST", path: string, opts: { adminToken?: string; body?: unknown } = {}): Promise<T> {
+async function request<T>(method: "GET" | "POST", path: string, opts: { adminToken?: string | null; body?: unknown } = {}): Promise<T> {
   // Same device id as every other call (identity.ts owns creating and storing it), and the
   // signed-in hint so a pass bought on the account is found right after a sign-in (api.ts identityHeaders).
   const headers: Record<string, string> = { "x-client-id": getClientId() };
@@ -241,7 +241,8 @@ export async function hostPassPrice(config: PaymentConfig, platform: Platform): 
 
 // ---- Test checkout ----
 
-export async function payTest(gameId: string, adminToken: string): Promise<GameState> {
+/** `adminToken`: the host's; null for a co-host (the server knows them by clientId), here and below. */
+export async function payTest(gameId: string, adminToken: string | null): Promise<GameState> {
   const { state } = await request<{ state: GameState }>("POST", gamePath(gameId, "/pay/test"), { adminToken });
   return state;
 }
@@ -278,7 +279,7 @@ function boardOf(tx: Pick<Transaction, "productIdentifier" | "appAccountToken">,
  * or that a parent just approved is confirmed instead of buying again, and nothing is bought for a board
  * that's already paid for (on another device, or before the fee moved to the draw) or gone.
  */
-export async function payWithIAP(gameId: string, adminToken: string, productId?: string): Promise<PurchaseOutcome> {
+export async function payWithIAP(gameId: string, adminToken: string | null, productId?: string): Promise<PurchaseOutcome> {
   const [store, productIdentifier] = await Promise.all([
     nativePurchases(),
     productId ?? fetchAppConfig().then((c) => c.payments.iapProductId),
@@ -329,7 +330,7 @@ const redeeming = new Map<string, Promise<GameState>>();
 /** Settled (finished) in this run; StoreKit may still mention them once. */
 const settled = new Set<string>();
 
-function redeemTransaction(store: NativePurchasesPlugin, gameId: string, adminToken: string, transactionId: string): Promise<GameState> {
+function redeemTransaction(store: NativePurchasesPlugin, gameId: string, adminToken: string | null, transactionId: string): Promise<GameState> {
   let p = redeeming.get(transactionId);
   if (!p) {
     p = confirmTransaction(store, gameId, adminToken, transactionId).finally(() => redeeming.delete(transactionId));
@@ -341,7 +342,7 @@ function redeemTransaction(store: NativePurchasesPlugin, gameId: string, adminTo
 async function confirmTransaction(
   store: NativePurchasesPlugin,
   gameId: string,
-  adminToken: string,
+  adminToken: string | null,
   transactionId: string,
 ): Promise<GameState> {
   const finish = async () => {
@@ -493,7 +494,7 @@ export interface StripeIntent {
  * The board's PaymentIntent (created once, then reused). Throws a CheckoutError
  * with status 409 and `state` set when the board is already paid for.
  */
-export function createStripeIntent(gameId: string, adminToken: string): Promise<StripeIntent> {
+export function createStripeIntent(gameId: string, adminToken: string | null): Promise<StripeIntent> {
   return request<StripeIntent>("POST", gamePath(gameId, "/pay/stripe"), { adminToken });
 }
 
@@ -502,7 +503,7 @@ export function createStripeIntent(gameId: string, adminToken: string): Promise<
  * there first; if not, the server checks the intent with Stripe directly. Null if
  * it's still settling after a few seconds (the live board flips when it lands).
  */
-export async function confirmStripePaid(gameId: string, adminToken: string): Promise<GameState | null> {
+export async function confirmStripePaid(gameId: string, adminToken: string | null): Promise<GameState | null> {
   for (const delay of [0, 800, 1600, 3200]) {
     if (delay) await sleep(delay);
     try {

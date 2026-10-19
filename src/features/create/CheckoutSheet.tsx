@@ -63,7 +63,8 @@ export type { CheckoutPlan };
 
 export interface CheckoutBoard {
   game: Game;
-  adminToken: string;
+  /** The host's admin token; null for a co-host, whom the payment routes know by clientId. */
+  adminToken: string | null;
 }
 
 /**
@@ -307,10 +308,10 @@ export function CheckoutSheet({
   // Stripe methods need a PaymentIntent first: the board's fee, or the pass's first invoice.
   useEffect(() => {
     if (!open || (method !== "wallet" && method !== "card") || clientSecret || needsSignIn) return;
-    if (!forPass && (!gameId || !adminToken)) return;
+    if (!forPass && !gameId) return;
     let cancelled = false;
     setError(null);
-    (forPass ? createPassIntent() : createStripeIntent(gameId!, adminToken!))
+    (forPass ? createPassIntent() : createStripeIntent(gameId!, adminToken))
       .then((r) => {
         if (cancelled) return;
         if (typeof r.amountCents === "number" && r.currency) setCharge({ amountCents: r.amountCents, currency: r.currency });
@@ -325,7 +326,7 @@ export function CheckoutSheet({
   /** After Stripe.js reports a payment: the server reads it back from Stripe. */
   const confirmPaid = useCallback(async () => {
     if (forPass) return succeedPass(await confirmPassPaid());
-    if (gameId && adminToken) succeed(await confirmStripePaid(gameId, adminToken));
+    if (gameId) succeed(await confirmStripePaid(gameId, adminToken));
   }, [forPass, gameId, adminToken, succeed, succeedPass]);
 
   // Apple Pay / Google Pay button.
@@ -396,16 +397,16 @@ export function CheckoutSheet({
 
   const confirm = async () => {
     if (phase !== "ready") return;
-    if (!forPass && (!gameId || !adminToken)) return;
+    if (!forPass && !gameId) return;
     setError(null);
     setNotice(null);
     setPhase("paying");
     try {
       if (method === "test") {
         if (forPass) succeedPass(await startTestPass());
-        else succeed(await payTest(gameId!, adminToken!));
+        else succeed(await payTest(gameId!, adminToken));
       } else if (method === "iap") {
-        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken!, payments?.iapProductId);
+        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken, payments?.iapProductId);
         if (r.status === "paid") succeed(r.state);
         else if (r.status === "active") succeedPass(r.state);
         else if (r.status === "pending") setPhase("pending");

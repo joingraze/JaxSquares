@@ -31,6 +31,7 @@ const MIGRATIONS = [
   "migrations/0009_pay_at_draw.sql",
   "migrations/0010_accounts.sql",
   "migrations/0011_host_pass.sql",
+  "migrations/0014_cohosts.sql",
 ];
 const INDEX_HTML = "<html><head><title>JaxSquares</title></head><body><div id=\"root\"></div></body></html>";
 

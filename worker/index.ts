@@ -20,6 +20,7 @@ import {
   sanitizePrizes,
   withRules,
 } from "../shared/formats";
+import { COHOST_INVITE_TTL_MS, COHOST_PARAM, MAX_COHOSTS, hasCohostRoom, isCohostOf, isCohostToken, type HostRole } from "../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
@@ -27,6 +28,7 @@ import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, prima
 import { PAYMENT_REQUIRED_CODE } from "../shared/types";
 import type {
   Activity,
+  CohostInviteResponse,
   CreateGameResponse,
   Game,
   GameFormat,
@@ -182,7 +184,7 @@ async function readJson(c: Ctx): Promise<Record<string, unknown>> {
   return body as Record<string, unknown>;
 }
 
-function fail(status: 400 | 403 | 404 | 409, message: string): never {
+function fail(status: 400 | 403 | 404 | 409 | 410, message: string): never {
   throw new HTTPException(status, { message });
 }
 
@@ -289,12 +291,31 @@ async function stateOr404(c: Ctx, id: string): Promise<GameState> {
   return state;
 }
 
-/** Loads state and checks x-admin-token in the same round trip. */
-async function hostState(c: Ctx, id: string): Promise<GameState> {
-  const found = await db.getGameStateWithToken(c.env.DB, id);
+/**
+ * Loads state and checks x-admin-token in the same round trip. The caller
+ * runs the board as its host (the admin token: the host's devices and host
+ * links) or as a co-host: the request's canonical clientId (c.get("clientId"),
+ * the account's when signed in) is one of the board's co-hosts. A co-host
+ * never needs (or gets) the token. 403 for anyone else.
+ */
+async function hostAccess(c: Ctx, id: string): Promise<{ state: GameState; role: HostRole }> {
+  const found = await db.getGameStateWithToken(c.env.DB, id, c.get("clientId"));
   if (!found) fail(404, "Game not found");
-  const { state, adminToken } = found;
-  if (!tokenMatches(adminToken, c.req.header("x-admin-token") ?? "")) fail(403, "Only the host can do that");
+  const { state, adminToken, cohost } = found;
+  if (tokenMatches(adminToken, c.req.header("x-admin-token") ?? "")) return { state, role: "host" };
+  if (cohost) return { state, role: "cohost" };
+  fail(403, "Only the host can do that");
+}
+
+/** A host action a co-host can do too (everything but the host-only ones below). */
+async function hostState(c: Ctx, id: string): Promise<GameState> {
+  return (await hostAccess(c, id)).state;
+}
+
+/** A host-only action: co-hosts get a 403 with `message`. */
+async function hostOnlyState(c: Ctx, id: string, message: string): Promise<GameState> {
+  const { state, role } = await hostAccess(c, id);
+  if (role !== "host") fail(403, message);
   return state;
 }
 
@@ -497,7 +518,8 @@ api.patch("/games/:id", requireClient, async (c) => {
 
 api.delete("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
-  await hostState(c, id);
+  // Host only: a co-host can do everything else.
+  await hostOnlyState(c, id, "Only the host can delete the board");
   await db.deleteGame(c.env.DB, id);
   // Open boards get { type: "deleted" } and a 4404 close.
   defer(c, closeRoom(c.env, id));
@@ -542,10 +564,17 @@ api.post("/games/:id/join", requireClient, async (c) => {
  */
 api.delete("/games/:id/players/:playerId", requireClient, async (c) => {
   const id = gameIdParam(c);
-  const state = await hostState(c, id);
+  const { state, role } = await hostAccess(c, id);
   if (state.game.status !== "draft" && state.game.status !== "open") fail(409, "Squares are locked");
   const playerId = c.req.param("playerId");
-  if (playerId === state.game.hostPlayerId) fail(400, "You can't remove yourself from your own board");
+  if (playerId === state.game.hostPlayerId) {
+    if (role === "cohost") fail(403, "Co-hosts can't remove the host");
+    fail(400, "You can't remove yourself from your own board");
+  }
+  // Removing a co-host from the board ends their co-hosting too: only the host can do that to another co-host.
+  if (role === "cohost" && playerId !== c.get("playerId") && isCohostOf(state.game, playerId)) {
+    fail(403, "Only the host can remove a co-host");
+  }
   const writes = state.players.some((p) => p.id === playerId) ? await db.removePlayer(c.env.DB, id, playerId) : null;
   if (!writes) fail(404, "That player isn't on this board");
   const { state: next } = await commitOr404(c, id, writes);
@@ -641,9 +670,10 @@ api.post("/games/:id/lock", requireClient, async (c) => {
     // paying opens it). A board held by FREE_PLAYER_LIMIT or fewer players
     // draws for free: marked paid (provider "free") in the same batch as the
     // draw, the holders counted again inside it. Otherwise a Host Pass may
-    // cover it: the host's who's drawing (this identity, holding the admin
-    // token) or the board's host's; then the board is marked paid through the
-    // pass in the same write as the draw. Otherwise 402.
+    // cover it: the one of whoever's drawing (this request's canonical
+    // clientId: the host's identity holding the admin token, or a co-host's)
+    // or the board's host's; then the board is marked paid through the pass
+    // in the same write as the draw. Otherwise 402.
     const free = !game.paid && isFreeDraw(state);
     if (free) {
       writes.push(db.markFreeDraw(c.env.DB, id, FREE_PLAYER_LIMIT, now));
@@ -815,6 +845,111 @@ api.post("/games/:id/final", requireClient, async (c) => {
   const recorded = next.activity.some((a) => a.id === final.id);
   // The host who ended the game isn't pushed about it.
   publish(c, next, [final.id], recorded ? [{ kind: "final", actor: me }] : []);
+  return c.json({ state: next });
+});
+
+// ---- Co-hosts (shared/cohosts.ts; docs/ARCHITECTURE.md "Co-hosts") ----
+// The host invites up to MAX_COHOSTS players with single-use links; a co-host
+// runs the board with them (every route behind hostState) by their canonical
+// clientId, never the admin token. Host only: inviting co-hosts, removing one,
+// deleting the board; nobody removes the host.
+
+const COHOST_LINK = {
+  broken: "That co-host link isn't complete. Ask the host to send it again.",
+  unknown: "This co-host link doesn't work anymore. Ask the host for a new one.",
+  used: "This co-host link was already used. Ask the host for a new one.",
+  expired: "This co-host link expired. Ask the host for a new one.",
+  full: `This board already has ${MAX_COHOSTS} co-hosts. Ask the host to make room.`,
+  join: "Join the board first, then accept the co-host invite.",
+} as const;
+
+/** A new co-host invite token: 32 random bytes, base64url (43 characters; isCohostToken). */
+function newCohostToken(): string {
+  let bin = "";
+  for (const b of crypto.getRandomValues(new Uint8Array(32))) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** What D1 keeps of a co-host invite token: a SHA-256 (hex), so the table can't be turned back into links. */
+async function cohostTokenHash(token: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`jaxsquares:cohost:${token}`)));
+  return Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Host only: a single-use co-host invite link for this board, good for COHOST_INVITE_TTL_MS. */
+api.post("/games/:id/cohost-invites", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const state = await hostOnlyState(c, id, "Only the host can invite co-hosts");
+  if (!hasCohostRoom(state.game)) fail(409, `A board can have up to ${MAX_COHOSTS} co-hosts. Remove one to invite someone new.`);
+  const limited = await deviceLimited(c, RATE_LIMITS.cohostInvite, RATE_LIMITS.cohostInviteIp);
+  if (limited) return limited;
+  const token = newCohostToken();
+  const expiresAt = Date.now() + COHOST_INVITE_TTL_MS;
+  await db.insertCohostInvite(c.env.DB, id, await cohostTokenHash(token), expiresAt).run();
+  // The origin the app asked (the web app's own, or jaxsquares.com from the native app), like an invite link.
+  const url = `${new URL(c.req.url).origin}/g/${id}?${COHOST_PARAM}=${token}`;
+  const res: CohostInviteResponse = { url, expiresAt };
+  return c.json(res, 201, { "cache-control": "no-store" });
+});
+
+/**
+ * A player accepts a co-host invite: the link's token, used once, within its
+ * week, while the board has room. Already a co-host: the state, and the link
+ * stays unused.
+ */
+api.post("/games/:id/cohosts/accept", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const me = c.get("playerId");
+  const { token } = await readJson(c);
+  if (!isCohostToken(token)) fail(400, COHOST_LINK.broken);
+  // Counted before the token is looked up, so links can't be guessed at speed.
+  const limited = await deviceLimited(c, RATE_LIMITS.cohostAccept, RATE_LIMITS.cohostAcceptIp);
+  if (limited) return limited;
+  const state = await stateOr404(c, id);
+  if (state.game.hostPlayerId === me) fail(409, "You already host this board.");
+  if (isCohostOf(state.game, me)) return c.json({ state });
+  const player = state.players.find((p) => p.id === me);
+  if (!player) fail(403, COHOST_LINK.join);
+  const tokenHash = await cohostTokenHash(token);
+  const now = Date.now();
+  // Why it can't be used, said plainly (the accept below re-checks all of it in SQL).
+  const refusal = (invite: Awaited<ReturnType<typeof db.cohostInvite>>, board: GameState) => {
+    if (!invite) fail(404, COHOST_LINK.unknown);
+    if (invite.usedAt !== null) fail(410, COHOST_LINK.used);
+    if (invite.expiresAt <= now) fail(410, COHOST_LINK.expired);
+    if (!hasCohostRoom(board.game)) fail(409, COHOST_LINK.full);
+  };
+  refusal(await db.cohostInvite(c.env.DB, id, tokenHash), state);
+  const added = newActivity("cohost", me, { name: player.name }, now);
+  const { state: next } = await commitOr404(
+    c,
+    id,
+    [
+      ...db.acceptCohostInvite(c.env.DB, { gameId: id, tokenHash, clientId: c.get("clientId"), now, max: MAX_COHOSTS }),
+      db.insertActivityIfChanged(c.env.DB, id, added),
+    ],
+    now,
+  );
+  if (!isCohostOf(next.game, me)) {
+    // A racing accept used the link or took the last spot, or the host removed this player meanwhile.
+    refusal(await db.cohostInvite(c.env.DB, id, tokenHash), next);
+    fail(409, next.players.some((p) => p.id === me) ? "Couldn't make you a co-host. Try again." : COHOST_LINK.join);
+  }
+  // The host hears about it (the new co-host is the actor, so not them).
+  publish(c, next, [added.id], [{ kind: "cohost-accepted", name: player.name, actor: me }]);
+  return c.json({ state: next });
+});
+
+/** The host removes a co-host, or a co-host steps down (their own public id). They stay on the board as a player. */
+api.delete("/games/:id/cohosts/:playerId", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const { state, role } = await hostAccess(c, id);
+  const playerId = c.req.param("playerId");
+  if (role !== "host" && playerId !== c.get("playerId")) fail(403, "Only the host can remove a co-host");
+  const stmt = isCohostOf(state.game, playerId) ? await db.removeCohost(c.env.DB, id, playerId) : null;
+  if (!stmt) fail(404, "They're not a co-host on this board");
+  const { state: next } = await commitOr404(c, id, [stmt]);
+  publish(c, next);
   return c.json({ state: next });
 });
 

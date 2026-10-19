@@ -41,7 +41,9 @@ Support pages leave out Stripe and the web price there too.
    host's "Draw the numbers · $4.99" opens the checkout sheet first; once a
    `/pay/*` call (or the Stripe webhook) records the fee, the app calls `/lock`
    again and plays the number reveal. Only the host (the board's admin token)
-   can pay or draw.
+   or one of its co-hosts (by canonical clientId; docs/ARCHITECTURE.md
+   "Co-hosts") can pay or draw. A co-host's app tries the draw first, since
+   the host's Host Pass may cover it, and opens the same checkout on the 402.
 3. **Paid.** A purchase is tied to its board when the host pays (not when the
    board was made). The ledger (`purchases`, below) decides which purchase pays
    for a board, and `markPaid` (`worker/service.ts` → `worker/db.ts`) stamps
@@ -368,10 +370,10 @@ SELECT payment_provider, COUNT(*) AS boards FROM games WHERE paid_at IS NOT NULL
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/games/:id/lock` (core) | Host only. Draws the numbers: free (marked paid `free`) while 5 or fewer players hold squares, through an active Host Pass on a bigger board, else **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
-| POST | `/api/games/:id/pay/test` | Host only. Only works in test mode. Returns `{ state }` (the board paid, not drawn; a no-op on a board already paid for). |
-| POST | `/api/games/:id/pay/stripe` | Host only. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already paid for it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and marks it paid on the spot. |
-| POST | `/api/games/:id/pay/iap` | Host only. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already paid for another board; or, with `unused: true` and `state`, the board was already paid for so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
+| POST | `/api/games/:id/lock` (core) | Host or co-host. Draws the numbers: free (marked paid `free`) while 5 or fewer players hold squares, through an active Host Pass on a bigger board, else **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
+| POST | `/api/games/:id/pay/test` | Host or co-host (by clientId, no admin token; `isHostOrCohost` in `worker/service.ts`), like the two below. Only works in test mode. Returns `{ state }` (the board paid, not drawn; a no-op on a board already paid for). |
+| POST | `/api/games/:id/pay/stripe` | Host or co-host. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already paid for it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and marks it paid on the spot. |
+| POST | `/api/games/:id/pay/iap` | Host or co-host. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already paid for another board; or, with `unused: true` and `state`, the board was already paid for so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
 | POST | `/api/stripe/webhook` | Called by Stripe. Returns `{ received: true }`. |
 
 ## Client (`src/lib/checkout.ts`)
@@ -455,12 +457,13 @@ attaches it to whichever identity restores it. The test pass needs none either.
 ### Drawing with it
 
 - `POST /api/games/:id/lock` on an unpaid board of 6 or more players (a
-  smaller one is free, "The free tier"): when the caller (the identity
-  holding the admin token) or the board's host holds an active pass, the board
-  is marked paid through the pass (`payment_provider` `pass`,
-  `payment_amount_cents` 0, `payment_reference` = the pass id) in the same
-  write as the draw. Otherwise the 402 is unchanged. Nobody without the admin
-  token can draw, so nobody draws on someone else's pass.
+  smaller one is free, "The free tier"): when the caller (the request's
+  canonical clientId: the identity holding the admin token, or a co-host's)
+  or the board's host holds an active pass, the board is marked paid through
+  the pass (`payment_provider` `pass`, `payment_amount_cents` 0,
+  `payment_reference` = the pass id) in the same write as the draw. Otherwise
+  the 402 is unchanged. Nobody but the host and the co-hosts the host chose
+  can draw, so nobody else draws on someone's pass.
 - A linked board of 6 or more players whose host holds an active pass draws
   itself at kickoff like a paid board, marked paid through the pass at that
   moment (`applyLiveUpdate`).

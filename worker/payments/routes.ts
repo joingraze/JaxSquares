@@ -13,7 +13,8 @@ import { Hono, type Context } from "hono";
 import type { Game } from "../../shared/types";
 import { getGame } from "../db";
 import type { Env } from "../env";
-import { isHost, loadState, markPaid } from "../service";
+import { SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
+import { isHostOrCohost, loadState, markPaid } from "../service";
 import { fetchAppStoreTransaction, transactionProblem, type AppStoreTransaction } from "./apple";
 import { gameIdFromAccountToken } from "./boardToken";
 import { CURRENCY, boardPriceCents, getPaymentConfig, iapProductId } from "./config";
@@ -40,12 +41,21 @@ export const paymentsRoutes = new Hono<{ Bindings: Env }>();
 
 paymentsRoutes.route("/", passRoutes);
 
-/** The board when the caller is its host, otherwise the error response to send. */
+/** The host (the board's admin token) or one of its co-hosts (by canonical clientId): who may pay the host fee. */
+function runsBoard(c: Ctx, gameId: string): Promise<boolean> {
+  return isHostOrCohost(c.env, gameId, {
+    adminToken: c.req.header("x-admin-token") ?? "",
+    clientId: c.req.header("x-client-id"),
+    signedIn: signedInHint(c.req.header(SIGNED_IN_HEADER)),
+  });
+}
+
+/** The board when the caller is its host or a co-host, otherwise the error response to send. */
 async function hostedGame(c: Ctx, gameId: string): Promise<Game | Response> {
   if (!c.req.header("x-client-id")) return c.json({ error: "Missing x-client-id" }, 400);
   const game = await getGame(c.env.DB, gameId);
   if (!game) return c.json({ error: "Game not found" }, 404);
-  if (!(await isHost(c.env, gameId, c.req.header("x-admin-token") ?? ""))) {
+  if (!(await runsBoard(c, gameId))) {
     return c.json({ error: "Only the host can do that" }, 403);
   }
   return game;
@@ -252,7 +262,7 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   // still gets the purchase verified and recorded below, so the charge isn't lost.
   // Nobody can prove they host a deleted board; Apple's appAccountToken binding is the proof.
   const game = await getGame(c.env.DB, gameId);
-  if (game && !(await isHost(c.env, gameId, c.req.header("x-admin-token") ?? ""))) {
+  if (game && !(await runsBoard(c, gameId))) {
     return c.json({ error: "Only the host can do that" }, 403);
   }
   const creds = appStoreCredentials(c.env);

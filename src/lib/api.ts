@@ -1,11 +1,15 @@
 // Typed client for every Worker endpoint (docs/ARCHITECTURE.md). Every request
 // carries `x-client-id`; host-only calls add `x-admin-token`, defaulting to the
-// token this device saved for that game. Non-2xx responses throw ApiError.
+// token this device saved for that game. A co-host holds no token: the same
+// calls go without one and the server authorizes them by the clientId.
+// Non-2xx responses throw ApiError.
 
 import type {
   AppConfig,
   AuthProvider,
   CellsInput,
+  CohostAcceptInput,
+  CohostInviteResponse,
   CreateGameInput,
   CreateGameResponse,
   GameState,
@@ -29,6 +33,7 @@ import {
   getClientId,
   isSignedIn,
   linkAdminToken,
+  rememberCohost,
   rememberGame,
   saveAdminToken,
   settleLinkAdminToken,
@@ -250,6 +255,19 @@ export const api = {
     asHost<StateResponse>("DELETE", id, `/players/${encodeURIComponent(playerId)}`, adminToken),
   /** Host ends the game (POST /final). */
   finish: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/final", adminToken),
+
+  // ---- Co-hosts (shared/cohosts.ts) ----
+  /** Host only: a single-use co-host invite link (`/g/<id>?cohost=<token>`, good for 7 days). */
+  createCohostInvite: (id: string, adminToken?: string | null) => asHost<CohostInviteResponse>("POST", id, "/cohost-invites", adminToken),
+  /** Accepts a co-host invite (the caller must be on the board); remembers the board as co-hosted here. */
+  async acceptCohost(id: string, token: string): Promise<StateResponse> {
+    const res = await request<StateResponse>("POST", g(id, "/cohosts/accept"), { body: { token } satisfies CohostAcceptInput });
+    rememberCohost(id, true);
+    return res;
+  },
+  /** The host removes a co-host (public id), or a co-host steps down (their own id; no token needed). */
+  removeCohost: (id: string, playerId: string, adminToken?: string | null) =>
+    asHost<StateResponse>("DELETE", id, `/cohosts/${encodeURIComponent(playerId)}`, adminToken),
 
   // ---- Creating a board (the only payment in the product) ----
   payTest: (id: string, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/pay/test", adminToken),

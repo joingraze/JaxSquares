@@ -159,6 +159,10 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
       return to(hostOnly, base(game, event.kind, { body, tag: `${id}:joined`, renotify: false, quiet: true, ttlSeconds: 12 * HOUR }));
     }
 
+    case "cohost-accepted":
+      // Host only: the new co-host is the actor, so they're never told about themselves.
+      return to(hostOnly, base(game, event.kind, { body: `🤝 ${event.name} accepted your co-host invite.`, tag: `${id}:cohost`, ttlSeconds: 12 * HOUR }));
+
     case "final":
       return to(everyone, base(game, event.kind, { body: `🏁 That's a wrap. ${WRAP_UP[game.format.periods]}`, tag: `${id}:final` }));
   }

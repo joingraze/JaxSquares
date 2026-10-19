@@ -46,6 +46,7 @@ const MIGRATIONS = [
   "migrations/0009_pay_at_draw.sql",
   "migrations/0010_accounts.sql",
   "migrations/0011_host_pass.sql",
+  "migrations/0014_cohosts.sql",
 ];
 
 let t: TestD1;
@@ -228,6 +229,7 @@ describe("first sign-in", () => {
       hostTokens: { [mine.id]: mine.admin },
       profile: { name: "Jordan", color: "#38b6ff", emoji: "🐐" },
       hostPass: null,
+      cohostGames: [],
     });
     const [account] = rows<{ id: string; canonical_client_id: string; email: string }>("SELECT * FROM accounts");
     expect(account).toMatchObject({ canonical_client_id: PHONE, email: "g-1@example.com" });
@@ -377,6 +379,45 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
+  it("keeps co-host rights: a co-host who signs in stays one on every device, and a board the account hosts drops its co-host row", async () => {
+    // A friend's board the laptop co-hosts, and the phone's own board the laptop also co-hosts.
+    const friends = await boardBy(FRIEND, "Friend's Board");
+    const mine = await boardBy(PHONE, "Phone's Board");
+    expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
+    for (const board of [friends, mine]) {
+      await joinAndClaim(LAPTOP, board.id, "Lap", []);
+      const host = board === friends ? FRIEND : PHONE;
+      const link = await call<{ url: string }>("POST", `/games/${board.id}/cohost-invites`, { client: host, admin: board.admin });
+      expect(link.status).toBe(201);
+      const token = new URL(link.body.url).searchParams.get("cohost");
+      expect((await call("POST", `/games/${board.id}/cohosts/accept`, { client: LAPTOP, body: { token } })).status).toBe(200);
+    }
+    expect(rows("SELECT game_id, client_id FROM cohosts ORDER BY game_id")).toHaveLength(2);
+
+    expect((await signIn("google", LAPTOP, "g-1")).status).toBe(200);
+    await settle();
+    // The co-host row moved to the account; on the account's own board it's the host, not a co-host.
+    expect(rows("SELECT game_id, client_id FROM cohosts")).toEqual([{ game_id: friends.id, client_id: PHONE }]);
+    expect(roomCalls.some((r) => r.game === friends.id)).toBe(true);
+    const friendsState = (await call<GameState>("GET", `/games/${friends.id}`, { client: null })).body;
+    expect(friendsState.game.cohostIds).toEqual([pid(PHONE)]);
+    expect((await call<GameState>("GET", `/games/${mine.id}`, { client: null })).body.game.cohostIds).toEqual([]);
+
+    // Either device runs the friend's board as a co-host, by clientId, no token.
+    for (const client of [LAPTOP, PHONE]) {
+      const renamed = await call<{ state: GameState }>("PATCH", `/games/${friends.id}`, { client, headers: { "x-signed-in": "1" }, body: { name: `Renamed by ${client === LAPTOP ? "laptop" : "phone"}` } });
+      expect(renamed.status).toBe(200);
+    }
+    const me = (await call<MeResponse>("GET", "/me", { client: LAPTOP })).body;
+    expect(me.cohostGames).toEqual([friends.id]);
+    // Only the account's own board's token; never the friend's.
+    expect(me.hostTokens).toEqual({ [mine.id]: mine.admin });
+    const summaries = (await call<{ games: GameSummary[] }>("GET", "/me/games", { client: LAPTOP, headers: { "x-signed-in": "1" } })).body.games;
+    expect(summaries.find((g) => g.id === friends.id)).toMatchObject({ isHost: false, isCohost: true });
+    expect(summaries.find((g) => g.id === mine.id)).toMatchObject({ isHost: true, isCohost: false });
+    expectNoSecrets();
+  });
+
   it("can't sign in to a second account while signed in to one", async () => {
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const other = await signIn("google", PHONE, "g-2");
@@ -406,7 +447,7 @@ describe("sign-out", () => {
 
     // The laptop is just itself again (the app throws its clientId away anyway).
     const me = await call<MeResponse>("GET", "/me", { client: LAPTOP });
-    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null, hostPass: null });
+    expect(me.body).toEqual({ playerId: pid(LAPTOP), account: null, hostTokens: {}, profile: null, hostPass: null, cohostGames: [] });
     expect((await call<{ games: GameSummary[] }>("GET", "/me/games", { client: LAPTOP })).body.games).toEqual([]);
     expect((await call<MeResponse>("GET", "/me", { client: PHONE })).body.account).not.toBeNull();
     // Signing out twice (or when never signed in) is fine.

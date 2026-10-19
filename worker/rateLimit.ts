@@ -1,6 +1,6 @@
 // Light rate limits on the endpoints worth abusing: creating boards, joining
-// them, claiming/releasing squares, signing in and the Host Pass checkout
-// (each call there can reach Stripe or Apple). Fixed windows counted in D1
+// them, claiming/releasing squares, co-host links, signing in and the Host
+// Pass checkout (each call there can reach Stripe or Apple). Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -24,6 +24,7 @@ const TOO_MANY = {
   changes: "Whoa, that's a lot of changes. Give it a few seconds and try again.",
   signIn: "That's a lot of sign-in attempts. Take a breather and try again a little later.",
   checkout: "That's a lot of checkout attempts. Take a breather and try again a little later.",
+  cohost: "That's a lot of co-host links for one hour. Take a breather and try again a little later.",
 };
 
 export interface RateRule {
@@ -104,6 +105,34 @@ export const RATE_LIMITS = {
     limit: 120,
     windowMs: HOUR,
     message: TOO_MANY.checkout,
+  },
+  /** POST /api/games/:id/cohost-invites (the host makes a co-host link), per device. */
+  cohostInvite: {
+    name: "cohost-invite",
+    limit: 20,
+    windowMs: HOUR,
+    message: TOO_MANY.cohost,
+  },
+  /** Per network address: `cohostInvite` for everyone behind one address. */
+  cohostInviteIp: {
+    name: "cohost-invite-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: TOO_MANY.cohost,
+  },
+  /** POST /api/games/:id/cohosts/accept, per device: counted before the token is looked up, so links can't be guessed at speed. */
+  cohostAccept: {
+    name: "cohost-accept",
+    limit: 20,
+    windowMs: HOUR,
+    message: TOO_MANY.cohost,
+  },
+  /** Per network address: `cohostAccept` for everyone behind one address. */
+  cohostAcceptIp: {
+    name: "cohost-accept-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: TOO_MANY.cohost,
   },
   /**
    * New players joining one board, keyed by game id: clientIds are free to

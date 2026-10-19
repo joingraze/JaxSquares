@@ -252,6 +252,13 @@ describe("buildDeliveries", () => {
       expect(ds[0].content).toMatchObject({ body: "🐐 Sam joined your board. 3 players in.", tag: "abc234:joined", renotify: false, quiet: true });
     });
 
+    it("cohost-accepted tells the host alone who accepted their co-host invite", () => {
+      const event: NotifyEvent = { kind: "cohost-accepted", name: "Sam", actor: pid("client-sam-002") };
+      const ds = buildDeliveries(makeGame({ status: "open" }), players, event, NOW);
+      expect(recipients(ds)).toEqual([HOST]);
+      expect(ds[0].content).toMatchObject({ body: "🤝 Sam accepted your co-host invite.", tag: "abc234:cohost", kind: "cohost-accepted" });
+    });
+
     it("nobody hears about it when the host is the actor", () => {
       expect(buildDeliveries(makeGame(), players, { kind: "board-full", actor: pid(HOST) }, NOW)).toEqual([]);
     });
@@ -271,6 +278,7 @@ describe("buildDeliveries", () => {
       { kind: "game-starting" },
       { kind: "board-full" },
       { kind: "player-joined", name: "Sam" },
+      { kind: "cohost-accepted", name: "Sam" },
       { kind: "final" },
       { kind: "draw-reminder" },
     ];

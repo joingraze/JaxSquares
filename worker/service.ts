@@ -16,6 +16,8 @@ import {
   type PeriodScore,
 } from "../shared/squares";
 import type { Activity, ActivityType, GameState, LiveStatus, LiveUpdate, Score } from "../shared/types";
+import { isClientId } from "../shared/playerId";
+import { canonicalClientId } from "./auth/canonical";
 import * as db from "./db";
 import type { Env } from "./env";
 import { activePass } from "./payments/pass";
@@ -114,6 +116,22 @@ export async function isHost(env: Env, gameId: string, adminToken: string): Prom
   if (!adminToken) return false;
   const token = await db.getAdminToken(env.DB, gameId);
   return !!token && tokenMatches(token, adminToken);
+}
+
+/**
+ * Whether a request may run the board (the payment routes: a co-host can pay
+ * the host fee at the draw too): its x-admin-token is the board's, or its
+ * x-client-id, resolved to the canonical clientId like requireClient does
+ * (`signedIn` = the x-signed-in hint), is one of the board's co-hosts.
+ */
+export async function isHostOrCohost(
+  env: Env,
+  gameId: string,
+  req: { adminToken: string; clientId: string | null | undefined; signedIn: boolean },
+): Promise<boolean> {
+  if (await isHost(env, gameId, req.adminToken)) return true;
+  if (!isClientId(req.clientId)) return false;
+  return db.isCohost(env.DB, gameId, await canonicalClientId(env.DB, req.clientId, { signedIn: req.signedIn }));
 }
 
 /**

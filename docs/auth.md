@@ -65,12 +65,14 @@ owner):
 | `games.version` | bumped for every board touched; their rooms get the new state (up to 50, deferred) |
 | `push_subscriptions` | moved, so the account's pushes reach every signed-in device |
 | `game_mutes` | `INSERT OR IGNORE`, then the device's rows deleted (a mute is now the account's) |
+| `cohosts` | `INSERT OR IGNORE` under the canonical id, then the device's rows deleted, so a co-host who signs in on another device stays one (and the board's version bumps); where the account now hosts a board the device co-hosted, its co-host row goes (it's the host) |
 | `host_passes` | moved (payments, `worker/payments/store.ts`): the device's Host Pass rows join the account's, and both are kept; the account is covered while any is active |
 | `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
 | `client_links` | the device's link |
 
-`purchases` has no client column, and `rate_limits` are short-lived windows,
-so neither moves. **A new table keyed by a clientId must add its statements to
+`purchases` and `cohost_invites` have no client column (an invite is always
+the board host's), and `rate_limits` are short-lived windows, so none of them
+moves. **A new table keyed by a clientId must add its statements to
 this merge** (and say so here). A board can end up with more of the account's
 squares than its squares-per-player cap: each was picked within it.
 
@@ -93,6 +95,13 @@ else's. The app stores them like the creator's device does
 token overwrites a different one held locally (it's authoritative, unlike a
 host link's).
 
+They also carry `cohostGames`: the ids of the boards the identity co-hosts
+(newest 200), with **no token**. A co-host is authorized by the request's
+canonical clientId (docs/ARCHITECTURE.md "Co-hosts"), so every device signed
+in to the account runs those boards as a co-host; the app keeps the list
+(`jaxsquares.cohosts`) only to load host tools early, and each board's
+`Game.cohostIds` says for sure.
+
 ### `GET /api/me`
 
 ```ts
@@ -102,6 +111,7 @@ interface MeResponse {
   hostTokens: Record<string, string>;
   profile?: { name: string; color: string; emoji: string } | null; // last board profile, for a new device
   hostPass?: HostPass | null;      // the identity's Host Pass (docs/payments.md), null when it never had one
+  cohostGames?: string[];          // ids of the boards the identity co-hosts (no tokens)
 }
 ```
 

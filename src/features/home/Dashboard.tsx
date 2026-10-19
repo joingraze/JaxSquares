@@ -42,6 +42,7 @@ import {
   liveSnapshot,
   phraseOf,
   primaryActionId,
+  runsBoard,
   scoreWithTeams,
   withState,
   type BoardAction,
@@ -62,7 +63,7 @@ export interface DashboardProps {
  * summary list (on focus, every 30 s, pull to refresh).
  */
 function followOrder(boards: GameSummary[]): string[] {
-  const rank = (g: GameSummary) => (g.status === "locked" || g.live?.state === "in" ? 2 : 0) + (g.isHost ? 1 : 0);
+  const rank = (g: GameSummary) => (g.status === "locked" || g.live?.state === "in" ? 2 : 0) + (runsBoard(g) ? 1 : 0);
   return boards
     .filter((g) => isMyBoard(g) && (g.status === "open" || g.status === "locked"))
     .sort((a, b) => rank(b) - rank(a) || b.lastActivityAt - a.lastActivityAt)

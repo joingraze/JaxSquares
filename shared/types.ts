@@ -194,6 +194,13 @@ export interface Game {
   startsAt?: number | null;
   /** Public id of the host's player (see Player.id). */
   hostPlayerId: string;
+  /**
+   * Public ids of the board's co-hosts (shared/cohosts.ts), in the order they
+   * joined as co-hosts: up to MAX_COHOSTS players the host invited to run the
+   * board with them. Never a clientId. Always sent by the API; optional only so
+   * older fixtures and cached states type-check (absent reads as none).
+   */
+  cohostIds?: string[];
   createdAt: number;
   lockedAt: number | null;
   /**
@@ -279,7 +286,8 @@ export type ActivityType =
   | "score"
   | "winner"
   | "final"
-  | "rules";
+  | "rules"
+  | "cohost";
 
 export interface Activity {
   id: string;
@@ -324,6 +332,8 @@ export interface ActivityData {
    * notes, the unit or the square price. Never pushed.
    */
   rules: { scoring: boolean };
+  /** Someone accepted a co-host invite (actor = the new co-host): "Maya is now a co-host". Pushed to the host only. */
+  cohost: { name: string };
 }
 
 /**
@@ -372,6 +382,11 @@ export interface GameSummary {
    */
   format: GameFormat;
   isHost: boolean;
+  /**
+   * This identity co-hosts the board (shared/cohosts.ts): Home shows it with
+   * the boards I host, tagged "Co-host". Sent by `GET /api/me/games`; absent reads as false.
+   */
+  isCohost?: boolean;
   /** This device has a player row on the board (false for a board it only opened). */
   joined: boolean;
   /** The host's public profile, or null when the host has no player row. */
@@ -734,6 +749,24 @@ export interface MeResponse {
   profile?: { name: string; color: string; emoji: string } | null;
   /** This identity's Host Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
   hostPass?: HostPass | null;
+  /**
+   * Ids of the boards this identity co-hosts (newest 200). No token: a co-host
+   * is authorized by its clientId, so host tools show on every signed-in
+   * device. Always sent; optional so older fixtures type-check.
+   */
+  cohostGames?: string[];
+}
+
+/** POST /api/games/:id/cohost-invites (host only): a single-use co-host invite link, `/g/<id>?cohost=<token>`. */
+export interface CohostInviteResponse {
+  url: string;
+  /** When the link stops working, epoch ms (COHOST_INVITE_TTL_MS after it was made). */
+  expiresAt: number;
+}
+
+/** POST /api/games/:id/cohosts/accept: the token from a co-host invite link. */
+export interface CohostAcceptInput {
+  token: string;
 }
 
 export type PushRegistration =

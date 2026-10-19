@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import App, { createAppRouter, prefetchScreens, preloadScreen } from "./App";
 import { loadHostTools } from "./features/host/hostTools";
 import { checkHostToken } from "./lib/api";
-import { captureHostLink, getAdminToken, hydrateIdentity } from "./lib/identity";
+import { captureHostLink, getAdminToken, hydrateIdentity, isCohostGame } from "./lib/identity";
 import { isNative } from "./lib/native";
 import { initPush } from "./lib/push";
 import { initTheme } from "./lib/theme";
@@ -58,9 +58,10 @@ async function start(): Promise<void> {
   const rest = captureHostLink(location.pathname, location.search, location.hash, checkHostToken);
   if (rest !== null) history.replaceState(history.state, "", `${location.pathname}${rest.search}${rest.hash}`);
 
-  // The host opening their own board: its host tools load alongside the board's chunk and data.
+  // The host (or a co-host) opening the board: its host tools load alongside the board's chunk and data.
   const board = /^\/g\/([^/]+)\/?$/i.exec(location.pathname);
-  if (board && getAdminToken(board[1].toLowerCase())) void loadHostTools().catch(() => undefined);
+  const boardId = board?.[1].toLowerCase();
+  if (boardId && (getAdminToken(boardId) || isCohostGame(boardId))) void loadHostTools().catch(() => undefined);
 
   await screenReady;
 

@@ -2,8 +2,9 @@
 // once the numbers are drawn it's about wins and who's leading right now.
 // Tapping a player lights up their squares on the board.
 //
-// The host also gets a remove button on everyone else's row while squares are
-// being picked (`onRemove`); the confirm step lives in the host sheet.
+// The host (and a co-host) also gets a remove button on everyone else's row
+// while squares are being picked (`onRemove`, `canRemove`); the confirm step
+// lives in the host sheet. Co-hosts wear a "Co-host" tag (`cohostIds`).
 //
 // With a square price, each row says what their squares come to ("4 squares ·
 // $40"); with prize amounts, a winner's pill leads with their total. Both are
@@ -30,6 +31,10 @@ export interface PlayersListProps {
   onSelect?: (playerId: string) => void;
   /** Host only, while squares are being picked: ask to remove this player (never offered on the host's or your own row). */
   onRemove?: (playerId: string) => void;
+  /** Which rows get the remove button (a co-host can't remove another co-host); default: everyone but the host and you. */
+  canRemove?: (playerId: string) => boolean;
+  /** Public ids of the board's co-hosts: "Co-host" next to their name. */
+  cohostIds?: readonly string[];
   /** Rows shown before "Show all" (default 5). */
   collapseAfter?: number;
   /** The board's unit for square prices and prize totals (default "$"). */
@@ -45,6 +50,8 @@ export function PlayersList({
   selectedId = null,
   onSelect,
   onRemove,
+  canRemove,
+  cohostIds = [],
   collapseAfter = COLLAPSED,
   unit = "$",
 }: PlayersListProps) {
@@ -59,7 +66,7 @@ export function PlayersList({
           const value = squaresValue && squares > 0 ? formatAmount(squaresValue, unit) : null;
           const leads = stage === "game" && leading?.playerId === player.id;
           const selected = selectedId === player.id;
-          const removable = !!onRemove && player.id !== hostId && !isMe;
+          const removable = !!onRemove && player.id !== hostId && !isMe && (canRemove?.(player.id) ?? true);
           return (
             <li key={player.id} className={cx("flex items-center", selected && "bg-ink/6")}>
               <button
@@ -85,6 +92,11 @@ export function PlayersList({
                   <div className="flex min-w-0 items-center gap-1.5">
                     <span className={cx("truncate text-callout font-bold", isMe ? "text-ink-brand" : "text-ink")}>{isMe ? "You" : player.name}</span>
                     {player.id === hostId && <Badge tone="outline">Host</Badge>}
+                    {player.id !== hostId && cohostIds.includes(player.id) && (
+                      <span data-testid="player-cohost" className="flex shrink-0">
+                        <Badge tone="outline">Co-host</Badge>
+                      </span>
+                    )}
                   </div>
                   {stage === "picking" ? (
                     // Share of the board, as a slim bar (and what their squares come to at the square price).

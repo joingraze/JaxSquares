@@ -453,7 +453,7 @@ describe("HostControls", () => {
       // The checkout first: nothing is drawn until the fee is paid.
       const pay = await screen.findByTestId("pay-confirm", {}, { timeout: 3000 });
       expect(lock).not.toHaveBeenCalled();
-      expect(screen.getByText("No charge while checkout is in test mode.")).toBeInTheDocument();
+      expect(await screen.findByText("No charge while checkout is in test mode.", {}, { timeout: 3000 })).toBeInTheDocument();
       fireEvent.click(pay);
       await waitFor(() => expect(apply).toHaveBeenCalledWith(paidFull()), { timeout: 3000 });
       await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"), { timeout: 3000 });

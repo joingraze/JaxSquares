@@ -52,6 +52,14 @@ export const UserIcon = make(
   </>,
   { fillable: true },
 );
+export const UserPlusIcon = make(
+  "UserPlus",
+  <>
+    <circle cx="10" cy="8" r="4" />
+    <path d="M2.5 21a7.5 7.5 0 0 1 13.2-4.8" />
+    <path d="M19 14v6M16 17h6" />
+  </>,
+);
 export const UsersIcon = make(
   "Users",
   <>

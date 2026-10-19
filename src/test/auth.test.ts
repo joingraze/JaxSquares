@@ -210,6 +210,20 @@ describe("refreshMe on start", () => {
     expect(id.getAdminToken("abc234")).toBe("t");
   });
 
+  it("keeps the boards the account co-hosts (no token: the server knows them by the account), and forgets them on sign-out", async () => {
+    fetchMock.mockImplementation(async () => json({ playerId: CANONICAL, account: ACCOUNT, hostTokens: {}, profile: null, cohostGames: ["cohst1", "NOT A BOARD"] }));
+    await auth.refreshMe();
+    expect(id.getCohostGames()).toEqual(["cohst1"]);
+    expect(id.isCohostGame("cohst1")).toBe(true);
+    expect(id.getAdminToken("cohst1")).toBeNull();
+    // An older server leaves the list out: what's held stays.
+    fetchMock.mockImplementation(async () => json({ playerId: CANONICAL, account: ACCOUNT, hostTokens: {}, profile: null }));
+    await auth.refreshMe();
+    expect(id.getCohostGames()).toEqual(["cohst1"]);
+    id.wipeIdentity();
+    expect(id.getCohostGames()).toEqual([]);
+  });
+
   it("starts fresh when the account was signed out or deleted elsewhere", async () => {
     const before = signedInDevice();
     fetchMock.mockImplementation(async () => json({ playerId: derivePlayerIdSync(before), account: null, hostTokens: {}, profile: null }));

@@ -13,7 +13,7 @@ import { paymentsRoutes } from "./routes";
 import { signStripePayload } from "./stripe";
 import { createTestD1, type TestD1 } from "./testD1";
 
-vi.mock("../service", () => ({ isHost: vi.fn(), markPaid: vi.fn(), loadState: vi.fn() }));
+vi.mock("../service", () => ({ isHostOrCohost: vi.fn(), markPaid: vi.fn(), loadState: vi.fn() }));
 vi.mock("../db", () => ({ getGame: vi.fn() }));
 
 const ADMIN = "admin-token-1";
@@ -74,7 +74,8 @@ beforeEach(async () => {
   ledger = await createTestD1(["migrations/0003_purchases.sql", "migrations/0006_purchases_unused.sql"]);
   games = new Map([["g1", unpaid("g1")], ["g2", unpaid("g2")]]);
   vi.mocked(db.getGame).mockImplementation(async (_db, id) => games.get(id) ?? null);
-  vi.mocked(service.isHost).mockImplementation(async (_env, _id, token) => token === ADMIN);
+  // The host (the admin token); a co-host (by clientId) is covered in worker/cohosts.test.ts.
+  vi.mocked(service.isHostOrCohost).mockImplementation(async (_env, _id, req) => req.adminToken === ADMIN);
   vi.mocked(service.loadState).mockImplementation(async (_env, id) => (games.has(id) ? stateOf(games.get(id)!) : null));
   vi.mocked(service.markPaid).mockImplementation(async (_env, id) => {
     const game = games.get(id);

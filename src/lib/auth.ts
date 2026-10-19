@@ -17,7 +17,7 @@ import { useEffect, useState } from "react";
 import { sha256 } from "../../shared/playerId";
 import type { AuthConfig, AuthProvider, MeResponse, SignInInput } from "../../shared/types";
 import { api } from "./api";
-import { hasProfileName, isSignedIn, saveAdminTokens, setProfile, setServerIdentity, wipeIdentity } from "./identity";
+import { hasProfileName, isSignedIn, saveAdminTokens, setCohostGames, setProfile, setServerIdentity, wipeIdentity } from "./identity";
 import { resetMyGames } from "./live";
 import { platform, type Platform } from "./native";
 import { clearMutedCache, currentPushTarget, syncPush } from "./push";
@@ -128,13 +128,16 @@ let epoch = 0;
 /**
  * Adopts a MeResponse: the (account's) public id and account, the admin tokens
  * of the boards it hosts (stored like the creator's device stores them, so
- * host tools show), and its last profile on a device that has none. Refreshes
- * Home when anything changed. Returns whether it did.
+ * host tools show), the boards it co-hosts (no token: the server knows them by
+ * the account, and each board's state says it), and its last profile on a
+ * device that has none. Refreshes Home when anything changed. Returns whether it did.
  */
 export function applyMe(me: MeResponse, requestedAt?: number): boolean {
   applyMePass(me.hostPass, requestedAt);
   let changed = setServerIdentity(me.playerId, me.account);
   if (saveAdminTokens(me.hostTokens ?? {}) > 0) changed = true;
+  // An older server leaves it out: keep what's held.
+  if (me.cohostGames && setCohostGames(me.cohostGames)) changed = true;
   if (me.profile?.name && !hasProfileName()) setProfile(me.profile);
   if (changed) resetMyGames();
   return changed;

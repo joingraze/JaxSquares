@@ -1,5 +1,8 @@
 // Everything the board's host can do, behind one compact bar on the board.
-// Renders nothing unless this device holds the board's admin token.
+// Renders for the board's host (this device holds its admin token) and for its
+// co-hosts (useHostRole): a co-host gets every tool but the host-only ones
+// (inviting or removing co-hosts, the host link, deleting the board) and sends
+// no admin token; the server authorizes them by clientId. Nothing for anyone else.
 //
 // The bar says where the board stands and offers the next move (invite, lock
 // & draw, enter the score); with nothing to do it folds to one slim row.
@@ -14,7 +17,9 @@
 // for up to 5 players", and it just draws (no pay-ahead: Jax draws a free
 // linked board at kickoff anyway). With an active Host Pass a bigger board's
 // draw reads "Draw the numbers", "Included with your Host Pass", and just
-// draws. Setting up, inviting and picking squares are free.
+// draws. Setting up, inviting and picking squares are free. A co-host's draw
+// is covered by their own pass or the host's: this device only knows its own,
+// so a co-host whose fee looks due tries the draw first and pays on the 402.
 //
 // Deep link (from Home): ?draw=1 opens the lock & draw confirm. Cleared once handled.
 //
@@ -32,6 +37,8 @@ import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, ShuffleIcon, TrophyI
 import { celebrate, cx, useToast } from "../../components/ui";
 import { api, inviteUrl } from "../../lib/api";
 import { readableTeamColor } from "../../lib/format";
+import { canRemovePlayer } from "../board/boardModel";
+import { useHostRole, type HostRole } from "../../lib/hostRole";
 import { getAdminToken, getPlayerId } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import { useHostFee } from "../../lib/useHostFee";
@@ -62,9 +69,10 @@ export interface HostControlsProps {
 }
 
 export function HostControls(props: HostControlsProps) {
-  // The admin token is the host's key; without it there's nothing to show.
-  if (!getAdminToken(props.state.game.id)) return null;
-  return <HostPanel {...props} />;
+  // The host (the admin token) or a co-host (by public id); anyone else gets nothing.
+  const role = useHostRole(props.state);
+  if (!role) return null;
+  return <HostPanel {...props} role={role} />;
 }
 
 /** Time for the sheet to slide away before the board takes over (pick mode, the reveal). */
@@ -82,7 +90,16 @@ interface Reveal {
   state: GameState;
 }
 
-function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onRemoveRequestHandled, rulesRequest = 0 }: HostControlsProps) {
+function HostPanel({
+  state,
+  apply,
+  pickCell,
+  onInvite,
+  removeRequest = null,
+  onRemoveRequestHandled,
+  rulesRequest = 0,
+  role,
+}: HostControlsProps & { role: HostRole }) {
   const { game } = state;
   const toast = useToast();
   const navigate = useNavigate();
@@ -108,6 +125,7 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn: () => void, ms: number) => timers.current.push(setTimeout(fn, ms));
 
+  // The host's key; a co-host has none (their checkout and calls go by clientId).
   const adminToken = getAdminToken(game.id);
   // The host fee is due at the draw, unless 5 or fewer players hold squares
   // (free: the server marks the board paid "free" as it draws) or the host's
@@ -138,10 +156,16 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   const status = game.status;
   const squaresOpen = isPicking(game);
   useEffect(() => {
-    if ((view === "lock" && !squaresOpen) || (view === "end" && status !== "locked") || ((view === "players" || view === "remove") && !squaresOpen)) {
+    if (
+      (view === "lock" && !squaresOpen) ||
+      (view === "end" && status !== "locked") ||
+      ((view === "players" || view === "remove") && !squaresOpen) ||
+      // The host side views a co-host never gets (and back home if the host made this device a co-host meanwhile).
+      ((view === "delete" || view === "cohost-invite" || view === "cohost-remove") && role !== "host")
+    ) {
       setView("home");
     }
-  }, [view, status, squaresOpen]);
+  }, [view, status, squaresOpen, role]);
 
   const openSheet = useCallback((v: HostView = "home") => {
     void haptic("light");
@@ -158,7 +182,8 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   // ---- remove a player (asked from the board's players list or the sheet's) ----
   const askRemove = (playerId: string, from: RemoveTarget["from"]) => {
     const player = state.players.find((p) => p.id === playerId);
-    if (!player || !squaresOpen || playerId === game.hostPlayerId) return;
+    // Never the host; a co-host can't remove another co-host either (the server says so too).
+    if (!player || !squaresOpen || !canRemovePlayer(game, playerId, me, role)) return;
     setRemoving({ id: playerId, name: player.name, squares: state.squares.filter((s) => s.playerId === playerId).length, from });
     if (from === "board") openSheet("remove");
     else setView("remove");
@@ -260,16 +285,20 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
   }, [wantsDraw]);
 
   // ---- lock + reveal ----
-  /** The confirm's "Draw the numbers": pay the host fee first when it's due. */
+  /**
+   * The confirm's "Draw the numbers": pay the host fee first when it's due. A
+   * co-host asks the server first (the host's Host Pass may cover it; a 402
+   * opens the checkout), with the reveal waiting for its answer.
+   */
   const lock = () => {
-    if (fee) openCheckout("draw");
-    else void draw(state);
+    if (fee && role === "host") openCheckout("draw");
+    else void draw(state, fee);
   };
 
-  const draw = async (from: GameState) => {
+  const draw = async (from: GameState, probe = false) => {
     setOpen(false);
     revealClosed.current = false;
-    setReveal({ draw: null, label: null, state: from });
+    if (!probe) setReveal({ draw: null, label: null, state: from });
     const next = await actions.lock();
     if (next === PAY_FIRST) {
       // The fee turned out to be due (an older copy of the board said paid, or
@@ -371,6 +400,7 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
         onClose={closeSheet}
         actions={actions}
         me={me}
+        role={role}
         onInvite={() => {
           closeSheet();
           later(onInvite, SHEET_EXIT_MS);
@@ -388,10 +418,11 @@ function HostPanel({ state, apply, pickCell, onInvite, removeRequest = null, onR
         onAskRemove={(playerId) => askRemove(playerId, "sheet")}
         onRemoved={removed}
       />
-      {(fee || payOpen) && adminToken && (
+      {(fee || payOpen) && (
         <Suspense fallback={null}>
           <CheckoutSheet
             open={payOpen}
+            // A co-host pays with no token: the payment routes know them by clientId.
             board={{ game, adminToken }}
             purpose={purpose}
             initialPlan={plan}

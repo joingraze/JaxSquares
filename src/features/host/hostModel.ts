@@ -33,9 +33,10 @@ import {
   type PeriodResult,
   type ScorePlay,
 } from "../../../shared/squares";
+import { cohostIdsOf } from "../../../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
-import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Score, UpdateGameInput } from "../../../shared/types";
+import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Player, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
 /** Highest score the API accepts. */
@@ -733,6 +734,18 @@ export function numbersFor(
     .filter((s) => s.playerId === playerId)
     .sort((a, b) => a.row - b.row || a.col - b.col)
     .map((s) => ({ key: cellKey(s.row, s.col), x: (draw.x[s.col] ?? []).join("·"), y: (draw.y[s.row] ?? []).join("·") }));
+}
+
+// ---- Co-hosts ----
+
+/** What "Invite a co-host" says a co-host can do. */
+export const COHOST_PITCH = "They can do everything you can, except remove you.";
+
+/** The board's co-hosts as players (in the order they became co-hosts); one without a player row is skipped. */
+export function cohostPlayers(state: Pick<GameState, "game" | "players">): Player[] {
+  return cohostIdsOf(state.game)
+    .map((id) => state.players.find((p) => p.id === id))
+    .filter((p): p is Player => !!p);
 }
 
 /** Order the reels land in: across the top left to right, then down the side. */

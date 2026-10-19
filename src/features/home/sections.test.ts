@@ -294,6 +294,21 @@ describe("cardModel", () => {
   });
 });
 
+describe("boards I co-host", () => {
+  it("sit with the boards I host, with the same to-dos, tagged Co-host", () => {
+    const g = summary({ isCohost: true, claimed: 96 });
+    expect(relationOf(g)).toBe("host");
+    expect(actionFor(g)).toBe("lock");
+    expect(sectionOf(g)).toBe("needs");
+    expect(cardModel(g, 0).role).toBe("Co-host");
+    expect(cardModel(summary({ isHost: true, claimed: 96 }), 0).role).toBe("Your board");
+    // An undrawn linked game in play still needs their draw.
+    const kickedOff = summary({ isCohost: true, claimed: 40, live: { state: "in", period: 1, clock: "12:00", detail: "Q1 12:00", scoreX: 0, scoreY: 0, updatedAt: 1 } });
+    expect(sectionOf(kickedOff)).toBe("needs");
+    expect(homeBoards([summary({ isCohost: true, joined: false })], [])).toHaveLength(1);
+  });
+});
+
 describe("withState", () => {
   it("lays a live board state over a stale summary", () => {
     const s = state({

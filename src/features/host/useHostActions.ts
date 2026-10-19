@@ -4,9 +4,10 @@
 // and haptics on the moments that matter.
 
 import { useCallback, useRef, useState } from "react";
-import type { GameState, UpdateGameInput } from "../../../shared/types";
+import type { CohostInviteResponse, GameState, UpdateGameInput } from "../../../shared/types";
 import { useToast } from "../../components/ui";
 import { ApiError, api, errorMessage, isPaymentRequired } from "../../lib/api";
+import { getPlayerId, rememberCohost } from "../../lib/identity";
 
 export type HostBusy =
   | "lock"
@@ -18,6 +19,8 @@ export type HostBusy =
   | "delete"
   | "edit"
   | "remove-player"
+  | "cohost-invite"
+  | "cohost-remove"
   | null;
 
 /** What `lock` resolves to when the board's host fee isn't paid yet (the server's 402): open the checkout, then draw. */
@@ -36,6 +39,12 @@ export interface HostActions {
   remove: () => Promise<boolean>;
   /** Take a player (public id) off the board and free their squares, while squares are being picked. */
   removePlayer: (playerId: string) => Promise<GameState | null>;
+  /** Host only: a new single-use co-host invite link, or null after a failure (toasted). */
+  inviteCohost: () => Promise<CohostInviteResponse | null>;
+  /** Host only: take a co-host (public id) off the co-hosts; they stay on the board. */
+  removeCohost: (playerId: string) => Promise<GameState | null>;
+  /** A co-host steps down (stays on the board as a player). */
+  stepDown: () => Promise<GameState | null>;
 }
 
 /** The API's refusals for removing a player, said for the host. */
@@ -121,5 +130,12 @@ export function useHostActions(gameId: string, apply: (state: GameState) => void
         ),
       [withState, gameId],
     ),
+    inviteCohost: useCallback(() => run("cohost-invite", () => api.createCohostInvite(gameId)), [run, gameId]),
+    removeCohost: useCallback((playerId: string) => withState("cohost-remove", () => api.removeCohost(gameId, playerId)), [withState, gameId]),
+    stepDown: useCallback(async () => {
+      const next = await withState("cohost-remove", () => api.removeCohost(gameId, getPlayerId()));
+      if (next) rememberCohost(gameId, false);
+      return next;
+    }, [withState, gameId]),
   };
 }

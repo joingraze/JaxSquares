@@ -35,6 +35,8 @@ exception so far: the public-id rename below, which closed an impersonation hole
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
   Capacitor Preferences in the native app) sent as `x-client-id` on every request.
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
+  Up to 3 co-hosts the host invites run the board with them by their
+  (canonical) clientId, never the token (see "Co-hosts").
   Signing in with Apple or Google is optional: it maps every signed-in device to
   its account's canonical clientId, so boards follow a person (see "Optional
   sign-in" below and docs/auth.md).
@@ -69,7 +71,7 @@ the same value synchronously.) It is stable per device and one-way.
 
 | Where | Field (public id) |
 |---|---|
-| `Game` | `hostPlayerId` |
+| `Game` | `hostPlayerId`, `cohostIds` |
 | `Player` | `id` |
 | `Square` | `playerId` |
 | `Activity` | `actor` (null for system events), winner `data.playerIds` |
@@ -78,7 +80,7 @@ the same value synchronously.) It is stable per device and one-way.
 | `GameSummary` | `host.id`, `leaderPlayerId` (the rest is computed per device: `isHost`, `joined`, `mySquares`, `myWins`) |
 
 - Server: D1 stores clientIds (`players.client_id`, `squares.client_id`,
-  `games.host_client_id`); `worker/db.ts` derives public ids on read (memoized in
+  `games.host_client_id`, `cohosts.client_id`); `worker/db.ts` derives public ids on read (memoized in
   `worker/playerIds.ts`). New activity rows store the public id; legacy rows that
   hold clientIds are translated on read, and anything unrecognised is dropped.
   `getMembers()` (server-only `Member = Player & { clientId }`) is the one place
@@ -105,13 +107,14 @@ Model, merge rules and setup: docs/auth.md. In short:
   work on the account, and every device of one account is one player with one
   public id.
 - Signing in on another device moves that device's rows (hosted boards,
-  players, squares, its public id in the feed, push registrations, mutes, Host
-  Pass rows and its Stripe customer) to the canonical clientId in one batch with its link, bumps the touched boards'
+  co-host rows, players, squares, its public id in the feed, push
+  registrations, mutes, Host Pass rows and its Stripe customer) to the canonical clientId in one batch with its link, bumps the touched boards'
   versions and broadcasts them. Its own clientId then works only through
   `client_links`.
 - `GET /api/me` and every sign-in return `MeResponse`: the (account's) public
-  id, the account, and the admin tokens of the boards the identity hosts (never
-  anyone else's). The app stores the id next to the clientId
+  id, the account, the admin tokens of the boards the identity hosts (never
+  anyone else's) and the ids of the boards it co-hosts (`cohostGames`, no
+  token: a co-host is authorized by clientId). The app stores the id next to the clientId
   (`jaxsquares.playerId`, tied to the clientId it was given for) so "mine"
   works offline at startup, and the tokens like the creator's device does.
 - Sign-out wipes the device (new clientId; player id, account, profile, boards,
@@ -162,34 +165,39 @@ Model, merge rules and setup: docs/auth.md. In short:
 ## HTTP API
 
 All JSON. Errors are `{ error: string }` with a 4xx/5xx status; the message is
-friendly enough to show as-is. `C` = needs `x-client-id`, `H` = also needs
-`x-admin-token` for that game. `429` = rate limited (see below; has `Retry-After`).
+friendly enough to show as-is. `C` = needs `x-client-id`, `H` = the board's
+host (`x-admin-token` for that game) or one of its co-hosts (the request's
+canonical clientId; no token; see "Co-hosts"), `H!` = host only (the admin
+token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden |
 | POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
-| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null |
+| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
 | GET | `/api/games/:id` | – | – | `GameState` |
-| GET | `/api/games/:id/host-check` | C H | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
+| GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
 | PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push |
-| DELETE | `/api/games/:id` | C H | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404 |
+| DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them; 429 |
-| DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); 400 for the host, 404 if not on the board, 409 once locked. They may join again |
+| DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
+| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has `MAX_COHOSTS` (3); 429 |
+| POST | `/api/games/:id/cohosts/accept` | C | `CohostAcceptInput` `{ token }` | `{ state }`: the caller (a player on the board, not its host) becomes a co-host; the invite is used up in the same transaction, which re-checks it's unused and unexpired and that the board has room. Already a co-host: `{ state }`, the link stays unused. 400 malformed token, 403 not on the board ("Join the board first…"), 404 unknown link, 409 the host's own link or the board is full, 410 used or expired; 429. Logs a `cohost` activity and pushes `cohost-accepted` to the host |
+| DELETE | `/api/games/:id/cohosts/:playerId` | C H | – | `{ state }`: the host removes a co-host (public id), or a co-host steps down (their own id; any other id is 403 for a co-host). They stay on the board. 404 when that id isn't a co-host |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
-| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
+| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers; a co-host too). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's, by canonical clientId, so a co-host's own pass counts, or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`) |
 | POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`. Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
 | DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
-| GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
+| GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, marks the fee paid). A verified purchase that can't pay for the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already paid for (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
@@ -230,6 +238,10 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `auth-ip` | 60 per address per hour | what `auth` counts, for every device behind one address |
 | `pass` | 30 per device per hour | Host Pass calls: test pass, starting or confirming a web purchase, App Store purchase and restore, Manage (keyed by the resolved public id) |
 | `pass-ip` | 120 per address per hour | what `pass` counts, for every device behind one address |
+| `cohost-invite` | 20 per device per hour | co-host invite links the host makes |
+| `cohost-invite-ip` | 60 per address per hour | what `cohost-invite` counts, for every device behind one address |
+| `cohost-accept` | 20 per device per hour | co-host accepts with a well-formed token, counted before the token is looked up (links can't be guessed at speed) |
+| `cohost-accept-ip` | 60 per address per hour | what `cohost-accept` counts, for every device behind one address |
 
 Per-device rules count per account for a signed-in device (they're keyed by
 the resolved public id). `maxPerPlayer` (the board's squares-per-player cap)
@@ -353,6 +365,8 @@ board's summary is the same public data as any other (`joined: false`,
 missing, final, or now joined.
 
 - `joined: boolean`: this device has a player row on the board.
+- `isCohost: boolean`: this identity co-hosts the board (Home shows it with
+  the boards I host, tagged "Co-host").
 - `paid: boolean`: the board's host fee is paid (`Game.paid`); a linked board
   draws its own numbers at kickoff only then (or when it's free). Boards made
   before the fee moved to the draw count as paid.
@@ -421,7 +435,8 @@ play is fetched once the same way (again when its `version` moves on).
 | `score` | `{ periodKey, label, scoreX, scoreY, source: "live" \| "host" }` |
 | `winner` | `{ periodKey, label, playerIds, cell, reverseCell?, prize, manual? }` |
 | `final` | `{}` |
-| `rules` | `{ scoring }`: the host edited rules or prizes (actor = host's public id); `scoring` when who wins changed (moments, square/reverse, fresh numbers), not just amounts, notes, unit or price. Never pushed |
+| `rules` | `{ scoring }`: the host (or a co-host) edited rules or prizes (actor = their public id); `scoring` when who wins changed (moments, square/reverse, fresh numbers), not just amounts, notes, unit or price. Never pushed |
+| `cohost` | `{ name }`: someone accepted a co-host invite (actor = the new co-host): "Maya is now a co-host". The host gets the `cohost-accepted` push |
 
 Winner activity carries notes only (`prize` = the square's note, else the
 reverse square's), never an amount. On a moment where only the reverse square
@@ -833,12 +848,15 @@ then removed from the URL (`replace`), so back/refresh doesn't repeat it.
 |---|---|---|---|
 | `?invite=1` | create flow, after the board is made | `GameView` | opens the invite sheet, if this device holds the admin token |
 | `?draw=1` | Home card "Draw numbers", inbox "Your board is full", the "Payment confirmed" toast | `HostControls` | opens the host sheet's lock & draw confirm (`host-lock-confirm`) if the board is `open` with squares claimed, else the host sheet. With the host fee due the confirm reads "Draw the numbers · $4.99" and pays first ("Draw the numbers · Free" on a board of 5 or fewer players) |
+| `?cohost=<token>` | a co-host invite link (the host sheet's "Invite a co-host") | `GameView` | keeps the token in memory (removed from the URL at once; a malformed one says "That co-host link isn't complete"), then asks "Become a co-host of <board>?" (`CohostAcceptSheet`). Accepting calls `POST /cohosts/accept`; someone not on the board joins first (the join sheet, "Join & become a co-host"), then it accepts. The host opening their own link, or a co-host, gets a toast instead. A link that can't be used says why and only closes |
 | `#host=<adminToken>` (fragment; the older `?host=` still works) | a host link ("Host from another phone", `hostLinkUrl`) | `captureHostLink` (`src/lib/identity.ts`) | stores the token for this board on this device, then strips it from the address bar. The fragment is never sent, so the token stays out of the Worker's request logs. Only a real board code (`[a-z0-9]{4,16}`, lowercased) counts; a malformed one is ignored. A token the device already holds is never overwritten (anyone with the invite can craft `#host=x`, and the server never re-issues it): a different one is kept aside in memory, tried by the API client only after the held one gets a 403, and adopted once it works. A device holding none uses the token at once and checks it (`GET /api/games/:id/host-check`); one the server refuses is dropped again. Opened while `hydrateIdentity` is still reading the native store, the capture waits for it. The board treats this device as the host, not a newcomer (no invite hero, no join sheet on the first tap) |
 
-Removing a player (client): on the host's device (holding the admin token),
-while squares are being picked (`draft`/`open`, the API's rule), every row on
-the board's Players list except the host's and this device's own gets a remove
-button (`data-testid="player-remove"`). It asks `HostControls` (prop
+Removing a player (client): on a device that runs the board (the host's,
+holding the admin token, or a co-host's), while squares are being picked
+(`draft`/`open`, the API's rule), every row on the board's Players list except
+the host's and this device's own (and, for a co-host, other co-hosts';
+`canRemovePlayer(game, id, me, role)`) gets a remove button
+(`data-testid="player-remove"`). It asks `HostControls` (prop
 `removeRequest`) to open the host sheet on its "Remove Maya?" confirm ("Their 6
 squares open up again."); the host sheet also has a Players view (Board >
 Players) with the same list. The confirm (`remove-player-confirm`) calls
@@ -846,6 +864,64 @@ Players) with the same list. The confirm (`remove-player-confirm`) calls
 with `apply`), then a toast says it's done; refusals read plainly (409: "Squares
 are locked now, so everyone stays on the board."). The confirm closes itself if
 the board locks meanwhile.
+
+## Co-hosts
+
+Office pools and watch parties often have two or three organizers. The host
+invites up to `MAX_COHOSTS` (3, the one constant in `shared/cohosts.ts`, for
+everyone) players to run the board with them.
+
+- **What a co-host can do:** every host action: edit the board, rules and
+  prizes (PATCH), draw the numbers (`/lock`, paying the host fee through the
+  normal checkout: `/pay/*`), enter and remove scores, pick and undo winners,
+  end the game, remove players while squares are picked, and invite players
+  (the board link). **Host only:** inviting co-hosts, removing a co-host (a
+  co-host can only step down), deleting the board, the host link. Nobody
+  removes the host.
+- **Auth:** `hostAccess(c, id)` in `worker/index.ts` loads the state with the
+  admin token and whether the request's canonical `c.get("clientId")` is a
+  co-host (one round trip, `db.getGameStateWithToken(db, id, clientId)`), and
+  returns `{ state, role: "host" | "cohost" }`: the token makes it `host`
+  (the host's devices and host links, as before), a `cohosts` row `cohost`,
+  else 403. `hostState` (every host route) takes either; `hostOnlyState`
+  answers 403 to a co-host. The payment routes use `isHostOrCohost`
+  (`worker/service.ts`), which resolves `x-client-id` the same way. A co-host
+  never sees the admin token: `GET /api/me` lists `cohostGames` without one.
+- **Tables** (core, migration `0014_cohosts.sql`, only `worker/db.ts`):
+  `cohosts` (`game_id`, `client_id` = the canonical clientId, `added_at`; PK
+  both) and `cohost_invites` (`token_hash` PK = SHA-256 of the link's token,
+  `game_id`, `expires_at`, `used_at`). Both go with a deleted board; hourly
+  housekeeping drops invites used or expired over a day ago. `cohosts` joins
+  the sign-in merge (docs/auth.md), so a co-host who signs in on another device
+  stays one; `cohost_invites` has no client column.
+- **Invite → accept:** the host makes a single-use link
+  (`POST /cohost-invites`, 7 days) and shares it; opening it asks "Become a
+  co-host of <board>?"; `POST /cohosts/accept` uses the invite and adds the
+  co-host in one transaction (`db.acceptCohostInvite`: unused, unexpired, room
+  under the limit, a player who isn't the host or a co-host already, all in
+  SQL), logs `cohost` ("Maya is now a co-host") and pushes the host
+  "🤝 Maya accepted your co-host invite." (`cohost-accepted`).
+- **Public state:** `Game.cohostIds`, public player ids in the order they
+  became co-hosts. Players lists tag them "Co-host" (`player-cohost`);
+  `GameSummary.isCohost` puts the board with the ones I host on Home, tagged
+  "Co-host" (`home-cohost`; "You're co-hosting", "You co-hosted").
+- **Client:** `useHostRole(state)` (`src/lib/hostRole.ts`, over `hostRoleOf`)
+  is the one answer to "does this device run this board, and as whom":
+  `"host"` while it holds the admin token, `"cohost"` when its public id is in
+  `cohostIds`, else null. `GameView` and `HostControls` show host tools for
+  either; requests from a co-host carry no admin token. The host sheet's
+  Co-hosts section (`CohostsSection`): the host sees each co-host with Remove
+  and "Invite a co-host" ("They can do everything you can, except remove
+  you."), which makes the link and opens "Co-host invite ready" with "Share
+  co-host link" (`shareLink`, so the share sheet opens on a tap); a co-host
+  sees the list with "Step down" on their own row, and none of the host-only
+  rows. Stepping down or being removed toasts "You're not a co-host anymore".
+  The app keeps `cohostGames` (`jaxsquares.cohosts`) only to load host tools
+  early.
+- **Drawing as a co-host:** the lock rules are the host's (free with 5 or
+  fewer players, else the caller's or the host's Host Pass, else 402). This
+  device only knows its own pass, so a co-host whose fee looks due asks the
+  server first (no reveal until it answers) and opens the checkout on the 402.
 
 ## The host fee (client)
 
@@ -928,6 +1004,8 @@ markPaid(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "ia
 /** The game was deleted: the room sends { type: "deleted" }, closes sockets with 4404, drops its storage. Never throws. */
 closeRoom(env: Env, gameId: string): Promise<void>
 isHost(env: Env, gameId: string, adminToken: string): Promise<boolean>
+/** The admin token, or x-client-id (resolved to the canonical clientId) is a co-host: who may pay the host fee. */
+isHostOrCohost(env: Env, gameId: string, req: { adminToken: string; clientId: string | null | undefined; signedIn: boolean }): Promise<boolean>
 /** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the board is free: marked paid "free" and locked in a batch of its own that re-counts the holders, before the scores; or the host's Host Pass covers it: marked paid through the pass in the same write). */
 applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 ```
@@ -967,6 +1045,7 @@ type NotifyEvent = (
   | { kind: "board-full" }
   | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not for a free board, or a Host Pass holder)
   | { kind: "player-joined"; name: string }
+  | { kind: "cohost-accepted"; name: string }   // host only: someone accepted their co-host invite (actor = the new co-host)
   | { kind: "final" }
 ) & {
   /** Public player id of whoever caused it; they aren't notified about their own action. */
@@ -974,10 +1053,11 @@ type NotifyEvent = (
 };
 notify(env: Env, gameId: string, event: NotifyEvent): Promise<void>   // call via ctx.waitUntil
 ```
-Core passes `actor` on host actions: `numbers-drawn` from `POST /lock` (or
-`final`, when that draw also ends a linked game the feed already called Final),
-`final` from `POST /final` and from a typed-in board's Final score,
-`player-joined`, and `board-full` (whoever claimed the last square).
+Core passes `actor` on host actions (a co-host's too): `numbers-drawn` from
+`POST /lock` (or `final`, when that draw also ends a linked game the feed
+already called Final), `final` from `POST /final` and from a typed-in board's
+Final score, `player-joined`, `cohost-accepted` (the new co-host), and
+`board-full` (whoever claimed the last square).
 `draw-reminder` comes from the cron (no actor) and goes to the host alone,
 never for a free board (5 or fewer players hold squares) or to a host whose
 Host Pass covers the board; for those the board-full push on a linked board
@@ -994,7 +1074,8 @@ core routes. Each module owns its own migration file: core `0002_*`,
 `0007_board_full_announced.sql`, `0008_custom_kickoff.sql` (custom boards'
 kickoff in `starts_at`; the cron's index covers linked boards only) and
 `0009_pay_at_draw.sql` (`games.paid_at`, grandfathering every board past
-`draft` as paid and opening drafts; `games.draw_reminder_at`), payments
+`draft` as paid and opening drafts; `games.draw_reminder_at`) and
+`0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0003_*`, `0006_*` and `0011_host_pass.sql` (`host_passes`,
 `stripe_customers`), push `0004_*`, auth `0010_accounts.sql`.
 
@@ -1006,7 +1087,8 @@ authConfig(env: Env): AuthConfig                 // for GET /api/config
 canonicalClientId(db: D1Database, clientId: string, opts?: { signedIn?: boolean }): Promise<string>
 ```
 Core helpers it uses: `db.mergeClientStatements(db, from, to, now)`,
-`db.hostTokensFor(db, clientId)`, `db.latestProfileOf(db, clientId)`; push:
+`db.hostTokensFor(db, clientId)`, `db.cohostGamesFor(db, clientId)`,
+`db.latestProfileOf(db, clientId)`; push:
 `mergeClientStatements`, `deleteSubscriptionStatement`,
 `deleteClientSubscriptionsStatement` (`worker/push/store.ts`); payments:
 `mergeClientStatements` (`worker/payments/store.ts`), `hostPassOf`

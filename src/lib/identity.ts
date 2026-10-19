@@ -12,6 +12,10 @@
 // - account: who this device is signed in as (shown only on this device).
 // - profile: the name/color/emoji used when joining a board.
 // - admin tokens: one per hosted game, sent as `x-admin-token`.
+// - co-hosted boards: ids of the boards this identity co-hosts (GET /api/me,
+//   accepting an invite). Only a hint to load the host tools early: a co-host
+//   holds no token, the server authorizes them by clientId, and the board's
+//   own state (Game.cohostIds) decides what shows (src/lib/hostRole.ts).
 // - known games: ids this device created or joined (for hydration + dashboard).
 // - seen games: boards this device opened without joining (an invite it hasn't
 //   acted on yet), so Home can offer them back (`GET /api/me/games?seen=`).
@@ -36,6 +40,8 @@ export const STORAGE_KEYS = {
   playerId: "jaxsquares.playerId",
   /** The account this device is signed in to (AccountInfo), absent when it isn't. */
   account: "jaxsquares.account",
+  /** Ids of the boards this identity co-hosts (a hint for loading host tools; no token). */
+  cohosts: "jaxsquares.cohosts",
 } as const;
 
 /** Server limit for player names (worker cleanProfile). */
@@ -200,6 +206,11 @@ export function getPlayerId(): string {
   return server && server.for === own ? server.id : own;
 }
 
+/** React binding: this device's public player id, re-rendering when it changes (sign-in, sign-out). */
+export function usePlayerId(): string {
+  return useSyncExternalStore(subscribeIdentity, getPlayerId, getPlayerId);
+}
+
 // ---- Account (optional sign-in) ----
 
 let accountCache: { raw: string | null; value: AccountInfo | null } | null = null;
@@ -281,7 +292,9 @@ function localKeysWith(prefix: string): string[] {
 export function wipeIdentity(): void {
   for (const id of getKnownGames()) unpersist(STORAGE_KEYS.admin(id));
   for (const key of localKeysWith(STORAGE_KEYS.admin(""))) unpersist(key);
-  for (const key of [STORAGE_KEYS.games, STORAGE_KEYS.seen, STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account]) unpersist(key);
+  for (const key of [STORAGE_KEYS.games, STORAGE_KEYS.seen, STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts]) {
+    unpersist(key);
+  }
   linkTokens.clear();
   persist(STORAGE_KEYS.clientId, newClientId());
   playerIdCache = null;
@@ -465,6 +478,36 @@ export function getAdminToken(gameId: string): string | null {
 
 export function isHostOf(gameId: string): boolean {
   return getAdminToken(gameId) !== null;
+}
+
+// ---- Co-hosted boards (a hint; see the top of this file) ----
+
+/** Most co-hosted board ids kept (GET /api/me sends up to 200). */
+const COHOST_GAMES_MAX = 200;
+
+/** Boards this identity co-hosts, as far as this device knows. */
+export function getCohostGames(): string[] {
+  return readIds(STORAGE_KEYS.cohosts).filter((id) => GAME_ID_RE.test(id));
+}
+
+/** Whether this device knows it co-hosts `gameId` (load the host tools early; the board's state decides). */
+export function isCohostGame(gameId: string): boolean {
+  return getCohostGames().includes(gameId);
+}
+
+/** The server's list (GET /api/me): replaces what's held. Returns true when it changed. */
+export function setCohostGames(ids: readonly string[]): boolean {
+  const next = JSON.stringify([...new Set(ids.filter((id) => GAME_ID_RE.test(id)))].slice(0, COHOST_GAMES_MAX));
+  if ((readLocal(STORAGE_KEYS.cohosts) ?? "[]") === next) return false;
+  persist(STORAGE_KEYS.cohosts, next);
+  return true;
+}
+
+/** Accepted a co-host invite (it's also a known board now), or stopped co-hosting one. */
+export function rememberCohost(gameId: string, cohosting: boolean): void {
+  const rest = getCohostGames().filter((id) => id !== gameId);
+  setCohostGames(cohosting ? [gameId, ...rest] : rest);
+  if (cohosting) rememberGame(gameId);
 }
 
 const HOST_PARAM = "host";
@@ -664,8 +707,8 @@ async function hydrateFrom(store: PersistentStore): Promise<void> {
     await store.setStored(STORAGE_KEYS.clientId, id);
   }
 
-  // The profile, and the server-confirmed player id and account when signed in.
-  for (const key of [STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account]) {
+  // The profile, the server-confirmed player id and account when signed in, and the co-hosted boards.
+  for (const key of [STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts]) {
     const value = await store.getStored(key);
     if (value) writeLocal(key, value);
   }

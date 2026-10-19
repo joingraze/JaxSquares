@@ -27,6 +27,7 @@ Tapping one opens `/g/<id>`.
 | Board full | host | 🔥 Your board is full. Time to draw numbers. *(once per board: giving a square back and taking one again doesn't send it again)*; on a linked board: "Draw numbers now, or they'll draw at kickoff.", or with the host fee unpaid "Draw the numbers now, or pay ahead and Jax draws them at kickoff." |
 | Kickoff soon, fee unpaid (`draw-reminder`, linked boards) | host | ⏰ Kickoff in about an hour. Draw the numbers now, or pay ahead and Jax draws them at kickoff. *(once per board, from the cron; a board made in the last 15 minutes isn't reminded; never an amount)* |
 | Someone joins | host | 🦊 Sam joined your board. 8 players in. *(silent, and replaces the previous join notification)* |
+| Someone accepts a co-host invite (`cohost-accepted`) | host | 🤝 Maya accepted your co-host invite. |
 | Game over | everyone | 🏁 That's a wrap. See who won each quarter. |
 
 - Whoever caused an event (for example the host who drew numbers) isn't notified
@@ -66,9 +67,12 @@ clientId.
 
 `actor` is whoever caused the event, and that player is not notified about it.
 Core sets it on host actions: `numbers-drawn` (`POST /lock`), `final`
-(`POST /final`, or a typed-in Final score), `player-joined` (the joiner) and
-`board-full` (whoever claimed the last square, so a host filling their own
-board isn't pushed about it).
+(`POST /final`, or a typed-in Final score), `player-joined` (the joiner),
+`cohost-accepted` (the new co-host) and `board-full` (whoever claimed the last
+square, so a host filling their own board isn't pushed about it). A co-host
+doing a host action is its actor too, so the host hears that a co-host drew
+the numbers or ended the game. Host-only pushes go to the host alone, never
+to co-hosts.
 `winner` never has an actor, so you hear about your own square even when you
 typed the score. Events from live scores (kickoff, auto-lock, winners) have none.
 

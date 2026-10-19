@@ -23,7 +23,7 @@ export type BoardAction = HostAction | "pick";
 
 /**
  * How this device stands with a board:
- * - host: it's my board;
+ * - host: it's my board, or I co-host it (`isCohost`: the card says "Co-host");
  * - playing: I hold squares on it;
  * - invited: it's open with squares left and I have none yet (whether I only
  *   opened the invite or joined without picking);
@@ -31,8 +31,13 @@ export type BoardAction = HostAction | "pick";
  */
 export type Relation = "host" | "playing" | "invited" | "watching";
 
-export function relationOf(g: Pick<GameSummary, "isHost" | "mySquares" | "status" | "claimed" | "totalSquares">): Relation {
-  if (g.isHost) return "host";
+/** I run this board: I host it, or I co-host it (the same to-dos, the same place on Home). */
+export function runsBoard(g: Pick<GameSummary, "isHost" | "isCohost">): boolean {
+  return g.isHost || g.isCohost === true;
+}
+
+export function relationOf(g: Pick<GameSummary, "isHost" | "isCohost" | "mySquares" | "status" | "claimed" | "totalSquares">): Relation {
+  if (runsBoard(g)) return "host";
   if (g.mySquares > 0) return "playing";
   if (g.status === "open" && g.claimed < g.totalSquares) return "invited";
   return "watching";
@@ -46,7 +51,7 @@ export function relationOf(g: Pick<GameSummary, "isHost" | "mySquares" | "status
  */
 export function homeBoards(games: readonly GameSummary[], seen: Iterable<string>): GameSummary[] {
   const kept = new Set(seen);
-  return games.filter((g) => g.isHost || g.joined || (kept.has(g.id) && g.status !== "final" && g.status !== "draft"));
+  return games.filter((g) => runsBoard(g) || g.joined || (kept.has(g.id) && g.status !== "final" && g.status !== "draft"));
 }
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -69,9 +74,9 @@ const undrawnInPlay = (g: Pick<GameSummary, "status" | "live">) => (g.status ===
 /** What this board needs from you before kickoff, if anything: a host to-do, or picking squares on an invite. */
 export function actionFor(g: GameSummary): BoardAction | null {
   if (g.status === "final") return null;
-  // The host's undrawn board in play still needs their draw.
-  if (inPlay(g) && !(g.isHost && undrawnInPlay(g))) return null;
-  if (g.isHost) return hostAction(g);
+  // The host's (or a co-host's) undrawn board in play still needs their draw.
+  if (inPlay(g) && !(runsBoard(g) && undrawnInPlay(g))) return null;
+  if (runsBoard(g)) return hostAction(g);
   if (relationOf(g) === "invited") return "pick";
   return null;
 }
@@ -84,8 +89,8 @@ export function actionFor(g: GameSummary): BoardAction | null {
 export function sectionOf(g: GameSummary): SectionKey {
   if (g.status === "final") return "final";
   // A linked game that kicked off before the host drew numbers is still "live" news,
-  // except to its host, who has the draw to do.
-  if (inPlay(g) && !(g.isHost && undrawnInPlay(g))) return "live";
+  // except to its host (or a co-host), who has the draw to do.
+  if (inPlay(g) && !(runsBoard(g) && undrawnInPlay(g))) return "live";
   if (relationOf(g) === "invited") return "invites";
   if (actionFor(g)) return "needs";
   return "next";
@@ -137,7 +142,7 @@ export function primaryActionId(sections: Sections): string | null {
 export interface CardModel {
   /** How I stand with the board (a card on a board I'm playing shows my avatar by the role). */
   relation: Relation;
-  /** Role label: "Your board", "15 squares yours", or "Watching". */
+  /** Role label: "Your board", "Co-host", "15 squares yours", or "Watching". */
   role: string;
   /** Game state, e.g. "42 left", "Board's full", "Kickoff Sun 8:56 PM". */
   status: string;
@@ -176,7 +181,7 @@ export function cardModel(g: GameSummary, now: number): CardModel {
   const left = Math.max(0, g.totalSquares - g.claimed);
   const action = actionFor(g);
   const relation = relationOf(g);
-  const role = relation === "host" ? "Your board" : relation === "playing" ? squaresYours(g.mySquares) : "Watching";
+  const role = relation === "host" ? (g.isHost ? "Your board" : "Co-host") : relation === "playing" ? squaresYours(g.mySquares) : "Watching";
   // A playing card's role already says how many are mine; a host's card says it here.
   const mine = relation !== "host" ? null : g.mySquares > 0 ? `${g.mySquares} yours` : "none yours yet";
   const kickoff = g.startsAt !== null ? kickoffText(g.startsAt, now, true) : null;

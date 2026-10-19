@@ -10,6 +10,8 @@ export type NotifyEvent = (
   /** Host only: a linked board kicks off within the hour and its host fee is unpaid, so it won't draw on its own. */
   | { kind: "draw-reminder" }
   | { kind: "player-joined"; name: string }
+  /** Host only: a player accepted the host's co-host invite (actor = the new co-host). */
+  | { kind: "cohost-accepted"; name: string }
   | { kind: "final" }
 ) & {
   /**

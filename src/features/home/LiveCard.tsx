@@ -69,7 +69,7 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
               <Badge tone="neutral">Numbers in</Badge>
             )}
             <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{game.name}</p>
-            <RoleLabel relation={relation} />
+            <RoleLabel relation={relation} cohost={!game.isHost && !!game.isCohost} />
           </div>
 
           <Scoreboard game={game} teams={[teamX, teamY]} snap={snap} fallback={fallback} compact={compact} />
@@ -86,7 +86,7 @@ export function LiveCard({ game, state, me, compact = false }: LiveCardProps) {
             {game.mySquares > 0 ? (
               <MySquaresTag count={game.mySquares} className="!text-footnote" />
             ) : (
-              <span className="font-semibold text-ink-subtle">{game.isHost ? "You're hosting" : "No squares on this one"}</span>
+              <span className="font-semibold text-ink-subtle">{game.isHost ? "You're hosting" : game.isCohost ? "You're co-hosting" : "No squares on this one"}</span>
             )}
             {wins.size > 0 && !(bannerIsMyWin && wins.size === 1) && (
               <span className="inline-flex min-w-0 items-center gap-1 font-bold text-ink-gold">

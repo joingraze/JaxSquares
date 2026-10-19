@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Team } from "../../../shared/types";
-import { EyeIcon } from "../../components/icons";
+import { CrownIcon, EyeIcon } from "../../components/icons";
 import { Avatar, Badge, cx, prefersReducedMotion, TeamMark } from "../../components/ui";
 import { useProfile } from "../../lib/identity";
 import { squaresYours, withTeamColors, type Relation } from "./sections";
@@ -19,10 +19,20 @@ export function Matchup({ teamX, teamY }: { teamX: Team; teamY: Team }) {
 }
 
 /**
- * Quiet role label: "Your board", "You're in", or a "Watching" tag on a board
- * I hold no squares on. Game state lives elsewhere on the card.
+ * Quiet role label: "Your board", "You're in", a "Co-host" tag on a board I
+ * co-host, or a "Watching" tag on a board I hold no squares on. Game state
+ * lives elsewhere on the card.
  */
-export function RoleLabel({ relation, className }: { relation: Relation; className?: string }) {
+export function RoleLabel({ relation, cohost = false, className }: { relation: Relation; cohost?: boolean; className?: string }) {
+  if (relation === "host" && cohost) {
+    return (
+      <span data-testid="home-cohost" className={cx("flex shrink-0", className)}>
+        <Badge tone="outline" icon={<CrownIcon strokeWidth={2.4} />}>
+          Co-host
+        </Badge>
+      </span>
+    );
+  }
   if (relation === "watching" || relation === "invited") {
     return (
       <Badge tone="outline" icon={<EyeIcon strokeWidth={2.4} />} className={className}>

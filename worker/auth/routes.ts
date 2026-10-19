@@ -126,16 +126,17 @@ function appleRedirectUri(env: Env, v: unknown): string | null {
   return ok ? url.toString() : null;
 }
 
-/** Who this device is: GET /api/me and the sign-in response. */
+/** Who this device is: GET /api/me and the sign-in response. Co-hosted boards come as ids only: a co-host has no token. */
 async function meFor(env: Env, canonical: string, accountId: string | null): Promise<MeResponse> {
-  const [account, hostTokens, profile, playerId, hostPass] = await Promise.all([
+  const [account, hostTokens, profile, playerId, hostPass, cohostGames] = await Promise.all([
     accountId ? store.accountInfo(env.DB, accountId) : null,
     db.hostTokensFor(env.DB, canonical),
     db.latestProfileOf(env.DB, canonical),
     playerIdOf(canonical),
     hostPassOf(env.DB, canonical),
+    db.cohostGamesFor(env.DB, canonical),
   ]);
-  return { playerId, account, hostTokens, profile, hostPass };
+  return { playerId, account, hostTokens, profile, hostPass, cohostGames };
 }
 
 type Outcome = { conflict: true } | { conflict: false; accountId: string; canonical: string; merged: string[] };

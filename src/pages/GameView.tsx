@@ -13,6 +13,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { COHOST_PARAM, cohostIdsOf, isCohostOf, isCohostToken } from "../../shared/cohosts";
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
@@ -40,6 +41,7 @@ import {
   myWinIds,
   nowSentence,
   periodCards,
+  canRemovePlayer,
   playerRows,
   pruneSelection,
   rightNow,
@@ -64,10 +66,11 @@ import { JoinedCard } from "../features/invite/JoinedCard";
 import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
-import { api, errorMessage, inviteUrl } from "../lib/api";
+import { ApiError, api, errorMessage, inviteUrl } from "../lib/api";
 import { boardViewPath } from "../lib/boardViews";
 import { pluralize, teamVars } from "../lib/format";
-import { getAdminToken, getPlayerId, isHostOf, rememberSeen, useAdminToken } from "../lib/identity";
+import { useHostRole } from "../lib/hostRole";
+import { getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -78,6 +81,7 @@ const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m)
 const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
 const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
 const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
+const CohostAcceptSheet = lazy(() => import("../features/invite/CohostAcceptSheet").then((m) => ({ default: m.CohostAcceptSheet })));
 
 type Cell = { row: number; col: number };
 type Spotlight = { kind: "period" | "cell" | "player"; id: string };
@@ -90,6 +94,8 @@ const CALLOUT_MS = 2600;
 const GLORY_MS = 15_000;
 /** "Let Jax pick": squares he tries when someone keeps beating him to it. */
 const JAX_TRIES = 4;
+/** Time for one sheet to slide away before the next slides up (the co-host invite, then joining). */
+const SHEET_SWAP_MS = 320;
 
 export default function GameView() {
   const theme = useResolvedTheme();
@@ -102,9 +108,10 @@ export default function GameView() {
   const now = useNow();
   useHideTabBar();
   // On the host's device the tools download alongside the board's data, and the board waits for them
-  // (unless they fail to load) so they never pop in above the squares.
+  // (unless they fail to load) so they never pop in above the squares. A board this device knows it
+  // co-hosts (GET /api/me, an accepted invite) does the same; its state says for sure (useHostRole).
   // Subscribed: a host-link token the server refuses is dropped after the first render.
-  const hostDevice = !!useAdminToken(id);
+  const hostDevice = !!useAdminToken(id) || (!!id && isCohostGame(id));
   if (hostDevice && !HostControls) void loadHostTools().catch(() => undefined);
   const [hostToolsFailed, setHostToolsFailed] = useState(false);
   const [, setHostToolsIn] = useState(!!HostControls);
@@ -217,7 +224,10 @@ export default function GameView() {
   );
   const joined = !!state?.players.some((p) => p.id === me);
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
-  const isHost = !!game && (isHostOf(game.id) || game.hostPlayerId === me);
+  // How this device runs the board: "host" (the admin token) or "cohost" (by public id), else null.
+  const role = useHostRole(state);
+  // The board's host (maybe on a device without the token yet) or a co-host: no "waiting on the host".
+  const isHost = role !== null || (!!game && (isHostOf(game.id) || game.hostPlayerId === me));
   const wantHostTools = hostDevice || isHost;
   // A board I'm neither on nor hosting (an invite link, including one whose state came with the
   // page) is remembered as "seen", so Home can offer it back until I pick squares or hide it.
@@ -285,6 +295,96 @@ export default function GameView() {
     }
     setSelection(nextSel);
   }, [state, me, ticker]);
+
+  // A co-host who stepped down, or whom the host removed: the tools go, and the board says so.
+  const lastRole = useRef(role);
+  useEffect(() => {
+    const was = lastRole.current;
+    lastRole.current = role;
+    if (was !== "cohost" || role !== null || !id) return;
+    rememberCohost(id, false);
+    toast.show({ id: "cohost", tone: "neutral", title: "You're not a co-host anymore", description: "You're still on the board." });
+  }, [role, id, toast]);
+
+  // ?cohost=<token> (a co-host invite link): kept in memory, dropped from the address bar, and asked
+  // about once the board is here ("Become a co-host of ...?").
+  const [cohostToken, setCohostToken] = useState<string | null>(null);
+  const [cohostOpen, setCohostOpen] = useState(false);
+  const [cohostBusy, setCohostBusy] = useState(false);
+  const [cohostError, setCohostError] = useState<{ message: string; final: boolean } | null>(null);
+  /** Accepting waits on joining the board: the join sheet's onJoined finishes it. */
+  const cohostAfterJoin = useRef<string | null>(null);
+  useEffect(() => {
+    const raw = params.get(COHOST_PARAM);
+    if (raw === null) return;
+    const nextParams = new URLSearchParams(params);
+    nextParams.delete(COHOST_PARAM);
+    setParams(nextParams, { replace: true });
+    if (isCohostToken(raw)) {
+      setCohostError(null);
+      setCohostToken(raw);
+    } else {
+      toast.show({ id: "cohost", tone: "error", title: "That co-host link isn't complete", description: "Ask the host to send it again." });
+    }
+  }, [params, setParams, toast]);
+  const hasBoard = !!state;
+  useEffect(() => {
+    const s = stateRef.current;
+    if (!cohostToken || !s) return;
+    const myId = getPlayerId();
+    if (getAdminToken(s.game.id) || s.game.hostPlayerId === myId) {
+      setCohostToken(null);
+      toast.show({ id: "cohost", tone: "neutral", title: "That's your co-host invite", description: "Send it to the person you want running the board with you." });
+    } else if (isCohostOf(s.game, myId)) {
+      setCohostToken(null);
+      toast.show({ id: "cohost", tone: "neutral", title: "You're already a co-host", description: "Your host tools are right above the squares." });
+    } else {
+      setCohostOpen(true);
+    }
+  }, [cohostToken, hasBoard, toast]);
+
+  const acceptCohost = useCallback(
+    async (token: string) => {
+      if (!id) return;
+      setCohostBusy(true);
+      setCohostError(null);
+      try {
+        const res = await api.acceptCohost(id, token);
+        receive(res.state);
+        setCohostOpen(false);
+        setCohostToken(null);
+        void haptic("success");
+        toast.show({ id: "cohost", tone: "success", title: "You're a co-host", description: "Your host tools are right above the squares." });
+      } catch (err) {
+        // A used, expired or unknown link, or a board with all its co-hosts, won't work on a retry.
+        const final = err instanceof ApiError && [403, 404, 409, 410].includes(err.status);
+        setCohostError({ message: errorMessage(err), final });
+        setCohostOpen(true);
+        void haptic("error");
+      } finally {
+        setCohostBusy(false);
+      }
+    },
+    [id, receive, toast],
+  );
+
+  /** "Become a co-host": joins the board first when this device isn't on it (the join sheet, then accept). */
+  const onCohostAccept = useCallback(() => {
+    if (!cohostToken) return;
+    if (stateRef.current?.players.some((p) => p.id === getPlayerId())) {
+      void acceptCohost(cohostToken);
+      return;
+    }
+    cohostAfterJoin.current = cohostToken;
+    setCohostOpen(false);
+    setTimeout(() => setJoinOpen(true), SHEET_SWAP_MS);
+  }, [cohostToken, acceptCohost]);
+
+  const onCohostClose = useCallback(() => {
+    setCohostOpen(false);
+    setCohostToken(null);
+    setCohostError(null);
+  }, []);
 
   // ?invite=1 (the create flow lands here once the board is made): open the invite sheet once.
   // Only for the host: a friend sent that exact URL just gets the board.
@@ -541,6 +641,10 @@ export default function GameView() {
     (fresh: GameState) => {
       receive(fresh);
       setJoinOpen(false);
+      // Joined to accept a co-host invite: accept it now.
+      const cohost = cohostAfterJoin.current;
+      cohostAfterJoin.current = null;
+      if (cohost) void acceptCohost(cohost);
       const picked = cellsOf(selectionRef.current.claim);
       setSelection(EMPTY_SELECTION);
       const jaxKeys = jaxKeysRef.current;
@@ -564,7 +668,7 @@ export default function GameView() {
       }
       if (picked.length > 0) void claim(picked);
     },
-    [receive, claim, jaxClaim],
+    [receive, claim, jaxClaim, acceptCohost],
   );
 
   /** Jax picks `count` random open squares, through the same path as tapping them. */
@@ -625,7 +729,14 @@ export default function GameView() {
 
   // A sheet may close itself right before reporting the join; let onJoined win.
   const onJoinClose = useCallback(() => {
-    setTimeout(() => setJoinOpen(false), 0);
+    setTimeout(() => {
+      setJoinOpen(false);
+      // Closed without joining while a co-host invite waited on it: back to the invite.
+      if (cohostAfterJoin.current) {
+        cohostAfterJoin.current = null;
+        setTimeout(() => setCohostOpen(true), SHEET_SWAP_MS);
+      }
+    }, 0);
   }, []);
 
   const pickCell = useCallback(
@@ -841,8 +952,8 @@ export default function GameView() {
   // ---- render: the board ----
 
   const open = game.status === "open";
-  // Host tools render only on the device holding the admin token.
-  const hostBar = isHost && !!getAdminToken(game.id);
+  // Host tools render only on a device that runs the board: the host's (the admin token) or a co-host's.
+  const hostBar = role !== null;
   // The host on another device (opened the host link) isn't invited to their own board.
   const newcomer = !joined && open && !hostBar;
   // While squares are being picked the host can take someone off the board (confirmed in the host tools).
@@ -1178,6 +1289,7 @@ export default function GameView() {
             leading={nowView?.ownerId ? { playerId: nowView.ownerId, label: nowView.everyScore ? "now" : nowView.label } : null}
             selectedId={playerSpot}
             onSelect={(pid) => selectPlayer(playerSpot === pid ? null : pid, true)}
+            cohostIds={cohostIdsOf(game)}
             onRemove={
               canRemove
                 ? (pid) => {
@@ -1186,6 +1298,7 @@ export default function GameView() {
                   }
                 : undefined
             }
+            canRemove={role ? (pid) => canRemovePlayer(game, pid, me, role) : undefined}
           />
         </section>
 
@@ -1257,7 +1370,26 @@ export default function GameView() {
             setJustCreated(false);
           }}
         />
-        <JoinSheet state={state} open={joinOpen} onJoined={onJoined} onClose={onJoinClose} selectedCount={selection.claim.size} onRules={openRules} />
+        <JoinSheet
+          state={state}
+          open={joinOpen}
+          onJoined={onJoined}
+          onClose={onJoinClose}
+          selectedCount={selection.claim.size}
+          onRules={openRules}
+          submitLabel={cohostToken && !joined ? "Join & become a co-host" : undefined}
+        />
+        {cohostToken && (
+          <CohostAcceptSheet
+            state={state}
+            open={cohostOpen}
+            joined={joined}
+            busy={cohostBusy}
+            error={cohostError}
+            onAccept={onCohostAccept}
+            onClose={onCohostClose}
+          />
+        )}
         <JaxCountSheet
           open={jaxAsk !== null}
           onClose={() => setJaxAsk(null)}

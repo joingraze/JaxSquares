@@ -113,6 +113,14 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `score-saved` | footer confirmation after a host saves a score |
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
 | `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |
+| `cohost-invite` | host only: "Invite a co-host" in the host sheet's Co-hosts section ("They can do everything you can, except remove you."); makes a single-use link and opens "Co-host invite ready". Disabled at 3 co-hosts |
+| `cohost-share` | "Share co-host link" in the host sheet's "Co-host invite ready" view (the share sheet, or copies the link) |
+| `cohost-row` | each co-host in the host sheet's Co-hosts section (the host's and a co-host's view); "Maya (you)" on a co-host's own row |
+| `cohost-remove`, `cohost-remove-confirm` | host only: "Remove" on a co-host's row, and "Remove as co-host" in its confirm (they stay on the board) |
+| `cohost-step-down`, `cohost-step-down-confirm` | a co-host's "Step down" on their own row, and "Step down" in its confirm |
+| `cohost-accept`, `cohost-decline` | the "Become a co-host of <board>?" sheet a co-host invite link (`/g/<id>?cohost=<token>`) opens: "Become a co-host" ("Join & become a co-host" for someone not on the board, which opens the join sheet first; "Try again" after a failure) and "Not now" ("Close" once the link can't be used) |
+| `player-cohost` | the "Co-host" tag next to a co-host's name on a players list (the board's and the host sheet's Players view) |
+| `home-cohost` | the "Co-host" tag on a Home card for a board I co-host (with the boards I host) |
 | `theme-dark`, `theme-light`, `theme-system` | Profile → Appearance: the Dark / Light / System segments (saves the choice and switches at once) |
 | `account-section` | Profile → Account (`data-state=signed-out\|signed-in`); absent when not signed in and no provider is set up for this platform |
 | `signin-apple`, `signin-google` | the "Sign in with Apple" button and the "Sign in with Google" button (drawn in the iOS app; on the web, the box Google's own button renders into). Wherever sign-in buttons show (Profile, `signin-sheet`) |

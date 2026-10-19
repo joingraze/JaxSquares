@@ -38,6 +38,7 @@ import {
   type Cell,
   type PeriodResult,
 } from "../../../shared/squares";
+import { isCohostOf, type HostRole } from "../../../shared/cohosts";
 import type { Activity, AmountUnit, Game, GameState, GameStatus, MomentRule, NumberDraw, Player, Square } from "../../../shared/types";
 
 /** Matches docs/testids.md: `data-state` on every board square. */
@@ -721,11 +722,18 @@ export interface PlayerRow {
 }
 
 /**
- * Whether the host can take this player off the board (freeing their squares):
- * only while squares are being picked (the API answers 409 once locked), never
- * the host's own player, and never this device's own row.
+ * Whether this device can take this player off the board (freeing their
+ * squares): only while squares are being picked (the API answers 409 once
+ * locked), never the host's own player, never this device's own row, and for
+ * a co-host (`role`), never another co-host (only the host can).
  */
-export function canRemovePlayer(game: Pick<Game, "status" | "hostPlayerId">, playerId: string, me: string): boolean {
+export function canRemovePlayer(
+  game: Pick<Game, "status" | "hostPlayerId" | "cohostIds">,
+  playerId: string,
+  me: string,
+  role: HostRole = "host",
+): boolean {
+  if (role === "cohost" && isCohostOf(game, playerId)) return false;
   return (game.status === "draft" || game.status === "open") && playerId !== game.hostPlayerId && playerId !== me;
 }
 
@@ -842,6 +850,8 @@ export function fallbackActivityText(a: Activity, state: Pick<GameState, "game" 
       return "That's the final whistle";
     case "rules":
       return d.scoring ? `${who} changed the rules` : `${who} updated the prizes`;
+    case "cohost":
+      return a.actor === me ? "You're now a co-host" : `${typeof d.name === "string" && d.name ? d.name : who} is now a co-host`;
     default:
       return "Board updated";
   }

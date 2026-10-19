@@ -1,9 +1,13 @@
 // The host sheet. Always titled "Host tools" with one line saying where the
 // board stands, and always in the same order: Now (fill + lock, type the
-// score, or watch the live feed), Winners, Board. While the host fee is due
-// the draw says its price (or "Free" on a board of 5 or fewer players), and a
-// linked board offers paying ahead. Sub views (lock confirm, rules & prizes,
-// edit, end, delete) slide in inside the same sheet.
+// score, or watch the live feed), Winners, Co-hosts, Board. While the host fee
+// is due the draw says its price (or "Free" on a board of 5 or fewer players),
+// and a linked board offers paying ahead. Sub views (lock confirm, rules &
+// prizes, edit, end, delete, the co-host invite and confirms) slide in inside
+// the same sheet.
+// A co-host (`role`) gets the same sheet without the host-only actions:
+// inviting or removing co-hosts, the host link and deleting the board. Their
+// own row in Co-hosts has "Step down".
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -11,7 +15,8 @@ import { Link } from "react-router-dom";
 import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { squareHolders } from "../../../shared/hostFee";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
-import type { BoardSize, GameState } from "../../../shared/types";
+import { cohostIdsOf, isCohostOf } from "../../../shared/cohosts";
+import type { BoardSize, CohostInviteResponse, GameState } from "../../../shared/types";
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -30,6 +35,7 @@ import {
   TrashIcon,
   TrophyIcon,
   TvIcon,
+  UserPlusIcon,
   UsersIcon,
 } from "../../components/icons";
 import {
@@ -48,6 +54,7 @@ import {
 } from "../../components/ui";
 import { PUBLIC_ORIGIN } from "../../lib/api";
 import { boardViewPath } from "../../lib/boardViews";
+import type { HostRole } from "../../lib/hostRole";
 import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
 import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
@@ -67,10 +74,12 @@ import {
   selectPreset,
   type RulesDraft,
 } from "../rules/rulesModel";
+import { CohostsSection } from "./CohostsSection";
 import { EditBoard } from "./EditBoard";
 import { FreeDrawNote } from "./FreeDrawNote";
 import "./host.css";
 import {
+  COHOST_PITCH,
   FREE_DRAW_LABEL,
   FREE_TIER_LINE,
   NEXT_ENTRY,
@@ -109,7 +118,21 @@ import { WinnersList } from "./WinnersList";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
 
-export type HostView = "home" | "lock" | "edit" | "rules" | "end" | "delete" | "players" | "remove";
+export type HostView =
+  | "home"
+  | "lock"
+  | "edit"
+  | "rules"
+  | "end"
+  | "delete"
+  | "players"
+  | "remove"
+  /** A co-host invite link is ready to share (host only). */
+  | "cohost-invite"
+  /** Confirm removing a co-host (host only). */
+  | "cohost-remove"
+  /** Confirm stepping down (a co-host). */
+  | "step-down";
 
 /** The player the host asked to remove, as they were when asked; `from` is where the ask came from. */
 export interface RemoveTarget {
@@ -128,6 +151,8 @@ export interface HostSheetProps {
   actions: HostActions;
   /** This device's public player id. */
   me: string;
+  /** How this device runs the board: its host, or a co-host (no host-only actions). Default "host". */
+  role?: HostRole;
   onInvite: () => void;
   /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
   fee: boolean;
@@ -164,8 +189,9 @@ interface Notice extends SavedNotice {
 
 export function HostSheet(props: HostSheetProps) {
   const theme = useResolvedTheme();
-  const { state, open, view, onView, onClose, actions, me } = props;
+  const { state, open, view, onView, onClose, actions, me, role = "host" } = props;
   const { game } = state;
+  const isHost = role === "host";
   const linked = isLinked(game);
   // Only score entries win (no quarter-ends); `entries`: every score wins (maybe with quarter-ends too).
   const everyScore = entriesOnly(game);
@@ -323,6 +349,54 @@ export function HostSheet(props: HostSheetProps) {
     if (await actions.remove()) props.onDeleted();
   };
 
+  // ---- co-hosts ----
+  /** The link the host just made, shared from the "cohost-invite" view (a tap, so the share sheet always opens). */
+  const [cohostLink, setCohostLink] = useState<CohostInviteResponse | null>(null);
+  /** The co-host the host asked to remove. */
+  const [cohostTarget, setCohostTarget] = useState<{ id: string; name: string } | null>(null);
+  const hostName = state.players.find((p) => p.id === game.hostPlayerId)?.name || "The host";
+
+  const inviteCohost = async () => {
+    const link = await actions.inviteCohost();
+    if (!link) return;
+    void haptic("success");
+    setCohostLink(link);
+    onView("cohost-invite");
+  };
+
+  const shareCohostLink = async () => {
+    if (!cohostLink) return;
+    const outcome = await shareLink({
+      title: `Co-host ${game.name}`,
+      text: `Help me run "${game.name}" on JaxSquares. This link makes you a co-host. It works once, for 7 days.`,
+      url: cohostLink.url,
+    });
+    if (outcome === "cancelled") return;
+    if (outcome === "shared") void haptic("success");
+    say({
+      tone: "neutral",
+      title: outcome === "copied" ? "Co-host link copied" : "Co-host invite sent",
+      detail: outcome === "copied" ? "Send it to one person. It works once, for 7 days." : "They're a co-host once they accept.",
+      player: null,
+    });
+    setCohostLink(null);
+    onView("home");
+  };
+
+  const removeCohost = async () => {
+    if (!cohostTarget) return;
+    void haptic("medium");
+    if (!(await actions.removeCohost(cohostTarget.id))) return;
+    say({ tone: "neutral", title: `${cohostTarget.name} isn't a co-host anymore`, detail: "They're still on the board.", player: null });
+    onView("home");
+  };
+
+  const stepDown = async () => {
+    void haptic("medium");
+    // The host tools go away with the role; the board says so.
+    await actions.stepDown();
+  };
+
   // ---- removing a player (from the players view, or a row on the board) ----
   const picking = isPicking(game);
   const removeTarget = props.removing;
@@ -465,9 +539,11 @@ export function HostSheet(props: HostSheetProps) {
           rows={playerRows(state, [], me)}
           total={state.players.length}
           hostId={game.hostPlayerId}
+          cohostIds={cohostIdsOf(game)}
           stage="picking"
           collapseAfter={Infinity}
           onRemove={picking ? props.onAskRemove : undefined}
+          canRemove={(id) => canRemovePlayer(game, id, me, role)}
         />
       </div>
     );
@@ -492,7 +568,61 @@ export function HostSheet(props: HostSheetProps) {
         </Button>
       </div>
     );
-  } else if (view === "delete") {
+  } else if (view === "cohost-invite" && isHost && cohostLink) {
+    title = <>{back()}Co-host invite ready</>;
+    description = "Send it to the one person you want running the board with you.";
+    body = <CohostInviteFacts />;
+    footer = (
+      <div className="flex flex-col gap-1">
+        <Button data-testid="cohost-share" size="lg" block leading={<ShareIcon size={20} />} onClick={() => void shareCohostLink()}>
+          Share co-host link
+        </Button>
+        <Button variant="ghost" block onClick={() => onView("home")}>
+          Done
+        </Button>
+      </div>
+    );
+  } else if (view === "cohost-remove" && isHost && cohostTarget && isCohostOf(game, cohostTarget.id)) {
+    title = <>{back()}Remove {cohostTarget.name} as co-host?</>;
+    body = <RemoveCohostConfirm name={cohostTarget.name} />;
+    footer = (
+      <div className="flex flex-col gap-1">
+        <Button
+          data-testid="cohost-remove-confirm"
+          variant="danger"
+          size="lg"
+          block
+          loading={actions.busy === "cohost-remove"}
+          onClick={() => void removeCohost()}
+        >
+          Remove as co-host
+        </Button>
+        <Button variant="ghost" block onClick={() => onView("home")}>
+          Keep {cohostTarget.name}
+        </Button>
+      </div>
+    );
+  } else if (view === "step-down" && !isHost && isCohostOf(game, me)) {
+    title = <>{back()}Step down as co-host?</>;
+    body = <StepDownConfirm hostName={hostName} />;
+    footer = (
+      <div className="flex flex-col gap-1">
+        <Button
+          data-testid="cohost-step-down-confirm"
+          variant="danger"
+          size="lg"
+          block
+          loading={actions.busy === "cohost-remove"}
+          onClick={() => void stepDown()}
+        >
+          Step down
+        </Button>
+        <Button variant="ghost" block onClick={() => onView("home")}>
+          Stay a co-host
+        </Button>
+      </div>
+    );
+  } else if (view === "delete" && isHost) {
     title = <>{back()}Delete this board?</>;
     body = <DeleteConfirm state={state} />;
     footer = (
@@ -648,6 +778,25 @@ export function HostSheet(props: HostSheetProps) {
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
         </Link>
 
+        {(isHost || isCohostOf(game, me)) && (
+          <CohostsSection
+            state={state}
+            role={role}
+            me={me}
+            busy={actions.busy !== null}
+            onInvite={() => void inviteCohost()}
+            onRemove={(id) => {
+              void haptic("selection");
+              setCohostTarget({ id, name: state.players.find((p) => p.id === id)?.name || "them" });
+              onView("cohost-remove");
+            }}
+            onStepDown={() => {
+              void haptic("selection");
+              onView("step-down");
+            }}
+          />
+        )}
+
         <ListGroup title="Board">
           <ListRow
             data-testid="host-rules"
@@ -664,7 +813,7 @@ export function HostSheet(props: HostSheetProps) {
             chevron
             onClick={() => onView("edit")}
           />
-          {picking && state.players.some((p) => canRemovePlayer(game, p.id, me)) && (
+          {picking && state.players.some((p) => canRemovePlayer(game, p.id, me, role)) && (
             <ListRow
               leading={<RowIcon><UsersIcon size={18} /></RowIcon>}
               title="Players"
@@ -674,13 +823,16 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("players")}
             />
           )}
-          <ListRow
-            leading={<RowIcon><LinkIcon size={18} /></RowIcon>}
-            title="Host from another phone"
-            subtitle="Send yourself your private host link"
-            trailing={<ShareIcon size={18} className="text-ink-subtle" />}
-            onClick={() => void shareHostLink()}
-          />
+          {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
+          {isHost && (
+            <ListRow
+              leading={<RowIcon><LinkIcon size={18} /></RowIcon>}
+              title="Host from another phone"
+              subtitle="Send yourself your private host link"
+              trailing={<ShareIcon size={18} className="text-ink-subtle" />}
+              onClick={() => void shareHostLink()}
+            />
+          )}
           {game.status === "locked" && started && (
             <ListRow
               leading={<RowIcon><FlagIcon size={18} /></RowIcon>}
@@ -690,13 +842,15 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("end")}
             />
           )}
-          <ListRow
-            leading={<RowIcon tone="danger"><TrashIcon size={18} /></RowIcon>}
-            title="Delete board"
-            destructive
-            chevron
-            onClick={() => onView("delete")}
-          />
+          {isHost && (
+            <ListRow
+              leading={<RowIcon tone="danger"><TrashIcon size={18} /></RowIcon>}
+              title="Delete board"
+              destructive
+              chevron
+              onClick={() => onView("delete")}
+            />
+          )}
         </ListGroup>
       </div>
     );
@@ -1166,6 +1320,44 @@ function EndConfirm({ state }: { state: GameState }) {
         </Fact>
       )}
       <Fact icon={<PencilIcon size={16} />}>You can still fix a score or pick a winner by hand later.</Fact>
+    </ul>
+  );
+}
+
+function CohostInviteFacts() {
+  return (
+    <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      <Fact icon={<CrownIcon size={16} />}>
+        <b className="font-bold text-ink">{COHOST_PITCH}</b> Enter scores, draw the numbers, edit the rules and prizes, and invite players.
+      </Fact>
+      <Fact icon={<LinkIcon size={16} />}>
+        <b className="font-bold text-ink">For one person.</b> The link works once and expires in 7 days.
+      </Fact>
+      <Fact icon={<UserPlusIcon size={16} />}>They join the board first if they haven't yet. You can remove a co-host any time.</Fact>
+    </ul>
+  );
+}
+
+function RemoveCohostConfirm({ name }: { name: string }) {
+  return (
+    <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      <Fact icon={<CrownIcon size={16} />}>
+        <b className="font-bold text-ink">{name} can't run the board anymore.</b> Their host tools go away.
+      </Fact>
+      <Fact icon={<GridIcon size={16} />}>They stay on the board with their squares.</Fact>
+      <Fact icon={<LinkIcon size={16} />}>You can send them a new co-host invite any time.</Fact>
+    </ul>
+  );
+}
+
+function StepDownConfirm({ hostName }: { hostName: string }) {
+  return (
+    <ul className="flex flex-col gap-3.5 pb-2 pt-1">
+      <Fact icon={<GridIcon size={16} />}>
+        <b className="font-bold text-ink">You stay on the board</b> with your squares.
+      </Fact>
+      <Fact icon={<CrownIcon size={16} />}>Your host tools go away on this board.</Fact>
+      <Fact icon={<LinkIcon size={16} />}>{hostName} can invite you back any time.</Fact>
     </ul>
   );
 }
