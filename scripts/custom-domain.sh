@@ -80,6 +80,8 @@ else
   api -X PUT "$phase" -d "{\"rules\":$rules}" | jq -c '{www_redirect: .success, errors}'
 fi
 
+echo "www check: $(curl -s -m 10 -o /dev/null -w '%{http_code} -> %{redirect_url}' "https://www.$DOMAIN/some/path?q=1" || echo unreachable)"
+
 for _ in $(seq 1 18); do
   if curl -fsS "https://$DOMAIN/api/health" | grep -q '"ok":true'; then
     echo "Live: https://$DOMAIN"

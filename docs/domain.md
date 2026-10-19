@@ -50,6 +50,11 @@ DS record it gives you at Squarespace.
   deleted; the `_domainconnect` CNAME (Squarespace's helper) stays.
 - Cloudflare nameservers: `lily.ns.cloudflare.com`, `vern.ns.cloudflare.com`
   (set at Squarespace → Domain nameservers → Use custom nameservers).
+- 2026-10-19: the zone is active and `jaxsquares.com` is attached to the
+  Worker as a Custom Domain (by the deploy step); https://jaxsquares.com
+  serves the app. The `www` redirect rule needs the dashboard (the deploy
+  token can't edit redirect rules): Rules → Redirect Rules → "Redirect from
+  WWW to root".
 
 ## After it's live
 
