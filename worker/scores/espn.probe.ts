@@ -164,8 +164,8 @@ describe.each(BASKETBALL_LEAGUES)("%s (basketball, by day)", (league) => {
   }, 120_000);
 });
 
+describe("college basketball's Division I filter", () => {
   // ncaab and ncaaw both ask ESPN for groups=50 (Division I). Log how many
-  // ncaab asks ESPN for groups=50 (Division I); ncaaw doesn't. Log how many
   // games each way lists, on a busy regular-season Saturday and the last few days.
   it.each(["ncaab", "ncaaw"] as const)("%s: games per slate as the app asks, with groups=50 and with no groups", async (league) => {
     const days = ["20250201", ...[0, 1, 2].map((back) => espnDate(NOW - back * DAY_MS - 10 * 3_600_000))];
