@@ -2,10 +2,11 @@
 // account_identities and client_links. They belong to the auth module, so
 // their SQL lives here, like payments/store.ts and push/store.ts.
 //
-// Signing a device in to an existing account runs in one batch: the core and
-// push statements that move the device's rows to the canonical clientId
-// (built by worker/db.ts and worker/push/store.ts, which own those tables)
-// followed by the link written here.
+// Signing a device in to an existing account runs in one batch: the core,
+// push, payments and email statements that move the device's rows to the
+// canonical clientId (built by worker/db.ts, worker/push/store.ts,
+// worker/payments/store.ts and worker/email/store.ts, which own those
+// tables) followed by the link written here.
 
 import type { AccountInfo, AuthProvider } from "../../shared/types";
 

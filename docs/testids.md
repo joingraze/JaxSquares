@@ -109,6 +109,14 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `reveal-close`, `reveal-done` | the number reveal (host, after the draw): the X at the top (closes it any time, even mid-shuffle) and "See the board" (pinned at the bottom once the numbers land) |
 | `host-bar-action` | the host bar's next-action pill (full width, "Draw the numbers · $4.99", when it's time to draw and the host fee is due; full width "Draw the numbers · Free" with `host-free-note` on a board of 5 or fewer players; full width "Draw the numbers" with `host-pass-note` when the Host Pass covers it) |
 | `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
+| `notify-email-instead`, `notify-email-close` | the notify sheet after a claim, when the server has email notices (docs/email.md): "Get email instead" under the Home Screen guide and the blocked fix (opens the email step); the email step's "Not now" / "Done" |
+| `board-notify`, `board-notify-sheet`, `board-notify-done` | a board's bell in its top bar (players only, when email is set up), the notification settings sheet it opens (this device's mute when notifications are on, and email), and its Close / Done |
+| `email-optin` | the email opt-in ("Email me when the numbers are drawn and if I win"; `data-state=loading\|none\|pending\|confirmed\|unsubscribed\|change\|error`) |
+| `email-optin-input`, `email-optin-submit` | its email field (`type=email`, 16px) and "Email me" |
+| `email-optin-resend`, `email-optin-change`, `email-optin-off` | pending: "Send again"; "Change email"; "Remove this address" (pending) / "Turn off email" (confirmed) |
+| `email-optin-error` | the server's reason when an action fails (a bad address, the address unsubscribed from all email, a resend too soon) |
+| `email-page` | the page an email's link opens (served by the Worker, not the app; `data-state=ask\|done\|expired\|unavailable` for confirm, `ask\|board\|all\|invalid\|unavailable` for unsubscribe) |
+| `email-confirm`, `email-unsubscribe-board`, `email-unsubscribe-all`, `email-page-open` | on that page: "Confirm my email", "Unsubscribe from this board", "Unsubscribe from all JaxSquares email" (also "Stop all JaxSquares email too"), "Open the board" / "Open JaxSquares" |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
 | `score-saved` | footer confirmation after a host saves a score |
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |

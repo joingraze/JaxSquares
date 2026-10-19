@@ -30,6 +30,9 @@ are no ads and no tracking.
 - **Notification tokens.** If you turn on notifications, we store the push
   token your device or browser gives us. We use it to tell you about the boards
   you're in, and you can turn notifications off at any time.
+- **Email for a board (optional).** If you ask for email about a board, we
+  keep the address you type. We send one email to confirm it, then only when
+  the numbers are drawn, if you win, and the final results. Only you see it.
 - **Purchase records.** When a host pays the host fee for a board (when they
   draw its numbers), we keep the transaction reference, amount and the board it
   paid for. Card and Apple Pay
@@ -46,7 +49,8 @@ are no ads and no tracking.
   where you are.
 
 We don't collect your phone number, contacts, photos, location or health
-data, or your email unless you sign in and share it. We don't use analytics or advertising SDKs.
+data, or your email unless you sign in and share it or ask for email about a
+board. We don't use analytics or advertising SDKs.
 
 ## How we use it
 
@@ -55,7 +59,7 @@ We use it only to run JaxSquares:
 - showing boards
 - drawing numbers
 - recording scores and winners
-- sending the notifications you asked for
+- sending the notifications and emails you asked for
 - letting hosts draw the numbers once a board is paid for, or covered by their
   Host Pass
 - keeping your boards on every device you sign in on
@@ -73,6 +77,7 @@ other apps or websites.
 | Google | Sign in with Google (optional) |
 | Google Firebase Cloud Messaging | Delivering push notifications to the app |
 | Stripe | Web payments for the host fee and the Host Pass |
+| Resend | Sending the board emails you ask for |
 
 Each provider handles data under its own privacy terms, and only for these
 purposes.
@@ -97,12 +102,18 @@ Only share links with people you want to play with.
   requires.
 - **Push tokens.** We delete a token when you turn notifications off, or when
   Apple or Google tells us it's no longer valid.
+- **Email for a board.** We delete the address a week after the board's game
+  ends, as soon as you unsubscribe or turn it off, or after 7 days if you
+  never confirm it. If you unsubscribe from all JaxSquares email, we keep only
+  a scrambled fingerprint of the address so we never email it again.
 
 ## Your choices
 
 - **Leave a board.** Release your squares before the numbers are drawn.
 - **Delete a board.** The host can delete a board at any time.
 - **Notifications.** Turn them off in the app, or in iOS Settings → JaxSquares.
+- **Email.** Every email has an unsubscribe link, for that board or for all
+  JaxSquares email. You can also turn it off from the board's bell.
 - **Sign out or delete your account.** In Profile → Account. Signing out takes
   your boards off that device. Deleting your account removes your sign-in,
   email and device links, and revokes JaxSquares' access to your Apple ID.

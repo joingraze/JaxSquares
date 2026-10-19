@@ -15,7 +15,7 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   there when changing game logic.
 - D1 access lives only in `worker/db.ts`, except module-owned tables, which only
   their module's store file touches (`worker/payments/store.ts`,
-  `worker/push/store.ts`, `worker/auth/store.ts`). Routes validate input and orchestrate.
+  `worker/push/store.ts`, `worker/auth/store.ts`, `worker/email/store.ts`). Routes validate input and orchestrate.
 
 ## Identity (security-critical)
 
@@ -30,7 +30,8 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   one and an account's devices are one player. Signing in on another device
   merges its rows into the canonical clientId in one batch: a new table keyed
   by a clientId must join that merge (docs/auth.md). Account tables are touched
-  only by `worker/auth/store.ts`; email/name never go in a public object.
+  only by `worker/auth/store.ts`; email/name never go in a public object, nor
+  does an email-notice address (docs/email.md: only its owner sees it, masked).
 - Everything public uses the **public player id** =
   base64url(SHA-256("jaxsquares:player:" + clientId)) first 22 chars
   (`shared/playerId.ts`): `Player.id`, `Square.playerId`, `Game.hostPlayerId`,

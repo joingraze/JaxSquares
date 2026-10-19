@@ -19,6 +19,7 @@ import type { Activity, ActivityType, GameState, LiveStatus, LiveUpdate, Score }
 import { isClientId } from "../shared/playerId";
 import { canonicalClientId } from "./auth/canonical";
 import * as db from "./db";
+import { emailNotices } from "./email/notices";
 import type { Env } from "./env";
 import { activePass } from "./payments/pass";
 import { notify, type NotifyEvent } from "./push";
@@ -61,9 +62,15 @@ export async function closeRoom(env: Env, gameId: string): Promise<void> {
   }
 }
 
-/** Runs notify for each event, logging (not throwing) failures. */
+/**
+ * Runs notify for each event, and the email notices for the batch (worker/email:
+ * confirmed addresses only; it does nothing when email isn't set up), logging
+ * (not throwing) failures.
+ */
 export async function notifyAll(env: Env, gameId: string, events: NotifyEvent[]): Promise<void> {
-  const results = await Promise.allSettled(events.map((e) => notify(env, gameId, e)));
+  // notify() marks sibling events synchronously, so the pushes are started first, in order.
+  const pushes = events.map((e) => notify(env, gameId, e));
+  const results = await Promise.allSettled([...pushes, emailNotices(env, gameId, events)]);
   for (const r of results) if (r.status === "rejected") console.error(`notify ${gameId} failed`, r.reason);
 }
 

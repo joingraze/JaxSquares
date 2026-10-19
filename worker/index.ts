@@ -41,6 +41,7 @@ import type {
 } from "../shared/types";
 import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
 import * as db from "./db";
+import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -363,16 +364,19 @@ api.get("/health", (c) => c.json({ ok: true }));
 // Not cached: a switch to live checkout (or a new price) has to reach every
 // client at once, or old pages would keep using test checkout or the old price.
 api.get("/config", (c) =>
-  c.json({ payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null, auth: authConfig(c.env) }, 200, {
-    "cache-control": "no-store",
-  }),
+  c.json(
+    { payments: getPaymentConfig(c.env), vapidPublicKey: c.env.VAPID_PUBLIC_KEY ?? null, auth: authConfig(c.env), emailEnabled: emailEnabled(c.env) },
+    200,
+    { "cache-control": "no-store" },
+  ),
 );
 
-// Routers owned by the scores, payments, push and auth modules.
+// Routers owned by the scores, payments, push, auth and email modules.
 api.route("/", scheduleRoutes);
 api.route("/", paymentsRoutes);
 api.route("/", pushRoutes);
 api.route("/", authRoutes);
+api.route("/", emailRoutes);
 
 api.post("/games", requireClient, async (c) => {
   const clientId = c.get("clientId");

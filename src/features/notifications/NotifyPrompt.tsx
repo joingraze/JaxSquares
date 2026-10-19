@@ -7,19 +7,27 @@
 // back), unsupported (never shows), needs-install (iPhone Safari tab:
 // illustrated Add to Home Screen guide).
 //
+// Right after a claim, when the server offers email notices (docs/email.md),
+// a player push can't reach gets email as the way in: "Get email instead" on
+// the Home Screen guide and the blocked fix, and an email-only ask where this
+// browser has no push at all.
+//
 // Never nags: closing it remembers the dismissal for that trigger, so the same
 // automatic ask doesn't come back. A tap (a bell, a "turn on" row) or
 // `explicit` always opens it. After a claim it waits for the confetti to land
 // before it slides up.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BellIcon, CheckIcon } from "../../components/icons";
+import type { EmailNoticeStatus } from "../../../shared/types";
+import { BellIcon, CheckIcon, MailIcon } from "../../components/icons";
 import { BottomSheet, Button, LogoMark, celebrate } from "../../components/ui";
+import { loadEmailEnabled } from "../../lib/emailNotices";
 import { getPlayerId } from "../../lib/identity";
 import { peekGame } from "../../lib/live";
 import { haptic, onAppResume } from "../../lib/native";
 import { enablePush, getPushState, type PushState } from "../../lib/push";
 import { askCopy } from "./askCopy";
+import { EmailOptIn } from "./EmailOptIn";
 import { BlockedGuide, InstallGuide } from "./Guides";
 import { blockedHelp, detectHelpEnv, type BlockedHelp } from "./platformHelp";
 import { clearAskDismissals, openedByTap, rememberAskDismissed, shouldShowAsk, type AskTrigger } from "./prefs";
@@ -45,7 +53,7 @@ export interface NotifyPromptProps {
   settleMs?: number;
 }
 
-type Phase = "checking" | "ask" | "working" | "done" | "blocked" | "install" | "hidden";
+type Phase = "checking" | "ask" | "working" | "done" | "blocked" | "install" | "email" | "hidden";
 
 /** Shown this long after turning on before the sheet closes itself. */
 const DONE_MS = 1700;
@@ -70,6 +78,11 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
   const [phase, setPhase] = useState<Phase>("checking");
   const [note, setNote] = useState<string | null>(null);
   const [help, setHelp] = useState<BlockedHelp>(() => blockedHelp(detectHelpEnv()));
+  // Email notices: offered after a claim when the server has them and push can't reach this player.
+  const [emailOk, setEmailOk] = useState(false);
+  const [noPush, setNoPush] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailNoticeStatus | null>(null);
+  const offersEmail = trigger === "claimed" && !!gameId;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -96,11 +109,14 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
     let timer: ReturnType<typeof setTimeout> | undefined;
     const wait = byTap ? 0 : (settleMs ?? (trigger === "claimed" ? CONFETTI_SETTLE_MS : 0));
     const started = Date.now();
-    void getPushState()
-      .catch((): PushState => "unsupported")
-      .then((state) => {
+    setEmailStatus(null);
+    void Promise.all([getPushState().catch((): PushState => "unsupported"), offersEmail ? loadEmailEnabled() : false])
+      .then(([state, email]) => {
         if (!alive) return;
-        const next = phaseFor(state);
+        setEmailOk(email);
+        setNoPush(state === "unsupported");
+        // No push in this browser at all: email is the only way to hear about the board.
+        const next = state === "unsupported" && email ? "email" : phaseFor(state);
         if (next === "hidden") {
           setPhase("hidden");
           onCloseRef.current();
@@ -115,7 +131,7 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
       alive = false;
       clearTimeout(timer);
     };
-  }, [open, trigger, explicit, settleMs]);
+  }, [open, trigger, explicit, settleMs, offersEmail]);
 
   // Turned on: a moment of thanks, then out of the way.
   useEffect(() => {
@@ -125,9 +141,20 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
   }, [phase]);
 
   const dismiss = () => {
-    if (phase === "ask" || phase === "install" || phase === "blocked") rememberAskDismissed(trigger);
+    if (phase === "ask" || phase === "install" || phase === "blocked" || phase === "email") rememberAskDismissed(trigger);
     onClose();
   };
+
+  const toEmail = () => {
+    void haptic("selection");
+    setNote(null);
+    setPhase("email");
+  };
+  const emailInstead = emailOk && gameId && (
+    <Button variant="ghost" block leading={<MailIcon size={18} />} onClick={toEmail} data-testid="notify-email-instead">
+      Get email instead
+    </Button>
+  );
 
   /** Follow an enablePush() through to the right step. */
   const settle = useCallback((result: Promise<PushState>) => {
@@ -193,9 +220,15 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
       ? { title: "Add JaxSquares to your Home Screen", description: "iPhone only sends notifications to Home Screen apps. Takes ten seconds." }
       : phase === "blocked"
         ? { title: help.title, description: help.description }
-        : phase === "done"
-          ? null
-          : { title: copy.title, description: copy.body };
+        : phase === "email"
+          ? {
+              title: noPush ? "Want to hear when your square hits?" : "Get email instead",
+              description: noPush ? "This browser can't show notifications, but email works anywhere." : "No Home Screen app needed.",
+            }
+          : phase === "done"
+            ? null
+            : { title: copy.title, description: copy.body };
+  const emailSet = emailStatus === "pending" || emailStatus === "confirmed";
 
   return (
     <BottomSheet
@@ -220,13 +253,21 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
             <Button size="lg" block haptic={false} onClick={() => recheck(true)}>
               I've turned them on
             </Button>
+            {emailInstead}
             <Button variant="ghost" block onClick={dismiss} className="text-ink-muted">
               Not now
             </Button>
           </div>
         ) : phase === "install" || blockedInstall ? (
-          <Button size="lg" block variant="secondary" onClick={dismiss}>
-            Got it
+          <div className="flex flex-col gap-1">
+            <Button size="lg" block variant="secondary" onClick={dismiss}>
+              Got it
+            </Button>
+            {emailInstead}
+          </div>
+        ) : phase === "email" ? (
+          <Button size="lg" block variant={emailSet ? "primary" : "ghost"} className={emailSet ? undefined : "text-ink-muted"} onClick={emailSet ? onClose : dismiss} data-testid="notify-email-close">
+            {emailSet ? "Done" : "Not now"}
           </Button>
         ) : undefined
       }
@@ -257,6 +298,8 @@ export function NotifyPrompt({ gameId, trigger, open, onClose, explicit, settleM
       )}
 
       {(phase === "install" || blockedInstall) && <InstallGuide />}
+
+      {phase === "email" && gameId && <EmailOptIn gameId={gameId} boardName={copy.boardName} onStatus={setEmailStatus} className="pb-2 pt-3" />}
 
       {phase === "blocked" && !blockedInstall && (
         <div className="pt-1">

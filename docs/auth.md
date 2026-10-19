@@ -68,6 +68,7 @@ owner):
 | `cohosts` | `INSERT OR IGNORE` under the canonical id, then the device's rows deleted, so a co-host who signs in on another device stays one (and the board's version bumps); where the account now hosts a board the device co-hosted, its co-host row goes (it's the host) |
 | `host_passes` | moved (payments, `worker/payments/store.ts`): the device's Host Pass rows join the account's, and both are kept; the account is covered while any is active |
 | `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
+| `email_subscriptions` | moved (email notices, `worker/email/store.ts`, docs/email.md); where both have an address on a board, the confirmed one stays (else the account's) and the other is deleted. `email_suppressions` is keyed by the address, so nothing moves |
 | `client_links` | the device's link |
 
 `purchases` and `cohost_invites` have no client column (an invite is always
@@ -157,7 +158,8 @@ second) and gets the same shape back from every sign-in.
    identity has no refresh token).
 3. Deletes the account, its identities and every device link, and the push
    registrations under the canonical clientId (each device re-registers as
-   itself).
+   itself), and its email notice addresses (docs/email.md: nobody could manage
+   them afterwards).
 4. **The boards and squares stay** as anonymous data under the canonical
    clientId, so friends' games carry on. Every signed-in device starts fresh
    (this one now, the others on their next start), so nobody can change them

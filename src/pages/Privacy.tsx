@@ -3,7 +3,7 @@
 // answers in docs/app-store/listing.md and ios/App/App/PrivacyInfo.xcprivacy in step.
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { BellIcon, CheckIcon, GridIcon, InfoIcon, LockIcon, PencilIcon, RefreshIcon, TrashIcon, UserIcon, UsersIcon, XIcon } from "../components/icons";
+import { BellIcon, CheckIcon, GridIcon, InfoIcon, LockIcon, MailIcon, PencilIcon, RefreshIcon, TrashIcon, UserIcon, UsersIcon, XIcon } from "../components/icons";
 import { buttonStyles, Card, ListGroup, ListRow, TopBar } from "../components/ui";
 
 const UPDATED = "October 19, 2026";
@@ -74,7 +74,7 @@ export default function Privacy() {
         </Card>
 
         <Section title="What we collect">
-          <ListGroup footer="We don't collect your phone number, contacts, photos, location or health data, or your email unless you sign in and share it. There are no analytics or advertising SDKs.">
+          <ListGroup footer="We don't collect your phone number, contacts, photos, location or health data, or your email unless you sign in and share it or ask for email about a board. There are no analytics or advertising SDKs.">
             <Fact icon={<UserIcon />} title="A random device ID">
               Created the first time you open JaxSquares and stored on your device, so we can recognize your squares and the boards you host or join. It isn't your Apple or advertising identifier.
             </Fact>
@@ -89,6 +89,9 @@ export default function Privacy() {
             </Fact>
             <Fact icon={<BellIcon />} title="Notification tokens">
               Only if you turn notifications on: the push token your device or browser gives us, used to tell you about your boards. Turn it off any time.
+            </Fact>
+            <Fact icon={<MailIcon />} title="Email for a board (optional)">
+              Only if you ask for email about a board: the address you type. We send one email to confirm it, then only when the numbers are drawn, if you win, and the final results. Only you see it, and we delete it a week after the board's game ends.
             </Fact>
             <Fact icon={<LockIcon />} title="Purchase records">
               When a host pays the host fee for a board (when they draw its numbers), we keep the transaction reference, amount and the board it paid for. Card and Apple Pay details go straight to Apple or Stripe.
@@ -108,7 +111,7 @@ export default function Privacy() {
             <ul className="flex flex-col gap-2 text-ink">
               <Check>Showing boards and drawing numbers</Check>
               <Check>Recording scores and winning squares</Check>
-              <Check>Sending the notifications you asked for</Check>
+              <Check>Sending the notifications and emails you asked for</Check>
               <Check>Letting hosts draw the numbers once a board is paid for, covered by their Host Pass, or free (5 or fewer players hold squares)</Check>
               <Check>Keeping your boards on every device you sign in on</Check>
               <Check>Preventing abuse</Check>
@@ -128,6 +131,7 @@ export default function Privacy() {
             <ListRow title="Google" subtitle="Sign in with Google (optional)" />
             <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
             <ListRow title="Stripe" subtitle="Web payments for the host fee and the Host Pass" />
+            <ListRow title="Resend" subtitle="Sending the board emails you ask for" />
           </ListGroup>
         </Section>
 
@@ -152,6 +156,9 @@ export default function Privacy() {
             <Fact title="Your account">Until you delete it. Your boards and squares stay on their boards afterwards, no longer tied to you.</Fact>
             <Fact title="Purchase records">As long as tax and accounting law requires.</Fact>
             <Fact title="Push tokens">Deleted when you turn notifications off, or when Apple or Google tells us a token is no longer valid.</Fact>
+            <Fact title="Email for a board">
+              Deleted a week after the board's game ends, as soon as you unsubscribe or turn it off, or after 7 days if you never confirm it. If you unsubscribe from all JaxSquares email, we keep only a scrambled fingerprint of the address so we never email it again.
+            </Fact>
           </ListGroup>
         </Section>
 
@@ -165,6 +172,9 @@ export default function Privacy() {
             </Fact>
             <Fact icon={<BellIcon />} title="Notifications">
               Turn them off in the app, or in iOS Settings → Notifications → JaxSquares.
+            </Fact>
+            <Fact icon={<MailIcon />} title="Email">
+              Every email has an unsubscribe link, for that board or for all JaxSquares email. You can also turn it off from the board's bell.
             </Fact>
             <Fact icon={<LockIcon />} title="Sign out or delete your account">
               In Profile → Account. Signing out takes your boards off that device. Deleting your account removes your sign-in, email and device links, and revokes JaxSquares' access to your Apple ID. Your boards and squares stay on their boards for the other players.

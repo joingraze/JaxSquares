@@ -4,9 +4,10 @@
 // This file only declares names. Never put values here (it is committed):
 // - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE,
 //   HOST_PASS_PRICE_CENTS, STRIPE_HOST_PASS_PRICE_ID, IAP_HOST_PASS_PRODUCT_ID,
-//   the sign-in client ids) go in wrangler.jsonc "vars".
+//   the sign-in client ids, EMAIL_FROM) go in wrangler.jsonc "vars".
 // - Secrets (Stripe, Apple IAP key, Sign in with Apple key, VAPID private key,
-//   FCM service account) go in Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
+//   FCM service account, the Resend API key, the email token secret) go in
+//   Cloudflare with `npx wrangler secret put NAME` (or the dashboard:
 //   Workers -> jaxsquares -> Settings -> Variables and Secrets).
 // - Local dev values go in .dev.vars (gitignored; see .dev.vars.example).
 // - CLOUDFLARE_API_TOKEN is a deploy credential for wrangler, not a Worker
@@ -80,4 +81,14 @@ export interface Env {
   VAPID_SUBJECT?: string;
   /** Firebase service account JSON for FCM HTTP v1 (native iOS + Android pushes). */
   FCM_SERVICE_ACCOUNT?: string;
+
+  // ---- Email notices (docs/email.md) ----
+  // All three set = the opt-in shows in the app (AppConfig.emailEnabled);
+  // otherwise it's hidden and the email routes answer 503.
+  /** Resend API key (secret, re_...): sends through https://api.resend.com. */
+  RESEND_API_KEY?: string;
+  /** Sender (wrangler.jsonc var): "JaxSquares <notices@jaxsquares.com>", or just the address. Empty = off. */
+  EMAIL_FROM?: string;
+  /** Secret, 32+ random characters: signs unsubscribe links and keys addresses (HMAC). Rotating it breaks old links. */
+  EMAIL_TOKEN_SECRET?: string;
 }

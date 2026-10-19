@@ -46,6 +46,7 @@ const MIGRATIONS = [
   "migrations/0009_pay_at_draw.sql",
   "migrations/0010_accounts.sql",
   "migrations/0011_host_pass.sql",
+  "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
 ];
 
@@ -418,6 +419,40 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
+  it("merges its email notice addresses into the account; where both have one on a board, the confirmed one stays", async () => {
+    const { a, b, c } = await twoDevices();
+    const now = Date.now();
+    const sub = (id: string, client: string, email: string, status: string) =>
+      rows(
+        `INSERT INTO email_subscriptions (id, game_id, client_id, email, email_key, status, confirm_token_hash, confirm_sent_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        `es_${id}_${client}`,
+        id,
+        client,
+        email,
+        `key-${email}`.padEnd(32, "x").slice(0, 32),
+        status,
+        now,
+        now,
+        now,
+      );
+    sub(a.id, PHONE, "phone@gmail.com", "confirmed");
+    sub(a.id, LAPTOP, "laptop-a@gmail.com", "pending");
+    sub(b.id, PHONE, "phone-b@gmail.com", "pending");
+    sub(b.id, LAPTOP, "laptop-b@gmail.com", "confirmed");
+    sub(c.id, LAPTOP, "laptop-c@gmail.com", "pending");
+
+    expect((await signIn("google", LAPTOP, "g-1")).status).toBe(200);
+    expect(rows("SELECT game_id, client_id, email, status FROM email_subscriptions ORDER BY email")).toEqual(
+      [
+        { game_id: b.id, client_id: PHONE, email: "laptop-b@gmail.com", status: "confirmed" },
+        { game_id: c.id, client_id: PHONE, email: "laptop-c@gmail.com", status: "pending" },
+        { game_id: a.id, client_id: PHONE, email: "phone@gmail.com", status: "confirmed" },
+      ].sort((x, y) => x.email.localeCompare(y.email)),
+    );
+    expectNoSecrets();
+  });
+
   it("can't sign in to a second account while signed in to one", async () => {
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const other = await signIn("google", PHONE, "g-2");
@@ -479,6 +514,13 @@ describe("DELETE /api/account", () => {
 
     await call("POST", "/push/register", { client: LAPTOP, body: { platform: "ios", token: FCM_TOKEN } });
     await signIn("apple", LAPTOP, "apple-1");
+    // An email notice address the account added (nobody could manage it once the account is gone).
+    rows(
+      `INSERT INTO email_subscriptions (id, game_id, client_id, email, email_key, status, created_at, updated_at)
+       VALUES ('es_1', ?, ?, 'jordan@gmail.com', 'kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk', 'confirmed', 1, 1)`,
+      a.id,
+      PHONE,
+    );
 
     const del = await call("DELETE", "/account", { client: LAPTOP });
     expect(del.status).toBe(200);
@@ -489,7 +531,7 @@ describe("DELETE /api/account", () => {
     expect(revokeForm.get("client_id")).toBe(BUNDLE);
     expect(revokeForm.get("token_type_hint")).toBe("refresh_token");
 
-    for (const table of ["accounts", "account_identities", "client_links", "push_subscriptions"]) expect(rows(`SELECT * FROM ${table}`)).toEqual([]);
+    for (const table of ["accounts", "account_identities", "client_links", "push_subscriptions", "email_subscriptions"]) expect(rows(`SELECT * FROM ${table}`)).toEqual([]);
     // The board and its squares stay, as anonymous data under the canonical clientId.
     expect(rows("SELECT host_client_id FROM games WHERE id = ?", a.id)).toEqual([{ host_client_id: PHONE }]);
     expect(rows("SELECT client_id FROM squares WHERE game_id = ?", a.id)).toEqual([{ client_id: FRIEND }]);

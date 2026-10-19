@@ -261,14 +261,14 @@ devices to an Apple or Google account.
 |---|---|---|
 | Identifiers → **Device ID** | A random id the app generates on first launch (not IDFA or IDFV), and the push token (FCM/APNs) if notifications are on. | Recognizes your squares and boards and sends your notifications. |
 | Contact Info → **Name** | The display name you type. It can be a nickname. | Shows on your squares to the others in the board. |
-| Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works). | Shown only to you ("Signed in with Apple · email"). |
+| Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works), or ask for email about a board (docs/email.md). | Shown only to you ("Signed in with Apple · email"); a board's address gets that board's notices, and is deleted a week after its game. |
 | Identifiers → **User ID** | Only if you sign in: the account id Apple or Google assigns you. | Keeps your boards on every device you sign in on. |
 | User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color. | The game itself. |
 | Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock, and for a Host Pass its original transaction id, status and renewal date. | Opens the board you paid for, stops one purchase from being used twice, and lets the Host Pass cover your boards. |
 
 **Not collected:**
 
-- Phone, physical address (email only if you choose to sign in, above)
+- Phone, physical address (email only if you choose to sign in or ask for board email, above)
 - Precise or coarse location
 - Contacts, photos, health, financial info
 - Payment card data: Apple handles IAP, and the iOS app never shows Stripe

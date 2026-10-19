@@ -31,6 +31,12 @@
 # VAPID_SUBJECT=mailto:support@jaxsquares.com
 # FCM_SERVICE_ACCOUNT=
 
+# Email notices (docs/email.md). All three, or the opt-in stays hidden.
+# EMAIL_FROM is normally a wrangler.jsonc var.
+# RESEND_API_KEY=
+# EMAIL_FROM=JaxSquares <notices@jaxsquares.com>
+# EMAIL_TOKEN_SECRET=
+
 # Android app links
 # ANDROID_PACKAGE=com.jaxsquares.app
 # ANDROID_SHA256_CERT_FINGERPRINTS=

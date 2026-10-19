@@ -55,6 +55,10 @@
     // uses APPLE_BUNDLE_ID (default com.jaxsquares.app, the Capacitor appId).
     "GOOGLE_WEB_CLIENT_ID": "",
     "GOOGLE_IOS_CLIENT_ID": "",
-    "APPLE_SERVICES_ID": ""
+    "APPLE_SERVICES_ID": "",
+    // Email notices (docs/email.md): the sender, e.g. "JaxSquares
+    // <notices@jaxsquares.com>", once the domain is verified with Resend.
+    // Empty = off (with the RESEND_API_KEY and EMAIL_TOKEN_SECRET secrets).
+    "EMAIL_FROM": ""
   }
 }

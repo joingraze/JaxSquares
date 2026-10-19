@@ -19,9 +19,10 @@ exception so far: the public-id rename below, which closed an impersonation hole
   or sends money." No betting vocabulary anywhere ("bet", "wager", "pot",
   "payout", "buy-in", "jackpot", "odds", "stakes", "gamble"): say "square price",
   "prize", "amount".
-- Amounts never leave the app: not in push notifications, link previews/OG
-  tags, invite or share text, or activity data. A host's free-text note ("Loser
-  buys wings") may be quoted in a push.
+- Amounts never leave the app: not in push notifications, email notices,
+  link previews/OG tags, invite or share text, or activity data. A host's
+  free-text note ("Loser buys wings") may be quoted in a push (and an email,
+  the same way).
 - The only payment is the host paying JaxSquares the host fee for a board, due
   when they draw its numbers: one tap with Apple Pay / Google Pay (Stripe) on the
   web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($19.99
@@ -108,7 +109,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   public id.
 - Signing in on another device moves that device's rows (hosted boards,
   co-host rows, players, squares, its public id in the feed, push
-  registrations, mutes, Host Pass rows and its Stripe customer) to the canonical clientId in one batch with its link, bumps the touched boards'
+  registrations, mutes, Host Pass rows, its Stripe customer and its email
+  notice addresses) to the canonical clientId in one batch with its link, bumps the touched boards'
   versions and broadcasts them. Its own clientId then works only through
   `client_links`.
 - `GET /api/me` and every sign-in return `MeResponse`: the (account's) public
@@ -122,7 +124,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   Pass from renewing, revokes the Apple token and deletes the account rows; the
   boards and squares stay as anonymous data under the canonical clientId.
 - Email and name never appear in a public object (Player, activity, push, OG);
-  no response carries a clientId.
+  no response carries a clientId. Neither does an email-notice address (see
+  "Email notices" below): only its owner gets it back, masked.
 
 ## Runtime
 
@@ -132,8 +135,9 @@ Model, merge rules and setup: docs/auth.md. In short:
   module owns are queried only by that module's store file
   (`worker/payments/store.ts`: `purchases`, `host_passes`, `stripe_customers`; `worker/push/store.ts`:
   `push_subscriptions`, `game_mutes`; `worker/auth/store.ts`: `accounts`,
-  `account_identities`, `client_links`). The sign-in merge runs statements
-  built by each owner in one batch.
+  `account_identities`, `client_links`; `worker/email/store.ts`:
+  `email_subscriptions`, `email_suppressions`). The sign-in merge runs
+  statements built by each owner in one batch.
 - Durable Object `GameRoom` (`GAME_ROOM`, one per game id via `idFromName(gameId)`)
   holds the hibernatable WebSockets for that game, broadcasts state, tracks presence,
   and, for boards linked to a real game, polls live scores with an alarm while the
@@ -157,7 +161,9 @@ Model, merge rules and setup: docs/auth.md. In short:
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
-  the newest 200 per game, and drops expired rate-limit windows. An App Store
+  the newest 200 per game, drops expired rate-limit windows, and deletes
+  email-notice addresses past their keep (a week after the board's final, an
+  unconfirmed one when its link expires; docs/email.md). An App Store
   purchase for a board deleted before it was confirmed isn't lost: `/pay/iap`
   keeps it as `unused` (410); so does the Stripe webhook for a board deleted
   before its payment landed.
@@ -172,11 +178,11 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
-| GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden |
+| GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden. `emailEnabled`: email notices are set up (the app shows the opt-in only then) |
 | POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
 | GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
-| DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations; boards and squares stay. 404 when not signed in; 429 |
+| DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
 | GET | `/api/games/:id` | – | – | `GameState` |
@@ -215,6 +221,11 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/push/test` | C | – | `{ ok: true, devices, sent, failed }` (sends "you're all set" to this device's registrations; a signed-in device's are its account's) |
 | GET | `/api/games/:id/mute` | C | – | `{ muted: boolean }` |
 | POST | `/api/games/:id/mute` | C | `{ muted: boolean }` | `{ ok: true }` |
+| GET | `/api/games/:id/email` | C | – | `EmailNotices` `{ status: "none" \| "pending" \| "confirmed" \| "unsubscribed", email }`: the caller's own email notices for the board, the address masked ("j•••@gmail.com"); 503 until email is set up; 429 |
+| POST | `/api/games/:id/email` | C | `EmailNoticesInput` (`{ email }` or `{ resend: true }`) | `EmailNotices` (`pending`): sends "Confirm your email for <board>" (double opt-in). 400 bad address, 403 not on the board, 409 board final / the address is used on the board / it unsubscribed from all email / nothing to resend, 429 (also a resend within a minute, and 5 confirmation emails per address per hour), 503 until set up |
+| DELETE | `/api/games/:id/email` | C | – | `{ status: "none", email: null }`: the address is deleted (works even when email isn't set up); 429 |
+| GET, POST | `/api/email/confirm?token=` | – | – | HTML page. GET asks ("Confirm my email", which POSTs); POST confirms. 400 page for a used or expired (7 days) link, 503 until set up |
+| GET, POST | `/api/email/unsubscribe?token=` | – | form `scope=board\|all`, or RFC 8058 `List-Unsubscribe=One-Click` | HTML page. GET asks (this board, or every board for the address); POST unsubscribes. 400 page for a bad token |
 | GET | `/api/health` | – | – | `{ ok: true }` |
 
 Rate limits (`worker/rateLimit.ts`, fixed windows in the D1 `rate_limits` table
@@ -242,6 +253,11 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `cohost-invite-ip` | 60 per address per hour | what `cohost-invite` counts, for every device behind one address |
 | `cohost-accept` | 20 per device per hour | co-host accepts with a well-formed token, counted before the token is looked up (links can't be guessed at speed) |
 | `cohost-accept-ip` | 60 per address per hour | what `cohost-accept` counts, for every device behind one address |
+| `email` | 20 per device per hour | adding, resending or removing an email-notice address |
+| `email-ip` | 60 per address per hour | what `email` counts, for every device behind one address |
+| `email-send` | 5 per email address per hour | confirmation emails to one address, whoever asks (keyed by the address's keyed hash, never the address) |
+| `email-status` | 120 per device per minute | `GET /api/games/:id/email` |
+| `email-link-ip` | 60 per address per minute | the confirm and unsubscribe pages |
 
 Per-device rules count per account for a signed-in device (they're keyed by
 the resolved public id). `maxPerPlayer` (the board's squares-per-player cap)
@@ -666,6 +682,12 @@ score, q1, q2, q3, final.
   `worker/payments/store.ts` (its D1 tables).
 - `worker/push/*` – web push (VAPID) + FCM. Exports `pushRoutes` (Hono) and
   `notify(env, gameId, event)`. Owns `worker/push/store.ts` (its D1 tables).
+- `worker/email/*` – optional email notices (docs/email.md): the double
+  opt-in, the Resend sender (`sender.ts`), the templates and link pages, the
+  signed unsubscribe tokens. Exports `emailRoutes` (Hono), `emailEnabled(env)`,
+  `emailNotices(env, gameId, events)` and the store's `mergeClientStatements`,
+  `deleteClientSubscriptionsStatement`, `pruneSubscriptions`. Owns
+  `worker/email/store.ts` (its D1 tables).
 - `worker/auth/*` – optional sign-in (docs/auth.md): ID token verification
   (`jwt.ts`), Apple token exchange/revocation (`apple.ts`), the canonical
   clientId resolver (`canonical.ts`). Exports `authRoutes` (Hono),
@@ -991,6 +1013,29 @@ server's 402 decides), unless 5 or fewer players hold squares
   the iOS app, a Stripe Customer Portal on the web), and Restore purchases in
   the iOS app. Prices in the iOS app are only the App Store's.
 
+## Email notices
+
+Optional, per board, never required; for players push can't reach (docs/email.md).
+
+- Double opt-in: an address is `pending` until its owner opens the
+  confirmation link and taps Confirm (a GET only shows the button: mail
+  scanners open links). Only confirmed addresses get notices: the numbers
+  (their squares and numbers), "You won Q1!" (Q1, Half, Q3 on boards where
+  every score doesn't win) and the final results (winners by name; an
+  every-score board's summary of how many scores each player won). Each once
+  per address. Never an amount; notes quoted as pushes quote them.
+- Every email: "You're getting this because you asked for JaxSquares email for
+  <board>.", a one-click unsubscribe link (signed: this board, or every board
+  for the address) with `List-Unsubscribe` / `List-Unsubscribe-Post`, a
+  plain-text part, the sender `EMAIL_FROM`.
+- Privacy: the address is server-only, shown back to its owner masked; it's
+  blanked when it unsubscribes and deleted a week after the board's final (an
+  unconfirmed one after 7 days), with the board, or with the account. The
+  rows join the sign-in merge.
+- Client: the board's bell (`BoardNotifySheet`, players only, when
+  `AppConfig.emailEnabled`) and the after-claim ask (`NotifyPrompt` offers
+  "Get email instead" where push can't work) show `EmailOptIn`.
+
 ## Cross-module function contracts
 
 `worker/service.ts` (core) — used by payments, push and the room:
@@ -1077,7 +1122,21 @@ kickoff in `starts_at`; the cron's index covers linked boards only) and
 `draft` as paid and opening drafts; `games.draw_reminder_at`) and
 `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0003_*`, `0006_*` and `0011_host_pass.sql` (`host_passes`,
-`stripe_customers`), push `0004_*`, auth `0010_accounts.sql`.
+`stripe_customers`), push `0004_*`, auth `0010_accounts.sql`, email
+`0013_email.sql` (`email_subscriptions`, `email_suppressions`).
+
+`worker/email/index.ts` (email notices, docs/email.md):
+```ts
+emailRoutes: Hono<{ Bindings: Env }>              // /games/:id/email, /email/confirm, /email/unsubscribe
+emailEnabled(env: Env): boolean                   // for GET /api/config
+/** Email notices for a batch of events (numbers-drawn, winner, final; the rest are ignored). Never throws. */
+emailNotices(env: Env, gameId: string, events: NotifyEvent[]): Promise<void>
+```
+`notifyAll` in `worker/service.ts` runs it beside `notify` for every batch of
+events, so email goes out from the same places as pushes (in `waitUntil`
+after a request, in the room's alarm for live scores). It reads the board with
+`db.getGameState` and names players by public id (`playerIdOf`), never
+`getMembers`.
 
 `worker/auth/index.ts` (auth):
 ```ts
@@ -1090,7 +1149,9 @@ Core helpers it uses: `db.mergeClientStatements(db, from, to, now)`,
 `db.hostTokensFor(db, clientId)`, `db.cohostGamesFor(db, clientId)`,
 `db.latestProfileOf(db, clientId)`; push:
 `mergeClientStatements`, `deleteSubscriptionStatement`,
-`deleteClientSubscriptionsStatement` (`worker/push/store.ts`); payments:
+`deleteClientSubscriptionsStatement` (`worker/push/store.ts`); email:
+`mergeClientStatements`, `deleteClientSubscriptionsStatement`
+(`worker/email/store.ts`); payments:
 `mergeClientStatements` (`worker/payments/store.ts`), `hostPassOf`
 (`worker/payments/pass.ts`) and `endWebPassRenewals`
 (`worker/payments/passStripe.ts`), imported from those files directly. The

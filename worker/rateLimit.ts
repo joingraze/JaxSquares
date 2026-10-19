@@ -1,6 +1,7 @@
 // Light rate limits on the endpoints worth abusing: creating boards, joining
-// them, claiming/releasing squares, co-host links, signing in and the Host
-// Pass checkout (each call there can reach Stripe or Apple). Fixed windows counted in D1
+// them, claiming/releasing squares, co-host links, signing in, the Host
+// Pass checkout (each call there can reach Stripe or Apple) and email
+// notices (each sign-up sends an email to an address someone typed). Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -25,6 +26,7 @@ const TOO_MANY = {
   signIn: "That's a lot of sign-in attempts. Take a breather and try again a little later.",
   checkout: "That's a lot of checkout attempts. Take a breather and try again a little later.",
   cohost: "That's a lot of co-host links for one hour. Take a breather and try again a little later.",
+  email: "That's a lot of email changes for one hour. Try again a little later.",
 };
 
 export interface RateRule {
@@ -134,6 +136,44 @@ export const RATE_LIMITS = {
     windowMs: HOUR,
     message: TOO_MANY.cohost,
   },
+  /** Email notices (worker/email): adding, resending or removing an address, per device. */
+  email: {
+    name: "email",
+    limit: 20,
+    windowMs: HOUR,
+    message: TOO_MANY.email,
+  },
+  /** Per network address: `email` for everyone behind one address. */
+  emailIp: {
+    name: "email-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: TOO_MANY.email,
+  },
+  /**
+   * Confirmation emails to one address (keyed by its keyed hash, never the
+   * address), whoever asks: nobody can flood someone's inbox from many devices.
+   */
+  emailSend: {
+    name: "email-send",
+    limit: 5,
+    windowMs: HOUR,
+    message: "We've sent a few confirmation emails to that address already. Check your inbox (and spam), or try again in an hour.",
+  },
+  /** GET /api/games/:id/email, per device. */
+  emailStatus: {
+    name: "email-status",
+    limit: 120,
+    windowMs: MINUTE,
+    message: TOO_MANY.taps,
+  },
+  /** The confirm and unsubscribe pages an email's links open, per network address. */
+  emailLinkIp: {
+    name: "email-link-ip",
+    limit: 60,
+    windowMs: MINUTE,
+    message: "That's a lot of clicks. Give it a minute and try again.",
+  },
   /**
    * New players joining one board, keyed by game id: clientIds are free to
    * mint, so a per-device count alone can't stop a script filling a board.
@@ -164,7 +204,7 @@ export async function addressSubject(ip: string): Promise<string> {
   return Array.from(digest.slice(0, 12), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** Counts this request against `rule` for `subject` (a public player id, a game id or a hashed address). */
+/** Counts this request against `rule` for `subject` (a public player id, a game id, a hashed network address, or an email address's keyed hash). */
 export async function checkRate(d1: D1Database, rule: RateRule, subject: string, now = Date.now()): Promise<RateDecision> {
   const retryAfter = Math.max(1, Math.ceil((rule.windowMs - (now % rule.windowMs)) / 1000));
   try {

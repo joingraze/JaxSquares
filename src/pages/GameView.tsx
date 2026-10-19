@@ -17,7 +17,7 @@ import { COHOST_PARAM, cohostIdsOf, isCohostOf, isCohostToken } from "../../shar
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
-import { GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
+import { BellIcon, GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
 import { ActivityFeed } from "../features/board/ActivityFeed";
@@ -68,6 +68,7 @@ import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
 import { ApiError, api, errorMessage, inviteUrl } from "../lib/api";
 import { boardViewPath } from "../lib/boardViews";
+import { useEmailEnabled } from "../lib/emailNotices";
 import { pluralize, teamVars } from "../lib/format";
 import { useHostRole } from "../lib/hostRole";
 import { getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
@@ -80,6 +81,7 @@ import { setThemePreference, useResolvedTheme } from "../lib/theme";
 const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m) => ({ default: m.InviteSheet })));
 const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
 const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
+const BoardNotifySheet = lazy(() => import("../features/notifications/BoardNotifySheet").then((m) => ({ default: m.BoardNotifySheet })));
 const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
 const CohostAcceptSheet = lazy(() => import("../features/invite/CohostAcceptSheet").then((m) => ({ default: m.CohostAcceptSheet })));
 
@@ -171,6 +173,9 @@ export default function GameView() {
   const [notifyOpen, setNotifyOpen] = useState(false);
   // The "get notified" ask for a board I just created (after its invite sheet closes).
   const [createdAsk, setCreatedAsk] = useState(false);
+  // The board's notification settings (the top bar's bell): email notices, and this device's mute.
+  const [boardNotify, setBoardNotify] = useState(false);
+  const emailEnabled = useEmailEnabled();
   // A newcomer just joined: the "You're in" card (with "Bring a friend") sits above the board until dismissed.
   const [welcome, setWelcome] = useState(false);
   const welcomeRef = useRef(false);
@@ -1033,6 +1038,10 @@ export default function GameView() {
               onClick={() => setThemePreference(theme === "dark" ? "light" : "dark")}
               haptic="light"
             />
+            {/* Email notices (docs/email.md) for players: shown once the server has email set up. */}
+            {joined && emailEnabled && (
+              <IconButton data-testid="board-notify" label="Notifications for this board" icon={<BellIcon size={21} />} onClick={() => setBoardNotify(true)} haptic="light" />
+            )}
             <IconButton label="Invite friends" icon={<ShareIcon size={22} />} onClick={share} haptic="light" />
           </span>
         }
@@ -1402,6 +1411,7 @@ export default function GameView() {
         />
         <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
+        {emailEnabled && <BoardNotifySheet gameId={game.id} boardName={game.name} open={boardNotify} onClose={() => setBoardNotify(false)} />}
         <RulesSheet
           open={rulesOpen}
           onClose={() => setRulesOpen(false)}

@@ -17,6 +17,7 @@ import { HTTPException } from "hono/http-exception";
 import { isClientId } from "../../shared/playerId";
 import type { AuthProvider, MeResponse } from "../../shared/types";
 import * as db from "../db";
+import * as emailStore from "../email/store";
 import type { Env } from "../env";
 import { hostPassOf } from "../payments/pass";
 import { endWebPassRenewals } from "../payments/passStripe";
@@ -183,6 +184,7 @@ async function signInDevice(env: Env, s: SignIn): Promise<Outcome> {
                 ),
                 ...pushStore.mergeClientStatements(env.DB, s.device, canonical),
                 ...paymentsStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
+                ...emailStore.mergeClientStatements(env.DB, s.device, canonical),
               ];
         const results = await store.linkDevice(env.DB, { ...touch, accountId, clientId: s.device }, merge);
         const merged = merge.length > 0 ? (results[0].results as { id: string }[]).map((r) => r.id) : [];
@@ -326,9 +328,11 @@ authRoutes.delete("/account", async (c) => {
   if (doomed.unrevocable > 0) console.log(`account deleted with ${doomed.unrevocable} Apple sign-in(s) that had no refresh token to revoke`);
   if (revoked.some((ok) => !ok)) console.log("account deleted; an Apple token couldn't be revoked (see above)");
   // The boards and squares stay as anonymous data under the canonical clientId.
+  // Email addresses for notices go: nobody could manage them afterwards.
   await c.env.DB.batch([
     ...store.deleteAccountStatements(c.env.DB, link.accountId),
     pushStore.deleteClientSubscriptionsStatement(c.env.DB, link.canonical),
+    emailStore.deleteClientSubscriptionsStatement(c.env.DB, link.canonical),
   ]);
   forgetClients([device, ...doomed.clients]);
   return c.json({ ok: true });

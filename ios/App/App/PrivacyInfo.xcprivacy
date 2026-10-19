@@ -46,7 +46,7 @@
 			</array>
 		</dict>
 		<dict>
-			<!-- Optional Sign in with Apple / Google: the email the provider shares (shown only to its owner). -->
+			<!-- Optional Sign in with Apple / Google: the email the provider shares (shown only to its owner); and an address a player gives for a board's email notices (docs/email.md). -->
 			<key>NSPrivacyCollectedDataType</key>
 			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
 			<key>NSPrivacyCollectedDataTypeLinked</key>

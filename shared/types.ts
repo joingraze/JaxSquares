@@ -683,6 +683,30 @@ export interface AppConfig {
   vapidPublicKey: string | null;
   /** Which sign-in providers are set up. Always sent; optional so older fixtures type-check. */
   auth?: AuthConfig;
+  /** Email notices are set up (docs/email.md); the app hides the opt-in otherwise. Always sent; optional for older fixtures. */
+  emailEnabled?: boolean;
+}
+
+// ---- Optional email notices (docs/email.md) ----
+// A player can ask for email about one board: when the numbers are drawn, if
+// they win, and the final results. The address is private: only its owner
+// ever sees it, masked ("j•••@gmail.com"), and it's deleted a week after the
+// board's final.
+
+/** none: no address for this board; pending: waiting for the confirmation link; unsubscribed: stopped from an email's link. */
+export type EmailNoticeStatus = "none" | "pending" | "confirmed" | "unsubscribed";
+
+/** GET / POST / DELETE /api/games/:id/email: the caller's own email notices for that board. */
+export interface EmailNotices {
+  status: EmailNoticeStatus;
+  /** The owner's address, masked; null when there's none (or after unsubscribing). */
+  email: string | null;
+}
+
+/** POST /api/games/:id/email: an address to confirm, or `resend: true` for the pending one's link again. */
+export interface EmailNoticesInput {
+  email?: string;
+  resend?: boolean;
 }
 
 // ---- Optional sign-in (docs/auth.md) ----

@@ -12,6 +12,8 @@ import type {
   CohostInviteResponse,
   CreateGameInput,
   CreateGameResponse,
+  EmailNotices,
+  EmailNoticesInput,
   GameState,
   GameSummary,
   JoinInput,
@@ -281,6 +283,14 @@ export const api = {
     request<{ ok: true }>("POST", "/push/unregister", { body: target }),
   getMuted: (id: string) => request<{ muted: boolean }>("GET", g(id, "/mute")),
   setMuted: (id: string, muted: boolean) => request<{ ok: true }>("POST", g(id, "/mute"), { body: { muted } }),
+  /** This device's (account's) email notices for a board; the address comes back masked (docs/email.md). */
+  emailNotices: (id: string) => request<EmailNotices>("GET", g(id, "/email")),
+  /** Sends the confirmation email ("pending"); nothing else goes out until its link is opened. */
+  addEmail: (id: string, email: string) => request<EmailNotices>("POST", g(id, "/email"), { body: { email } satisfies EmailNoticesInput }),
+  /** The pending address's confirmation link again (at most once a minute). */
+  resendEmail: (id: string) => request<EmailNotices>("POST", g(id, "/email"), { body: { resend: true } satisfies EmailNoticesInput }),
+  /** Stops email for the board and deletes the address. */
+  removeEmail: (id: string) => request<EmailNotices>("DELETE", g(id, "/email")),
 
   // ---- Optional sign-in (docs/auth.md); src/lib/auth.ts runs the flows ----
   /** Who this device is: its public id, its account and its boards' admin tokens. */

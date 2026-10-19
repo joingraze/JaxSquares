@@ -90,6 +90,11 @@ actually get, built from the board it's about (`askCopy.ts`):
 | `joined` | after joining a board | numbers drawn, then your square hitting |
 | `home` | the general ask from Home or Profile (`gameId` optional) | adapts to the board passed in: host pitch while it's open, results once drawn |
 
+- After a claim, a player push can't reach (an iPhone Safari tab, blocked, or
+  a browser with no push) is offered email notices instead when the server has
+  them set up (docs/email.md): "Get email instead" under the guide, or an
+  email-only ask. A board's bell (players only) holds the same opt-in and
+  this device's mute.
 - `explicit` (a tap on a bell or a "turn on" row) always opens it and skips the
   wait. Automatic asks remember a dismissal per trigger (`prefs.ts`) and don't
   come back; turning notifications on clears every dismissal.
