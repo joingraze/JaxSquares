@@ -9,11 +9,13 @@ import type { Matchup } from "./model";
 import {
   DRAFT_KEY,
   DRAFT_TTL_MS,
+  SIBLING_STEPS,
   STEP_INFO,
   STEPS,
   clearDraft,
   loadDraft,
   nextStep,
+  parseFrom,
   parseStep,
   prevStep,
   reachableStep,
@@ -52,7 +54,7 @@ const custom = (x: string, y: string): Matchup => ({ kind: "custom", x, y });
 describe("steps", () => {
   it("go game, how squares win, prizes, final touches, review", () => {
     expect(STEPS).toEqual(["game", "format", "prizes", "details", "review"]);
-    expect(STEPS.map(stepNumber)).toEqual([1, 2, 3, 4, 5]);
+    expect(STEPS.map((s) => stepNumber(s))).toEqual([1, 2, 3, 4, 5]);
     expect(STEPS.map((s) => STEP_INFO[s].label)).toEqual(["The game", "How squares win", "Square price & prizes", "Final touches", "Review"]);
     expect(nextStep("game")).toBe("format");
     expect(nextStep("details")).toBe("review");
@@ -67,6 +69,29 @@ describe("steps", () => {
     expect(parseStep("")).toBe("game");
     expect(parseStep("?step=checkout")).toBe("game");
     expect(parseStep("?invite=1&step=details")).toBe("details");
+  });
+
+  it("another board for a game: straight to the price, the board it comes from kept in the URL", () => {
+    expect(SIBLING_STEPS).toEqual(["prizes", "details", "review"]);
+    expect(SIBLING_STEPS.map((s) => stepNumber(s, SIBLING_STEPS))).toEqual([1, 2, 3]);
+    expect(nextStep("prizes", SIBLING_STEPS)).toBe("details");
+    expect(prevStep("prizes", SIBLING_STEPS)).toBeNull();
+    expect(stepSearch("details", "k7m2px")).toBe("?from=k7m2px&step=details");
+    expect(parseFrom("?from=k7m2px&step=details")).toBe("k7m2px");
+    expect(parseFrom("?from=K7M2PX")).toBe("k7m2px");
+    expect(parseFrom("?from=../x")).toBeNull();
+    expect(parseFrom("?step=details")).toBeNull();
+    // No game step there: anything else lands on the price.
+    expect(parseStep("?from=k7m2px", SIBLING_STEPS)).toBe("prizes");
+    expect(parseStep("?from=k7m2px&step=game", SIBLING_STEPS)).toBe("prizes");
+    expect(parseStep("?from=k7m2px&step=review", SIBLING_STEPS)).toBe("review");
+    // A board's game is never incomplete, and a later blocker still holds Review back.
+    const board: Matchup = {
+      kind: "board",
+      from: { id: "k7m2px", name: "Office", teamX: { name: "Chiefs" }, teamY: { name: "Bills" }, league: "custom", linkedEvent: null, startsAt: null },
+    };
+    expect(reachableStep("review", check({ matchup: board }), SIBLING_STEPS)).toBe("review");
+    expect(reachableStep("review", check({ matchup: board, hostName: "" }), SIBLING_STEPS)).toBe("details");
   });
 
   it("reads the history state each step carries, ignoring junk", () => {
@@ -168,6 +193,14 @@ describe("the draft", () => {
     const back = loadDraft(NOW, store)!;
     expect(back.picked).toEqual({});
     expect(back.kickoff).toBeNull();
+  });
+
+  it("remembers which board a draft adds a board to", () => {
+    const store = memory();
+    saveDraft(draft({ from: "k7m2px" }), NOW, store);
+    expect(loadDraft(NOW, store)?.from).toBe("k7m2px");
+    saveDraft(draft({ from: "<script>" }), NOW, store);
+    expect(loadDraft(NOW, store)?.from).toBeUndefined();
   });
 
   it("keeps no set time as no set time", () => {

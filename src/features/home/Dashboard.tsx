@@ -9,7 +9,7 @@
 // boards, boards past the follow cap, and invites you only opened, which
 // aren't followed live).
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ArrowRightIcon, MailIcon, ShareIcon, WifiOffIcon } from "../../components/icons";
@@ -22,6 +22,8 @@ import { haptic, shareLink } from "../../lib/native";
 import { celebratedWins, markCelebrated } from "../board/storage";
 import { ActivityBell } from "./ActivityInbox";
 import { BoardCard, type CardAction } from "./BoardCard";
+import { BoardGroup } from "./BoardGroup";
+import { clusterGroups, groupCardDetail, groupCardTitle, groupLabel, groupRuns } from "./boardGroups";
 import { SectionHeader } from "./BoardBits";
 import { FINALS_COLLAPSED, FinalList } from "./FinalList";
 import { HomeHeader } from "./HomeHeader";
@@ -38,6 +40,7 @@ import {
   groupBoards,
   headlineFor,
   inviteModel,
+  kickoffText,
   liveHits,
   liveSnapshot,
   phraseOf,
@@ -101,7 +104,8 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
       const snap = s ? liveSnapshot(s, me) : null;
       return (snap?.meWinning ? 2 : 0) + (snap?.inProgress || g.live?.state === "in" ? 1 : 0);
     };
-    return { ...grouped, live: [...grouped.live].sort((a, b) => rank(b) - rank(a)) };
+    // A game's boards still side by side.
+    return { ...grouped, live: clusterGroups([...grouped.live].sort((a, b) => rank(b) - rank(a))) };
   }, [grouped, details, me]);
 
   const liveKey = followOrder(boards).join(",");
@@ -144,7 +148,8 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
   let delay = 0;
   const enter = () => ({ animationDelay: `${(delay++ * 45).toString()}ms` });
 
-  const card = (g: GameSummary) => {
+  /** A board's card; in a group of boards for one game (`group`), a short title and its square price. */
+  const card = (g: GameSummary, group?: readonly GameSummary[]) => {
     const model = cardModel(g, now);
     const s = details[g.id];
     const buzz = model.buzz && s ? boardBuzz(s, me, now) : null;
@@ -157,10 +162,25 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
           buzz={buzz}
           buzzIsNew={!!buzz && buzz.at >= openedAt}
           action={model.action ? actionFor(g, model.action.kind, model.action.label, g.id === primaryId) : undefined}
+          title={group ? groupCardTitle(g.name, group.map((b) => b.name)) : undefined}
+          detail={group ? groupCardDetail(g.format) : undefined}
         />
       </div>
     );
   };
+
+  /** A section's cards, my boards from one game held together under "Chiefs vs Bills · 3 boards · Sun 1:00 PM". */
+  const cards = (list: GameSummary[], render: (g: GameSummary, group?: readonly GameSummary[]) => ReactNode) =>
+    groupRuns(list).map((run) => {
+      if (run.boards.length === 1) return render(run.boards[0]);
+      const startsAt = run.boards[0].startsAt;
+      const when = startsAt !== null && run.boards.every((b) => b.startsAt === startsAt) ? kickoffText(startsAt, now, true) : null;
+      return (
+        <BoardGroup key={run.key} label={groupLabel(run.boards, when)}>
+          {run.boards.map((g) => render(g, run.boards))}
+        </BoardGroup>
+      );
+    });
 
   const inviteCard = (g: GameSummary) => (
     <div key={g.id} className="home-enter" style={enter()}>
@@ -229,21 +249,21 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
               tone="accent"
               count={sections.invites.length}
             />
-            <div className="flex flex-col gap-3">{sections.invites.map(inviteCard)}</div>
+            <div className="flex flex-col gap-3">{cards(sections.invites, inviteCard)}</div>
           </section>
         )}
 
         {sections.needs.length > 0 && (
           <section aria-labelledby="home-needs">
             <SectionHeader id="home-needs" title="Needs you" tone="brand" count={sections.needs.length} />
-            <div className="flex flex-col gap-3">{sections.needs.map(card)}</div>
+            <div className="flex flex-col gap-3">{cards(sections.needs, card)}</div>
           </section>
         )}
 
         {sections.next.length > 0 && (
           <section aria-labelledby="home-next">
             <SectionHeader id="home-next" title="Up next" count={sections.next.length} />
-            <div className="flex flex-col gap-3">{sections.next.map(card)}</div>
+            <div className="flex flex-col gap-3">{cards(sections.next, card)}</div>
           </section>
         )}
 

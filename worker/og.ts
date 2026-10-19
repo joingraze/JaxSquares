@@ -10,9 +10,10 @@
 // The board's TV view (/g/:id/tv) and printable board (/g/:id/print) are the
 // same page (the SPA routes them) with a preview that says what they are.
 // Never an amount: the status line is squares left, numbers drawn or the
-// final score.
+// final score. A finished board's preview is its recap: "See who won <board>"
+// with "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won).
 
-import { squaresLeft, totalSquares } from "../shared/squares";
+import { boardPeriods, resolveResults, squaresLeft, totalSquares, winCounts } from "../shared/squares";
 import { BOOT_STATE_ID, type GameState } from "../shared/types";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -56,7 +57,7 @@ export function inviteMeta(state: GameState, origin: string, page: BoardPage = "
       status = "Numbers are drawn. Follow along live";
       break;
     case "final": {
-      const final = state.scores.find((s) => s.periodKey === "final") ?? state.live;
+      const final = finalScoreOf(state);
       status = final
         ? `Final: ${teamLabel(game.teamX)} ${final.scoreX}, ${teamLabel(game.teamY)} ${final.scoreY}`
         : "Final results are in";
@@ -71,7 +72,25 @@ export function inviteMeta(state: GameState, origin: string, page: BoardPage = "
   if (page === "print") {
     return { title: `Print ${game.name} · JaxSquares`, description: `${matchup} · A printable board with a QR code to follow it live`, url: `${url}/print`, image };
   }
+  if (game.status === "final") {
+    // The recap: "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won, never what).
+    const winners = Object.keys(winCounts(resolveResults(state))).length;
+    const description = winners > 0 ? `${status} · ${winners} ${winners === 1 ? "winner" : "winners"}` : status;
+    return { title: `See who won ${game.name} on JaxSquares`, description, url, image };
+  }
   return { title: `Join ${game.name} on JaxSquares`, description: `${matchup} · ${status}`, url, image };
+}
+
+/** A finished board's final score: the Final's, else the feed's, else the last one recorded in game order. */
+function finalScoreOf(state: GameState): { scoreX: number; scoreY: number } | null {
+  const final = state.scores.find((s) => s.periodKey === "final");
+  if (final) return final;
+  if (state.live && state.live.state !== "pre") return state.live;
+  const byKey = new Map(state.scores.map((s) => [s.periodKey, s]));
+  const last = boardPeriods(state.game, state.scores)
+    .filter((p) => byKey.has(p.key))
+    .at(-1);
+  return last ? (byKey.get(last.key) ?? null) : null;
 }
 
 function metaTags(m: InviteMeta): string {

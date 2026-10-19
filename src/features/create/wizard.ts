@@ -11,6 +11,15 @@ import { blockersOf, type CreateBlocker, type Matchup } from "./model";
 
 export const STEPS = ["game", "format", "prizes", "details", "review"] as const;
 export type WizardStep = (typeof STEPS)[number];
+/** A flow's steps, in order: STEPS, or SIBLING_STEPS for another board for a game. */
+export type Steps = readonly WizardStep[];
+
+/**
+ * "Add another board for this game" (/new?from=<board id>): the game and the
+ * rules come from that board, so the flow goes straight to the square price,
+ * then the name, then Review.
+ */
+export const SIBLING_STEPS: Steps = ["prizes", "details", "review"];
 
 export const STEP_INFO: Record<WizardStep, { label: string; title: string; subtitle: string }> = {
   game: { label: "The game", title: "Pick the game", subtitle: "Real games score themselves, or type your own." },
@@ -26,28 +35,35 @@ export const STEP_INFO: Record<WizardStep, { label: string; title: string; subti
 
 const isStep = (v: unknown): v is WizardStep => typeof v === "string" && (STEPS as readonly string[]).includes(v);
 
-/** The step a URL's search asks for; the first step when it names none (or one that doesn't exist). */
-export function parseStep(search: string): WizardStep {
+/** The step a URL's search asks for; the flow's first step when it names none (or one the flow doesn't have). */
+export function parseStep(search: string, steps: Steps = STEPS): WizardStep {
   const step = new URLSearchParams(search).get("step");
-  return isStep(step) ? step : "game";
+  return isStep(step) && steps.includes(step) ? step : steps[0];
 }
 
-/** The search string for a step: "?step=format". */
-export function stepSearch(step: WizardStep): string {
-  return `?step=${step}`;
+/** The board another one is being made from ("/new?from=k7m2px"), or null: only a board code counts. */
+export function parseFrom(search: string): string | null {
+  const from = new URLSearchParams(search).get("from")?.trim().toLowerCase() ?? "";
+  return /^[a-z0-9]{4,16}$/.test(from) ? from : null;
+}
+
+/** The search string for a step: "?step=format", or "?from=k7m2px&step=details" for another board for a game. */
+export function stepSearch(step: WizardStep, from: string | null = null): string {
+  return from ? `?from=${encodeURIComponent(from)}&step=${step}` : `?step=${step}`;
 }
 
 /** 1-based position: "2 of 5". */
-export function stepNumber(step: WizardStep): number {
-  return STEPS.indexOf(step) + 1;
+export function stepNumber(step: WizardStep, steps: Steps = STEPS): number {
+  return steps.indexOf(step) + 1;
 }
 
-export function nextStep(step: WizardStep): WizardStep | null {
-  return STEPS[STEPS.indexOf(step) + 1] ?? null;
+export function nextStep(step: WizardStep, steps: Steps = STEPS): WizardStep | null {
+  return steps[steps.indexOf(step) + 1] ?? null;
 }
 
-export function prevStep(step: WizardStep): WizardStep | null {
-  return STEPS[STEPS.indexOf(step) - 1] ?? null;
+export function prevStep(step: WizardStep, steps: Steps = STEPS): WizardStep | null {
+  const i = steps.indexOf(step);
+  return i > 0 ? steps[i - 1] : null;
 }
 
 // ---- What holds a step back ----
@@ -91,11 +107,12 @@ export function stepBlocker(step: WizardStep, check: WizardCheck): CreateBlocker
  * The step to show for a requested one: itself, unless a step before it is
  * still incomplete (a reload or a typed URL can't skip past a missing team).
  */
-export function reachableStep(requested: WizardStep, check: WizardCheck): WizardStep {
+export function reachableStep(requested: WizardStep, check: WizardCheck, steps: Steps = STEPS): WizardStep {
   const first = blockersOf(check)[0];
   if (!first) return requested;
   const blocked = blockerStep(first);
-  return STEPS.indexOf(blocked) < STEPS.indexOf(requested) ? blocked : requested;
+  if (!steps.includes(blocked)) return requested;
+  return steps.indexOf(blocked) < steps.indexOf(requested) ? blocked : requested;
 }
 
 // ---- History ----
@@ -144,6 +161,11 @@ export interface WizardDraft {
   nameTouched: boolean;
   maxPerPlayer: number;
   hostName: string;
+  /**
+   * The board this draft adds another board to (/new?from=), or absent for a
+   * board of its own: a draft is only picked up again by the same kind of flow.
+   */
+  from?: string | null;
 }
 
 export const DRAFT_KEY = "jaxsquares.createDraft";
@@ -248,5 +270,6 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
     nameTouched: d.nameTouched === true,
     maxPerPlayer: max,
     hostName: str(d.hostName, 24),
+    ...(typeof d.from === "string" && parseFrom(`?from=${encodeURIComponent(d.from)}`) ? { from: d.from } : {}),
   };
 }

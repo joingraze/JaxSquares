@@ -31,6 +31,7 @@ const MIGRATIONS = [
   "migrations/0009_pay_at_draw.sql",
   "migrations/0010_accounts.sql",
   "migrations/0011_host_pass.sql",
+  "migrations/0012_board_groups.sql",
   "migrations/0013_email.sql",
   "migrations/0014_cohosts.sql",
 ];

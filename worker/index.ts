@@ -24,6 +24,7 @@ import { COHOST_INVITE_TTL_MS, COHOST_PARAM, MAX_COHOSTS, hasCohostRoom, isCohos
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
+import { siblingProblem } from "../shared/siblings";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
 import { PAYMENT_REQUIRED_CODE } from "../shared/types";
 import type {
@@ -327,6 +328,39 @@ async function commitOr404(c: Ctx, id: string, writes: D1PreparedStatement[], no
   return { results, state };
 }
 
+/**
+ * "Add another board for this game": the board a new one is made from, once
+ * the caller is shown to run it (its admin token, the identity that hosts it,
+ * or one of its co-hosts by the request's canonical clientId) and its game can
+ * still take a board (siblingProblem: not started, not over, its group not
+ * full). The caller hosts the new board, and pays its host fee at its draw.
+ */
+async function groupSourceFor(c: Ctx, raw: unknown, now: number): Promise<db.GroupSource> {
+  const id = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!GAME_ID_RE.test(id)) fail(400, "That board can't be found");
+  const source = await db.groupSourceOf(c.env.DB, id);
+  if (!source) fail(404, "Game not found");
+  const clientId = c.get("clientId");
+  const runsIt =
+    tokenMatches(source.adminToken, c.req.header("x-admin-token") ?? "") ||
+    source.hostClientId === clientId ||
+    (await db.isCohost(c.env.DB, id, clientId));
+  if (!runsIt) fail(403, "Only the host can do that");
+  const { game } = source;
+  const problem = siblingProblem(
+    { status: game.status, linkedEvent: game.linkedEvent, scored: source.scored, live: source.live, groupSize: source.groupSize },
+    now,
+  );
+  if (problem) fail(409, problem);
+  return source;
+}
+
+/** A board joined a game's group: every other board in it lists the new one now (their open boards get the state). */
+async function announceSibling(env: Env, sourceId: string, newId: string): Promise<void> {
+  const state = await broadcast(env, sourceId);
+  await Promise.all((state?.siblings ?? []).filter((s) => s.id !== newId).map((s) => broadcast(env, s.id)));
+}
+
 const requireClient: MiddlewareHandler<AppEnv> = async (c, next) => {
   const id = c.req.header("x-client-id") ?? "";
   if (!isClientId(id)) return c.json({ error: "Missing or invalid x-client-id" }, 401);
@@ -391,17 +425,19 @@ api.post("/games", requireClient, async (c) => {
   const formatProblem = formatError(body.format);
   if (formatProblem) fail(400, formatProblem);
   const requested = sanitizeFormat(body.format);
-  const teamX = cleanTeam(body.teamX);
-  const teamY = cleanTeam(body.teamY);
+  // Another board for the game of one the caller hosts: the game (teams, link, kickoff) comes from that board.
+  const source = body.fromGameId == null ? null : await groupSourceFor(c, body.fromGameId, now);
+  const teamX = source ? source.game.teamX : cleanTeam(body.teamX);
+  const teamY = source ? source.game.teamY : cleanTeam(body.teamY);
   if (!teamX || !teamY) fail(400, "Pick both teams");
   if ([teamX, teamY].some((t) => mentionsMoney(t.name) || mentionsMoney(t.abbr ?? ""))) fail(400, MONEY_ERRORS.team);
-  const linkedEvent = body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
-  if (body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
-  let league: League = LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
+  const linkedEvent = source ? source.game.linkedEvent : body.linkedEvent == null ? null : cleanLinkedEvent(body.linkedEvent, now);
+  if (!source && body.linkedEvent != null && !linkedEvent) fail(400, "That game can't be linked");
+  let league: League = source ? source.game.league : LEAGUES.includes(body.league as League) ? (body.league as League) : "custom";
   if (linkedEvent) league = linkedEvent.league;
   // A custom board's kickoff is the host's (optional); a linked board's is its event's.
-  const startsAt = linkedEvent ? linkedEvent.startsAt : cleanKickoff(body.startsAt, now);
-  const sport: Sport = SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
+  const startsAt = linkedEvent ? linkedEvent.startsAt : source ? (source.game.startsAt ?? null) : cleanKickoff(body.startsAt, now);
+  const sport: Sport = source ? source.game.sport : SPORTS.includes(body.sport as Sport) ? (body.sport as Sport) : "football";
   const maxPerPlayer = body.maxPerPlayer == null ? 0 : intIn(body.maxPerPlayer, 0, totalSquares(requested.boardSize));
   if (maxPerPlayer === null) fail(400, "Squares per player must be a whole number");
   const host = cleanProfile(body.host);
@@ -438,11 +474,15 @@ api.post("/games", requireClient, async (c) => {
     };
     try {
       const created = newActivity("created", me, {}, now);
-      await c.env.DB.batch(db.insertGame(c.env.DB, game, clientId, adminToken, { ...host, joinedAt: now }, created));
+      const writes = db.insertGame(c.env.DB, game, clientId, adminToken, { ...host, joinedAt: now }, created);
+      // In its source board's group (the source's own id when it had none). Unpaid like any new board.
+      if (source) writes.push(...db.joinGroupStatements(c.env.DB, game.id, source.game.id, source.group ?? source.game.id, now));
+      await c.env.DB.batch(writes);
     } catch (err) {
       if (String(err).includes("UNIQUE") && attempt < 3) continue; // id collision: roll again
       throw err;
     }
+    if (source) defer(c, announceSibling(c.env, source.game.id, game.id));
     const res: CreateGameResponse = { game, adminToken, paymentRequired: false };
     return c.json(res, 201);
   }
@@ -523,10 +563,12 @@ api.patch("/games/:id", requireClient, async (c) => {
 api.delete("/games/:id", requireClient, async (c) => {
   const id = gameIdParam(c);
   // Host only: a co-host can do everything else.
-  await hostOnlyState(c, id, "Only the host can delete the board");
+  const state = await hostOnlyState(c, id, "Only the host can delete the board");
   await db.deleteGame(c.env.DB, id);
   // Open boards get { type: "deleted" } and a 4404 close.
   defer(c, closeRoom(c.env, id));
+  // The other boards for its game stop listing it.
+  for (const s of state.siblings ?? []) defer(c, broadcast(c.env, s.id));
   return c.json({ ok: true });
 });
 

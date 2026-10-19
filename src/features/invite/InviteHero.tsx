@@ -4,8 +4,10 @@
 // lime button. It stays short so the board itself is above the fold: tapping a
 // square is the fastest way in.
 import { gameKickoff } from "../../../shared/kickoff";
+import { boardCountLine } from "../../../shared/siblings";
 import type { GameState } from "../../../shared/types";
-import { ClockIcon } from "../../components/icons";
+import { ClockIcon, GridIcon } from "../../components/icons";
+import { SIBLING_BOARDS_ID } from "../board/SiblingBoards";
 import { Avatar, AvatarGroup, Button, cx, TeamMark } from "../../components/ui";
 import { kicksOffLabel, shortMatchup, teamVars } from "../../lib/format";
 import "./invite.css";
@@ -51,6 +53,7 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
   const kickoff = startsAt !== null && open && startsAt > Date.now() ? kicksOffLabel(startsAt) : null;
   const action = heroAction(state);
   const arrival = useNewArrival(state.players, true);
+  const boardCount = boardCountLine(state);
 
   const act = () => {
     if (!action) return;
@@ -121,6 +124,21 @@ export function InviteHero({ state, onJoin, onPick, className }: InviteHeroProps
           )}
           {open && stats.left === 0 && <span className="shrink-0 text-footnote font-bold text-ink-muted">{squaresLeftLabel(0)}</span>}
         </div>
+
+        {/* Several boards for one game: say so, and point at the row that lists them (prices are there, in the app). */}
+        {boardCount && (
+          <button
+            type="button"
+            data-testid="invite-hero-boards"
+            onClick={() => document.getElementById(SIBLING_BOARDS_ID)?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            className="pressable -my-1 flex min-h-9 items-center gap-1.5 self-start rounded-full text-footnote font-semibold text-ink-muted"
+          >
+            <GridIcon size={13} className="shrink-0 text-ink-subtle" />
+            {boardCount}
+            <span aria-hidden className="text-ink-subtle">·</span>
+            <span className="font-extrabold text-ink-brand">See them</span>
+          </button>
+        )}
 
         {/* The one thing to do */}
         {action && (

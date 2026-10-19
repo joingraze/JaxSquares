@@ -718,6 +718,24 @@ describe("HostControls", () => {
     });
   });
 
+  it("offers another board for this game before kickoff, and opens the create flow on its price", async () => {
+    identity.saveAdminToken("hst123", "tok");
+    const sibling = { id: "sib456", name: "Sunday Night Squares · Board 2", status: "open" as const, squarePrice: 5, unit: "$" as const, justForFun: false, squaresLeft: 80, totalSquares: 100 };
+    const { unmount } = renderHost(makeState({}, { siblings: [sibling] }));
+    fireEvent.click(screen.getByTestId("host-open"));
+    const row = await screen.findByTestId("host-add-board");
+    expect(row).toHaveTextContent("Add another board for this game");
+    expect(row).toHaveTextContent("This game has 2 boards");
+    expect(row).toHaveAttribute("href", "/new?from=hst123&step=prizes");
+    unmount();
+
+    // Not once the game has started (a score is in) or is over.
+    renderHost(makeState({ status: "locked", numbers: { "*": DRAW } }, { scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1 }] }));
+    fireEvent.click(screen.getByTestId("host-open"));
+    await screen.findByTestId("host-rules");
+    expect(screen.queryByTestId("host-add-board")).not.toBeInTheDocument();
+  });
+
   it("opens the lock & draw confirm from ?draw=1 and clears the link", async () => {
     identity.saveAdminToken("hst123", "tok");
     renderHost(makeState({}, { squares: fillSquares(100) }), {}, "/g/hst123?draw=1");

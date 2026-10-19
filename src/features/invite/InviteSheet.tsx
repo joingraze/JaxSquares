@@ -4,8 +4,9 @@
 // board code behind a single "Same room? Show code" toggle. The host's private
 // link lives in Host tools ("Host from another phone"), never next to Send.
 import { useEffect, useRef, useState } from "react";
+import { boardCountLine } from "../../../shared/siblings";
 import type { GameState, Player } from "../../../shared/types";
-import { ArrowRightIcon, CheckIcon, CopyIcon, PrinterIcon, TvIcon } from "../../components/icons";
+import { ArrowRightIcon, CheckIcon, ChevronRightIcon, CopyIcon, GridIcon, PlusIcon, PrinterIcon, TvIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
 import { inviteUrl } from "../../lib/api";
 import { readableTeamColor, shortMatchup, shortTeam, teamVars } from "../../lib/format";
@@ -16,6 +17,7 @@ import {
   boardCode,
   crewLine,
   displayLink,
+  groupBoardNames,
   hostOf,
   invitePitch,
   inviteMessage,
@@ -66,6 +68,8 @@ export interface InviteSheetProps {
   onShowTv?: () => void;
   /** "Print board": open the printable board (/g/:id/print). Hidden when not given. */
   onPrint?: () => void;
+  /** Host only: "Add another board for this game" (another square price, same game). Hidden when not given. */
+  onAddBoard?: () => void;
 }
 
 type Flash = "copied-link" | "shared" | "share-copied" | null;
@@ -78,7 +82,7 @@ const FLASH_MS = 2000;
 /** Team marks shrunk to sit inline with the card's matchup line. */
 const MINI_MARK = "!h-5 !w-auto min-w-6 !rounded-md px-1 !text-[0.5625rem]";
 
-export function InviteSheet({ state, open, onClose, justCreated = false, onShowTv, onPrint }: InviteSheetProps) {
+export function InviteSheet({ state, open, onClose, justCreated = false, onShowTv, onPrint, onAddBoard }: InviteSheetProps) {
   const theme = useResolvedTheme();
   const { game } = state;
   const url = inviteUrl(game.id);
@@ -87,6 +91,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
   const stage = inviteStage(state);
   const pitch = invitePitch(state, viewerIsHost);
   const message = inviteMessage(state, myId);
+  const boardNames = groupBoardNames(state);
   const people = peopleInOrder(state);
   const myCount = state.squares.filter((s) => s.playerId === myId).length;
   const arrival = useNewArrival(state.players, open);
@@ -244,6 +249,36 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               </Button>
             )}
           </div>
+        )}
+
+        {/* Several boards for one game: how many and their names (the prices are on the board). */}
+        {boardNames && (
+          <p data-testid="invite-boards" className="flex items-start gap-2 px-0.5 text-footnote leading-snug text-ink-muted">
+            <GridIcon size={15} className="mt-0.5 shrink-0 text-ink-subtle" />
+            <span className="min-w-0">
+              <b className="font-bold text-ink">{boardCountLine(state)}:</b> {boardNames.join(", ")}
+            </span>
+          </p>
+        )}
+        {onAddBoard && (
+          <button
+            type="button"
+            data-testid="invite-add-board"
+            onClick={() => {
+              void haptic("selection");
+              onAddBoard();
+            }}
+            className="pressable flex min-h-12 items-center gap-3 rounded-card bg-surface-3/60 px-3.5 py-2 text-left ring-1 ring-inset ring-line"
+          >
+            <span aria-hidden className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-ink-gold">
+              <PlusIcon size={18} />
+            </span>
+            <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
+              <b className="font-bold text-ink">Add another board for this game</b>
+              <span className="block text-footnote">Same game, another square price</span>
+            </span>
+            <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
+          </button>
         )}
       </div>
     </BottomSheet>

@@ -57,7 +57,35 @@ describe("inviteMeta", () => {
       state({ status: "final" }, { scores: [{ periodKey: "final", scoreX: 27, scoreY: 24, source: "live", updatedAt: 0 }] }),
       "https://x",
     );
-    expect(final.description).toBe("Chiefs vs Eagles · Final: Chiefs 27, Eagles 24");
+    expect(final.title).toBe("See who won Smith Family Squares on JaxSquares");
+    expect(final.description).toBe("Final: Chiefs 27, Eagles 24");
+  });
+
+  it("previews a finished board as its recap: the final score and how many players won", () => {
+    // Numbers drawn: digit d is in column d and row d, so a score's square is (y % 10, x % 10).
+    const digits = Array.from({ length: 10 }, (_, d) => [d]);
+    const numbers = { "*": { x: digits, y: digits } };
+    const square = (row: number, col: number, playerId: string) => ({ row, col, playerId, claimedAt: 0 });
+    const score = (periodKey: string, scoreX: number, scoreY: number) => ({ periodKey, scoreX, scoreY, source: "live" as const, updatedAt: 0 });
+    const s = state(
+      { status: "final", numbers, periods: [{ key: "q1", label: "Q1" }, { key: "q2", label: "Half" }, { key: "q3", label: "Q3" }, { key: "final", label: "Final" }] },
+      {
+        // Ana wins Q1 and Half, Ben Q3, Cy the Final; nobody holds 3-0.
+        squares: [square(0, 7, "ana"), square(3, 4, "ben"), square(4, 7, "cy"), square(0, 3, "ana")],
+        scores: [score("q1", 7, 0), score("q2", 7, 0), score("q3", 14, 3), score("final", 27, 24)],
+      },
+    );
+    const m = inviteMeta(s, "https://jaxsquares.com");
+    expect(m.description).toBe("Final: Chiefs 27, Eagles 24 · 3 winners");
+    expect(m.url).toBe("https://jaxsquares.com/g/abc123");
+    // Every-score board without a Final entry: the last score in game order.
+    const every = state(
+      { status: "final", numbers, format: { periods: "every-score", reverse: false, boardSize: 100, freshNumbers: false }, periods: [] },
+      { squares: [square(0, 7, "ana")], scores: [score("s1", 7, 0), score("s2", 10, 7)] },
+    );
+    expect(inviteMeta(every, "https://x").description).toBe("Final: Chiefs 10, Eagles 7 · 1 winner");
+    // The TV view and the printable board keep their own previews.
+    expect(inviteMeta(s, "https://x", "tv").title).toBe("Smith Family Squares on TV · JaxSquares");
   });
 
   it("never mentions money", () => {

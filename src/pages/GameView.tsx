@@ -15,6 +15,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { COHOST_PARAM, cohostIdsOf, isCohostOf, isCohostToken } from "../../shared/cohosts";
 import { formatAmount, hasScoreMoment, periodPhrase, rulesOf, scorePlayLabel, unitOf } from "../../shared/formats";
+import { siblingCheckOf, siblingProblem } from "../../shared/siblings";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import type { Activity, GameState } from "../../shared/types";
 import { BellIcon, GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
@@ -60,7 +61,11 @@ import { celebratedWins, markCelebrated } from "../features/board/storage";
 import { Ticker } from "../features/board/Ticker";
 import { useTicker } from "../features/board/useTicker";
 import { useNow } from "../features/board/useNow";
+import { SiblingBoards } from "../features/board/SiblingBoards";
+import { siblingCreatePath } from "../features/create/sibling";
 import { HostControls, loadHostTools } from "../features/host/hostTools";
+import { RecapCta, RecapPill } from "../features/recap/RecapCta";
+import { useRecapNudge } from "../features/recap/useRecapNudge";
 import { InviteHero } from "../features/invite/InviteHero";
 import { JoinedCard } from "../features/invite/JoinedCard";
 import { PrizeLineup } from "../features/rules/PrizeLineup";
@@ -84,6 +89,7 @@ const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt")
 const BoardNotifySheet = lazy(() => import("../features/notifications/BoardNotifySheet").then((m) => ({ default: m.BoardNotifySheet })));
 const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
 const CohostAcceptSheet = lazy(() => import("../features/invite/CohostAcceptSheet").then((m) => ({ default: m.CohostAcceptSheet })));
+const RecapSheet = lazy(() => import("../features/recap/RecapSheet").then((m) => ({ default: m.RecapSheet })));
 
 type Cell = { row: number; col: number };
 type Spotlight = { kind: "period" | "cell" | "player"; id: string };
@@ -123,6 +129,9 @@ export default function GameView() {
   const jumpRef = useRef<(cell: Cell, periodKey: string | null) => void>(() => {});
   // The read-only rules sheet (the host's "Edit" in it opens the editor in host tools).
   const [rulesOpen, setRulesOpen] = useState(false);
+  // "Share the recap": the card sheet, and the toast that offers it when a winner lands.
+  const [recapOpen, setRecapOpen] = useState(false);
+  const nudgeRecap = useRecapNudge(() => setRecapOpen(true));
   const onActivity = useCallback(
     (a: Activity, s: GameState) => {
       let alert: ReturnType<typeof boardAlert> = null;
@@ -131,6 +140,8 @@ export default function GameView() {
       } catch {
         alert = null;
       }
+      // After the moment's own alert has had its turn in the ticker (none when the gold banner says it).
+      nudgeRecap(a, alert && !alert.banner ? alert.duration : 1500);
       // My own win: the gold banner says it (and buzzes) from the win effect below.
       if (!alert || alert.banner) return;
       const note = alertTickerNote(alert, s, me);
@@ -148,7 +159,7 @@ export default function GameView() {
       });
       if (alert.haptic) void haptic(alert.haptic);
     },
-    [me, ticker],
+    [me, ticker, nudgeRecap],
   );
 
   const { state, loading, notFound, error, connection, watching, mutate, receive, refresh, fromPage } = useGame(id, { onActivity });
@@ -1230,12 +1241,17 @@ export default function GameView() {
           )}
         </section>
 
+        {/* ---- the other boards for this game ($1, $5, $20 boards): name, price, squares left ---- */}
+        {!pick && state.siblings && state.siblings.length > 0 && <SiblingBoards siblings={state.siblings} boardName={game.name} />}
+
         {/* ---- results ---- */}
         {cards.length > 0 && (
           <section aria-label="Results">
             <div className="mb-2 flex items-center gap-2 px-1">
               <p className="eyebrow text-ink-subtle">{phase === "open" || phase === "draft" ? "What's up for grabs" : "Winners"}</p>
               <span className="ml-auto" />
+              {/* Winners are landing: the recap card is a tap away (once final, the card under the results says it). */}
+              {results.length > 0 && phase !== "final" && <RecapPill onOpen={() => setRecapOpen(true)} />}
               <button
                 type="button"
                 data-testid="rules-open"
@@ -1280,6 +1296,7 @@ export default function GameView() {
                 if (key) scrollToBoard();
               }}
             />
+            {phase === "final" && results.length > 0 && <RecapCta onOpen={() => setRecapOpen(true)} />}
           </section>
         )}
 
@@ -1372,6 +1389,7 @@ export default function GameView() {
           justCreated={justCreated}
           onShowTv={() => navigate(boardViewPath(game.id, "tv"))}
           onPrint={() => navigate(boardViewPath(game.id, "print"))}
+          onAddBoard={hostBar && !siblingProblem(siblingCheckOf(state), now) ? () => navigate(siblingCreatePath(game.id)) : undefined}
           onClose={() => {
             setInviteOpen(false);
             // Fresh from creating the board: now's the moment to offer notifications.
@@ -1412,6 +1430,7 @@ export default function GameView() {
         <NotifyPrompt gameId={game.id} trigger="claimed" open={notifyOpen} onClose={() => setNotifyOpen(false)} />
         <NotifyPrompt gameId={game.id} trigger="created" open={createdAsk} onClose={() => setCreatedAsk(false)} />
         {emailEnabled && <BoardNotifySheet gameId={game.id} boardName={game.name} open={boardNotify} onClose={() => setBoardNotify(false)} />}
+        {(recapOpen || results.length > 0) && <RecapSheet state={state} open={recapOpen} onClose={() => setRecapOpen(false)} />}
         <RulesSheet
           open={rulesOpen}
           onClose={() => setRulesOpen(false)}

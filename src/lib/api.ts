@@ -206,9 +206,13 @@ export const api = {
     request<ScheduleResponse>("GET", `/schedule?league=${league}${week ? `&week=${encodeURIComponent(week)}` : ""}`, { signal }),
 
   // ---- Boards ----
-  /** Creates a board and saves its admin token on this device. */
+  /**
+   * Creates a board and saves its admin token on this device. Another board for
+   * a game (`fromGameId`) proves it's that board's host with its admin token.
+   */
   async createGame(input: CreateGameInput): Promise<CreateGameResponse> {
-    const res = await request<CreateGameResponse>("POST", "/games", { body: input });
+    const adminToken = input.fromGameId ? getAdminToken(input.fromGameId) : null;
+    const res = await request<CreateGameResponse>("POST", "/games", { body: input, adminToken });
     saveAdminToken(res.game.id, res.adminToken);
     return res;
   },

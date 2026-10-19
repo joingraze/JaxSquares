@@ -8,6 +8,7 @@ import {
   defaultLook,
   displayLink,
   friendsIn,
+  groupBoardNames,
   heroAction,
   hostOf,
   inviteMessage,
@@ -140,6 +141,18 @@ describe("inviteMessage", () => {
         }
       }
     }
+  });
+
+  it("says how many boards a game has (never their prices), and names them for the sheet", () => {
+    const s = makeState();
+    s.siblings = [
+      { id: "b2b2b2", name: "Board 2", status: "open", squarePrice: 5, unit: "$", justForFun: false, squaresLeft: 10, totalSquares: 100 },
+      { id: "c3c3c3", name: "Board 3", status: "locked", squarePrice: 20, unit: "$", justForFun: false, squaresLeft: 0, totalSquares: 100 },
+    ];
+    expect(inviteMessage(s, "host")).toBe("Grab a square on my Chiefs vs Bills board 🏈 · This game has 3 boards");
+    expect(validatePrizeNote(inviteMessage(s, "p2"))).toBeNull();
+    expect(groupBoardNames(s)).toEqual(["Sunday Night Squares", "Board 2", "Board 3"]);
+    expect(groupBoardNames(makeState())).toBeNull();
   });
 });
 

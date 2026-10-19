@@ -17,7 +17,7 @@ import {
   type FixedPreset,
 } from "../../../shared/formats";
 import { NFL_TEAMS, nflTeamToTeam, type NflTeam } from "../../../shared/teams";
-import { shortTeamName } from "../../lib/format";
+import { shortTeam, shortTeamName } from "../../lib/format";
 import type { CreateGameInput, GameFormat, League, LinkedEvent, Moment, ScheduleEvent, Team } from "../../../shared/types";
 import { capLine, firstNoteProblem, formatOf, isEveryScoreSetup, isEveryScoreWithReverseQuarters, noteInputId, type PrizeChoice } from "../rules/rulesModel";
 
@@ -305,9 +305,26 @@ export function firstPrizeProblem(format: GameFormat): { key: string; message: s
 
 // ---- Request body ----
 
+/**
+ * "Add another board for this game": the board the new one is made from, and
+ * its game (the server takes the game from that board too).
+ */
+export interface BoardMatchup {
+  id: string;
+  /** That board's name ("Office Squares"). */
+  name: string;
+  teamX: Team;
+  teamY: Team;
+  league: League;
+  linkedEvent: LinkedEvent | null;
+  /** A custom board's kickoff (null = no set time); a linked board's is its event's. */
+  startsAt: number | null;
+}
+
 export type Matchup =
   | { kind: "linked"; event: ScheduleEvent }
-  | { kind: "custom"; x: string; y: string };
+  | { kind: "custom"; x: string; y: string }
+  | { kind: "board"; from: BoardMatchup };
 
 /** The two teams (and link) a matchup puts on the board, or null while incomplete. */
 export function matchupTeams(
@@ -315,6 +332,7 @@ export function matchupTeams(
   colors: TeamColors = {},
 ): { teamX: Team; teamY: Team; league: League; linkedEvent: LinkedEvent | null } | null {
   if (!m) return null;
+  if (m.kind === "board") return { ...withSideColors(m.from.teamX, m.from.teamY), league: m.from.league, linkedEvent: m.from.linkedEvent };
   if (m.kind === "linked") {
     const o = orientEvent(m.event);
     return { ...withSideColors(o.teamX, o.teamY), league: m.event.league, linkedEvent: o.linkedEvent };
@@ -333,6 +351,7 @@ export function withSideColors(teamX: Team, teamY: Team): { teamX: Team; teamY: 
 /** Short names for the auto board name. */
 export function matchupShortNames(m: Matchup | null): [string, string] | null {
   if (!m) return null;
+  if (m.kind === "board") return [shortTeam(m.from.teamX, m.from.league), shortTeam(m.from.teamY, m.from.league)];
   if (m.kind === "linked") {
     return [shortTeamName(m.event.away, m.event.league), shortTeamName(m.event.home, m.event.league)];
   }
@@ -386,6 +405,8 @@ export function buildCreateInput(d: CreateDraft): CreateGameInput | null {
     linkedEvent: teams.linkedEvent,
     ...(teams.linkedEvent ? {} : { startsAt: d.kickoff ?? null }),
     host: { ...d.host, name: d.host.name.trim() },
+    // Another board for this game: it joins that board's group (the server checks this device hosts it).
+    ...(d.matchup?.kind === "board" ? { fromGameId: d.matchup.from.id } : {}),
   };
 }
 

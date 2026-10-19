@@ -6,9 +6,11 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 |---|---|
 | `new-board` | primary "create a board" call to action (home + tab bar) |
 | `wizard-step` | the create flow's current step (`data-step=game\|format\|prizes\|details\|review`); the URL says the same (`/new?step=<step>`) |
+| `sibling-intro`, `sibling-loading` | "Add another board for this game" (`/new?from=<id>&step=prizes`): the card over its price step ("Another board for this game · Chiefs vs Bills · Same game and rules as Office Squares ($1 a square)."), and the spinner while that board loads ("Can't add a board here" with the reason when this device doesn't run it or its game has started) |
 | `wizard-next` | the create flow's Next (steps 1-4; "Skip for now" on prizes with nothing chosen, "Done" on a step opened from Review). `aria-disabled` with its reason above it while the step is incomplete; a tap then points at the field |
 | `wizard-back` | the create flow's Back (steps 2-5): the previous step, or Review for a step opened from it |
 | `review-edit` | each summary card on Review (`data-step=game\|format\|prizes\|details`): opens that step; its Next ("Done") comes back |
+| `review-same-game` | Review in "Add another board for this game": the one fixed card for the game and rules ("Same game & rules as Office Squares"); only `prizes` and `details` have `review-edit` cards there |
 | `review-prizes` | Review's prizes card body (`data-state=set\|fun\|unset`; `unset` reads "Square price: not set") |
 | `review-kickoff` | Review's kickoff line on a custom board ("Kicks off Sun 1:00 PM PDT" or "No set time") |
 | `game-option` | each real game in the create flow's game picker; tapping one picks it and moves on to step 2 |
@@ -71,6 +73,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `prize-totals` | the host sheet's prize totals under Winners (boards with amounts) |
 | `player-squares-value` | what a player's squares come to at the square price, on the players list while squares are picked |
 | `home-invites` | Home's "Invites" section: open boards with squares left where I have none (an invite link I only opened, or a board I joined without picking) |
+| `home-board-group` | Home: my boards from one game held together in a section ("Chiefs vs Bills · 3 boards · Sun 1:00 PM"), each card titled short ("Board 2") with its square price |
 | `invite-card` | each card in it (`data-game=<board id>`); the whole card opens the board |
 | `invite-pick` | "Pick squares" on an invite card: opens the board |
 | `invite-hide` | "Not for me" on an invite I only opened (not joined): hides it from Home (drops it from the seen list) with an Undo toast |
@@ -141,6 +144,15 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
 | `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens `/g/:id/tv`) and "Print board" (opens `/g/:id/print`) |
 | `host-tv` | the host sheet's hint "Hosting a watch party? Show the board on your TV." (a link to `/g/:id/tv`) |
+| `host-add-board` | the host sheet's "Add another board for this game" (Board section; host and co-hosts, until the game starts; "This game has 3 boards" under it on a board in a group): a link to `/new?from=<id>&step=prizes` |
+| `invite-add-board` | the same in the invite sheet (host and co-hosts; the sheet the create flow opens) |
+| `invite-boards` | the invite sheet's "This game has 3 boards: <names>" on a board in a group (names only; the share text adds just the count) |
+| `invite-hero-boards` | the invite hero's "This game has 3 boards · See them" on a board in a group: scrolls to `sibling-boards` |
+| `sibling-boards`, `sibling-board` | "More boards for this game" under a grouped board's grid, and each other board (`data-board=<id>`): its name, "$5 a square" when set, squares left or "Numbers drawn"/"Final"; a link to it |
+| `recap-open` | "Share the recap": the button on `recap-cta` once the game is final, else the "Recap" pill beside "Rules & prizes" while winners land; opens the recap sheet |
+| `recap-cta` | under a final board's results: "That's the game" with Jax and `recap-open` |
+| `recap-preview` | the recap sheet's image (`data-state=drawing\|ready\|failed`), the 1080×1350 PNG as it will go out |
+| `recap-share`, `recap-save` | the recap sheet's button (`data-mode=files\|link\|save`: "Share the recap" with the PNG as a file, "Share the board link" in the app without file sharing, "Save the image"), and "Save the image" beside a file share on the web |
 | `tv-view` | TV mode's root (`data-phase=draft\|open\|locked\|live\|final`, `data-awake=true\|false` while the toolbar shows / has hidden itself; `data-state=empty` on the not-found / loading screen) |
 | `tv-toolbar`, `tv-fullscreen`, `tv-theme`, `tv-exit` | TV mode's auto-hiding toolbar (`data-awake`), its Full screen (only where the browser can), Light / Dark (TV mode's own theme) and Exit (back to the board) |
 | `tv-board`, `tv-cell` | TV mode's read-only grid (`data-drawn`, `data-final`, `data-now=live\|projected\|none`) and each square (`data-row`, `data-col`, `data-state=empty\|taken\|winner`, `data-live` on the square the score points at, `data-live-reverse` on its reverse) |

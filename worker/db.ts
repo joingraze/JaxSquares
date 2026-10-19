@@ -17,6 +17,7 @@ import { upgradeFormat } from "../shared/formats";
 import { isFreeHolderCount } from "../shared/hostFee";
 import { gameKickoff } from "../shared/kickoff";
 import { isPlayerId } from "../shared/playerId";
+import { MAX_GROUP_BOARDS, siblingSummary } from "../shared/siblings";
 import { boardPeriods, liveCell, liveLabel, myWins, primaryAward, resolveResults, totalSquares } from "../shared/squares";
 import type {
   Activity,
@@ -32,6 +33,7 @@ import type {
   Period,
   Player,
   Score,
+  SiblingBoard,
   Sport,
   Square,
   Team,
@@ -79,6 +81,8 @@ export interface GameRow {
   paid_at?: number | null;
   /** When the host was reminded to draw before kickoff (migration 0009). Server-only. */
   draw_reminder_at?: number | null;
+  /** Boards for the same game share it: the group's first board's id (migration 0012); null = on its own. */
+  board_group?: string | null;
 }
 
 interface PlayerRow {
@@ -313,21 +317,20 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
 /** The co-hosts' clientIds from a stateReads batch (server-only). */
 const cohostRowsOf = (results: D1Result[]): string[] => ((results[7]?.results ?? []) as { client_id: string }[]).map((r) => r.client_id);
 
-async function stateFrom(results: D1Result[]): Promise<GameState | null> {
+async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState | null> {
   const [games, players, squares, scores, manual, live, activity] = results;
   const row = games.results[0] as GameRow | undefined;
   if (!row) return null;
   const playerRows = players.results as PlayerRow[];
   const squareRows = squares.results as SquareRow[];
   const cohosts = cohostRowsOf(results);
-  const ids = await playerIdMap([
-    row.host_client_id,
-    ...playerRows.map((p) => p.client_id),
-    ...squareRows.map((s) => s.client_id),
-    ...cohosts,
+  const [ids, siblings] = await Promise.all([
+    playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts]),
+    // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
+    row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
   ]);
   const liveRow = live.results[0] as LiveRow | undefined;
-  return {
+  const state: GameState = {
     // Co-hosts by public id only.
     game: { ...rowToGame(row, publicId(ids, row.host_client_id)), cohostIds: cohosts.map((c) => publicId(ids, c)) },
     players: playerRows.map(rowToPlayer(ids, row.host_client_id)),
@@ -338,11 +341,39 @@ async function stateFrom(results: D1Result[]): Promise<GameState | null> {
     activity: (activity.results as ActivityRow[]).map(rowToActivity(ids)),
     version: row.version,
   };
+  if (siblings) state.siblings = siblings;
+  return state;
 }
 
-/** Full game state in one round trip. */
+/**
+ * The other boards in a board's group, oldest first, as public summaries
+ * (shared/siblings.ts): never a clientId or an admin token.
+ */
+async function siblingsOf(db: D1Database, id: string, group: string): Promise<SiblingBoard[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT g.id, g.name, g.status, g.format, (SELECT COUNT(*) FROM squares s WHERE s.game_id = g.id) AS claimed
+       FROM games g WHERE g.board_group = ?1 AND g.id <> ?2
+       ORDER BY g.created_at, g.id LIMIT ?3`,
+    )
+    .bind(group, id, MAX_GROUP_BOARDS)
+    .all<{ id: string; name: string; status: string; format: string; claimed: number }>();
+  return results.map((r) =>
+    siblingSummary(
+      {
+        id: r.id,
+        name: r.name,
+        status: r.status as Game["status"],
+        format: json<GameFormat>(r.format, { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false }),
+      },
+      r.claimed,
+    ),
+  );
+}
+
+/** Full game state in one round trip (one more for a board in a group). */
 export async function getGameState(db: D1Database, id: string): Promise<GameState | null> {
-  return stateFrom(await db.batch(stateReads(db, id)));
+  return stateFrom(db, await db.batch(stateReads(db, id)));
 }
 
 /**
@@ -356,7 +387,7 @@ export async function getGameStateWithToken(
   clientId = "",
 ): Promise<{ state: GameState; adminToken: string; cohost: boolean } | null> {
   const results = await db.batch(stateReads(db, id));
-  const state = await stateFrom(results);
+  const state = await stateFrom(db, results);
   if (!state) return null;
   const cohost = !!clientId && cohostRowsOf(results).includes(clientId);
   return { state, adminToken: (results[0].results[0] as GameRow).admin_token, cohost };
@@ -380,7 +411,7 @@ export async function commit(
 ): Promise<{ results: D1Result[]; state: GameState | null }> {
   const bump = db.prepare(`UPDATE games SET version = version + 1, updated_at = ? WHERE id = ?`).bind(now, gameId);
   const all = await db.batch([...writes, bump, ...stateReads(db, gameId)]);
-  return { results: all.slice(0, writes.length), state: await stateFrom(all.slice(writes.length + 1)) };
+  return { results: all.slice(0, writes.length), state: await stateFrom(db, all.slice(writes.length + 1)) };
 }
 
 // ---- Write statements (run them through commit) ----
@@ -443,6 +474,61 @@ export function insertGame(
       .prepare(`INSERT INTO players (game_id, client_id, name, color, emoji, joined_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .bind(game.id, hostClientId, host.name, host.color, host.emoji, host.joinedAt),
     insertActivity(db, game.id, created),
+  ];
+}
+
+/**
+ * A board another one is being added to the game of ("Add another board for
+ * this game"): the board, its host and token for the route's check, and what
+ * decides whether its game can still take a board (SiblingCheck). Server-only:
+ * it carries the host's clientId and the admin token.
+ */
+export interface GroupSource {
+  game: Game;
+  hostClientId: string;
+  adminToken: string;
+  /** The group it's in (migration 0012), or null on its own. */
+  group: string | null;
+  /** Boards in its group, itself included. */
+  groupSize: number;
+  live: LiveStatus["state"] | null;
+  /** Any score is recorded on it. */
+  scored: boolean;
+}
+
+export async function groupSourceOf(db: D1Database, id: string): Promise<GroupSource | null> {
+  const [games, live, group, scored] = await db.batch([
+    db.prepare(`SELECT * FROM games WHERE id = ?`).bind(id),
+    db.prepare(`SELECT state FROM live_status WHERE game_id = ?`).bind(id),
+    db.prepare(`SELECT COUNT(*) AS n FROM games WHERE board_group = (SELECT board_group FROM games WHERE id = ?1)`).bind(id),
+    db.prepare(`SELECT EXISTS (SELECT 1 FROM scores WHERE game_id = ?) AS scored`).bind(id),
+  ]);
+  const row = games.results[0] as GameRow | undefined;
+  if (!row) return null;
+  const liveState = (live.results[0] as { state?: string } | undefined)?.state;
+  return {
+    game: rowToGame(row, await playerIdOf(row.host_client_id)),
+    hostClientId: row.host_client_id,
+    adminToken: row.admin_token,
+    group: row.board_group ?? null,
+    groupSize: Math.max(1, Number((group.results[0] as { n?: number } | undefined)?.n ?? 0)),
+    live: liveState === "pre" || liveState === "in" || liveState === "post" ? liveState : null,
+    scored: !!(scored.results[0] as { scored?: number } | undefined)?.scored,
+  };
+}
+
+/**
+ * Puts a new board in its source board's group (run in the creating batch,
+ * after insertGame): the group is the source's, or the source's own id when
+ * it had none, which stamps the source too. The source's version moves, so
+ * its open boards take the new sibling.
+ */
+export function joinGroupStatements(db: D1Database, gameId: string, sourceId: string, group: string, now: number): D1PreparedStatement[] {
+  return [
+    db.prepare(`UPDATE games SET board_group = ?2 WHERE id = ?1`).bind(gameId, group),
+    db
+      .prepare(`UPDATE games SET board_group = COALESCE(board_group, ?2), version = version + 1, updated_at = ?3 WHERE id = ?1`)
+      .bind(sourceId, group, now),
   ];
 }
 
@@ -979,6 +1065,8 @@ export async function listGamesForClient(
       leaderPlayerId: leaderOf({ game, squares, live: liveStatus, scores: boardScores, manualWinners }, results),
       // Read with the row, before the batch above: everything else is at least this new.
       version: r.version,
+      // Boards for the same game (migration 0012): Home shows them together.
+      group: r.board_group ?? null,
     };
   });
 }

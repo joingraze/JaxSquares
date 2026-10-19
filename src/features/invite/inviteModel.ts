@@ -5,6 +5,7 @@
 // Copy rule: never mention money (prices, pots, payouts, odds, bets). The tests
 // run every message through validatePrizeNote to keep it that way.
 
+import { boardCountLine } from "../../../shared/siblings";
 import { totalSquares } from "../../../shared/squares";
 import type { Game, GameState, GameStatus, Player } from "../../../shared/types";
 import { shortMatchup, shortTeam } from "../../lib/format";
@@ -91,9 +92,17 @@ export function squaresLeftLabel(left: number): string {
 
 /**
  * The text that goes with the invite link. Written in the voice of whoever
- * shares it: the host says "my board", anyone else "our board".
+ * shares it: the host says "my board", anyone else "our board". A board in a
+ * group adds how many boards its game has ("This game has 3 boards"), never
+ * their prices.
  */
-export function inviteMessage(state: Pick<GameState, "game" | "squares" | "players">, viewerId: string | null): string {
+export function inviteMessage(state: Pick<GameState, "game" | "squares" | "players" | "siblings">, viewerId: string | null): string {
+  const base = baseInviteMessage(state, viewerId);
+  const count = boardCountLine(state);
+  return count ? `${base} · ${count}` : base;
+}
+
+function baseInviteMessage(state: Pick<GameState, "game" | "squares" | "players">, viewerId: string | null): string {
   const { game } = state;
   const matchup = shortMatchup(game);
   const whose = viewerId && viewerId === game.hostPlayerId ? "my" : "our";
@@ -108,6 +117,12 @@ export function inviteMessage(state: Pick<GameState, "game" | "squares" | "playe
       if (isUrgent(left, total)) return `Last call 🏈 Only ${left} ${left === 1 ? "square" : "squares"} left on ${whose} ${matchup} board`;
       return `Grab a square on ${whose} ${matchup} board 🏈`;
   }
+}
+
+/** The boards of this board's game by name, this one first (the invite sheet's "This game has 3 boards" line). Null on its own. */
+export function groupBoardNames(state: Pick<GameState, "game" | "siblings">): string[] | null {
+  const siblings = state.siblings ?? [];
+  return siblings.length > 0 ? [state.game.name, ...siblings.map((s) => s.name)] : null;
 }
 
 // ---- Invite sheet: one pitch per board state ----

@@ -34,6 +34,9 @@ export interface BoardCardProps {
   /** The buzz happened while Home was open: give it the "new" treatment. */
   buzzIsNew?: boolean;
   now?: number;
+  /** In a group of boards for one game: a shorter title ("Board 2") and what sets it apart ("$5 a square") in place of the shared kickoff. */
+  title?: string;
+  detail?: string | null;
 }
 
 const STATUS_TONE: Record<CardModel["statusTone"], string> = {
@@ -42,9 +45,10 @@ const STATUS_TONE: Record<CardModel["statusTone"], string> = {
   muted: "text-ink-muted",
 };
 
-export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = Date.now() }: BoardCardProps) {
+export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = Date.now(), title, detail }: BoardCardProps) {
   const left = Math.max(0, game.totalSquares - game.claimed);
   const gold = model.statusTone === "gold";
+  const meta = detail ?? model.meta;
   return (
     <article
       className={cx(
@@ -65,7 +69,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
         <Matchup teamX={game.teamX} teamY={game.teamY} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{game.name}</p>
+            <p className="min-w-0 flex-1 truncate font-display text-headline font-extrabold text-ink">{title ?? game.name}</p>
             {/* On a board I'm playing, my squares say it (next to the count) instead of a role. */}
             {model.relation !== "playing" && <RoleLabel relation={model.relation} cohost={!game.isHost && !!game.isCohost} className="self-center" />}
           </div>
@@ -83,7 +87,7 @@ export function BoardCard({ game, model, action, buzz, buzzIsNew = false, now = 
               ) : (
                 <p className="truncate text-footnote">
                   <span className={cx("font-semibold", STATUS_TONE[model.statusTone])}>{status(model, left)}</span>
-                  {model.meta && <span className="text-ink-subtle"> · {model.meta}</span>}
+                  {meta && <span className="text-ink-subtle"> · {meta}</span>}
                 </p>
               )}
               {model.meter && <FillMeter value={game.claimed} max={game.totalSquares} gold={gold} className="mt-1.5" />}

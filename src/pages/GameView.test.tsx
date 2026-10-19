@@ -32,6 +32,8 @@ vi.mock("../lib/native", async (orig) => {
   return { ...real, haptic: vi.fn(async () => {}), shareLink: vi.fn(async () => "copied") };
 });
 vi.mock("../components/ui/confetti", () => ({ celebrate: vi.fn(), CELEBRATION_COLORS: [], prefersReducedMotion: () => true }));
+// jsdom has no canvas: the recap card comes out as a stand-in PNG.
+vi.mock("../features/recap/drawRecap", () => ({ renderRecap: async () => new Blob(["png"], { type: "image/png" }) }));
 
 const identity = await import("../lib/identity");
 const { ToastProvider } = await import("../components/ui");
@@ -444,5 +446,64 @@ describe("waiting on the host's draw", () => {
     board.state = openBoard([player(HOST, "Jordan"), player(me, "Sam")]);
     await renderBoard();
     expect(screen.queryByTestId("board-waiting")).toBeNull();
+  });
+});
+
+describe("several boards for one game, and the recap", () => {
+  const digits = Array.from({ length: 10 }, (_, d) => [d]);
+  const sibling = { id: "sib456", name: "Sunday Night Squares · Board 2", status: "open" as const, squarePrice: 5, unit: "$" as const, justForFun: false, squaresLeft: 42, totalSquares: 100 };
+
+  it("lists the game's other boards under the grid, and the invite hero points at them", async () => {
+    board.state = { ...openBoard([player(HOST, "Jordan")]), siblings: [sibling] };
+    await renderBoard();
+    const row = screen.getByTestId("sibling-boards");
+    expect(within(row).getByTestId("sibling-board")).toHaveTextContent("Board 2$5 a square·42 left");
+    expect(within(row).getByTestId("sibling-board")).toHaveAttribute("href", "/g/sib456");
+    expect(screen.getByTestId("invite-hero-boards")).toHaveTextContent("This game has 2 boards");
+  });
+
+  it("offers the recap on a final board, drawn and saved where files can't be shared", async () => {
+    // jsdom has no object URLs either.
+    const objectUrl = vi.fn(() => "blob:recap");
+    Object.assign(URL, { createObjectURL: objectUrl, revokeObjectURL: vi.fn() });
+    const me = identity.getPlayerId();
+    const state = openBoard([player(HOST, "Jordan"), player(me, "Sam")]);
+    board.state = {
+      ...state,
+      game: { ...state.game, status: "final", numbers: { "*": { x: digits, y: digits } } },
+      squares: [{ row: 3, col: 7, playerId: me, claimedAt: 0 }],
+      scores: [
+        { periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 0 },
+        { periodKey: "final", scoreX: 27, scoreY: 24, source: "host", updatedAt: 0 },
+      ],
+    };
+    await renderBoard();
+    const cta = screen.getByTestId("recap-cta");
+    await act(async () => {
+      fireEvent.click(within(cta).getByTestId("recap-open"));
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    const preview = await screen.findByTestId("recap-preview");
+    await vi.waitFor(() => expect(preview).toHaveAttribute("data-state", "ready"));
+    expect(objectUrl).toHaveBeenCalled();
+    expect(within(preview).getByRole("img")).toHaveAccessibleName("Final: Chiefs 27, Bills 24 · 1 winner on Sunday Night Squares 🏈");
+    // No Web Share in this browser: the button saves the image.
+    const share = screen.getByTestId("recap-share");
+    expect(share).toHaveAttribute("data-mode", "save");
+    expect(share).toHaveTextContent("Save the image");
+  });
+
+  it("shows a small Recap pill while winners are still landing, not the final card", async () => {
+    const me = identity.getPlayerId();
+    const state = openBoard([player(HOST, "Jordan"), player(me, "Sam")]);
+    board.state = {
+      ...state,
+      game: { ...state.game, status: "locked", numbers: { "*": { x: digits, y: digits } } },
+      squares: [{ row: 3, col: 7, playerId: me, claimedAt: 0 }],
+      scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 0 }],
+    };
+    await renderBoard();
+    expect(screen.getByTestId("recap-open")).toHaveTextContent("Recap");
+    expect(screen.queryByTestId("recap-cta")).toBeNull();
   });
 });

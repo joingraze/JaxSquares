@@ -8,6 +8,7 @@ import type { GameState, GameSummary, HostProfile, Player, Team } from "../../..
 import { periodNote, periodPhrase } from "../../../shared/formats";
 import { countdown, isHexColor, kickoffLabel, pluralize } from "../../lib/format";
 import { lockIsTheMove } from "../host/hostModel";
+import { clusterGroups } from "./boardGroups";
 import { prizeLineup } from "../rules/rulesModel";
 import { boardPeriods, liveCell, liveLabel, myWins, resolveResults, upcomingPeriod, winCounts, type PeriodResult } from "../../../shared/squares";
 
@@ -116,6 +117,8 @@ export function groupBoards(games: readonly GameSummary[]): Sections {
   out.invites.sort((a, b) => kickoffOrder(a, b) || recent(a, b));
   out.needs.sort((a, b) => ACTION_RANK[actionFor(a)!] - ACTION_RANK[actionFor(b)!] || kickoffOrder(a, b) || recent(a, b));
   out.next.sort((a, b) => kickoffOrder(a, b) || recent(a, b));
+  // A player's boards from one game stay together within each section.
+  for (const key of SECTION_ORDER) out[key] = clusterGroups(out[key]);
   return out;
 }
 

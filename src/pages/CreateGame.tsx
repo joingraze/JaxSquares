@@ -28,11 +28,17 @@
 // price this device shows: the App Store's in the iOS app). Opening the board
 // first rewinds the flow's steps, so Back from the board goes where the host
 // started, not into a finished flow.
+//
+// "Add another board for this game" (/new?from=<board id>, host only) runs
+// the same flow from that board (features/create/sibling.ts): its game, rules,
+// board size and max per player, three steps (Square price & prizes, Final
+// touches, Review), the name "Office Squares · Board 2". The new board joins
+// that board's group and pays its own host fee at its own draw.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
-import type { Game, GameFormat, ScheduleEvent } from "../../shared/types";
+import type { Game, GameFormat, GameState, ScheduleEvent } from "../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -42,16 +48,20 @@ import {
   celebrate,
   CELEBRATION_COLORS,
   cx,
+  EmptyState,
   IconButton,
+  Jax,
   prefersReducedMotion,
   Spinner,
   TextField,
   TopBar,
   useToast,
 } from "../components/ui";
-import { ApiError, api } from "../lib/api";
+import { ApiError, api, errorMessage } from "../lib/api";
 import { readableTeamColor } from "../lib/format";
+import { hostRoleNow } from "../lib/hostRole";
 import { NAME_MAX_LENGTH, setProfile, useProfile } from "../lib/identity";
+import { peekGame, primeGame } from "../lib/live";
 import { haptic } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
 import { useNow } from "../features/board/useNow";
@@ -73,16 +83,20 @@ import {
   type Matchup,
 } from "../features/create/model";
 import { ReviewStep } from "../features/create/ReviewStep";
+import { siblingSeed, siblingSeedProblem, type SiblingSeed } from "../features/create/sibling";
+import { SiblingIntro } from "../features/create/SiblingIntro";
 import { useSchedule, type ScheduleLeague } from "../features/create/useSchedule";
 import {
   blockerStep,
   clearDraft,
   loadDraft,
   nextStep,
+  parseFrom,
   parseStep,
   reachableStep,
   readNav,
   saveDraft,
+  SIBLING_STEPS,
   STEP_INFO,
   STEPS,
   stepBlocker,
@@ -104,7 +118,90 @@ const PICK_BEAT_MS = 260;
 const HOST_INPUT_ID = "host-name";
 const GAME_SECTION_ID = "create-game";
 
+/**
+ * /new: a board of its own, or (?from=<board id>) another board for that
+ * board's game, once the board is loaded and this device is shown to host it.
+ */
 export default function CreateGame() {
+  const location = useLocation();
+  const from = parseFrom(location.search);
+  const source = useSiblingSource(from);
+  if (!from) return <CreateFlow sibling={null} />;
+  if (!source?.seed) return <SiblingPending error={source?.error ?? null} />;
+  return <CreateFlow key={source.seed.fromId} sibling={source.seed} />;
+}
+
+type SiblingSource = { seed: SiblingSeed | null; error: string | null };
+
+/** A loaded board as the start of another board for its game, or why this device can't add one (its host or a co-host can). */
+function sourceOf(state: GameState): SiblingSource {
+  const problem = siblingSeedProblem(state, hostRoleNow(state.game) !== null, Date.now());
+  return problem ? { seed: null, error: problem } : { seed: siblingSeed(state), error: null };
+}
+
+/**
+ * The board another one is made from: its seed once loaded, or why it can't
+ * be (not this device's board, its game started). The board was usually open
+ * a moment ago, so its cached state starts the flow at once; a fresh read
+ * follows (the suggested name counts the game's boards as they are now).
+ */
+function useSiblingSource(from: string | null): SiblingSource | null {
+  const [result, setResult] = useState<SiblingSource | null>(() => {
+    const cached = from ? peekGame(from) : null;
+    return cached ? sourceOf(cached) : null;
+  });
+  useEffect(() => {
+    if (!from) return;
+    let alive = true;
+    api.getGame(from).then(
+      (state) => {
+        primeGame(state);
+        if (alive) setResult(sourceOf(state));
+      },
+      (err: unknown) => {
+        if (!alive) return;
+        const error = err instanceof ApiError && err.status === 404 ? "That board isn't here any more." : errorMessage(err);
+        // Offline with the board in hand: carry on with it (the server checks again at Create).
+        setResult((cur) => (cur?.seed && !(err instanceof ApiError && err.status === 404) ? cur : { seed: null, error }));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [from]);
+  return result;
+}
+
+/** While the board loads (or when it can't take another board): the flow's frame with a spinner or the reason. */
+function SiblingPending({ error }: { error: string | null }) {
+  useHideTabBar();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const close = () => (location.key !== "default" ? navigate(-1) : navigate("/", { replace: true }));
+  return (
+    <>
+      <TopBar title="Another board" large={false} leading={<IconButton label="Close" icon={<XIcon size={22} />} onClick={close} />} />
+      {error ? (
+        <EmptyState
+          illustration={<Jax pose="peek" size={140} />}
+          title="Can't add a board here"
+          description={error}
+          action={
+            <Button size="lg" block onClick={close}>
+              Back
+            </Button>
+          }
+        />
+      ) : (
+        <div data-testid="sibling-loading" className="grid place-items-center py-24 text-ink-muted" aria-busy="true" aria-label="Loading the board">
+          <Spinner size={28} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   useHideTabBar();
   const navigate = useNavigate();
   const location = useLocation();
@@ -113,9 +210,15 @@ export default function CreateGame() {
   const schedule = useSchedule();
   const now = useNow(30_000);
   const colors = useMemo(() => teamColorsFrom(schedule.nfl.events), [schedule.nfl.events]);
+  // Another board for a game: three steps, and the board it comes from rides along in the URL.
+  const steps = sibling ? SIBLING_STEPS : STEPS;
+  const from = sibling?.fromId ?? null;
 
-  // ---- the draft (restored after a reload) ----
-  const [restored] = useState(() => loadDraft());
+  // ---- the draft (restored after a reload; only by the same kind of flow) ----
+  const [restored] = useState(() => {
+    const draft = loadDraft();
+    return draft && (draft.from ?? null) === from ? draft : null;
+  });
   const [tab, setTab] = useState<PickerTab>(restored?.tab ?? "nfl");
   const tabTouched = useRef(restored?.tabTouched ?? false);
   /** Explicit picks per league (any week); without one, the soonest game is picked. */
@@ -123,13 +226,14 @@ export default function CreateGame() {
   const [custom, setCustom] = useState(restored?.custom ?? { x: "", y: "" });
   const [kickoff, setKickoff] = useState<number | null>(() => (restored ? restored.kickoff : defaultKickoff(Date.now())));
   // Always with rules (notes and amounts live in them); the prize choice stays unset until the host picks one.
-  const [format, setFormat] = useState<GameFormat>(() => restored?.format ?? withRules(defaultFormat()));
-  const [prizeChoice, setPrizeChoice] = useState<PrizeChoice>(restored?.prizeChoice ?? null);
+  // Another board for a game starts from that board's rules and amounts.
+  const [format, setFormat] = useState<GameFormat>(() => restored?.format ?? sibling?.format ?? withRules(defaultFormat()));
+  const [prizeChoice, setPrizeChoice] = useState<PrizeChoice>(restored ? restored.prizeChoice : (sibling?.prizeChoice ?? null));
   // The amounts follow the suggestion until the host types one (see autoFill).
   const [prizesAuto, setPrizesAuto] = useState(restored?.prizesAuto ?? true);
   const [name, setName] = useState(restored?.name ?? "");
   const [nameTouched, setNameTouched] = useState(restored?.nameTouched ?? false);
-  const [maxPerPlayer, setMaxPerPlayer] = useState(restored?.maxPerPlayer ?? 0);
+  const [maxPerPlayer, setMaxPerPlayer] = useState(restored ? restored.maxPerPlayer : (sibling?.maxPerPlayer ?? 0));
   // Ask for the host's name only when this device has never set one.
   const [needsName] = useState(() => !profile.name.trim());
   const [hostName, setHostName] = useState(restored?.hostName || profile.name);
@@ -178,41 +282,62 @@ export default function CreateGame() {
   const leagueEvents = tab === "custom" ? [] : schedule[tab].events;
   const explicit = tab === "custom" ? undefined : picked[tab];
   const event: ScheduleEvent | null = explicit ?? leagueEvents[0] ?? null;
-  const scheduleLoading = tab !== "custom" && schedule[tab].loading && !explicit;
+  const scheduleLoading = !sibling && tab !== "custom" && schedule[tab].loading && !explicit;
 
-  const matchup: Matchup | null = tab === "custom" ? { kind: "custom", x: custom.x, y: custom.y } : event ? { kind: "linked", event } : null;
+  const matchup: Matchup | null = sibling
+    ? sibling.matchup
+    : tab === "custom"
+      ? { kind: "custom", x: custom.x, y: custom.y }
+      : event
+        ? { kind: "linked", event }
+        : null;
   const teams = matchupTeams(matchup, colors);
   const shortNames = matchupShortNames(matchup);
-  const autoName = shortNames ? boardNameFor(shortNames[0], shortNames[1]) : "";
+  // Another board for a game is "Office Squares · Board 2", never named for its price.
+  const autoName = sibling ? sibling.name : shortNames ? boardNameFor(shortNames[0], shortNames[1]) : "";
   const shownName = nameTouched ? name : autoName;
-  const customKickoff = tab === "custom" ? kickoff : null;
+  const customKickoff = sibling ? (sibling.matchup.from.linkedEvent ? null : sibling.matchup.from.startsAt) : tab === "custom" ? kickoff : null;
   const check: WizardCheck = { matchup, kickoff: customKickoff, hostName: needsName ? hostName : null, format, name: nameTouched ? name : "", now };
 
   // ---- steps (the URL says which; history state says how we got here) ----
   const nav = readNav(location.state);
-  const requested = parseStep(location.search);
+  const requested = parseStep(location.search, steps);
   // A step can't be reached past an incomplete one (wait for the games before judging the first).
-  const reachable = scheduleLoading ? requested : reachableStep(requested, check);
+  const reachable = scheduleLoading ? requested : reachableStep(requested, check, steps);
   const step: WizardStep = frozen ?? reachable;
   /** An in-app page sits under the flow (closing it goes back there). */
   const appBack = nav.wizardDepth > 0 ? !!nav.appBack : location.key !== "default";
 
   useEffect(() => {
     if (frozen || leavingTo.current || reachable === requested) return;
-    navigate({ search: stepSearch(reachable) }, { replace: true, state: location.state });
-  }, [frozen, reachable, requested, navigate, location.state]);
+    navigate({ search: stepSearch(reachable, from) }, { replace: true, state: location.state });
+  }, [frozen, reachable, requested, navigate, location.state, from]);
 
   // Steps slide forward and back (the global reduced-motion rule turns this into a plain swap).
   const motion = useRef<{ step: WizardStep; dir: "none" | "forward" | "back" }>({ step, dir: "none" });
   if (motion.current.step !== step) {
-    motion.current = { step, dir: STEPS.indexOf(step) > STEPS.indexOf(motion.current.step) ? "forward" : "back" };
+    motion.current = { step, dir: steps.indexOf(step) > steps.indexOf(motion.current.step) ? "forward" : "back" };
   }
 
   // The draft survives a reload until the board is made.
   useEffect(() => {
     if (leavingTo.current || frozen) return;
-    saveDraft({ tab, tabTouched: tabTouched.current, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName });
-  }, [tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen]);
+    saveDraft({
+      tab,
+      tabTouched: tabTouched.current,
+      picked,
+      custom,
+      kickoff,
+      format,
+      prizeChoice,
+      prizesAuto,
+      name,
+      nameTouched,
+      maxPerPlayer,
+      hostName,
+      ...(from ? { from } : {}),
+    });
+  }, [tab, picked, custom, kickoff, format, prizeChoice, prizesAuto, name, nameTouched, maxPerPlayer, hostName, frozen, from]);
 
   // Opening the board: rewind the flow's steps first (Back from the board then
   // goes where the host started), then replace the first one with the board.
@@ -224,10 +349,10 @@ export default function CreateGame() {
   }, [location.key, nav.wizardDepth, navigate]);
 
   const blocker = stepBlocker(step, check);
-  const stepIndex = STEPS.indexOf(step);
+  const stepIndex = steps.indexOf(step);
 
   const go = (to: WizardStep, extra: Partial<WizardNav> = {}) =>
-    navigate({ search: stepSearch(to) }, { state: { wizardDepth: nav.wizardDepth + 1, appBack, ...extra } satisfies WizardNav });
+    navigate({ search: stepSearch(to, from) }, { state: { wizardDepth: nav.wizardDepth + 1, appBack, ...extra } satisfies WizardNav });
 
   /** Next (or Done, from Review): the step's blocker if any, else on to the next step. */
   const goNext = () => {
@@ -240,9 +365,9 @@ export default function CreateGame() {
     if (step === "game" && tab !== "custom" && event && picked[tab]?.eventId !== event.eventId) setPicked((p) => ({ ...p, [tab]: event }));
     if (nav.fromReview) {
       if (nav.wizardDepth > 0) return navigate(-1);
-      return navigate({ search: stepSearch("review") }, { replace: true, state: { wizardDepth: 0, appBack } satisfies WizardNav });
+      return navigate({ search: stepSearch("review", from) }, { replace: true, state: { wizardDepth: 0, appBack } satisfies WizardNav });
     }
-    const next = nextStep(step);
+    const next = nextStep(step, steps);
     if (next) go(next);
   };
   const goNextRef = useRef(goNext);
@@ -250,8 +375,8 @@ export default function CreateGame() {
 
   const goBack = () => {
     if (nav.wizardDepth > 0) return navigate(-1);
-    const prev = STEPS[stepIndex - 1];
-    if (prev) navigate({ search: stepSearch(prev) }, { replace: true, state: { wizardDepth: 0, appBack } satisfies WizardNav });
+    const prev = steps[stepIndex - 1];
+    if (prev) navigate({ search: stepSearch(prev, from) }, { replace: true, state: { wizardDepth: 0, appBack } satisfies WizardNav });
   };
 
   /** Leave the flow (the draft stays for this session). */
@@ -329,7 +454,7 @@ export default function CreateGame() {
       kickoff: customKickoff,
       format,
       prizeChoice,
-      name: nameTouched ? name : "",
+      name: nameTouched ? name : sibling ? autoName : "",
       maxPerPlayer,
       host: { name: hostName, color: profile.color, emoji: profile.emoji },
     });
@@ -376,8 +501,13 @@ export default function CreateGame() {
   };
   const editRules = (d: RulesDraft) =>
     updatePrizes(withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }), d.choice);
-  const matchupLabel = shortNames ? (matchup?.kind === "linked" ? `${shortNames[0]} @ ${shortNames[1]}` : `${shortNames[0]} vs ${shortNames[1]}`) : "";
-  const info = STEP_INFO[step];
+  const linkedMatchup = matchup?.kind === "linked" || (matchup?.kind === "board" && !!matchup.from.linkedEvent);
+  const matchupLabel = shortNames ? (linkedMatchup ? `${shortNames[0]} @ ${shortNames[1]}` : `${shortNames[0]} vs ${shortNames[1]}`) : "";
+  // Another board for a game: the price step says what's carried over and asks for this board's price.
+  const info =
+    sibling && step === "prizes"
+      ? { ...STEP_INFO.prizes, title: "This board's square price", subtitle: "Pick what a square costs on this board. The suggested prizes follow it." }
+      : STEP_INFO[step];
 
   let body: ReactNode;
   switch (step) {
@@ -405,7 +535,12 @@ export default function CreateGame() {
       );
       break;
     case "prizes":
-      body = <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} />;
+      body = (
+        <>
+          {sibling && teams && <SiblingIntro seed={sibling} teamX={teams.teamX} teamY={teams.teamY} matchup={matchupLabel} />}
+          <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} />
+        </>
+      );
       break;
     case "details":
       body = (
@@ -456,6 +591,8 @@ export default function CreateGame() {
           host={{ name: hostName, color: profile.color, emoji: profile.emoji }}
           now={now}
           onEdit={(s) => go(s, { fromReview: true })}
+          sibling={sibling ? { sourceName: sibling.source.name } : null}
+          steps={steps}
         />
       );
       break;
@@ -477,10 +614,10 @@ export default function CreateGame() {
   return (
     <>
       <TopBar
-        title="New board"
+        title={sibling ? "Another board" : "New board"}
         large={false}
         leading={<IconButton label="Close" icon={<XIcon size={22} />} onClick={close} />}
-        accessory={<WizardProgress step={step} />}
+        accessory={<WizardProgress step={step} steps={steps} />}
       />
 
       {/* Clipped sideways: a step sliding in never widens the page (the phone would zoom out). */}

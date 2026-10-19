@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PERIOD_PRESETS, PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { squareHolders } from "../../../shared/hostFee";
+import { boardCountLine, siblingCheckOf, siblingProblem } from "../../../shared/siblings";
 import { prizeTotals, resolveResults } from "../../../shared/squares";
 import { cohostIdsOf, isCohostOf } from "../../../shared/cohosts";
 import type { BoardSize, CohostInviteResponse, GameState } from "../../../shared/types";
@@ -29,6 +30,7 @@ import {
   LinkIcon,
   LockIcon,
   PencilIcon,
+  PlusIcon,
   ShareIcon,
   ShuffleIcon,
   SparklesIcon,
@@ -59,6 +61,7 @@ import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/form
 import { hostLinkUrl } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
+import { siblingCreatePath } from "../create/sibling";
 import { PlayersList } from "../board/PlayersList";
 import { RulesEditor } from "../rules/RulesEditor";
 import {
@@ -798,6 +801,18 @@ export function HostSheet(props: HostSheetProps) {
         )}
 
         <ListGroup title="Board">
+          {/* Several boards for one game ($1, $5, $20): same game and rules, another square price. */}
+          {!siblingProblem(siblingCheckOf(state), Date.now()) && (
+            <ListRow
+              data-testid="host-add-board"
+              leading={<RowIcon tone="gold"><PlusIcon size={18} /></RowIcon>}
+              title="Add another board for this game"
+              subtitle={boardCountLine(state) ?? "Same game, another square price"}
+              chevron
+              to={siblingCreatePath(game.id)}
+              onClick={() => void haptic("selection")}
+            />
+          )}
           <ListRow
             data-testid="host-rules"
             leading={<RowIcon tone="gold"><GiftIcon size={18} /></RowIcon>}

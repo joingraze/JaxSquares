@@ -354,6 +354,29 @@ export interface GameState {
   activity: Activity[];
   /** Monotonic per game; clients ignore states older than the one they hold. */
   version: number;
+  /**
+   * The other boards for the same game (a host's "$1, $5 and $20 boards"),
+   * oldest first: present only on a board in a group (migration 0012), and
+   * read with the board, so a sibling's squares left can trail it until this
+   * board's next state. Public data only: no clientId, no admin token.
+   */
+  siblings?: SiblingBoard[];
+}
+
+/**
+ * Another board for the same game, as a board's players see it ("More boards
+ * for this game"). Built by `siblingSummary` in shared/siblings.ts.
+ */
+export interface SiblingBoard {
+  id: string;
+  name: string;
+  status: GameStatus;
+  /** Display-only square price in `unit`; null when none is set or the board is just for fun. In-app only. */
+  squarePrice: number | null;
+  unit: AmountUnit;
+  justForFun: boolean;
+  squaresLeft: number;
+  totalSquares: number;
 }
 
 /** The host's public player profile on a dashboard summary ("Maya invited you"). */
@@ -436,6 +459,12 @@ export interface GameSummary {
    * (a corrected score, a reopened final). Always sent by `GET /api/me/games`.
    */
   version?: number;
+  /**
+   * Boards for the same game share this (the group's first board's id; see
+   * GameState.siblings): Home shows a player's boards from one game together.
+   * null for a board on its own. Sent by `GET /api/me/games`.
+   */
+  group?: string | null;
 }
 
 // ---- Live socket messages (server -> client) ----
@@ -484,6 +513,16 @@ export interface CreateGameInput {
   startsAt?: number | null;
   /** The host's player profile, so they appear on the board right away. */
   host: { name: string; color: string; emoji: string };
+  /**
+   * "Add another board for this game": the board this one is made from. Only
+   * that board's host may (its admin token as `x-admin-token`, or the same
+   * identity that hosts it; 403 otherwise). The new board joins its group
+   * and takes its game from it (sport, league, teams, linked event, kickoff;
+   * those fields here are ignored). 409 once that game has started or is
+   * over, or its group is full. The new board pays its own host fee at its
+   * own draw, like any board.
+   */
+  fromGameId?: string;
 }
 
 export interface CreateGameResponse {

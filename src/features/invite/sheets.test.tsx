@@ -204,6 +204,38 @@ describe("InviteSheet", () => {
     expect(screen.getByTestId("invite-share")).toHaveTextContent("Text your crew");
   });
 
+  it("says how many boards the game has and names them, with no amount in the message", async () => {
+    shareLink.mockResolvedValue("shared");
+    const state = makeState("someone-else");
+    state.siblings = [
+      { id: "b2b2b2", name: "Sunday Night Squares · Board 2", status: "open", squarePrice: 5, unit: "$", justForFun: false, squaresLeft: 40, totalSquares: 100 },
+      { id: "c3c3c3", name: "Sunday Night Squares · Board 3", status: "open", squarePrice: 20, unit: "$", justForFun: false, squaresLeft: 90, totalSquares: 100 },
+    ];
+    render(<InviteSheet state={state} open onClose={() => {}} />);
+    expect(await screen.findByTestId("invite-boards")).toHaveTextContent(
+      "This game has 3 boards: Sunday Night Squares, Sunday Night Squares · Board 2, Sunday Night Squares · Board 3",
+    );
+    // A player's sheet doesn't offer adding a board.
+    expect(screen.queryByTestId("invite-add-board")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("invite-share"));
+    });
+    const sent = shareLink.mock.calls[0][0] as { text: string };
+    expect(sent.text).toBe("Grab a square on our Chiefs vs Bills board 🏈 · This game has 3 boards");
+    expect(sent.text).not.toMatch(/\$|\b(5|20)\b/);
+  });
+
+  it("offers the host another board for this game right after creating", async () => {
+    const onAddBoard = vi.fn();
+    render(<InviteSheet state={makeState()} open justCreated onClose={() => {}} onAddBoard={onAddBoard} />);
+    const add = await screen.findByTestId("invite-add-board");
+    expect(add).toHaveTextContent("Add another board for this game");
+    fireEvent.click(add);
+    expect(onAddBoard).toHaveBeenCalled();
+    // A board on its own has no boards line.
+    expect(screen.queryByTestId("invite-boards")).toBeNull();
+  });
+
   it("keeps the code behind one toggle and never shows the host link", async () => {
     identity.saveAdminToken("k7mq2x", "secret-token");
     render(<InviteSheet state={makeState()} open onClose={() => {}} />);
@@ -229,6 +261,21 @@ describe("InviteHero", () => {
     fireEvent.click(buttons[0]);
     expect(onPick).toHaveBeenCalled();
     expect(onJoin).not.toHaveBeenCalled();
+  });
+
+  it("says the game has more boards, and points at them", () => {
+    const state = makeState();
+    state.siblings = [{ id: "b2b2b2", name: "Board 2", status: "open", squarePrice: 5, unit: "$", justForFun: false, squaresLeft: 40, totalSquares: 100 }];
+    const target = document.createElement("section");
+    target.id = "sibling-boards";
+    target.scrollIntoView = vi.fn();
+    document.body.appendChild(target);
+    render(<InviteHero state={state} onJoin={() => {}} onPick={() => {}} />);
+    const line = screen.getByTestId("invite-hero-boards");
+    expect(line).toHaveTextContent("This game has 2 boards·See them");
+    fireEvent.click(line);
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    target.remove();
   });
 
   it("joins to follow along when there's nothing left to pick", () => {

@@ -184,7 +184,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
 | PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push |
@@ -270,7 +270,10 @@ Non-API routes:
 - `GET /.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`
   for universal / app links on `/g/*`.
 - `GET /g/:id` serves `index.html` with per-game Open Graph tags (HTMLRewriter) so an
-  invite pasted in iMessage/WhatsApp previews as "Join <board name>".
+  invite pasted in iMessage/WhatsApp previews as "Join <board name>". A finished
+  board previews as its recap: "See who won <board name> on JaxSquares" with
+  "Final: Chiefs 27, Bills 24 · 4 winners" (the Final's score, else the feed's,
+  else the last one recorded; how many players won, never what).
 - The same page embeds the board's state (see "Boot state on invite links").
 - `GET /g/:id/tv` and `GET /g/:id/print` (the board's TV view and printable
   board, see "TV mode and the printable board") are the same page: `index.html`,
@@ -395,6 +398,8 @@ missing, final, or now joined.
 - `format` carries what an invite shows before anyone picks: the display-only
   `squarePrice` (in `unit`) or `justForFun`, and the prize lineup. In-app only,
   like every amount.
+- `group: string | null`: the board's group (migration 0012, see "Several
+  boards for one game"), the same for every board made for one game.
 
 Home sorts each summary by how this device stands with the board
 (`relationOf` in `src/features/home/sections.ts`): host; playing (has squares);
@@ -406,7 +411,12 @@ never-joined board leaves Home (and the seen list) while a joined one stays in
 I'm playing shows my sticker and "15 squares yours"; an invite gets its own
 card (who invited me, the matchup, squares left, the square price line, "Pick
 squares", and "Not for me" on one I only opened, which drops it from the seen
-list with an Undo).
+list with an Undo). A player's boards from one game stay together in each
+section (`clusterGroups` in `src/features/home/boardGroups.ts`, in the order
+they were made, where the group's most urgent board sorts); Needs you, Up next
+and Invites hold them in one `BoardGroup` ("Chiefs vs Bills · 3 boards · Sun
+1:00 PM", `home-board-group`), each card titled short ("Board 2",
+`groupCardTitle`) with its square price where the kickoff was.
 
 Two fields let Home render a board in play without fetching its full state
 (both always sent; optional in the type only so older fixtures type-check):
@@ -828,6 +838,22 @@ one) and `review` (a card per step, then Create). Every step starts filled
 in: the default path is pick the game (a tapped game moves on by itself),
 Next x3, Create.
 
+"Add another board for this game" runs the same flow from a board this device
+runs (host or co-host): `/new?from=<id>&step=prizes` (`parseFrom`; every
+step's URL keeps `from`). `CreateGame` loads that board (its cached live state
+first, then a fresh read), checks `siblingSeedProblem` (runs it, game not
+started, group not full; else "Can't add a board here" with the reason) and
+starts the flow from `siblingSeed` (`src/features/create/sibling.ts`): the
+board's game as a `board` matchup, its rules, board size, amounts and max per
+player, and the name "Office Squares · Board 2". Three steps
+(`SIBLING_STEPS`: prizes, details, review; "1 of 3"); the price step is titled
+"This board's square price" under a card saying what carries over
+(`sibling-intro`: "Same game and rules as Office Squares ($1 a square)"), and
+the suggested amounts follow a new price as usual (`autoFill`). Review shows
+the game and rules as one fixed card (`review-same-game`). Create sends
+`fromGameId` (with that board's admin token when this device holds it). Its
+draft is kept apart (`WizardDraft.from`): a flow only picks up its own kind.
+
 - The step is the URL, `/new?step=game|format|prizes|details|review`; Next
   pushes a history entry, so the browser's back and the iOS swipe go back a
   step. Each entry's state carries `wizardDepth` (entries pushed since the
@@ -944,6 +970,98 @@ everyone) players to run the board with them.
   fewer players, else the caller's or the host's Host Pass, else 402). This
   device only knows its own pass, so a co-host whose fee looks due asks the
   server first (no reveal until it answers) and opens the checkout on the 402.
+
+## Several boards for one game
+
+Super Bowl and office groups run two or three boards on one game at different
+square prices (a $1, a $5 and a $20 board). Pure rules in `shared/siblings.ts`.
+
+- **Groups** (core, migration `0012_board_groups.sql`, only `worker/db.ts`):
+  `games.board_group`, the group's first board's id; NULL = a board on its own
+  (every board before 0012). Indexed where set. Not keyed by a clientId, so
+  the sign-in merge doesn't touch it. A deleted board leaves the group; the
+  others keep its id as theirs.
+- **Making one:** `POST /api/games` with `fromGameId`. `groupSourceFor` in
+  `worker/index.ts` checks the caller runs that board (its admin token, the
+  identity that hosts it, or a co-host by `c.get("clientId")`;
+  `db.groupSourceOf` reads the board, its feed's state, any score and its
+  group's size in one batch) and `siblingProblem`: not final, not started (a
+  score, the feed on or over, or a linked kickoff passed:
+  `SIBLING_ERRORS.started`), fewer than `MAX_GROUP_BOARDS` (10) boards. The new
+  board takes the source's sport, league, teams, linked event and kickoff (the
+  request's are ignored), is hosted by the caller and joins the group in the
+  creating batch (`db.joinGroupStatements`: the new board's `board_group`, and
+  the source's when it had none, bumping its version). The source and every
+  other board in the group are broadcast afterwards (`announceSibling`), so
+  their open boards list the new one; deleting a board broadcasts the rest.
+- **Payments:** untouched. The new board starts `open` and unpaid like any
+  board; each board draws (and pays, or is free, or is covered by a Host Pass)
+  on its own. The source's token doesn't run the sibling.
+- **Public state:** `GameState.siblings` (only on a board in a group): the
+  other boards, oldest first, each `{ id, name, status, squarePrice, unit,
+  justForFun, squaresLeft, totalSquares }` (`siblingSummary`; no clientId, no
+  admin token, no players), read with the board's state (one more indexed
+  query, only for a grouped board). A sibling's counts can trail it until this
+  board's next state. `GameSummary.group` for Home.
+- **Names:** a new board is suggested "<first board's name> · Board N"
+  (`nextSiblingName`, past any number in use), never "· $5 board": a board's
+  name is every push's title and its link preview, and the server refuses a
+  name that mentions money.
+- **Host entry points:** the host sheet's "Add another board for this game"
+  (`host-add-board`, Board section, until the game starts; "This game has 3
+  boards" under it) and the invite sheet the create flow opens
+  (`invite-add-board`), for the host and co-hosts (`useHostRole`). Both open
+  `/new?from=<id>&step=prizes` (see "Create flow").
+- **Players:** the board shows "More boards for this game" under the grid
+  (`SiblingBoards`, `sibling-boards` / `sibling-board`: the name, "$5 a
+  square" when set (in-app), squares left or "Numbers drawn"/"Final", a tap
+  opens it). The invite hero says "This game has 3 boards · See them"
+  (`invite-hero-boards`, scrolls to the row); the invite sheet lists the
+  boards by name (`invite-boards`); share text adds only the count
+  (`inviteMessage`: "Grab a square on my Chiefs vs Bills board 🏈 · This game
+  has 3 boards", `boardCountLine`).
+
+## The recap card (client)
+
+"Share the recap": a 1080×1350 PNG (stories and feeds) made in the browser
+once a winner lands or the game goes final (`src/features/recap`).
+
+- **Model** (`recapModel.ts`, pure and tested): `recapCard(state)` (null
+  before the first decided moment): the board's name, the teams (short name,
+  abbreviation, their colors as `teamVars` makes them on dark, and a text
+  color lifted to 4.5:1 for the digits), the final score or the score so far
+  ("Final", "At halftime", "After Q1", "After score 4"), every winning square
+  in game order (period label, "Score 3 · TD", "Q1 reverse"; the winner's name,
+  color and emoji, or "Nobody had it"; the winning digits, swapped for a
+  reverse square) and how many players won. `recapLayout(card)` places
+  everything (rects, circles, lines, text runs, Jax) in card pixels; seven row
+  lines, and when more don't fit, "+ N more on the board" with the Final's
+  square kept first, then the other fixed squares, their reverse squares, the
+  latest scores (`fitRows`). No amount ever: no price, prize, by-kind amount
+  or "rest" (the tests run every text through the money checks).
+- **Drawing** (`drawRecap.ts`): its own fixed design (night turf, team-color
+  floodlights, faint yard lines, lime and gold), whatever the theme. Text in
+  the brand fonts the page loads (Bricolage Grotesque for the headline and the
+  score, Figtree for the rest), each weight asked for with
+  `document.fonts.load`, then `document.fonts.ready`. Jax is the kit's cheer
+  pose rendered to SVG markup with its theme colors swapped for fixed ones and
+  drawn as an image. "Made with JaxSquares · jaxsquares.com" at the foot.
+- **Sending** (`shareRecap.ts`): the Web Share API with the PNG as a file
+  where the browser can share files (`navigator.canShare({ files })`); else a
+  download. The iOS app's `@capacitor/share` takes only `file://` URLs, and
+  writing the PNG to the cache needs `@capacitor/filesystem`, which the app
+  doesn't ship: there the web view's own file share is used when it has one,
+  otherwise the board's link goes through the native share sheet with the
+  recap's words (`recapShareText`: "Final: Chiefs 27, Bills 24 · 3 winners on
+  Office Squares 🏈").
+- **Entry points:** under a final board's results, "That's the game" with
+  "Share the recap" (`recap-cta`, `recap-open`); a "Recap" pill beside "Rules
+  & prizes" while winners are still landing (`recap-open`); and a toast with a
+  "Share the recap" action when a winner lands or the final whistle blows
+  (`useRecapNudge`, after that moment's own ticker alert; not for a moment
+  nobody's square won). The sheet (`RecapSheet`) paints the card when it
+  opens, shows it (`recap-preview`), and its button (`recap-share`,
+  `data-mode=files|link|save`) shares from the tap itself.
 
 ## The host fee (client)
 
@@ -1119,8 +1237,9 @@ core routes. Each module owns its own migration file: core `0002_*`,
 `0007_board_full_announced.sql`, `0008_custom_kickoff.sql` (custom boards'
 kickoff in `starts_at`; the cron's index covers linked boards only) and
 `0009_pay_at_draw.sql` (`games.paid_at`, grandfathering every board past
-`draft` as paid and opening drafts; `games.draw_reminder_at`) and
-`0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
+`draft` as paid and opening drafts; `games.draw_reminder_at`),
+`0012_board_groups.sql` (`games.board_group`, see "Several boards for one
+game") and `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0003_*`, `0006_*` and `0011_host_pass.sql` (`host_passes`,
 `stripe_customers`), push `0004_*`, auth `0010_accounts.sql`, email
 `0013_email.sql` (`email_subscriptions`, `email_suppressions`).

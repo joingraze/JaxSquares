@@ -13,7 +13,7 @@ import { capLine, prizeLineup } from "../rules/rulesModel";
 import { FormatGlyph } from "./FormatPicker";
 import { kickoffLine } from "./kickoff";
 import { boardHeadline, rulesTitle } from "./model";
-import { STEP_INFO, stepNumber, type WizardStep } from "./wizard";
+import { STEP_INFO, STEPS, stepNumber, type Steps, type WizardStep } from "./wizard";
 
 export interface ReviewStepProps {
   teams: { teamX: Team; teamY: Team } | null;
@@ -31,59 +31,96 @@ export interface ReviewStepProps {
   host: { name: string; color: string; emoji: string };
   now: number;
   onEdit: (step: WizardStep) => void;
+  /**
+   * Another board for a game: the board it's made from. Its game and rules
+   * are that board's, so they show as one card that doesn't open a step.
+   */
+  sibling?: { sourceName: string } | null;
+  /** The flow's steps (the card numbers follow them). */
+  steps?: Steps;
 }
 
-export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name, maxPerPlayer, host, now, onEdit }: ReviewStepProps) {
+export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name, maxPerPlayer, host, now, onEdit, sibling = null, steps = STEPS }: ReviewStepProps) {
   const rules = rulesOf(format);
   const lineup = prizeLineup(format);
   const modifiers = [format.reverse && "Reverse", format.freshNumbers && "New numbers each Q"].filter(Boolean) as string[];
+  const when = linked ? kickoffLine(linked.startsAt, now) : kickoffLine(kickoff, now);
   return (
     <div className="flex flex-col gap-3">
-      <ReviewCard step="game" summary={`${matchupLabel}, ${linked ? kickoffLine(linked.startsAt, now) : kickoffLine(kickoff, now)}`} onEdit={onEdit}>
-        <div className="flex items-center gap-3">
-          {teams && (
-            <span aria-hidden className="flex shrink-0 gap-1">
-              <TeamMark team={teams.teamX} size="sm" />
-              <TeamMark team={teams.teamY} size="sm" />
-            </span>
-          )}
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
-            {linked ? (
-              <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
-                <LiveIcon size={14} className="shrink-0 text-ink-brand" />
-                <span className="truncate">Live scores · {kickoffLine(linked.startsAt, now)}</span>
+      {sibling ? (
+        <section
+          data-testid="review-same-game"
+          aria-label={`Same game and rules as ${sibling.sourceName}: ${matchupLabel}, ${when}`}
+          className="flex flex-col gap-2.5 rounded-card bg-surface-2 p-3.5 ring-1 ring-inset ring-line"
+        >
+          <span className="eyebrow text-ink-subtle">Same game & rules as {sibling.sourceName}</span>
+          <div className="flex items-center gap-3">
+            {teams && (
+              <span aria-hidden className="flex shrink-0 gap-1">
+                <TeamMark team={teams.teamX} size="sm" />
+                <TeamMark team={teams.teamY} size="sm" />
               </span>
-            ) : (
-              <>
-                <span data-testid="review-kickoff" className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink">
-                  <ClockIcon size={14} className="shrink-0 text-ink-brand" />
-                  <span className="truncate">{kickoff === null ? "No set time" : `Kicks off ${kickoffLine(kickoff, now)}`}</span>
-                </span>
-                <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
-                  <PencilIcon size={14} className="shrink-0 text-ink-subtle" />
-                  <span className="truncate">You run the score</span>
-                </span>
-              </>
             )}
-          </span>
-        </div>
-      </ReviewCard>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
+              <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+                {linked ? <LiveIcon size={14} className="shrink-0 text-ink-brand" /> : <ClockIcon size={14} className="shrink-0 text-ink-brand" />}
+                <span className="truncate">{linked ? `Live scores · ${when}` : kickoff === null ? "No set time" : `Kicks off ${when}`}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[rulesTitle(format), boardHeadline(format), ...modifiers].join(" · ")}</span>
+            </span>
+          </div>
+        </section>
+      ) : (
+        <>
+          <ReviewCard step="game" steps={steps} summary={`${matchupLabel}, ${when}`} onEdit={onEdit}>
+            <div className="flex items-center gap-3">
+              {teams && (
+                <span aria-hidden className="flex shrink-0 gap-1">
+                  <TeamMark team={teams.teamX} size="sm" />
+                  <TeamMark team={teams.teamY} size="sm" />
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{matchupLabel}</span>
+                {linked ? (
+                  <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+                    <LiveIcon size={14} className="shrink-0 text-ink-brand" />
+                    <span className="truncate">Live scores · {kickoffLine(linked.startsAt, now)}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span data-testid="review-kickoff" className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink">
+                      <ClockIcon size={14} className="shrink-0 text-ink-brand" />
+                      <span className="truncate">{kickoff === null ? "No set time" : `Kicks off ${kickoffLine(kickoff, now)}`}</span>
+                    </span>
+                    <span className="mt-0.5 flex items-center gap-1.5 text-footnote text-ink-muted">
+                      <PencilIcon size={14} className="shrink-0 text-ink-subtle" />
+                      <span className="truncate">You run the score</span>
+                    </span>
+                  </>
+                )}
+              </span>
+            </div>
+          </ReviewCard>
 
-      <ReviewCard step="format" summary={`${rulesTitle(format)}, ${boardHeadline(format)}`} onEdit={onEdit}>
-        <div className="flex items-center gap-3">
-          <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4">
-            <FormatGlyph rules={rules} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{rulesTitle(format)}</span>
-            <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[boardHeadline(format), ...modifiers].join(" · ")}</span>
-          </span>
-        </div>
-      </ReviewCard>
+          <ReviewCard step="format" steps={steps} summary={`${rulesTitle(format)}, ${boardHeadline(format)}`} onEdit={onEdit}>
+            <div className="flex items-center gap-3">
+              <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4">
+                <FormatGlyph rules={rules} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{rulesTitle(format)}</span>
+                <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[boardHeadline(format), ...modifiers].join(" · ")}</span>
+              </span>
+            </div>
+          </ReviewCard>
+        </>
+      )}
 
       <ReviewCard
         step="prizes"
+        steps={steps}
         summary={lineup ? (lineup.fun ? "Just for fun" : lineup.parts.join(", ")) : "Square price: not set"}
         flagged={!lineup}
         onEdit={onEdit}
@@ -135,7 +172,7 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
         )}
       </ReviewCard>
 
-      <ReviewCard step="details" summary={[name, capLine(maxPerPlayer) ?? "No max per player"].join(", ")} onEdit={onEdit}>
+      <ReviewCard step="details" steps={steps} summary={[name, capLine(maxPerPlayer) ?? "No max per player"].join(", ")} onEdit={onEdit}>
         <div className="flex items-center gap-3">
           <Avatar name={host.name.trim() || "You"} color={host.color} emoji={host.emoji} size="md" decorative />
           <span className="min-w-0 flex-1">
@@ -152,12 +189,14 @@ export function ReviewStep({ teams, matchupLabel, linked, kickoff, format, name,
 
 function ReviewCard({
   step,
+  steps,
   summary,
   flagged = false,
   onEdit,
   children,
 }: {
   step: WizardStep;
+  steps: Steps;
   /** What the card says, for its accessible name. */
   summary: string;
   flagged?: boolean;
@@ -183,7 +222,7 @@ function ReviewCard({
     >
       <span className="flex items-center justify-between gap-2">
         <span className="eyebrow text-ink-subtle">
-          <span className="tabular-nums">{stepNumber(step)}</span> · {STEP_INFO[step].label}
+          <span className="tabular-nums">{stepNumber(step, steps)}</span> · {STEP_INFO[step].label}
         </span>
         <span className="flex items-center gap-0.5 text-footnote font-bold text-ink-brand">
           {flagged ? "Set" : "Change"}
