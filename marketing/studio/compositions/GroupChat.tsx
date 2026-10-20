@@ -135,7 +135,8 @@ export function makeGroupChat(v: ChatVariant) {
             background: "#0b0d0c",
             border: `1px solid ${COLORS.line}`,
             boxShadow: "0 40px 80px rgba(0,0,0,0.55)",
-            transform: `translateX(${shake}px) rotate(${shake * 0.3}deg) translateY(${away * -520}px)`,
+            transform: `translateX(${shake}px) rotate(${shake * 0.3}deg) translateY(${away * -640}px)`,
+            opacity: 1 - away,
             filter: chaos && freeze > 0 ? `grayscale(${freeze}) brightness(${1 - 0.45 * freeze})` : undefined,
           }}
         >
