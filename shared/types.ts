@@ -1101,7 +1101,19 @@ export interface SignInInput {
   name?: string;
   /** Sign in with Apple JS only: the redirect URI the authorization code was issued for. */
   redirectUri?: string;
+  /**
+   * POST /api/auth/:provider/link only: the person confirmed combining the
+   * account that sign-in already has (409 ACCOUNT_EXISTS_CODE) into this one.
+   */
+  combine?: boolean;
 }
+
+/**
+ * 409 `code` from POST /api/auth/:provider/link: that Apple ID or Google
+ * account already has its own JaxSquares account. Resend with `combine: true`
+ * (after the person confirms) to move it into this one.
+ */
+export const ACCOUNT_EXISTS_CODE = "account_exists";
 
 /** POST /api/auth/sign-out: this device's push registration, so the account's pushes stop reaching it. */
 export interface SignOutInput {
@@ -1111,7 +1123,10 @@ export interface SignOutInput {
 
 /** Shown only to the account's owner ("Signed in with Apple · maya@example.com"). */
 export interface AccountInfo {
+  /** The first way the account signed in. */
   provider: AuthProvider;
+  /** Every way it signs in, first one first ("Add Google" in Profile adds one). Absent from an older server. */
+  providers?: AuthProvider[];
   email: string | null;
   name: string | null;
   /** When the account was created, epoch ms. */

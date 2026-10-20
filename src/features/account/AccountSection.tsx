@@ -1,15 +1,17 @@
 // Profile → Account. Signed out: "Sign in to keep your boards on every device"
 // with the sign-in buttons (hidden entirely when no provider is set up here).
 // Signed in: "Signed in with Apple · email", Sign out and Delete account, each
-// behind a confirm sheet that says what happens.
+// behind a confirm sheet that says what happens; and "Another way to sign in"
+// for a provider the account doesn't have yet (addSignIn), which combines two
+// accounts after a confirm when that sign-in already has one.
 
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { AccountInfo, AuthProvider } from "../../../shared/types";
+import { ACCOUNT_EXISTS_CODE, type AccountInfo, type AuthProvider, type SignInInput } from "../../../shared/types";
 import { CheckIcon, XIcon } from "../../components/icons";
 import { BottomSheet, Button, ListGroup, ListRow, cx, useToast } from "../../components/ui";
-import { errorMessage } from "../../lib/api";
-import { deleteAccount, PROVIDER_LABEL, signOut, useAuthSetup } from "../../lib/auth";
+import { ApiError, errorMessage } from "../../lib/api";
+import { addSignIn, deleteAccount, PROVIDER_LABEL, signOut, useAuthSetup } from "../../lib/auth";
 import { useAccount } from "../../lib/identity";
 import { useHostPass } from "../../lib/useHostPass";
 import { useResolvedTheme } from "../../lib/theme";
@@ -64,24 +66,99 @@ export function ProviderMark({ provider }: { provider: AuthProvider }) {
   );
 }
 
+/** Every way the account signs in (an older server only says the first). */
+const signInsOf = (account: AccountInfo): AuthProvider[] => account.providers ?? [account.provider];
+const namesOf = (providers: AuthProvider[]) => providers.map((p) => PROVIDER_LABEL[p]).join(" and ");
+
+type PendingCombine = { provider: AuthProvider; input: SignInInput };
+
 function SignedIn({ account }: { account: AccountInfo }) {
   const [confirm, setConfirm] = useState<"sign-out" | "delete" | null>(null);
-  const label = PROVIDER_LABEL[account.provider];
+  const setup = useAuthSetup();
+  const have = signInsOf(account);
+  const missing = setup.providers.filter((p) => !have.includes(p));
+  const [combine, setCombine] = useState<PendingCombine | null>(null);
   return (
     <div data-testid="account-section" data-state="signed-in">
       <ListGroup title="Account" footer="Your boards, squares and invites follow you to every device you sign in on.">
         <ListRow
           data-testid="account-signed-in"
           leading={<ProviderMark provider={account.provider} />}
-          title={`Signed in with ${label}`}
+          title={`Signed in with ${namesOf(have)}`}
           subtitle={account.email ?? account.name ?? (account.provider === "apple" ? "Email kept private" : undefined)}
         />
         <ListRow data-testid="account-sign-out" title="Sign out" onClick={() => setConfirm("sign-out")} chevron />
         <ListRow data-testid="account-delete" title="Delete account" destructive onClick={() => setConfirm("delete")} />
       </ListGroup>
+      {missing.length > 0 && (
+        <div data-testid="account-add" className="mt-6">
+          <ListGroup title="Another way to sign in" footer={`Add ${namesOf(missing)} and either one opens this account, on any device.`}>
+            <div className="px-4 py-3.5">
+              <SignInButtons
+                setup={setup}
+                only={missing}
+                submit={addSignIn}
+                success={{ title: "Sign-in added", description: "Either one opens this account now, on any device." }}
+                onFailure={(err, provider, input) => {
+                  if (!(err instanceof ApiError && (err.body as { code?: unknown } | undefined)?.code === ACCOUNT_EXISTS_CODE)) return false;
+                  setCombine({ provider, input });
+                  return true;
+                }}
+              />
+            </div>
+          </ListGroup>
+        </div>
+      )}
+      <CombineSheet pending={combine} onClose={() => setCombine(null)} />
       <SignOutSheet open={confirm === "sign-out"} onClose={() => setConfirm(null)} />
       <DeleteAccountSheet open={confirm === "delete"} onClose={() => setConfirm(null)} account={account} />
     </div>
+  );
+}
+
+/**
+ * The sign-in being added already has its own JaxSquares account: combine it
+ * into this one (its boards, squares, host controls and passes move over, and
+ * both sign-ins open this account), or keep them apart.
+ */
+function CombineSheet({ pending, onClose }: { pending: PendingCombine | null; onClose: () => void }) {
+  // Kept while the sheet slides away, so its words don't change.
+  const [shown, setShown] = useState<PendingCombine | null>(pending);
+  if (pending && pending !== shown) setShown(pending);
+  const name = shown ? PROVIDER_LABEL[shown.provider] : "";
+  const { busy, go } = useAccountAction(
+    async () => {
+      if (shown) await addSignIn(shown.provider, { ...shown.input, combine: true });
+    },
+    { title: "Accounts combined", description: "Everything from both is in this account now." },
+    "Couldn't combine them",
+    onClose,
+  );
+  return (
+    <BottomSheet
+      open={!!pending}
+      onClose={onClose}
+      dismissible={!busy}
+      title="Combine your accounts?"
+      description={`That ${name} sign-in already has its own JaxSquares account.`}
+      footer={
+        <div className="flex flex-col gap-2">
+          <Button size="lg" block loading={busy} onClick={() => void go()} data-testid="account-combine-confirm">
+            Combine accounts
+          </Button>
+          <Button variant="ghost" size="lg" block disabled={busy} onClick={onClose}>
+            Keep them apart
+          </Button>
+        </div>
+      }
+    >
+      <ul data-testid="account-combine-sheet" className="flex flex-col gap-2.5 pb-1 text-callout text-ink">
+        <Line kept>Its boards, squares and host controls move into this account.</Line>
+        <Line kept>A Host Pass or Club Pass on it comes along.</Line>
+        <Line kept>{name} and your current sign-in both open this account, on every device.</Line>
+        <Line>The other account itself. This can't be undone.</Line>
+      </ul>
+    </BottomSheet>
   );
 }
 
@@ -151,7 +228,7 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
     "Couldn't delete your account",
     onClose,
   );
-  const label = PROVIDER_LABEL[account.provider];
+  const have = signInsOf(account);
   // A Host Pass on the account: a web one stops renewing (nobody could manage it
   // afterwards); an App Store one is Apple's to cancel, and Restore purchases brings it back.
   const { pass } = useHostPass(false);
@@ -179,11 +256,11 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
           <h3 className="eyebrow mb-2 text-ink-subtle">Deleted</h3>
           <ul className="flex flex-col gap-2.5">
             <Line>
-              Your sign-in with {label}
+              Your sign-in with {namesOf(have)}
               {account.email ? <span className="text-ink-muted"> ({account.email})</span> : null}
             </Line>
             <Line>The link between your devices and your boards</Line>
-            {account.provider === "apple" && <Line>JaxSquares' access to your Apple ID</Line>}
+            {have.includes("apple") && <Line>JaxSquares' access to your Apple ID</Line>}
             {renewing === "stripe" && <Line>Your Host Pass renewal. It won't be charged again.</Line>}
           </ul>
         </section>

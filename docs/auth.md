@@ -49,6 +49,29 @@ public player id: `GameState`, activity and the live socket's `?player=` all
 show the account's id. The socket's `player` is still only a hint for the
 watcher count (unchanged trust): two devices of one account count once.
 
+### One account per email, and adding a sign-in
+
+- **Email matching.** A sign-in whose Apple ID or Google account isn't known
+  yet joins the account that already has its email (lowercased; the oldest
+  if several) instead of making a second one, merging the device in as below.
+  Only an email the provider says it verified (`email_verified` true), and
+  never an Apple private relay address (`@privaterelay.appleid.com`: each app
+  gets its own, so it never matches). `matchEmailOf` in `routes.ts`; the
+  lookup uses `idx_accounts_email` (migration 0018). The account's email is
+  never replaced by a relay address once it has a real one.
+- **Adding one** (Profile → Account → "Another way to sign in", for the
+  providers the account doesn't have): `POST /api/auth/:provider/link` adds
+  the identity to the account this device is signed in to. Someone who hid
+  their email from Apple adds Google (or the other way) here.
+- **Combining.** When the sign-in being added already has its own account,
+  the server answers 409 `account_exists`; the app asks ("Combine your
+  accounts?") and resends the same token with `combine: true`. That account's
+  canonical clientId's rows move into this one with the same merge statements
+  as a device sign-in, then its devices (`client_links`) and sign-ins
+  (`account_identities`) move over and it's deleted (`combineAccountStatements`).
+  The person proved both: this device is signed in to one, and the token is a
+  fresh sign-in to the other.
+
 ### Signing in on another device (the merge)
 
 When a device that isn't the canonical one signs in to an existing account,

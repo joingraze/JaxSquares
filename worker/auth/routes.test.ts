@@ -6,7 +6,7 @@
 // Apple's and Google's keys are local test keys behind a mocked fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../../shared/playerId";
-import { ACCOUNT_REQUIRED_CODE, type AppConfig, type ClubSettings, type CreateGameResponse, type GameState, type GameSummary, type HostPassState, type MeResponse } from "../../shared/types";
+import { ACCOUNT_EXISTS_CODE, ACCOUNT_REQUIRED_CODE, type AppConfig, type ClubSettings, type CreateGameResponse, type GameState, type GameSummary, type HostPassState, type MeResponse } from "../../shared/types";
 import type { Env } from "../env";
 import worker from "../index";
 import { createTestD1, type TestD1 } from "../payments/testD1";
@@ -144,6 +144,8 @@ interface SignInOpts {
   body?: Record<string, unknown>;
   /** false: mint the token without a nonce and send none. */
   nonce?: boolean;
+  /** POST /auth/:provider/link (add it to this device's account) instead of signing in. */
+  link?: boolean;
 }
 
 async function signIn(provider: "google" | "apple", client: string, sub: string, o: SignInOpts = {}) {
@@ -159,7 +161,7 @@ async function signIn(provider: "google" | "apple", client: string, sub: string,
     ...o.claims,
   });
   const idToken = await (provider === "google" ? google : apple).sign(claims);
-  return call<MeResponse>("POST", `/auth/${provider}`, { client, body: { idToken, ...(withNonce ? { nonce: raw } : {}), ...o.body } });
+  return call<MeResponse>("POST", `/auth/${provider}${o.link ? "/link" : ""}`, { client, body: { idToken, ...(withNonce ? { nonce: raw } : {}), ...o.body } });
 }
 
 const createInput = (name: string) => ({
@@ -260,7 +262,7 @@ describe("first sign-in", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       playerId: pid(PHONE),
-      account: { provider: "google", email: "g-1@example.com", name: "Jordan Lee", since: expect.any(Number) },
+      account: { provider: "google", providers: ["google"], email: "g-1@example.com", name: "Jordan Lee", since: expect.any(Number) },
       hostTokens: { [mine.id]: mine.admin },
       profile: { name: "Jordan", color: "#38b6ff", emoji: "🐐" },
       hostPass: null,
@@ -572,6 +574,97 @@ describe("sign-out", () => {
     // Signing out twice (or when never signed in) is fine.
     expect((await call("POST", "/auth/sign-out", { client: LAPTOP })).status).toBe(200);
     expectNoSecrets();
+  });
+});
+
+describe("signing back in after signing out", () => {
+  it("gets the host's boards back on the fresh device, with the host tokens (web Sign in with Apple)", async () => {
+    const a = await boardBy(PHONE);
+    const webApple = { claims: { aud: SERVICES_ID } };
+    expect((await signIn("apple", PHONE, "apple-web-1", webApple)).status).toBe(200);
+    // Signing out of the canonical device: the app starts fresh with a new clientId.
+    expect((await call("POST", "/auth/sign-out", { client: PHONE })).status).toBe(200);
+    const again = await signIn("apple", LAPTOP, "apple-web-1", webApple);
+    expect(again.status).toBe(200);
+    expect(again.body.hostTokens).toEqual({ [a.id]: a.admin });
+    const games = await call<{ games: GameSummary[] }>("GET", "/me/games", { client: LAPTOP, headers: { "x-signed-in": "1" } });
+    expect(games.body.games.map((g) => [g.id, g.isHost])).toEqual([[a.id, true]]);
+  });
+});
+
+describe("one account per email", () => {
+  const myGames = async (client: string) =>
+    (await call<{ games: GameSummary[] }>("GET", "/me/games", { client, headers: { "x-signed-in": "1" } })).body.games.map((g) => g.id).sort();
+
+  it("puts Apple after Google (same verified email, any case) in the same account, with the boards", async () => {
+    const a = await boardBy(PHONE);
+    expect((await signIn("google", PHONE, "g-1", { email: "Jo@Example.com" })).status).toBe(200);
+    const apple = await signIn("apple", LAPTOP, "apple-1", { email: "jo@example.com", claims: { email_verified: "true" } });
+    expect(apple.status).toBe(200);
+    expect(apple.body.account).toMatchObject({ provider: "google", providers: ["google", "apple"] });
+    expect(apple.body.hostTokens).toEqual({ [a.id]: a.admin });
+    expect(await myGames(LAPTOP)).toEqual([a.id]);
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 1 }]);
+    // Either one signs in from now on, wherever.
+    expect((await signIn("apple", STRANGER, "apple-1", { email: null })).body.account).toMatchObject({ providers: ["google", "apple"] });
+  });
+
+  it("never matches an unverified email or Apple's private relay address, and never swaps a real address for one", async () => {
+    await signIn("google", PHONE, "g-1", { email: "jo@example.com" });
+    const unverified = await signIn("google", LAPTOP, "g-2", { email: "jo@example.com", claims: { email_verified: false } });
+    expect(unverified.body.account?.providers).toEqual(["google"]);
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 2 }]);
+    const relay = await signIn("apple", FRIEND, "apple-9", { email: "x7q2@privaterelay.appleid.com" });
+    expect(relay.body.account?.providers).toEqual(["apple"]);
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 3 }]);
+  });
+});
+
+describe("adding Apple or Google to an account", () => {
+  const myGames = async (client: string) =>
+    (await call<{ games: GameSummary[] }>("GET", "/me/games", { client, headers: { "x-signed-in": "1" } })).body.games.map((g) => g.id).sort();
+
+  it("adds a sign-in the account didn't have (a hidden Apple email), and either one signs in after", async () => {
+    const a = await boardBy(PHONE);
+    await signIn("google", PHONE, "g-1");
+    const added = await signIn("apple", PHONE, "apple-1", { link: true, email: "q9@privaterelay.appleid.com" });
+    expect(added.status).toBe(200);
+    expect(added.body.account).toMatchObject({ provider: "google", providers: ["google", "apple"], email: "g-1@example.com" });
+    const laptop = await signIn("apple", LAPTOP, "apple-1", { email: "q9@privaterelay.appleid.com" });
+    expect(laptop.body.hostTokens).toEqual({ [a.id]: a.admin });
+    // Adding it again is fine.
+    expect((await signIn("apple", PHONE, "apple-1", { link: true })).status).toBe(200);
+  });
+
+  it("asks first when that sign-in has its own account, then combines the two: boards, devices and sign-ins", async () => {
+    const a = await boardBy(PHONE, "Google Board");
+    const b = await boardBy(LAPTOP, "Apple Board");
+    await signIn("google", PHONE, "g-1");
+    await signIn("apple", LAPTOP, "apple-1");
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 2 }]);
+
+    const asked = await call<{ error: string; code: string }>("POST", "/auth/apple/link", { client: PHONE, body: {} });
+    expect(asked.status).toBe(400); // no token: nothing happens
+    const exists = await signIn("apple", PHONE, "apple-1", { link: true });
+    expect(exists.status).toBe(409);
+    expect(exists.body).toEqual({ error: "That Apple sign-in already has its own JaxSquares account.", code: ACCOUNT_EXISTS_CODE });
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 2 }]);
+
+    const combined = await signIn("apple", PHONE, "apple-1", { link: true, body: { combine: true } });
+    expect(combined.status).toBe(200);
+    expect(combined.body.account).toMatchObject({ providers: ["google", "apple"] });
+    expect(combined.body.hostTokens).toEqual({ [a.id]: a.admin, [b.id]: b.admin });
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 1 }]);
+    // The laptop, signed in to the other account, is this account now.
+    expect(await myGames(LAPTOP)).toEqual([a.id, b.id].sort());
+    expect((await call<MeResponse>("GET", "/me", { client: LAPTOP })).body.playerId).toBe(pid(PHONE));
+    expectNoSecrets();
+  });
+
+  it("needs this device to be signed in", async () => {
+    const res = await signIn("apple", PHONE, "apple-1", { link: true });
+    expect(res.status).toBe(409);
+    expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 0 }]);
   });
 });
 

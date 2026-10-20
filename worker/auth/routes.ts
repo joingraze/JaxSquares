@@ -3,6 +3,7 @@
 // the contract.
 //
 //   POST   /auth/apple | /auth/google  SignInInput -> MeResponse
+//   POST   /auth/apple/link | /auth/google/link  SignInInput -> MeResponse (adds it to this device's account)
 //   GET    /me                         MeResponse
 //   POST   /auth/sign-out              SignOutInput -> { ok }
 //   DELETE /account                    { ok }
@@ -15,7 +16,7 @@
 import { Hono, type Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { isClientId } from "../../shared/playerId";
-import type { AuthProvider, MeResponse } from "../../shared/types";
+import { ACCOUNT_EXISTS_CODE, type AuthProvider, type MeResponse } from "../../shared/types";
 import { forgetClubBrand } from "../clubs/brand";
 import * as clubStore from "../clubs/store";
 import * as db from "../db";
@@ -111,6 +112,18 @@ function emailOf(claims: IdTokenClaims): string | null {
 }
 
 /**
+ * The email a new sign-in may join an existing account by: only one the
+ * provider says it verified, and never an Apple private relay address (each
+ * app gets its own, so it never matches). Lowercased.
+ */
+export function matchEmailOf(claims: IdTokenClaims): string | null {
+  const email = typeof claims.email === "string" ? claims.email.trim().toLowerCase() : "";
+  if (!email || email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return null;
+  if (claims.email_verified !== true && claims.email_verified !== "true") return null;
+  return email.endsWith(`@${store.PRIVATE_RELAY_DOMAIN}`) ? null : email;
+}
+
+/**
  * A redirect URI for Apple's token exchange (codes from Sign in with Apple JS
  * are bound to it): https on this app's own host (or its www.), else null.
  */
@@ -150,47 +163,55 @@ interface SignIn {
   subject: string;
   device: string;
   email: string | null;
+  /** The token's email when the provider vouches for it (matchEmailOf): a new identity with it joins that account. */
+  matchEmail: string | null;
   name: string | null;
   now: number;
 }
 
 /**
- * Signs the device in: a new identity makes a new account with this device as
- * canonical; a known one links the device to its account, moving the device's
- * rows to the canonical clientId first. A device signed in to (or the
- * canonical device of) a different account is a conflict. Retried once when a
- * concurrent sign-in won a race (UNIQUE).
+ * The statements moving everything `from` holds (squares, players, hosted and
+ * co-hosted boards, push, payments, email notices, a club) to `to`, in the
+ * tables' owners' words. The first statement's results are the boards touched.
+ */
+async function mergeStatements(env: Env, from: string, to: string, now: number): Promise<D1PreparedStatement[]> {
+  return [
+    ...db.mergeClientStatements(env.DB, { clientId: from, playerId: await playerIdOf(from) }, { clientId: to, playerId: await playerIdOf(to) }, now),
+    ...pushStore.mergeClientStatements(env.DB, from, to),
+    ...paymentsStore.mergeClientStatements(env.DB, from, to, now),
+    ...emailStore.mergeClientStatements(env.DB, from, to),
+    ...clubStore.mergeClientStatements(env.DB, from, to, now),
+  ];
+}
+
+/**
+ * Signs the device in. A known identity links the device to its account,
+ * moving the device's rows to the canonical clientId first. A new identity
+ * whose verified email an account already has joins that account the same
+ * way (one account per email: Google after Apple lands in the same boards);
+ * otherwise it makes a new account with this device as canonical. A device
+ * signed in to (or the canonical device of) a different account is a
+ * conflict. Retried once when a concurrent sign-in won a race (UNIQUE).
  */
 async function signInDevice(env: Env, s: SignIn): Promise<Outcome> {
   for (let attempt = 0; ; attempt++) {
-    const state = await store.signInState(env.DB, s.provider, s.subject, s.device);
-    const mine = state.identity?.accountId ?? null;
+    const state = await store.signInState(env.DB, s.provider, s.subject, s.device, s.matchEmail);
+    const target = state.identity ?? state.emailAccount;
+    // The identity joins `target` in the same batch (it isn't on any account yet).
+    const adding = !state.identity && !!state.emailAccount;
+    const mine = target?.accountId ?? null;
     if (state.device && state.device.accountId !== mine) return { conflict: true };
     if (!state.device && state.canonicalOf && state.canonicalOf !== mine) return { conflict: true };
     const touch = { provider: s.provider, subject: s.subject, email: s.email, name: s.name, now: s.now };
     try {
-      if (state.identity && state.device) {
-        await store.touchAccount(env.DB, { ...touch, accountId: state.identity.accountId });
-        return { conflict: false, accountId: state.identity.accountId, canonical: state.identity.canonical, merged: [] };
+      if (target && state.device) {
+        await store.touchAccount(env.DB, { ...touch, accountId: target.accountId }, adding);
+        return { conflict: false, accountId: target.accountId, canonical: target.canonical, merged: [] };
       }
-      if (state.identity) {
-        const { accountId, canonical } = state.identity;
-        const merge =
-          canonical === s.device
-            ? []
-            : [
-                ...db.mergeClientStatements(
-                  env.DB,
-                  { clientId: s.device, playerId: await playerIdOf(s.device) },
-                  { clientId: canonical, playerId: await playerIdOf(canonical) },
-                  s.now,
-                ),
-                ...pushStore.mergeClientStatements(env.DB, s.device, canonical),
-                ...paymentsStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
-                ...emailStore.mergeClientStatements(env.DB, s.device, canonical),
-                ...clubStore.mergeClientStatements(env.DB, s.device, canonical, s.now),
-              ];
-        const results = await store.linkDevice(env.DB, { ...touch, accountId, clientId: s.device }, merge);
+      if (target) {
+        const { accountId, canonical } = target;
+        const merge = canonical === s.device ? [] : await mergeStatements(env, s.device, canonical, s.now);
+        const results = await store.linkDevice(env.DB, { ...touch, accountId, clientId: s.device }, merge, adding);
         const merged = merge.length > 0 ? (results[0].results as { id: string }[]).map((r) => r.id) : [];
         return { conflict: false, accountId, canonical, merged };
       }
@@ -203,7 +224,17 @@ async function signInDevice(env: Env, s: SignIn): Promise<Outcome> {
   }
 }
 
-async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
+/** A sign-in request, read and verified: who the provider says this is, and what came with the token. */
+interface Verified {
+  device: string;
+  claims: IdTokenClaims;
+  body: Record<string, unknown>;
+  /** Apple's authorization code (for the refresh token that revocation needs), or "". */
+  code: string;
+}
+
+/** Reads and verifies a sign-in body (rate limited by device and address); a Response when it's refused with 429. */
+async function verifiedSignIn(c: Ctx, provider: AuthProvider): Promise<Verified | Response> {
   const device = deviceOf(c);
   const setup = providerSetup(c.env, provider);
   if (setup.audiences.length === 0) fail(503, `Sign in with ${PROVIDER_NAME[provider]} isn't set up yet.`);
@@ -217,9 +248,8 @@ async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
   const tooMany = await limited(c, device);
   if (tooMany) return tooMany;
 
-  let claims: IdTokenClaims;
   try {
-    claims = await verifyIdToken(idToken, { ...setup, nonce });
+    return { device, claims: await verifyIdToken(idToken, { ...setup, nonce }), body, code };
   } catch (err) {
     if (err instanceof TokenError) {
       console.log(`sign in with ${provider} refused: ${err.reason}`);
@@ -231,43 +261,104 @@ async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
     }
     throw err;
   }
+}
 
+/** Google's token carries the name; Apple sends it once, beside the token, on the first authorization. */
+function nameOf(provider: AuthProvider, v: Verified): string | null {
+  return provider === "google" ? cleanName(v.claims.name) : cleanName(v.body.name);
+}
+
+/**
+ * Keeps a refresh token so deleting the account can revoke it. The code's
+ * audience is the token's: the bundle id (iOS app) or the Services ID (web).
+ */
+function keepAppleToken(c: Ctx, v: Verified): void {
+  if (!v.code) return;
+  const clientId = typeof v.claims.aud === "string" ? v.claims.aud : String(v.claims.aud[0]);
+  const redirectUri = appleRedirectUri(c.env, v.body.redirectUri);
+  defer(
+    c,
+    exchangeAppleCode(c.env, { code: v.code, clientId, redirectUri }).then(async (token) => {
+      if (token) await store.setAppleRefreshToken(c.env.DB, v.claims.sub, token, clientId);
+    }),
+  );
+}
+
+/** Boards open on any phone show the moved squares under the account right away. */
+function broadcastMerged(c: Ctx, merged: string[]): void {
+  if (merged.length > 0) defer(c, Promise.all(merged.slice(0, BROADCAST_MAX).map((id) => broadcast(c.env, id))));
+}
+
+async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
+  const v = await verifiedSignIn(c, provider);
+  if (v instanceof Response) return v;
   const now = Date.now();
   const outcome = await signInDevice(c.env, {
     provider,
-    subject: claims.sub,
-    device,
-    email: emailOf(claims),
-    // Google's token carries the name; Apple sends it once, beside the token, on the first authorization.
-    name: provider === "google" ? cleanName(claims.name) : cleanName(body.name),
+    subject: v.claims.sub,
+    device: v.device,
+    email: emailOf(v.claims),
+    matchEmail: matchEmailOf(v.claims),
+    name: nameOf(provider, v),
     now,
   });
   if (outcome.conflict) fail(409, SIGNED_OUT_FIRST);
-  rememberLink(device, outcome.canonical, now);
+  rememberLink(v.device, outcome.canonical, now);
   // A Club Pass (and its club) the device brought now brands the account's boards.
-  if (outcome.canonical !== device) forgetClubBrand(c.env.DB, outcome.canonical);
-
-  // Boards open on any phone show the device's squares under the account right away.
-  if (outcome.merged.length > 0) {
-    defer(c, Promise.all(outcome.merged.slice(0, BROADCAST_MAX).map((id) => broadcast(c.env, id))));
-  }
-  // Keep a refresh token so deleting the account can revoke it. The code's
-  // audience is the token's: the bundle id (iOS app) or the Services ID (web).
-  if (code) {
-    const clientId = typeof claims.aud === "string" ? claims.aud : String(claims.aud[0]);
-    const redirectUri = appleRedirectUri(c.env, body.redirectUri);
-    defer(
-      c,
-      exchangeAppleCode(c.env, { code, clientId, redirectUri }).then(async (token) => {
-        if (token) await store.setAppleRefreshToken(c.env.DB, claims.sub, token, clientId);
-      }),
-    );
-  }
+  if (outcome.canonical !== v.device) forgetClubBrand(c.env.DB, outcome.canonical);
+  broadcastMerged(c, outcome.merged);
+  keepAppleToken(c, v);
   return c.json(await meFor(c.env, outcome.canonical, outcome.accountId), 200, { "cache-control": "no-store" });
+}
+
+/**
+ * Adds Apple or Google to the account this device is signed in to (Profile →
+ * Account → "Add Google"), so either one signs in. When that sign-in already
+ * has an account of its own, the answer is 409 ACCOUNT_EXISTS_CODE until the
+ * person confirms (`combine: true`); then that account is combined into this
+ * one: its canonical clientId's rows move over, then its devices and
+ * sign-ins, and it's deleted. The person proved both: this device is signed
+ * in to one, and the token is a fresh sign-in to the other.
+ */
+async function addSignIn(c: Ctx, provider: AuthProvider): Promise<Response> {
+  const v = await verifiedSignIn(c, provider);
+  if (v instanceof Response) return v;
+  const link = await linkOr503(c, v.device);
+  if (!link) fail(409, "Sign in first, then add another way to sign in.");
+  const now = Date.now();
+  const touch = { accountId: link.accountId, provider, subject: v.claims.sub, email: emailOf(v.claims), name: nameOf(provider, v), now };
+  const state = await store.signInState(c.env.DB, provider, v.claims.sub, v.device);
+  if (!state.identity) {
+    try {
+      await store.touchAccount(c.env.DB, touch, true);
+    } catch (err) {
+      // Added meanwhile (a double tap): it's on an account now; this request's answer is the same either way.
+      if (!store.isUniqueViolation(err)) throw err;
+    }
+  } else if (state.identity.accountId === link.accountId) {
+    await store.touchAccount(c.env.DB, touch);
+  } else {
+    if (v.body.combine !== true) {
+      return c.json({ error: `That ${PROVIDER_NAME[provider]} sign-in already has its own JaxSquares account.`, code: ACCOUNT_EXISTS_CODE }, 409);
+    }
+    const other = state.identity;
+    const others = await store.clientsOf(c.env.DB, other.accountId);
+    const merge = await mergeStatements(c.env, other.canonical, link.canonical, now);
+    const results = await c.env.DB.batch([...merge, ...store.combineAccountStatements(c.env.DB, other.accountId, link.accountId, now)]);
+    await store.touchAccount(c.env.DB, touch);
+    // Its devices act as this account from their next request (other isolates within 30 s).
+    forgetClients([...others, other.canonical]);
+    forgetClubBrand(c.env.DB, link.canonical);
+    broadcastMerged(c, (results[0].results as { id: string }[]).map((r) => r.id));
+  }
+  keepAppleToken(c, v);
+  return c.json(await meFor(c.env, link.canonical, link.accountId), 200, { "cache-control": "no-store" });
 }
 
 authRoutes.post("/auth/apple", (c) => signIn(c, "apple"));
 authRoutes.post("/auth/google", (c) => signIn(c, "google"));
+authRoutes.post("/auth/apple/link", (c) => addSignIn(c, "apple"));
+authRoutes.post("/auth/google/link", (c) => addSignIn(c, "google"));
 
 /** Read fresh: the app trusts `account: null` to mean "not signed in here" (and drops a sign-in it thought it had). */
 async function linkOr503(c: Ctx, device: string) {

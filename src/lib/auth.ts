@@ -6,6 +6,7 @@
 // authSdk.ts and only loads when a sign-in button shows. This module holds
 // the flows around it:
 //   completeSignIn(provider, input)  -> POST /api/auth/:provider, then adopt who the server says we are
+//   addSignIn(provider, input)       -> POST /api/auth/:provider/link: Apple or Google joins this account
 //   refreshMe()                      -> GET /api/me on start: refresh the player id and host tokens
 //   signOut() / deleteAccount()      -> the server first, then the device starts fresh
 //
@@ -147,6 +148,21 @@ export function applyMe(me: MeResponse, requestedAt?: number): boolean {
 export async function completeSignIn(provider: AuthProvider, input: SignInInput): Promise<MeResponse> {
   const requestedAt = Date.now();
   const me = await api.signIn(provider, input);
+  epoch++;
+  applyMe(me, requestedAt);
+  return me;
+}
+
+/**
+ * Adds Apple or Google to the account this device is signed in to, so either
+ * one signs in anywhere. When that sign-in already has its own account the
+ * server answers 409 with ACCOUNT_EXISTS_CODE (an ApiError); resend with
+ * `combine: true` once the person agrees, and that account's boards, devices
+ * and sign-ins move into this one.
+ */
+export async function addSignIn(provider: AuthProvider, input: SignInInput): Promise<MeResponse> {
+  const requestedAt = Date.now();
+  const me = await api.addSignIn(provider, input);
   epoch++;
   applyMe(me, requestedAt);
   return me;

@@ -29,7 +29,9 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   via `client_links`. `requireClient` and the push routes resolve
   `x-client-id` to it (`canonicalClientId`, cached; `x-signed-in: 1` from a
   signed-in app forces a fresh read), so `c.get("clientId")` is the canonical
-  one and an account's devices are one player. Signing in on another device
+  one and an account's devices are one player. A new Apple/Google sign-in with
+  a verified email an account has joins it, and Profile adds the other
+  provider (combining two accounts after a confirm). Signing in on another device
   merges its rows into the canonical clientId in one batch: a new table keyed
   by a clientId must join that merge (docs/auth.md). Account tables are touched
   only by `worker/auth/store.ts`; email/name never go in a public object, nor

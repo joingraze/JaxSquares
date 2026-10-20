@@ -188,8 +188,9 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden. `emailEnabled`: email notices are set up (the app shows the opt-in only then) |
-| POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
+| POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it, and a new one whose verified email (not an Apple private relay address) an account has joins that account the same way (docs/auth.md "One account per email"). `MeResponse.account.providers` lists every way the account signs in. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
 | GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Club Pass, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
+| POST | `/api/auth/apple/link`, `/api/auth/google/link` | C | `SignInInput` (+ `combine?`) | `MeResponse`: adds that sign-in to the account this device is signed in to. 409 "Sign in first" (this device isn't); 409 `{ error, code: "account_exists" }` when that sign-in has its own account, until resent with `combine: true`, which moves that account's boards, devices and sign-ins into this one and deletes it; otherwise as sign-in |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
@@ -1520,7 +1521,7 @@ after a request, in the room's alarm for live scores). It reads the board with
 
 `worker/auth/index.ts` (auth):
 ```ts
-authRoutes: Hono<{ Bindings: Env }>              // /auth/apple, /auth/google, /auth/sign-out, /me, /account
+authRoutes: Hono<{ Bindings: Env }>              // /auth/apple, /auth/google, /auth/:provider/link, /auth/sign-out, /me, /account
 authConfig(env: Env): AuthConfig                 // for GET /api/config
 /** x-client-id -> the clientId the request acts as (the account's canonical one when signed in). */
 canonicalClientId(db: D1Database, clientId: string, opts?: { signedIn?: boolean }): Promise<string>

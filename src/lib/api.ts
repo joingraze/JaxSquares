@@ -317,6 +317,8 @@ export const api = {
   /** Who this device is: its public id, its account and its boards' admin tokens. */
   me: () => request<MeResponse>("GET", "/me"),
   signIn: (provider: AuthProvider, input: SignInInput) => request<MeResponse>("POST", `/auth/${provider}`, { body: input, timeoutMs: 30_000 }),
+  /** Adds Apple or Google to this device's account (409 ACCOUNT_EXISTS_CODE: it has its own; resend with `combine`). */
+  addSignIn: (provider: AuthProvider, input: SignInInput) => request<MeResponse>("POST", `/auth/${provider}/link`, { body: input, timeoutMs: 30_000 }),
   signOut: (input: SignOutInput) => request<{ ok: true }>("POST", "/auth/sign-out", { body: input }),
   deleteAccount: () => request<{ ok: true }>("DELETE", "/account"),
 };

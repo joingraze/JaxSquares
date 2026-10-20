@@ -222,8 +222,10 @@ function parseAccount(raw: string | null): AccountInfo | null {
   try {
     const v = JSON.parse(raw) as Record<string, unknown>;
     if (v.provider !== "apple" && v.provider !== "google") return null;
+    const providers = Array.isArray(v.providers) ? v.providers.filter((p): p is "apple" | "google" => p === "apple" || p === "google") : [];
     return {
       provider: v.provider,
+      ...(providers.length > 0 ? { providers } : {}),
       email: typeof v.email === "string" ? v.email : null,
       name: typeof v.name === "string" ? v.name : null,
       since: typeof v.since === "number" ? v.since : 0,
