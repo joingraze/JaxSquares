@@ -2,7 +2,7 @@
 // already mid-game, and the two ways in. The tab dock stays out of the way so
 // "Make a board" is the one obvious move.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { PlusIcon } from "../../components/icons";
 import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
@@ -10,6 +10,7 @@ import { useHideTabBar } from "../../components/shell";
 import { useAuthSetup } from "../../lib/auth";
 import { haptic } from "../../lib/native";
 import { SignInSheet } from "../account";
+import { detectHelpEnv } from "../notifications/platformHelp";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { MiniBoard } from "./MiniBoard";
 
@@ -19,6 +20,12 @@ export function Welcome() {
   const [signingIn, setSigningIn] = useState(false);
   // A new phone for someone who plays elsewhere: one tap brings their boards over.
   const canSignIn = useAuthSetup().providers.length > 0;
+  // The iPhone Home Screen web app keeps its own storage, apart from Safari's:
+  // someone who joined in Safari and then opened the icon lands here with no boards.
+  const homeScreenApp = useMemo(() => {
+    const env = detectHelpEnv();
+    return env.app === null && env.ios && env.standalone;
+  }, []);
 
   return (
     <div className="flex min-h-[calc(100dvh-var(--shell-bottom)-1.5rem)] flex-col overflow-x-clip px-safe">
@@ -63,7 +70,11 @@ export function Welcome() {
         <Button variant="secondary" size="lg" block onClick={() => setJoining(true)}>
           Join with a code
         </Button>
-        <p className="text-center text-footnote text-ink-subtle">No account needed. Friends join from a link.</p>
+        <p data-testid="welcome-note" className="text-center text-footnote text-ink-subtle">
+          {homeScreenApp
+            ? "Joined a board in Safari? It's still there. Open your invite link in Safari to get back to it."
+            : "No account needed. Friends join from a link."}
+        </p>
         {canSignIn && (
           <button
             type="button"

@@ -225,7 +225,7 @@ export function NotificationsCard({ status, games }: { status: PushStatus; games
       >
         <ul className="flex flex-col gap-3 pb-2">
           {[
-            ["iPhone and iPad", "Open JaxSquares in Safari, add it to your Home Screen, then turn them on."],
+            ["iPhone and iPad", "Not in Safari yet. Keep the board open in Safari and it updates live."],
             ["Android and computers", "Chrome, Edge or Firefox, with notifications allowed for jaxsquares.com."],
             ["The JaxSquares app", "Turn them on from Profile in the app."],
           ].map(([where, how]) => (

@@ -94,12 +94,23 @@ function webPushSupported(): boolean {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+/**
+ * What an iOS 16.4+ Safari tab reports. It could get push from the Home Screen
+ * app ("needs-install", with an Add to Home Screen guide), but that app keeps
+ * its own storage, apart from Safari's: it opens as a new device, with none of
+ * the boards the player joined in Safari, and joining again there makes a
+ * second player. So it's "unsupported" (no Add to Home Screen prompt) until
+ * sign-in can carry a player over (docs/auth.md); "needs-install" brings the
+ * prompt back.
+ */
+const HOME_SCREEN_PUSH: PushState = "unsupported";
+
 /** Why web push isn't available here. */
 function webUnavailable(): PushState {
   if (!isIos() || isStandalone()) return "unsupported";
   const v = iosVersion(navigator.userAgent);
   // Home-screen web apps got push in iOS 16.4; iPadOS-as-Mac has no version in its UA.
-  return v !== null && v < 16.04 ? "unsupported" : "needs-install";
+  return v !== null && v < 16.04 ? "unsupported" : HOME_SCREEN_PUSH;
 }
 
 // ---- Server config (VAPID key) ----

@@ -192,6 +192,20 @@ describe("InviteSheet", () => {
     expect(screen.getByText("Copied. Paste it anywhere.")).toBeInTheDocument();
   });
 
+  it("copies the board code with a tap (the letters are separate tiles, so they can't be selected)", async () => {
+    copyText.mockResolvedValue("copied");
+    render(<InviteSheet state={makeState()} open onClose={() => {}} />);
+    fireEvent.click(await screen.findByTestId("invite-code-toggle"));
+    const copy = screen.getByTestId("invite-copy-code");
+    expect(screen.getByText("Tap the code to copy it.")).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(copy);
+    });
+    expect(copyText).toHaveBeenCalledWith("K7MQ2X");
+    expect(copy).toHaveAccessibleName("Code copied");
+    expect(screen.getByText("Code copied. Paste it in Join with a code.")).toBeInTheDocument();
+  });
+
   it("previews the exact message and pitches by board state", async () => {
     const state = makeState("host");
     vi.spyOn(identity, "getPlayerId").mockReturnValue("host");

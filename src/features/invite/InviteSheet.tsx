@@ -426,23 +426,49 @@ function MiniBoard({ state }: { state: GameState }) {
 // ---- Same room: QR + code ----
 
 function CodePanel({ gameId, url, matchup }: { gameId: string; url: string; matchup: string }) {
+  // The tiles are separate letters, so selecting them to copy doesn't work: a tap copies the code.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 2400);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+  const copyCode = async () => {
+    if ((await copyText(boardCode(gameId))) === "copied") {
+      void haptic("success");
+      setCopied(true);
+    } else {
+      void haptic("error");
+    }
+  };
   return (
     <div className="flex animate-fade-in flex-col items-center gap-3.5 rounded-card bg-surface-3 px-4 pb-4 pt-5 ring-1 ring-inset ring-line">
       <div className="rounded-[1.25rem] bg-white p-2 shadow-[0_8px_24px_-10px_rgb(0_0_0/0.8)]">
         <QrCode value={url} size={200} quiet={2} label={`QR code for the ${matchup} board`} />
       </div>
-      <div role="img" aria-label={`Board code ${spelledCode(gameId)}`} className="flex gap-1.5 [perspective:400px]">
-        {[...boardCode(gameId)].map((ch, i) => (
-          <span
-            key={`${ch}-${i}`}
-            aria-hidden
-            style={{ animationDelay: `${80 + i * 50}ms` }}
-            className="invite-tile grid h-12 w-10 place-items-center rounded-lg bg-canvas font-display text-title-2 font-extrabold text-ink shadow-[inset_0_-2px_0_rgb(255_255_255/0.06),inset_0_1px_0_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line"
-          >
-            {ch}
-          </span>
-        ))}
-      </div>
+      <button
+        type="button"
+        data-testid="invite-copy-code"
+        aria-label={copied ? "Code copied" : "Copy the board code"}
+        onClick={() => void copyCode()}
+        className="pressable -m-1 select-none rounded-xl p-1 focus-visible:outline-2 focus-visible:outline-brand-line"
+      >
+        <span role="img" aria-label={`Board code ${spelledCode(gameId)}`} className="flex gap-1.5 [perspective:400px]">
+          {[...boardCode(gameId)].map((ch, i) => (
+            <span
+              key={`${ch}-${i}`}
+              aria-hidden
+              style={{ animationDelay: `${80 + i * 50}ms` }}
+              className="invite-tile grid h-12 w-10 place-items-center rounded-lg bg-canvas font-display text-title-2 font-extrabold text-ink shadow-[inset_0_-2px_0_rgb(255_255_255/0.06),inset_0_1px_0_rgb(0_0_0/0.6)] ring-1 ring-inset ring-line"
+            >
+              {ch}
+            </span>
+          ))}
+        </span>
+      </button>
+      <p aria-live="polite" className={cx("-mt-1.5 text-caption", copied ? "font-bold text-ink-brand" : "text-ink-subtle")}>
+        {copied ? "Code copied. Paste it in Join with a code." : "Tap the code to copy it."}
+      </p>
       <p className="max-w-[17rem] text-center text-footnote leading-snug text-ink-muted">
         Point a phone camera at the code. Or in JaxSquares, tap <span className="font-bold text-ink">Join with a code</span>.
       </p>

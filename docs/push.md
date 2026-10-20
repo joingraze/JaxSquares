@@ -153,8 +153,15 @@ the app again, it gets no pushes.
 ### iPhone and iPad (web)
 
 - Requires iOS/iPadOS 16.4 or later, and the site must be **added to the Home
-  Screen**. In a Safari tab, `getPushState()` returns `needs-install` so the UI can
-  show "Add to Home Screen to get notifications".
+  Screen**. **Off for now:** that Home Screen app keeps its own storage, apart
+  from Safari's, so it opens as a new device with none of the boards the player
+  joined in Safari (and joining again there makes a second player). So a Safari
+  tab's `getPushState()` returns `unsupported` (`HOME_SCREEN_PUSH` in
+  `src/lib/push.ts`): no Add to Home Screen prompt anywhere, and email notices
+  (docs/email.md) are the iPhone path once set up. Someone who adds the icon
+  anyway sees "Joined a board in Safari? It's still there…" on its empty
+  Welcome. Set `HOME_SCREEN_PUSH` back to `needs-install` (the illustrated
+  guide) once sign-in can carry a player into the Home Screen app.
 - The permission prompt only appears from a tap. `enablePush()` calls
   `Notification.requestPermission()` before it awaits anything else.
 - Every push shows a notification. iOS revokes push for web apps that receive

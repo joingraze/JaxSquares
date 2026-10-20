@@ -144,8 +144,23 @@ describe("Home", () => {
     expect(cta).toHaveAttribute("href", "/new");
     expect(cta).toHaveTextContent("Make a board");
     expect(screen.getByRole("button", { name: "Join with a code" })).toBeInTheDocument();
+    expect(screen.getByTestId("welcome-note")).toHaveTextContent("No account needed. Friends join from a link.");
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.getAllByTestId("new-board")).toHaveLength(1);
+  });
+
+  it("tells someone in the iPhone Home Screen app that the boards they joined in Safari are still there", async () => {
+    const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148");
+    Object.defineProperty(navigator, "standalone", { configurable: true, value: true });
+    try {
+      serve([]);
+      renderHome();
+      expect(screen.getByTestId("welcome-note")).toHaveTextContent("Joined a board in Safari? It's still there. Open your invite link in Safari to get back to it.");
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    } finally {
+      delete (navigator as Navigator & { standalone?: boolean }).standalone;
+      ua.mockRestore();
+    }
   });
 
   it("groups a device's boards by what they need", async () => {
