@@ -9,6 +9,7 @@ import { derivePlayerIdSync } from "../../shared/playerId";
 import { ACCOUNT_EXISTS_CODE, ACCOUNT_REQUIRED_CODE, type AppConfig, type ClubSettings, type CreateGameResponse, type GameState, type GameSummary, type HostPassState, type MeResponse } from "../../shared/types";
 import type { Env } from "../env";
 import worker from "../index";
+import { inline, linkSql } from "../../scripts/ops/link-devices";
 import { createTestD1, type TestD1 } from "../payments/testD1";
 import { RATE_LIMITS } from "../rateLimit";
 import { APPLE_REVOKE_URL, APPLE_TOKEN_URL } from "./apple";
@@ -665,6 +666,36 @@ describe("adding Apple or Google to an account", () => {
     const res = await signIn("apple", PHONE, "apple-1", { link: true });
     expect(res.status).toBe(409);
     expect(rows("SELECT count(*) AS n FROM accounts")).toEqual([{ n: 0 }]);
+  });
+});
+
+describe("the link-devices ops script (scripts/ops/link-devices.ts)", () => {
+  it("attaches a device that never signed in exactly as its signing in would: boards, squares, host tokens, and a link", async () => {
+    const a = await boardBy(PHONE, "Phone Board");
+    const theirs = await boardBy(FRIEND, "Friend Board");
+    await joinAndClaim(PHONE, theirs.id, "Jarryd", [{ row: 3, col: 3 }]);
+    // The account was made on another browser, which then signed out; this one signed back in.
+    await signIn("apple", LAPTOP, "apple-1");
+    expect((await call("POST", "/auth/sign-out", { client: LAPTOP })).status).toBe(200);
+    await signIn("apple", STRANGER, "apple-1");
+    const [account] = rows<{ id: string; canonical_client_id: string }>("SELECT id, canonical_client_id FROM accounts");
+
+    const sql = await linkSql([PHONE], { id: account.id, canonical: account.canonical_client_id }, Date.now());
+    for (const statement of sql.split(";\n")) t.query(statement.replace(/;$/, ""));
+
+    const me = await call<MeResponse>("GET", "/me", { client: STRANGER, headers: { "x-signed-in": "1" } });
+    expect(me.body.hostTokens).toEqual({ [a.id]: a.admin });
+    const games = (await call<{ games: GameSummary[] }>("GET", "/me/games", { client: STRANGER, headers: { "x-signed-in": "1" } })).body.games;
+    expect(games.map((g) => g.id).sort()).toEqual([a.id, theirs.id].sort());
+    const state = (await call<GameState>("GET", `/games/${theirs.id}`, { client: STRANGER, headers: { "x-signed-in": "1" } })).body;
+    expect(state.squares.find((sq) => sq.row === 3 && sq.col === 3)?.playerId).toBe(pid(LAPTOP));
+    // The browser that made the board is signed in to the account now, too.
+    expect((await call<MeResponse>("GET", "/me", { client: PHONE, headers: { "x-signed-in": "1" } })).body.account).not.toBeNull();
+  });
+
+  it("writes parameters in as SQL literals, leaving string literals alone", () => {
+    expect(inline("UPDATE t SET a = ?2, b = '?' WHERE c = ?1 AND d = 'it''s ?'", ["x'y", 5])).toBe("UPDATE t SET a = 5, b = '?' WHERE c = 'x''y' AND d = 'it''s ?'");
+    expect(inline("INSERT INTO t VALUES (?, ?, ?)", ["a", null, 3])).toBe("INSERT INTO t VALUES ('a', NULL, 3)");
   });
 });
 

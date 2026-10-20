@@ -1,0 +1,38 @@
+name: Link devices
+
+# One-off: attach the devices that played as PLAYER_NAME (and aren't signed in)
+# to the account starting ACCOUNT_PREFIX, as if each had signed in
+# (scripts/ops/link-devices.ts). MODE dry lists what matches; apply does it.
+# Never prints a clientId. Starts when this file changes.
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/link-devices.yml
+
+concurrency:
+  group: link-devices
+  cancel-in-progress: false
+
+jobs:
+  link:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Link
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PLAYER_NAME: jarryd
+          ACCOUNT_PREFIX: d36590
+          MODE: dry
+          LINK_DEVICES_RUN: "1"
+          # vite.config.ts leaves the Cloudflare plugin out under VITEST: the script only needs module resolution.
+          VITEST: "true"
+        run: npx vite-node scripts/ops/link-devices.ts

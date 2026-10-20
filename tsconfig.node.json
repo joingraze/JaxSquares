@@ -23,5 +23,9 @@
     "vite.config.ts",
     "capacitor.config.ts",
     "scripts/**/*.ts"
+  ],
+  // The ops scripts import worker modules: tsconfig.ops.json checks them with the Workers types too.
+  "exclude": [
+    "scripts/ops"
   ]
 }
