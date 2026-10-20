@@ -42,8 +42,9 @@
   "triggers": { "crons": ["* * * * *"] },
   "vars": {
     "APP_ORIGIN": "https://jaxsquares.com",
-    // Leave PAYMENTS_MODE unset (test checkout, no charge) until Stripe and
-    // App Store keys are added as secrets; then set it to "live".
+    // Leave PAYMENTS_MODE unset (test checkout, no charge) until the Stripe
+    // keys are added as secrets; then set it to "live" (docs/payments.md). The
+    // App Store keys only matter once the iOS app ships.
     "BOARD_PRICE_CENTS": "499",
     "IAP_PRODUCT_ID": "com.jaxsquares.app.board",
     // A season board's one host fee, at its draw, for every game of the season

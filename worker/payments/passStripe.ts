@@ -4,7 +4,7 @@
 // the browser confirms its first invoice's PaymentIntent with Express Checkout
 // or the card form, and the pass turns active only from Stripe's own data: a
 // Subscription the server reads back from Stripe, or a signed webhook
-// (invoice.paid, customer.subscription.updated / .deleted). The client is
+// (invoice.paid / .payment_failed, customer.subscription.updated / .deleted). The client is
 // never trusted to say it paid.
 
 import type { HostPassIntent, PassPlan } from "../../shared/types";
@@ -23,6 +23,7 @@ import {
   createPortalSession,
   isLiveKey,
   retrieveSubscription,
+  subscriptionOfInvoice,
   type PaymentIntent,
   type StripeEvent,
   type StripeInvoice,
@@ -213,9 +214,11 @@ export async function endWebPassRenewals(env: Env, clientId: string, now = Date.
  * roll a pass back. Errors propagate, so Stripe retries.
  * - customer.subscription.created / .updated / .deleted: status, period end
  *   and auto-renew (cancel_at_period_end) changed;
- * - invoice.paid: the first payment or a renewal landed (a new period).
- * Only subscriptions this server created (metadata product=host_pass, and a
- * pass we hold) are read.
+ * - invoice.paid: the first payment or a renewal landed (a new period);
+ * - invoice.payment_failed: a renewal didn't go through (past_due).
+ * Invoices are read in either API shape (subscriptionOfInvoice), whatever
+ * version the webhook endpoint was made with. Only subscriptions this server
+ * created (metadata product=host_pass, and a pass we hold) are read.
  */
 export async function handleStripePassEvent(env: Env, event: StripeEvent<Record<string, unknown>>, now = Date.now()): Promise<boolean> {
   const object = event.data?.object as { object?: string } | undefined;
@@ -225,7 +228,7 @@ export async function handleStripePassEvent(env: Env, event: StripeEvent<Record<
     if (event.type.startsWith("customer.subscription.") && sub.metadata?.product === HOST_PASS_PRODUCT) subId = sub.id;
   } else if (object?.object === "invoice") {
     const invoice = object as unknown as StripeInvoice;
-    if (event.type === "invoice.paid") subId = typeof invoice.subscription === "string" ? invoice.subscription : (invoice.subscription?.id ?? null);
+    if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") subId = subscriptionOfInvoice(invoice);
   } else {
     return false;
   }

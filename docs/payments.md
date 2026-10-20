@@ -226,11 +226,17 @@ Do these steps in order. Payments stay in test mode until step 4.
    "Your account".
    - URL: `https://jaxsquares.com/api/stripe/webhook`
    - Events: `payment_intent.succeeded` and `payment_intent.canceled` (the
-     host fee), plus `invoice.paid`, `customer.subscription.updated` and
-     `customer.subscription.deleted` (the Host Pass; adding
-     `customer.subscription.created` is harmless)
+     host fee), plus `invoice.paid`, `invoice.payment_failed`,
+     `customer.subscription.created`, `customer.subscription.updated` and
+     `customer.subscription.deleted` (the Host Pass and the Club Pass)
    - Payload style: **snapshot**, not thin, because the handler reads
      `data.object`.
+   - API version: any (the dashboard offers the newest). Payloads come in the
+     endpoint's version; the handler reads an invoice's subscription in both
+     the old shape (`invoice.subscription`) and the 2025-03-31+ one
+     (`invoice.parent.subscription_details.subscription`), and every pass
+     event makes the server read the Subscription back at the version pinned
+     in `stripe.ts`.
    - Copy the signing secret (`whsec_…`) for `STRIPE_WEBHOOK_SECRET`.
 
    The handler checks `Stripe-Signature`: an HMAC-SHA256 of
@@ -317,6 +323,7 @@ piped in, as the private key example shows.
 npx wrangler secret put STRIPE_SECRET_KEY        # rk_live_… or sk_live_…
 npx wrangler secret put STRIPE_PUBLISHABLE_KEY   # pk_live_…
 npx wrangler secret put STRIPE_WEBHOOK_SECRET    # whsec_…
+# The iOS app only (before it ships):
 npx wrangler secret put APPLE_IAP_KEY_ID         # e.g. 2X9R4HXF34
 npx wrangler secret put APPLE_IAP_ISSUER_ID      # UUID
 npx wrangler secret put APPLE_IAP_PRIVATE_KEY < SubscriptionKey_2X9R4HXF34.p8
@@ -325,13 +332,19 @@ npx wrangler secret put APPLE_BUNDLE_ID          # com.jaxsquares.app (or put it
 
 The private key can also be pasted as one line with `\n` escapes.
 
+Or, without a terminal: Cloudflare dashboard → Workers & Pages → jaxsquares →
+Settings → Variables and Secrets → Add → type **Secret**, one per name. Paste
+each value there yourself; never in a chat.
+
 Then add `"PAYMENTS_MODE": "live"` to `vars` in `wrangler.jsonc` and run
 `npm run deploy`.
 
-**Live mode only turns on when every one of the seven secrets above is set.**
-If any is missing, the app keeps running the no-charge test checkout. The
-Worker logs `PAYMENTS_MODE=live but <names> not set` once per isolate, which
-you can see with `npx wrangler tail`.
+**Live mode turns on when the three Stripe secrets are set.** If any is
+missing, the app keeps running the no-charge test checkout, and the Worker
+logs `PAYMENTS_MODE=live but <names> not set` once per isolate (see it with
+`npx wrangler tail`). The App Store secrets don't hold the web back: until
+they're set, the iOS app's purchase routes answer 503 ("In-app purchase isn't
+set up yet"), so set them before an iOS build ships.
 
 `/api/config` isn't cached (`no-store`), and the client re-reads it every
 minute. A page that still says test mode when the server has gone live gets a
@@ -359,9 +372,14 @@ npx wrangler d1 execute jaxsquares --remote --command \
 ### Staging with Stripe test keys
 
 To try the real flow without charging anyone, set `PAYMENTS_MODE=live` with
-`sk_test_`, `pk_test_` and a test-mode webhook secret. Use test card
-`4242 4242 4242 4242`. Apple Pay in Stripe test mode also works with a real
-card in Wallet and doesn't charge it. Rows are recorded with `livemode = 0`.
+`rk_test_` (or `sk_test_`), `pk_test_` and a test-mode webhook secret, and
+test-mode Price ids for the passes. Use test card `4242 4242 4242 4242`, any
+future date, any CVC; on test keys the checkout sheets say so under the pay
+button (`onStripeTestKeys`). Apple Pay in Stripe test mode also works with a
+real card in Wallet and doesn't charge it. Rows are recorded with
+`livemode = 0`. Going live is the same steps again in live mode: new keys, a
+live webhook endpoint (its own `whsec_`) and live Price ids; test-mode passes
+and Customers stay behind (a 404 at Stripe ends a stored pass).
 
 For local development, `stripe listen --forward-to localhost:5173/api/stripe/webhook`
 prints a `whsec_…`. Put the Stripe values in `.dev.vars`.
@@ -558,7 +576,8 @@ never a clientId, the pass id or a provider reference).
    Stripe (the webhook may not have landed yet) and stores what Stripe says.
    The client is never trusted to say it paid.
 4. The webhook (signature check unchanged) handles `invoice.paid`,
-   `customer.subscription.updated` and `.deleted` (and `.created`): each one
+   `invoice.payment_failed`, `customer.subscription.updated` and `.deleted`
+   (and `.created`), in any endpoint API version: each one
    makes the server read the Subscription back from Stripe and store its
    status, `current_period_end` and `cancel_at_period_end`, so events arriving
    late or out of order can't roll a pass back. Only subscriptions with
@@ -866,6 +885,18 @@ there if they want it ended now. A refunded Club Pass that's canceled stops
 covering draws and the club features at once.
 
 ## Not covered yet
+
+- **Sales tax.** Prices are tax-inclusive list prices and nothing collects tax.
+  Some US states tax digital services; once sales cross a state's threshold,
+  register there and turn on Stripe Tax (it only calculates and collects where
+  the account has active registrations: Settings → Tax → Registrations). Stripe
+  Tax works best with Checkout Sessions (`automatic_tax`); with the current
+  PaymentIntents it needs the Tax Calculations API before each intent.
+- **Stripe API version.** `stripe.ts` pins 2024-06-20. Moving to the newest
+  (2026-08-26.dahlia) means reading `latest_invoice.confirmation_secret`
+  instead of `latest_invoice.payment_intent` and the period end from the
+  subscription item; do it with test keys set, so the whole flow is tried
+  end to end first.
 
 - **Refunds don't undo a draw.** Refunding a board in Stripe or Apple leaves
   it paid (and drawn); a refunded Host Pass stops covering new draws (Apple's

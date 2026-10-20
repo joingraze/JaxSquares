@@ -20,8 +20,10 @@ import {
   formatPrice,
   mountCardForm,
   mountWalletButton,
+  onStripeTestKeys,
   preloadCheckout,
   startTestPass,
+  STRIPE_TEST_NOTE,
   type CardForm,
   type CheckoutMethod,
   type MountedCheckout,
@@ -284,6 +286,11 @@ export function ClubCheckoutSheet({ open, payments, onActive, onSignIn, onClose 
           )}
           {notice && !error && <p className="px-1 text-footnote text-ink-muted animate-fade-in">{notice}</p>}
           {action}
+          {(method === "wallet" || method === "card") && phase !== "paid" && onStripeTestKeys(payments) && (
+            <p data-testid="stripe-test-note" className="text-center text-footnote text-ink-subtle">
+              {STRIPE_TEST_NOTE}
+            </p>
+          )}
           {phase !== "paid" && method && <ClubDisclosure test={method === "test"} price={price} onNavigate={onClose} />}
         </div>
       }

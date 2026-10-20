@@ -106,6 +106,16 @@ function hasWalletApi(): boolean {
   return typeof window !== "undefined" && ("PaymentRequest" in window || "ApplePaySession" in window);
 }
 
+/**
+ * The real checkout running on Stripe's test keys (pk_test_): staging the
+ * flow, nothing is charged. The sheets say so, with the test card to use.
+ */
+export function onStripeTestKeys(config: PaymentConfig | null | undefined): boolean {
+  return config?.mode === "live" && /^pk_test_/.test(config.stripePublishableKey?.trim() ?? "");
+}
+
+export const STRIPE_TEST_NOTE = "Stripe test mode: nothing is charged. Use card 4242 4242 4242 4242, any future date, any CVC.";
+
 /** Starts loading whatever the checkout will need, so the pay button is instant. */
 export function preloadCheckout(config: PaymentConfig, platform: Platform): void {
   const method = checkoutMethod(config, platform);

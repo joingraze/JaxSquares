@@ -56,12 +56,24 @@ export const HOST_PASS_PRODUCT = "host_pass";
 export interface StripeInvoice {
   id: string;
   object: "invoice";
-  subscription: string | { id: string } | null;
+  subscription?: string | { id: string } | null;
+  /**
+   * Where 2025-03-31 "basil" and later put the subscription. Webhook payloads
+   * come in the endpoint's own API version (a new endpoint takes the newest),
+   * so the handler reads both (subscriptionOfInvoice).
+   */
+  parent?: { subscription_details?: { subscription?: string | { id: string } | null } | null } | null;
   payment_intent: string | PaymentIntent | null;
   amount_due: number;
   currency: string;
   status: string | null;
   livemode: boolean;
+}
+
+/** The subscription an invoice bills, in either API shape (see StripeInvoice.parent). */
+export function subscriptionOfInvoice(invoice: StripeInvoice): string | null {
+  const ref = invoice.subscription ?? invoice.parent?.subscription_details?.subscription ?? null;
+  return typeof ref === "string" ? ref : (ref?.id ?? null);
 }
 
 export interface StripeSubscription {

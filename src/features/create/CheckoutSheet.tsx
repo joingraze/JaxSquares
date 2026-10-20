@@ -40,11 +40,13 @@ import {
   formatPrice,
   mountCardForm,
   mountWalletButton,
+  onStripeTestKeys,
   passCheckoutMethod,
   payTest,
   payWithIAP,
   preloadCheckout,
   startTestPass,
+  STRIPE_TEST_NOTE,
   type CardForm,
   type CheckoutMethod,
   type MountedCheckout,
@@ -579,6 +581,11 @@ export function CheckoutSheet({
           {notice && !error && <p className="px-1 text-footnote text-ink-muted animate-fade-in">{notice}</p>}
           {action}
           {costLine && !settled && <p className="text-center text-footnote text-ink-subtle">{costLine}</p>}
+          {(method === "wallet" || method === "card") && !settled && onStripeTestKeys(payments) && (
+            <p data-testid="stripe-test-note" className="text-center text-footnote text-ink-subtle">
+              {STRIPE_TEST_NOTE}
+            </p>
+          )}
           {forPass && !settled && payments && <PassDisclosure method={method ?? passMethod} price={passPrice} onNavigate={onClose} />}
         </div>
       }

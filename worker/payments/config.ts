@@ -1,7 +1,9 @@
 // Which checkout the app runs and what a board (or the yearly Host Pass) costs.
-// Live mode needs an explicit PAYMENTS_MODE=live AND every key for both rails
-// (Stripe on the web, Apple IAP in the iOS app); anything less runs the clearly
-// labeled no-charge test checkout.
+// Live mode needs an explicit PAYMENTS_MODE=live AND the Stripe keys (the web
+// checkout); anything less runs the clearly labeled no-charge test checkout.
+// The App Store keys only matter to the iOS app: until they're set its
+// purchase routes answer 503 (appStoreCredentials), so a web-only launch
+// doesn't wait on them.
 
 import type { ClubPassOffer, Game, HostPassOffer, PaymentConfig, SeasonFeeOffer } from "../../shared/types";
 import type { Env } from "../env";
@@ -21,15 +23,7 @@ export const CURRENCY = "usd";
 /** Stripe's minimum charge for USD. */
 const MIN_PRICE_CENTS = 50;
 
-const LIVE_KEYS = [
-  "STRIPE_SECRET_KEY",
-  "STRIPE_PUBLISHABLE_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "APPLE_IAP_KEY_ID",
-  "APPLE_IAP_ISSUER_ID",
-  "APPLE_IAP_PRIVATE_KEY",
-  "APPLE_BUNDLE_ID",
-] as const satisfies readonly (keyof Env)[];
+const LIVE_KEYS = ["STRIPE_SECRET_KEY", "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET"] as const satisfies readonly (keyof Env)[];
 
 export function wantsLive(env: Env): boolean {
   return env.PAYMENTS_MODE?.trim().toLowerCase() === "live";

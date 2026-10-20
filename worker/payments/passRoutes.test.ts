@@ -341,6 +341,22 @@ describe("the Stripe webhook keeps a web pass current", () => {
     expect((await call<HostPassState>("GET", "/payments/pass")).body.pass).toMatchObject({ active: true, renewsAt: renewed * 1000 });
   });
 
+  it("invoice.paid in a newer API version's shape (the subscription under parent) reads it back too", async () => {
+    const state = await activePass();
+    const renewed = Math.floor((Date.now() + 2 * 365 * DAY) / 1000);
+    state.sub = subscription({ status: "active", current_period_end: renewed });
+    const invoice = { id: "in_3", object: "invoice", parent: { type: "subscription_details", subscription_details: { subscription: "sub_1" } }, amount_due: 999, currency: "usd", livemode: false };
+    expect((await deliver("invoice.paid", invoice)).status).toBe(200);
+    expect((await call<HostPassState>("GET", "/payments/pass")).body.pass).toMatchObject({ active: true, renewsAt: renewed * 1000 });
+  });
+
+  it("invoice.payment_failed reads the subscription back (a failed renewal is past_due)", async () => {
+    const state = await activePass();
+    state.sub = subscription({ status: "past_due" });
+    expect((await deliver("invoice.payment_failed", { id: "in_4", object: "invoice", subscription: "sub_1", amount_due: 999, currency: "usd", livemode: false })).status).toBe(200);
+    expect((await call<HostPassState>("GET", "/payments/pass")).body.pass).toMatchObject({ active: false, status: "past_due" });
+  });
+
   it("ignores subscriptions that aren't the Host Pass, and refuses a bad signature", async () => {
     const state = await activePass();
     fetchMock.mockClear();

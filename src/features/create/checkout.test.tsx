@@ -139,6 +139,19 @@ describe("CheckoutSheet after a config change", () => {
     expect(screen.getByText("$5.99 host fee, once for this board.")).toBeInTheDocument();
   });
 
+  it("says it's Stripe test mode, with the test card, only on Stripe's test keys", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/pay/stripe")) return new Response(JSON.stringify({ clientSecret: "pi_1_secret", amountCents: 499, currency: "usd" }), { status: 200 });
+      return new Response("{}", { status: 404 });
+    });
+    const { unmount } = render(<CheckoutSheet open board={{ game, adminToken: "tok" }} payments={LIVE} onPaid={() => {}} onClose={() => {}} />);
+    expect(await screen.findByTestId("stripe-test-note")).toHaveTextContent("4242 4242 4242 4242");
+    unmount();
+    render(<CheckoutSheet open board={{ game, adminToken: "tok" }} payments={{ ...LIVE, stripePublishableKey: "pk_live_123" }} onPaid={() => {}} onClose={() => {}} />);
+    expect(await screen.findByRole("button", { name: "Pay $4.99" })).toBeInTheDocument();
+    expect(screen.queryByTestId("stripe-test-note")).toBeNull();
+  });
+
   it("switches to the real checkout when the server says test checkout is off", async () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/api/config")) return new Response(JSON.stringify({ payments: LIVE, vapidPublicKey: null }), { status: 200 });

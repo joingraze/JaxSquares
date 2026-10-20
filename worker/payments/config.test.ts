@@ -16,10 +16,6 @@ const LIVE_KEYS: Partial<Env> = {
   STRIPE_SECRET_KEY: "sk_live_x",
   STRIPE_PUBLISHABLE_KEY: "pk_live_x",
   STRIPE_WEBHOOK_SECRET: "whsec_x",
-  APPLE_IAP_KEY_ID: "KEY123",
-  APPLE_IAP_ISSUER_ID: "issuer-uuid",
-  APPLE_IAP_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----",
-  APPLE_BUNDLE_ID: "com.jaxsquares.app",
 };
 
 const env = (vars: Partial<Env>) => vars as Env;
@@ -31,7 +27,7 @@ describe("getPaymentConfig", () => {
     expect(cfg.stripePublishableKey).toBeNull();
   });
 
-  it("goes live only with PAYMENTS_MODE=live and every key for both rails", () => {
+  it("goes live only with PAYMENTS_MODE=live and every Stripe key", () => {
     const cfg = getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: "live", BOARD_PRICE_CENTS: "499" }));
     expect(cfg).toEqual({
       mode: "live",
@@ -58,6 +54,17 @@ describe("getPaymentConfig", () => {
     }
     expect(error).toHaveBeenCalledTimes(1); // once per isolate, not per request
     error.mockRestore();
+  });
+
+  it("doesn't wait on the App Store keys (a web-only launch)", () => {
+    expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: "live" })).mode).toBe("live");
+    expect(missingLiveKeys(env({ ...LIVE_KEYS, PAYMENTS_MODE: "live" }))).toEqual([]);
+  });
+
+  it("goes live with Stripe test keys too (staging the real flow without charging anyone)", () => {
+    const cfg = getPaymentConfig(env({ STRIPE_SECRET_KEY: "rk_test_x", STRIPE_PUBLISHABLE_KEY: "pk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x", PAYMENTS_MODE: "live" }));
+    expect(cfg.mode).toBe("live");
+    expect(cfg.stripePublishableKey).toBe("pk_test_x");
   });
 
   it("only treats the exact word live as live", () => {
