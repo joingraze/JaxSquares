@@ -2,7 +2,7 @@
 // preview square. Changes save as you go; closing pushes the new look to the
 // boards I'm on (see profileSync).
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { CheckIcon } from "../../../components/icons";
 import { BottomSheet, Button, TextField, cx } from "../../../components/ui";
 import { contrastText } from "../../../lib/format";
@@ -20,6 +20,13 @@ export function LookSheet({ open, onClose }: LookSheetProps) {
   const profile = useProfile();
   const nameRef = useRef<HTMLInputElement>(null);
   const named = profile.name.trim().length > 0;
+  // Whether the sheet opened without a name (then the name field takes focus), fixed while it's open.
+  const [openedUnnamed, setOpenedUnnamed] = useState(!named);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOpenedUnnamed(!named);
+  }
 
   return (
     <BottomSheet
@@ -27,7 +34,7 @@ export function LookSheet({ open, onClose }: LookSheetProps) {
       onClose={onClose}
       title="Your look"
       description="How you show up on every board."
-      initialFocusRef={named ? undefined : nameRef}
+      initialFocusRef={openedUnnamed ? nameRef : undefined}
       footer={
         <Button
           size="lg"
