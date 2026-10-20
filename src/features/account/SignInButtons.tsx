@@ -37,7 +37,7 @@ export function SignInButtons({ onSignedIn, setup }: SignInButtonsProps) {
     setBusy(provider);
     try {
       const me = await completeSignIn(provider, input);
-      toast.success("You're signed in", "Your boards are on this device now.");
+      toast.success("You're signed in", "Your boards follow you to every device you sign in on.");
       onSignedIn?.(me);
     } catch (err) {
       toast.error("Couldn't sign in", errorMessage(err));

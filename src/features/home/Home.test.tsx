@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ToastProvider } from "../../components/ui";
-import { getPlayerId } from "../../lib/identity";
+import { getPlayerId, setServerIdentity } from "../../lib/identity";
 import { markCelebrated } from "../board/storage";
 import Home from "../../pages/Home";
 
@@ -161,6 +161,17 @@ describe("Home", () => {
       delete (navigator as Navigator & { standalone?: boolean }).standalone;
       ua.mockRestore();
     }
+  });
+
+  it("tells someone signed in with no boards yet where a board made before signing in is", async () => {
+    setServerIdentity(getPlayerId(), { provider: "apple", email: null, name: null, since: 0 });
+    serve([]);
+    renderHome();
+    expect(screen.getByTestId("welcome-signed-in")).toHaveTextContent(
+      "Signed in with Apple, no boards yet. Made one before signing in? Open it on the phone or browser you made it on and sign in there too: it joins your account.",
+    );
+    expect(screen.queryByTestId("welcome-signin")).toBeNull();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
   });
 
   it("groups a device's boards by what they need", async () => {
