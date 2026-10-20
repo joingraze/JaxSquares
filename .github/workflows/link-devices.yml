@@ -31,7 +31,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           PLAYER_NAME: jarryd
           ACCOUNT_PREFIX: d36590
-          MODE: dry
+          MODE: apply
           LINK_DEVICES_RUN: "1"
           # vite.config.ts leaves the Cloudflare plugin out under VITEST: the script only needs module resolution.
           VITEST: "true"
