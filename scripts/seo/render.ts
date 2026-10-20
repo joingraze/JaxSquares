@@ -69,7 +69,7 @@ export interface LandingPage {
   cta: { h2: string; text: string };
 }
 
-const NOTE_FREE = "Free to set up and invite. No app or account needed.";
+const NOTE_FREE = "Free to set up and invite. Players never need an app or an account.";
 const NFL_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NFL.";
 const NBA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NBA or the WNBA.";
 const NCAA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NCAA.";

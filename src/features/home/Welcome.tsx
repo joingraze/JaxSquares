@@ -73,7 +73,7 @@ export function Welcome() {
         <p data-testid="welcome-note" className="text-center text-footnote text-ink-subtle">
           {homeScreenApp
             ? "Joined a board in Safari? It's still there. Open your invite link in Safari to get back to it."
-            : "No account needed. Friends join from a link."}
+            : "Friends join from a link, no account needed."}
         </p>
         {canSignIn && (
           <button

@@ -60,7 +60,8 @@ import { PUBLIC_ORIGIN } from "../../lib/api";
 import { boardViewPath } from "../../lib/boardViews";
 import type { HostRole } from "../../lib/hostRole";
 import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
-import { hostLinkUrl } from "../../lib/identity";
+import { useAuthSetup } from "../../lib/auth";
+import { hostLinkUrl, useAccount } from "../../lib/identity";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
 import { siblingCreatePath } from "../create/sibling";
@@ -159,6 +160,8 @@ export interface HostSheetProps {
   me: string;
   /** How this device runs the board: its host, or a co-host (no host-only actions). Default "host". */
   role?: HostRole;
+  /** Sign in (the host, not signed in, where sign-in is set up): the board's host controls then follow them to any device. */
+  onSignIn?: () => void;
   onInvite: () => void;
   /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
   fee: boolean;
@@ -191,6 +194,27 @@ interface Notice extends SavedNotice {
   /** Shown while the keypad still holds this period and this draft (the host hasn't moved on). */
   key: string | null;
   draft: ScoreDraft | null;
+}
+
+/**
+ * Until the host signs in, only this device can run the board (it holds the
+ * admin token): signing in puts it on their account, on every device. Only
+ * rendered with the sheet's menu, so the sign-in setup is read when it opens.
+ */
+function SignInToHostRow({ onSignIn }: { onSignIn: () => void }) {
+  const account = useAccount();
+  const setup = useAuthSetup();
+  if (account || !setup.ready || setup.providers.length === 0) return null;
+  return (
+    <ListRow
+      data-testid="host-signin"
+      leading={<RowIcon><UsersIcon size={18} /></RowIcon>}
+      title="Run it from any device"
+      subtitle="Only this device can run it now. Sign in to keep it on your account"
+      chevron
+      onClick={onSignIn}
+    />
+  );
 }
 
 export function HostSheet(props: HostSheetProps) {
@@ -871,6 +895,7 @@ export function HostSheet(props: HostSheetProps) {
           )}
           {/* A Club Pass board's players as a CSV, for the host and co-hosts (src/features/club). */}
           <ExportPlayersRow game={game} />
+          {isHost && props.onSignIn && <SignInToHostRow onSignIn={props.onSignIn} />}
           {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
           {isHost && (
             <ListRow

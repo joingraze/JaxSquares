@@ -43,12 +43,12 @@
 // touches, Review), the name "Office Squares · Board 2". The new board joins
 // that board's group and pays its own host fee at its own draw.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
 import { MAX_SEASON_GAMES, seasonReviewLine } from "../../shared/season";
 import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
-import type { Game, GameFormat, GameState, ScheduleEvent, SeasonNumbers, SeasonScope, SeasonTeam } from "../../shared/types";
+import { ACCOUNT_REQUIRED_CODE, type Game, type GameFormat, type GameState, type ScheduleEvent, type SeasonNumbers, type SeasonScope, type SeasonTeam } from "../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -70,7 +70,8 @@ import {
 import { ApiError, api, errorMessage } from "../lib/api";
 import { readableTeamColor } from "../lib/format";
 import { hostRoleNow } from "../lib/hostRole";
-import { NAME_MAX_LENGTH, setProfile, useProfile } from "../lib/identity";
+import { PROVIDER_LABEL, useAuthSetup } from "../lib/auth";
+import { NAME_MAX_LENGTH, setProfile, useAccount, useProfile } from "../lib/identity";
 import { peekGame, primeGame } from "../lib/live";
 import { haptic } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
@@ -141,6 +142,9 @@ const GAME_SECTION_ID = "create-game";
  * /new: a board of its own, or (?from=<board id>) another board for that
  * board's game, once the board is loaded and this device is shown to host it.
  */
+
+/** Hosts sign in to make a board (the server checks too: ACCOUNT_REQUIRED_CODE). Loaded only when it's needed. */
+const SignInSheet = lazy(() => import("../features/account/SignInSheet").then((m) => ({ default: m.SignInSheet })));
 export default function CreateGame() {
   const location = useLocation();
   const from = parseFrom(location.search);
@@ -286,6 +290,12 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   // The host fee, for Review's line (due at the draw of a board of 6 or more, not now; a season's once for the season).
   const { price } = useHostFee(true, seasonMode ? "season" : "board");
   const [phase, setPhase] = useState<Phase>("idle");
+  // Hosts sign in to make a board, at Create (so they've seen what they're making first). Players never do.
+  const account = useAccount();
+  const authSetup = useAuthSetup();
+  const mustSignIn = !account && authSetup.providers.length > 0;
+  const signInNames = authSetup.providers.map((p) => PROVIDER_LABEL[p]).join(" or ");
+  const [signingIn, setSigningIn] = useState(false);
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** False once the host has left the page: a create still in flight then doesn't pull them back. */
   const mounted = useRef(true);
@@ -587,7 +597,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     liveTimer.current = setTimeout(() => openBoard(game.id), LIVE_BEAT_MS);
   };
 
-  const submit = async () => {
+  /** `signedIn`: straight after the sign-in sheet (this render's `mustSignIn` predates it). */
+  const submit = async (signedIn = false) => {
     if (phase !== "idle") return;
     if (blocker) {
       setShake((n) => n + 1);
@@ -608,6 +619,11 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     });
     if (!input) return;
     if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
+    if (mustSignIn && !signedIn) {
+      void haptic("light");
+      setSigningIn(true);
+      return;
+    }
 
     setPhase("working");
     void haptic("medium");
@@ -622,6 +638,11 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   };
 
   const createFailed = (err: unknown) => {
+    // Sign-in was needed after all (the app hadn't read the sign-in setup yet, or this device was signed out meanwhile).
+    if (err instanceof ApiError && (err.body as { code?: unknown } | undefined)?.code === ACCOUNT_REQUIRED_CODE) {
+      setSigningIn(true);
+      return;
+    }
     void haptic("error");
     const message = err instanceof Error ? err.message : "Something went wrong. Try again.";
     if (err instanceof ApiError && err.status === 400 && isPrizeNoteError(message)) {
@@ -903,12 +924,28 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
             </Button>
           )}
         </div>
+        {step === "review" && mustSignIn && (
+          <p data-testid="create-signin-note" className="mt-2 text-center text-caption font-semibold text-ink-muted">
+            You'll sign in with {signInNames} to create it. Players never need an account.
+          </p>
+        )}
         {step === "review" && (
-          <p data-testid="create-fee" className="mt-2 text-center text-caption text-ink-subtle">
+          <p data-testid="create-fee" className={cx("text-center text-caption text-ink-subtle", mustSignIn ? "mt-0.5" : "mt-2")}>
             {createFeeLine(price, seasonMode)}
           </p>
         )}
       </ActionBar>
+      {signingIn && (
+        <Suspense fallback={null}>
+          <SignInSheet
+            open
+            onClose={() => setSigningIn(false)}
+            title={seasonMode ? "Sign in to create your season board" : "Sign in to create your board"}
+            description="Hosts sign in so the board, its host controls and any Host Pass stay with you on every device. Players never need an account."
+            onSignedIn={() => void submit(true)}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

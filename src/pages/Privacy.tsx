@@ -66,7 +66,7 @@ export default function Privacy() {
           <p className="eyebrow text-ink-brand">The short version</p>
           <p className="mt-2 font-display text-title-3 font-extrabold text-ink">We keep as little as a squares board needs.</p>
           <ul className="mt-4 flex flex-col gap-2.5 text-callout text-ink">
-            <Check>No account needed, no ads, no tracking.</Check>
+            <Check>No account needed to play, no ads, no tracking.</Check>
             <Check>Card and Apple Pay details never reach us.</Check>
             <Check>We never sell or share your information.</Check>
             <Check>Ask, and we'll delete what we hold.</Check>
@@ -78,7 +78,7 @@ export default function Privacy() {
             <Fact icon={<UserIcon />} title="A random device ID">
               Created the first time you open JaxSquares and stored on your device, so we can recognize your squares and the boards you host or join. It isn't your Apple or advertising identifier.
             </Fact>
-            <Fact icon={<LockIcon />} title="If you sign in (optional)">
+            <Fact icon={<LockIcon />} title="If you sign in (hosts do; optional for players)">
               Signing in with Apple or Google gives us the account ID they assign you and, if you share it, your email. We use them only to keep your boards on every device you sign in on, and we show your email only to you. Sign in with Apple lets you hide your email.
             </Fact>
             <Fact icon={<PencilIcon />} title="The name you choose">

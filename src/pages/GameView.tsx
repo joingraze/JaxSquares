@@ -81,7 +81,7 @@ import { boardViewPath } from "../lib/boardViews";
 import { useEmailEnabled } from "../lib/emailNotices";
 import { pluralize, teamVars } from "../lib/format";
 import { useHostRole } from "../lib/hostRole";
-import { adoptSeasonToken, getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
+import { adoptSeasonToken, getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAccount, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -91,6 +91,7 @@ import { setThemePreference, useResolvedTheme } from "../lib/theme";
 const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m) => ({ default: m.InviteSheet })));
 const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
 const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
+const SignInCard = lazy(() => import("../features/account/SignInCard").then((m) => ({ default: m.SignInCard })));
 const BoardNotifySheet = lazy(() => import("../features/notifications/BoardNotifySheet").then((m) => ({ default: m.BoardNotifySheet })));
 const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
 const CohostAcceptSheet = lazy(() => import("../features/invite/CohostAcceptSheet").then((m) => ({ default: m.CohostAcceptSheet })));
@@ -246,6 +247,7 @@ export default function GameView() {
     [state, me, selection, results, nowOnBoard, drawKey],
   );
   const joined = !!state?.players.some((p) => p.id === me);
+  const account = useAccount();
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
   // How this device runs the board: "host" (the admin token) or "cohost" (by public id), else null.
   const role = useHostRole(state);
@@ -1282,6 +1284,13 @@ export default function GameView() {
             </div>
           )}
         </section>
+
+        {/* ---- not signed in, with squares here (or hosting): keep them on every device. Never a gate; snoozes 3 days ---- */}
+        {!account && !pick && !seasonPage && !(welcome && joined) && (mineCount > 0 || isHost) && (
+          <Suspense fallback={null}>
+            <SignInCard place="board" />
+          </Suspense>
+        )}
 
         {/* ---- the other boards for this game ($1, $5, $20 boards): name, price, squares left ---- */}
         {!pick && state.siblings && state.siblings.length > 0 && <SiblingBoards siblings={state.siblings} boardName={game.name} />}

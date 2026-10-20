@@ -33,7 +33,7 @@ export function HostLinksSheet({ open, onClose, games }: { open: boolean; onClos
       <ol className="flex flex-col gap-3 text-callout text-ink">
         <li className="flex gap-3">
           <span className="eyebrow mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-4 text-ink">1</span>
-          <span>Every board you create gets a private host link. It's how JaxSquares knows you're the host, no account needed.</span>
+          <span>Every board you create gets a private host link. Signed in, your boards are on every device already; the link is for a phone you'd rather not sign in on.</span>
         </li>
         <li className="flex gap-3">
           <span className="eyebrow mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-4 text-ink">2</span>

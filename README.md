@@ -1,9 +1,10 @@
 # JaxSquares 🏈🟩
 
 A mobile-first app for playing football squares with friends. Create a board,
-share a link, and friends claim squares from their phones. No account or app
-install needed (there's an iPhone app too, and an optional Sign in with Apple /
-Google keeps your boards on every device), and every change shows up on every
+share a link, and friends claim squares from their phones. Players need no
+account or app install; hosts sign in with Apple or Google (it keeps their
+boards and host controls on every device, and players can sign in too), and
+every change shows up on every
 open board within a second. Basketball boards work the same way, for NBA,
 WNBA and men's and women's college games.
 

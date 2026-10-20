@@ -28,7 +28,7 @@ import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
 import { boardSportFor, freshNumbersInfo, isLeague, isLinkedLeague, leagueSportProblem, rulesProblemFor } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
-import { PAYMENT_REQUIRED_CODE } from "../shared/types";
+import { ACCOUNT_REQUIRED_CODE, PAYMENT_REQUIRED_CODE } from "../shared/types";
 import type {
   Activity,
   CohostInviteResponse,
@@ -41,7 +41,7 @@ import type {
   Period,
   Sport,
 } from "../shared/types";
-import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
+import { authConfig, authRoutes, canonicalClientId, freshLink, hostsSignIn, SIGNED_IN_HEADER, signedInHint } from "./auth";
 import { cleanColor, cleanTeam, cleanText } from "./clean";
 import { clubRoutes, csvFilename, playersCsv } from "./clubs";
 import * as db from "./db";
@@ -405,7 +405,21 @@ api.route("/", authRoutes);
 api.route("/", emailRoutes);
 api.route("/", clubRoutes);
 
+/** POST /api/games from a device that isn't signed in, where hosts sign in (hostsSignIn). */
+export const SIGN_IN_TO_CREATE = "Sign in with Apple or Google to make a board. Players never need an account.";
+
 api.post("/games", requireClient, async (c) => {
+  // Hosts sign in first, so the board and its host controls stay with their account on every device.
+  if (hostsSignIn(c.env)) {
+    let link: Awaited<ReturnType<typeof freshLink>>;
+    try {
+      link = await freshLink(c.env.DB, c.req.header("x-client-id") ?? "");
+    } catch (err) {
+      console.error("account link lookup failed", err);
+      return c.json({ error: "Couldn't check your sign-in. Try again in a moment." }, 503);
+    }
+    if (!link) return c.json({ error: SIGN_IN_TO_CREATE, code: ACCOUNT_REQUIRED_CODE }, 409);
+  }
   const clientId = c.get("clientId");
   const me = c.get("playerId");
   const body = await readJson(c);

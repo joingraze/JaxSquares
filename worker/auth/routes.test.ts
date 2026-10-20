@@ -6,7 +6,7 @@
 // Apple's and Google's keys are local test keys behind a mocked fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../../shared/playerId";
-import type { AppConfig, ClubSettings, CreateGameResponse, GameState, GameSummary, HostPassState, MeResponse } from "../../shared/types";
+import { ACCOUNT_REQUIRED_CODE, type AppConfig, type ClubSettings, type CreateGameResponse, type GameState, type GameSummary, type HostPassState, type MeResponse } from "../../shared/types";
 import type { Env } from "../env";
 import worker from "../index";
 import { createTestD1, type TestD1 } from "../payments/testD1";
@@ -175,9 +175,20 @@ const createInput = (name: string) => ({
   host: { name: "Jordan", color: "#ff6b35", emoji: "🦊" },
 });
 
-/** A paid (open) board hosted by `host`. */
+/**
+ * A paid (open) board hosted by `host`, made the way boards were before hosts
+ * had to sign in (sign-in not set up yet: hostsSignIn off), so a device can
+ * host boards before it ever signs in.
+ */
 async function boardBy(host: string, name = "Sunday Squares"): Promise<{ id: string; admin: string }> {
-  const created = await call<CreateGameResponse>("POST", "/games", { client: host, body: createInput(name) });
+  const withSignIn = env;
+  env = { ...env, GOOGLE_WEB_CLIENT_ID: "", APPLE_SERVICES_ID: "" };
+  let created: Awaited<ReturnType<typeof call<CreateGameResponse>>>;
+  try {
+    created = await call<CreateGameResponse>("POST", "/games", { client: host, body: createInput(name) });
+  } finally {
+    env = withSignIn;
+  }
   expect(created.status).toBe(201);
   const { game, adminToken } = created.body;
   expect((await call("POST", `/games/${game.id}/pay/test`, { client: host, admin: adminToken })).status).toBe(200);
@@ -216,6 +227,26 @@ describe("GET /api/config", () => {
     const res = await signIn("google", PHONE, "g-1");
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: "Sign in with Google isn't set up yet." });
+  });
+});
+
+describe("hosts sign in to make a board", () => {
+  it("answers a device that isn't signed in with account_required, and makes the board once it is", async () => {
+    const refused = await call<{ error: string; code: string }>("POST", "/games", { client: PHONE, body: createInput("Sunday Squares") });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toEqual({ error: "Sign in with Apple or Google to make a board. Players never need an account.", code: ACCOUNT_REQUIRED_CODE });
+    expect(rows("SELECT id FROM games")).toEqual([]);
+
+    expect((await signIn("google", PHONE, "g-sub-1")).status).toBe(200);
+    const made = await call<CreateGameResponse>("POST", "/games", { client: PHONE, body: createInput("Sunday Squares") });
+    expect(made.status).toBe(201);
+    // Players still join and pick without an account.
+    await joinAndClaim(LAPTOP, made.body.game.id, "Sam", [{ row: 0, col: 0 }]);
+  });
+
+  it("isn't asked where sign-in isn't set up", async () => {
+    env = { ...env, GOOGLE_WEB_CLIENT_ID: "", APPLE_SERVICES_ID: "" };
+    expect((await call("POST", "/games", { client: PHONE, body: createInput("Sunday Squares") })).status).toBe(201);
   });
 });
 

@@ -19,8 +19,10 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 
 ## Identity (security-critical)
 
-- No account needed. A device's `clientId` (localStorage + Capacitor Preferences) is
-  its only credential: it is sent **only** as the `x-client-id` header and must
+- Players never need an account; hosts sign in to make a board wherever
+  sign-in is set up (`hostsSignIn`, POST /api/games answers 409
+  `account_required`; docs/auth.md "Hosts sign in"). A device's `clientId`
+  (localStorage + Capacitor Preferences) is its only credential: it is sent **only** as the `x-client-id` header and must
   never appear in a response, URL, socket message, push payload or the UI.
 - Optional Sign in with Apple / Google (`worker/auth/`, docs/auth.md) maps
   devices to an account's **canonical clientId** (the first signed-in device's)

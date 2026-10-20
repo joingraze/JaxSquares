@@ -197,6 +197,29 @@ iOS app, the Services ID for the web) and stores the refresh token. Accounts
 created while the key isn't set have nothing to revoke later, so **set the key
 up before the iOS app with sign-in ships** (App Store guideline 5.1.1(v)).
 
+### Hosts sign in
+
+Making a board needs a sign-in wherever web sign-in is set up
+(`hostsSignIn` in `worker/auth/config.ts`: a Google web client id or an Apple
+Services ID). `POST /api/games` checks the device's account link first
+(`freshLink`) and answers 409 `account_required` without one; boards made
+before the rule, and their hosts, keep working as they are. Without either id
+(local dev, most tests) anyone can make a board. Players never need an account.
+
+In the app:
+- **Create** (`src/pages/CreateGame.tsx`): Review says "You'll sign in with
+  Google or Apple to create it"; Create opens `SignInSheet` and makes the board
+  right after the sign-in. An `account_required` answer opens the same sheet.
+- **Hosts from before the rule**: the host sheet's "Run it from any device"
+  (`SignInToHostRow` in `HostSheet.tsx`) signs them in, which puts the board's
+  host controls on their account.
+- **Players**: never asked before picking. After joining, the "You're in" card
+  has "Only on this device for now. Save it to your account"
+  (`JoinedCard.tsx`), and the board shows `SignInCard place="board"` under the
+  grid to someone holding squares or hosting it, as Home shows it to a device
+  with boards. "Remind me in 3 days" snoozes both
+  (`jaxsquares.signinCard.snoozedUntil`).
+
 ### Rate limits
 
 `auth` (20 per device per hour) and `auth-ip` (60 per address per hour) count

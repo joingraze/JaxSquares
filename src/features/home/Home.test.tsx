@@ -144,7 +144,7 @@ describe("Home", () => {
     expect(cta).toHaveAttribute("href", "/new");
     expect(cta).toHaveTextContent("Make a board");
     expect(screen.getByRole("button", { name: "Join with a code" })).toBeInTheDocument();
-    expect(screen.getByTestId("welcome-note")).toHaveTextContent("No account needed. Friends join from a link.");
+    expect(screen.getByTestId("welcome-note")).toHaveTextContent("Friends join from a link, no account needed.");
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.getAllByTestId("new-board")).toHaveLength(1);
   });

@@ -118,6 +118,8 @@ function HostPanel({
   /** The checkout's starting choice: this board, or the Host Pass after signing in for it. */
   const [plan, setPlan] = useState<CheckoutPlan>("board");
   const [signInOpen, setSignInOpen] = useState(false);
+  /** What the sign-in is for: buying the Host Pass, or running this board from any device. */
+  const [signInFor, setSignInFor] = useState<"pass" | "host">("pass");
   /** The sign-in sheet loads only once it's needed (it reads the sign-in setup). */
   const [signInUsed, setSignInUsed] = useState(false);
   const [removing, setRemoving] = useState<RemoveTarget | null>(null);
@@ -236,8 +238,21 @@ function HostPanel({
   /** The pass on the web needs an account: sign in, then back to the checkout on the pass. */
   const signInForPass = () => {
     setPayOpen(false);
+    setSignInFor("pass");
     setSignInUsed(true);
     later(() => setSignInOpen(true), SHEET_EXIT_MS);
+  };
+
+  const signInToHost = () => {
+    closeSheet();
+    setSignInFor("host");
+    setSignInUsed(true);
+    later(() => setSignInOpen(true), SHEET_EXIT_MS);
+  };
+
+  const signedInToHost = () => {
+    void haptic("success");
+    toast.show({ id: "host-saved", tone: "success", title: "This board is on your account", description: "Sign in on any phone or computer to run it there." });
   };
 
   const signedInForPass = (me: MeResponse) => {
@@ -419,6 +434,7 @@ function HostPanel({
           closeSheet();
           later(onInvite, SHEET_EXIT_MS);
         }}
+        onSignIn={signInToHost}
         fee={fee}
         covered={covered}
         free={free}
@@ -453,9 +469,17 @@ function HostPanel({
           <SignInSheet
             open={signInOpen}
             onClose={() => setSignInOpen(false)}
-            title="Sign in to get the Host Pass"
-            description="Your Host Pass stays with your account, so every board you host on any device is covered."
-            onSignedIn={signedInForPass}
+            {...(signInFor === "pass"
+              ? {
+                  title: "Sign in to get the Host Pass",
+                  description: "Your Host Pass stays with your account, so every board you host on any device is covered.",
+                  onSignedIn: signedInForPass,
+                }
+              : {
+                  title: "Run your boards from any device",
+                  description: "Sign in and every board you host, with its host controls, follows you to any phone or computer.",
+                  onSignedIn: signedInToHost,
+                })}
           />
         </Suspense>
       )}

@@ -99,7 +99,7 @@ export default function Profile() {
               </span>
             }
             title="Host links"
-            subtitle={hostsAny ? "Run your boards from another phone" : "How hosting works without an account"}
+            subtitle={hostsAny ? "Run your boards from another phone" : "How host links work"}
             onClick={() => setHostOpen(true)}
             chevron
           />
