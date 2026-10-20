@@ -174,7 +174,7 @@ describe.each([
   it("reads the teams list and the team's schedule", async () => {
     const teams = await getSeasonTeams(league);
     expect(teams, `${league} teams`).not.toBeNull();
-    console.log(`${league}: ${teams!.length} teams; first ${teams!.slice(0, 3).map((t) => `${t.id} ${t.abbr} ${t.color ?? "-"} ${t.logo ? "logo" : "no logo"}`).join(" | ")}`);
+    console.log(`${league}: ${teams!.length} teams; first ${teams!.slice(0, 3).map((t) => `${t.id} ${t.abbr} ${t.color ?? "-"}`).join(" | ")}`);
     expect(teams!.length).toBeGreaterThanOrEqual(minTeams);
     expect(teams!.every((t) => t.id && t.name)).toBe(true);
     expect(teams!.find((t) => t.id === team)?.shortName).toBe(name);

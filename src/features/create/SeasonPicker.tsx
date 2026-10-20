@@ -1,6 +1,6 @@
 // The create flow's season picker (GamePicker's `seasonPanel` once "A whole
 // season" is on): what the season covers, then how numbers work.
-//   A team's season  the league's teams (logos and colors) as a grid with a
+//   A team's season  the league's teams (names and colors) as a grid with a
 //                    search; once one is picked, its season at a glance (games
 //                    left, the next one, playoffs joining as they're set).
 //   Pick games       the league's own week or day lists, each row a check.
@@ -280,7 +280,7 @@ function TeamTile({ team, selected, onPick }: { team: SeasonTeam; selected: bool
         selected ? "bg-surface-3 ring-2 ring-brand-line" : "bg-surface-2 ring-1 ring-line hover:bg-surface-3",
       )}
     >
-      <TeamMark team={team} logo={team.logo} size="md" />
+      <TeamMark team={team} size="md" />
       <span className="line-clamp-2 w-full text-footnote font-bold leading-tight text-ink">{teamShortName(team)}</span>
       {selected && (
         <span aria-hidden className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-brand-400 text-ink-inverse">
@@ -320,7 +320,7 @@ function TeamSeasonCard({
       className="flex flex-col gap-3 rounded-card bg-surface-2 p-3.5 shadow-card ring-1 ring-inset ring-line"
     >
       <div className="flex items-center gap-3">
-        <TeamMark team={team} logo={team.logo} size="lg" />
+        <TeamMark team={team} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="line-clamp-2 font-display text-headline font-extrabold leading-tight text-ink">{team.name}</p>
           <p data-testid="season-team-line" className="mt-0.5 text-footnote text-ink-muted">

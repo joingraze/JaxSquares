@@ -66,16 +66,16 @@ describe("URLs", () => {
 });
 
 describe("parsing", () => {
-  it("reads the teams list: ids, names, colors and logos, by name", () => {
+  it("reads the teams list: ids, names and colors, by name, never the logos ESPN sends", () => {
     const teams = parseTeamsList(teamsList([NFL.mia, NFL.jax]));
-    expect(teams).toEqual([
-      { id: "30", name: "Jacksonville Jaguars", abbr: "JAX", color: "#007487", shortName: "Jaguars", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" },
-      { id: "15", name: "Miami Dolphins", abbr: "MIA", color: "#008e97", shortName: "Dolphins", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/mia.png" },
+    expect(teams).toStrictEqual([
+      { id: "30", name: "Jacksonville Jaguars", abbr: "JAX", color: "#007487", shortName: "Jaguars" },
+      { id: "15", name: "Miami Dolphins", abbr: "MIA", color: "#008e97", shortName: "Dolphins" },
     ]);
-    // Odd data: no list, an inactive team, a logo off ESPN's CDN, a TBD slot.
+    // Odd data: no list, an inactive team, a TBD slot.
     expect(parseTeamsList({})).toEqual([]);
-    const odd = teamsList([{ ...NFL.kc, logo: "https://evil.example/x.png" }]) as { sports: { leagues: { teams: { team: Record<string, unknown> }[] }[] }[] };
-    expect(parseTeamsList(odd)[0].logo).toBeUndefined();
+    const odd = teamsList([NFL.kc]) as { sports: { leagues: { teams: { team: Record<string, unknown> }[] }[] }[] };
+    expect(parseTeamsList(odd)[0]).not.toHaveProperty("logo");
     odd.sports[0].leagues[0].teams[0].team.isActive = false;
     expect(parseTeamsList(odd)).toEqual([]);
     expect(parseSeasonTeam({ id: "x y", displayName: "Bad Id" })).toBeNull();
@@ -121,7 +121,8 @@ describe("getTeamSeason", () => {
     });
     const season = await getTeamSeason("nfl", "30");
     expect(season?.year).toBe(2026);
-    expect(season?.team).toMatchObject({ id: "30", shortName: "Jaguars", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" });
+    expect(season?.team).toMatchObject({ id: "30", shortName: "Jaguars" });
+    expect(season?.team).not.toHaveProperty("logo");
     expect(season?.events.map((e) => [e.eventId, e.playoff ?? false])).toEqual([
       ["401800101", false],
       ["401800107", false],

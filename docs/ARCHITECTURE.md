@@ -194,7 +194,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
 | GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
-| GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color, logo on ESPN's CDN), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
+| GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color; never a logo: team logos are the leagues' trademarks, so teams show as their abbreviation on their color), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
 | GET | `/api/season/schedule?league=<linked league>&team=<id>[&year=2026]` | – | – | `TeamScheduleResponse` `{ team, year, events }`: one team's season (regular season, then the postseason games scheduled so far; the NBA's play-in too), every game in order, a finished one with its `result`; `homeId`/`awayId`, `label` ("Week 7", "Wild Card"), `playoff`. 200 `unavailable` when ESPN is down; 400 bad league, team or year |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
 | GET | `/api/games/:id` | – | – | `GameState` |
@@ -946,7 +946,7 @@ game | A whole season" (`board-scope`). With a season the Custom chip goes
 away and the league's games give way to `SeasonPicker`
 (`src/features/create/SeasonPicker.tsx`, the game step's `seasonPanel`): "A
 team's season | Pick games" (`season-scope`); a team's season shows the
-league's teams (`GET /api/season/teams`, `useSeasonTeams`: logos, a search),
+league's teams (`GET /api/season/teams`, `useSeasonTeams`: team marks, a search),
 then the team's season (`GET /api/season/schedule`, `useTeamSeason`: games
 left, the next three, "Playoff games join the season as they're set"), with a
 retry and "Pick games" when it can't load; picked games are the league's own
@@ -1210,7 +1210,7 @@ orchestration in `worker/season.ts`, the provider in `worker/scores`, D1 in
   the season board's id and name, the games either side). `GameSummary.kind`
   and `.season` (`SeasonSummary`) for Home.
 - **Client**: the create flow's "One game | A whole season"
-  (`board-scope`), then `SeasonPicker` (a team grid with logos and a search,
+  (`board-scope`), then `SeasonPicker` (a team grid of team marks and a search,
   the team's games left and next games, or the league's lists as checks; the
   numbers choice) and Review's "Jaguars 2026 season · 17 games so far" (see
   "Create flow"). The season board's page (`src/features/season`): the

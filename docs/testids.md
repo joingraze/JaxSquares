@@ -212,7 +212,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 
 | testid | where |
 |---|---|
-| `season-header`, `season-label` | a season board's header: the team's logo, "Jaguars 2026 season", "17 games so far · Same numbers all season · 4 of 17 played" |
+| `season-header`, `season-label` | a season board's header: the team's mark (abbreviation on its color), "Jaguars 2026 season", "17 games so far · Same numbers all season · 4 of 17 played" |
 | `season-featured` | the game on now (live score) or next in the header; a link to its board once it has one |
 | `season-join` | "Join the season" for a newcomer while squares are picked |
 | `season-my-place` | "You're 2nd of 12" (after the draw, for a player holding squares) |

@@ -146,6 +146,7 @@ const eventOf = (g: ScheduleGame) => ({
   awayId: g.away.id,
   ...(g.week ? { label: g.week.text } : {}),
 });
+// An older app still sends the team's logo; it's never kept (team logos are the leagues' trademarks).
 const JAX = { id: "30", name: "Jacksonville Jaguars", shortName: "Jaguars", abbr: "JAX", color: "#007487", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" };
 
 const quarters = { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false, unit: "$", squarePrice: 1 };
@@ -218,6 +219,7 @@ describe("making a season board", () => {
     const state = await stateOf(game.id);
     expect(state.season).toMatchObject({ scope: "team", numbers: "same", league: "nfl", year: 2026, label: "Jaguars 2026 season" });
     expect(state.season?.team).toMatchObject({ id: "30", shortName: "Jaguars" });
+    expect(state.season?.team).not.toHaveProperty("logo");
     // The game that's already over isn't covered; the three to come are, planned.
     expect(state.season?.games.map((g) => [g.eventId, g.status, g.id, g.label])).toEqual([
       ["401800107", "planned", null, "Week 8"],

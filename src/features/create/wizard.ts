@@ -241,7 +241,6 @@ function seasonTeam(v: unknown): SeasonTeam | null {
   if (typeof v.abbr === "string") t.abbr = str(v.abbr, 8);
   if (typeof v.color === "string" && /^#[0-9a-fA-F]{6}$/.test(v.color)) t.color = v.color;
   if (typeof v.shortName === "string") t.shortName = str(v.shortName, 40);
-  if (typeof v.logo === "string" && /^https:\/\/[a-z0-9.-]+\.espncdn\.com\//.test(v.logo)) t.logo = str(v.logo, 300);
   return t;
 }
 

@@ -22,7 +22,7 @@ import { loadDraft, saveDraft, type WizardDraft } from "./wizard";
 
 const NOW = Date.UTC(2026, 8, 1, 12);
 const DAY = 86_400_000;
-const JAX: SeasonTeam = { id: "30", name: "Jacksonville Jaguars", shortName: "Jaguars", abbr: "JAX", color: "#006778", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" };
+const JAX: SeasonTeam = { id: "30", name: "Jacksonville Jaguars", shortName: "Jaguars", abbr: "JAX", color: "#006778" };
 
 const ev = (id: string, days: number, over: Partial<ScheduleEvent> = {}): ScheduleEvent => ({
   eventId: id,
@@ -144,11 +144,12 @@ describe("the season draft", () => {
     expect(back.seasonPicks?.nfl?.map((e) => e.eventId)).toEqual(["s1"]);
   });
 
-  it("drops a team that isn't the provider's or a logo off its CDN", () => {
+  it("drops a team that isn't the provider's, and a logo an older draft kept", () => {
     const store = memory();
-    saveDraft({ ...base, seasonTeams: { nfl: { ...JAX, logo: "https://evil.example/x.png" }, nba: { id: "../x", name: "Nope" } } }, NOW, store);
+    const withLogo = { ...JAX, logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" } as SeasonTeam;
+    saveDraft({ ...base, seasonTeams: { nfl: withLogo, nba: { id: "../x", name: "Nope" } } }, NOW, store);
     const back = loadDraft(NOW, store)!;
-    expect(back.seasonTeams?.nfl).toEqual({ ...JAX, logo: undefined });
+    expect(back.seasonTeams?.nfl).toStrictEqual(JAX);
     expect(back.seasonTeams?.nba).toBeUndefined();
   });
 

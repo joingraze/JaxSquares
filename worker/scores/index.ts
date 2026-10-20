@@ -258,7 +258,7 @@ export function isSeasonYear(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 2000 && v <= 2100;
 }
 
-/** The league's teams (logos and colors), or null when ESPN can't be reached. */
+/** The league's teams (names and colors), or null when ESPN can't be reached. */
 export async function getSeasonTeams(league: LinkedLeague, opts: ScoresOptions = {}): Promise<SeasonTeam[] | null> {
   const url = teamsUrl(league);
   const res = await cached<SeasonTeam[]>({
@@ -442,7 +442,7 @@ scheduleRoutes.get("/schedule", async (c) => {
 });
 
 // A team's season, for the create flow's season boards: the league's teams
-// (logos and colors), then one team's schedule. 200 with `unavailable` when
+// (names and colors), then one team's schedule. 200 with `unavailable` when
 // ESPN can't be reached, like the schedule.
 
 scheduleRoutes.get("/season/teams", async (c) => {

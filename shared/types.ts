@@ -270,8 +270,6 @@ export interface SeasonTeam extends Team {
   id: string;
   /** "Jaguars", "Alabama", "Lakers": what the season's name uses. */
   shortName?: string;
-  /** The team's logo (an https URL on the provider's CDN), when it has one. */
-  logo?: string;
 }
 
 /** One game on a season's schedule, as the season board keeps it. */
@@ -826,7 +824,7 @@ export interface ScheduleEvent {
 
 /**
  * GET /api/season/teams?league=nfl: the league's teams for a team's season
- * (logos and colors from the provider). `unavailable` when the provider
+ * (names and colors from the provider). `unavailable` when the provider
  * couldn't be reached (still 200).
  */
 export interface SeasonTeamsResponse {

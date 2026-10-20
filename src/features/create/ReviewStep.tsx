@@ -230,7 +230,7 @@ function SeasonSummary({ season, teams, now }: { season: ReviewSeason; teams: { 
   return (
     <div data-testid="review-season" className="flex items-center gap-3">
       {season.team ? (
-        <TeamMark team={season.team} logo={season.team.logo} size="md" />
+        <TeamMark team={season.team} size="md" />
       ) : (
         teams && (
           <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4 text-ink-brand">

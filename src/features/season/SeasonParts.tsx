@@ -59,7 +59,7 @@ export function SeasonHeader({ state, season, me, now, onJoin }: SeasonHeaderPro
       />
       <div className="relative flex items-center gap-3.5">
         {team ? (
-          <TeamMark team={team} logo={team.logo} size="lg" />
+          <TeamMark team={team} size="lg" />
         ) : (
           <span aria-hidden className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-surface-4 text-ink-brand">
             <CalendarIcon size={26} />

@@ -1,5 +1,5 @@
 // The create flow's season path with the server faked: "A whole season", a
-// team's season (logos, its games left, playoffs joining later) or games
+// team's season (team marks, its games left, playoffs joining later) or games
 // picked from the league's list, the numbers choice, Review's season line and
 // the season's one fee, and the POST /api/games body. Also: a team's schedule
 // that can't load offers a retry and picking games, and the season draft
@@ -33,7 +33,7 @@ const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const NOW = Date.now();
 
-const JAX: SeasonTeam = { id: "30", name: "Jacksonville Jaguars", shortName: "Jaguars", abbr: "JAX", color: "#006778", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/jax.png" };
+const JAX: SeasonTeam = { id: "30", name: "Jacksonville Jaguars", shortName: "Jaguars", abbr: "JAX", color: "#006778" };
 const MIA: SeasonTeam = { id: "15", name: "Miami Dolphins", shortName: "Dolphins", abbr: "MIA", color: "#008e97" };
 const HOU: SeasonTeam = { id: "34", name: "Houston Texans", shortName: "Texans", abbr: "HOU", color: "#03202f" };
 
@@ -138,10 +138,11 @@ describe("making a season board", () => {
     // No custom teams for a season.
     expect(screen.queryByTestId("custom-matchup")).toBeNull();
 
-    // The league's teams, by name, with their logos.
+    // The league's teams, by name, each as its abbreviation on its color: never a logo.
     const tiles = await screen.findAllByTestId("season-team");
     expect(tiles.map((t) => t.getAttribute("aria-label"))).toEqual(["Miami Dolphins", "Jacksonville Jaguars", "Houston Texans"]);
-    expect(tiles[1].querySelector("[data-logo] img")).toHaveAttribute("src", JAX.logo);
+    expect(tiles[1]).toHaveTextContent("JAX");
+    expect(tiles.some((t) => t.querySelector("img"))).toBe(false);
 
     // Next waits for a team.
     expect(screen.getByRole("status")).toHaveTextContent("Pick a team to continue");

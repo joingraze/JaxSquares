@@ -280,22 +280,14 @@ interface RawSeasonTeam extends RawTeam {
   id?: string | number;
   shortDisplayName?: string;
   nickname?: string;
-  logo?: string;
-  logos?: { href?: string; rel?: string[] }[];
   isActive?: boolean;
 }
 
-/** A team's logo: the "default" one, else the first https one. Only ESPN's CDN. */
-function logoOf(raw: RawSeasonTeam): string | undefined {
-  const candidates = [...(raw.logos ?? []).filter((l) => l?.rel?.includes("default")), ...(raw.logos ?? []), { href: raw.logo }];
-  for (const l of candidates) {
-    const href = typeof l?.href === "string" ? l.href.trim() : "";
-    if (/^https:\/\/[a-z0-9.-]*espncdn\.com\/[^\s"'<>]+$/i.test(href)) return href;
-  }
-  return undefined;
-}
-
-/** A team with its provider id, short name and logo (season boards). */
+/**
+ * A team with its provider id and short name (season boards). Never its logo:
+ * team logos are the leagues' trademarks, so the app shows a team by its name,
+ * abbreviation and color only (TeamMark).
+ */
 export function parseSeasonTeam(raw: RawSeasonTeam | undefined): SeasonTeam | null {
   if (!raw) return null;
   const id = raw.id === undefined || raw.id === null ? "" : String(raw.id).trim();
@@ -304,8 +296,6 @@ export function parseSeasonTeam(raw: RawSeasonTeam | undefined): SeasonTeam | nu
   const out: SeasonTeam = { id, ...team };
   const short = raw.shortDisplayName?.trim() || raw.nickname?.trim() || raw.name?.trim();
   if (short) out.shortName = short;
-  const logo = logoOf(raw);
-  if (logo) out.logo = logo;
   return out;
 }
 

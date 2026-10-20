@@ -40,11 +40,6 @@ const SYNC_BATCH = 5;
 /** A team's season ends this long after its last game, so a playoff game scheduled late still gets its board. */
 const SEASON_END_GRACE_MS = 14 * DAY_MS;
 
-/** An https logo on ESPN's CDN, else dropped. */
-function cleanLogo(v: unknown): string | undefined {
-  return typeof v === "string" && v.length <= 300 && /^https:\/\/[a-z0-9.-]*espncdn\.com\/[^\s"'<>]+$/i.test(v) ? v : undefined;
-}
-
 function cleanSeasonTeam(v: unknown): SeasonTeam | null {
   if (!v || typeof v !== "object") return null;
   const t = v as Record<string, unknown>;
@@ -53,8 +48,6 @@ function cleanSeasonTeam(v: unknown): SeasonTeam | null {
   const out: SeasonTeam = { id: t.id, ...team };
   const short = cleanText(t.shortName, 30);
   if (short) out.shortName = short;
-  const logo = cleanLogo(t.logo);
-  if (logo) out.logo = logo;
   return out;
 }
 

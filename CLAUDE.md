@@ -68,6 +68,10 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 - No betting vocabulary anywhere (UI copy, push, errors): never "bet", "wager",
   "pot", "payout", "buy-in", "jackpot", "odds", "stakes", "gamble". Say "square
   price", "prize", "amount".
+- No league, team or event logos anywhere (app, link previews, printables,
+  landing pages): they're trademarks. A team shows as its name, abbreviation
+  and color (`TeamMark`); names appear only to describe the matchup, and the
+  leagues are named as not affiliated (Terms, landing-page footers).
 - Amounts stay in the app: never in push notifications (`worker/push/copy.ts`
   quotes notes only), link previews (`worker/og.ts`), invite/share text or
   activity data. Show them on the board, rules sheet, results, winners, players.
