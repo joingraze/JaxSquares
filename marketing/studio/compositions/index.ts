@@ -16,6 +16,7 @@ import {
 } from "./Templates";
 import { MATCHUPS, ON_THIS_DAY } from "./data";
 import { CAROUSELS, STORIES } from "./Slides";
+import { PROFILE } from "./Profile";
 
 const reel = (c: Omit<Composition, "width" | "height" | "fps" | "kind">): Composition => ({
   ...REEL,
@@ -108,4 +109,5 @@ export const COMPOSITIONS: Composition[] = [
   ),
   ...CAROUSELS,
   ...STORIES,
+  PROFILE,
 ];

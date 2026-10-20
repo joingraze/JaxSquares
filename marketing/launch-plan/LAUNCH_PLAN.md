@@ -62,6 +62,8 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
   ```
 - **Link:** Your app URL with ?ref=ig on the end, so Instagram visits show up in Cloudflare analytics.
 - **Highlights:** How it works, Odds, Game days, Thanksgiving
+- **Category:** Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.
+- **Profile picture:** `out/p-profile-picture/01.png` (Option 1 (recommended): J², “Jax Squared”. Reads at every size.); `out/p-profile-picture/02.png` (Option 2: the winning square lit where its row and column cross); `out/p-profile-picture/03.png` (Option 3: a square football in brand green)
 
 ## Outreach templates
 
@@ -87,7 +89,8 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
 
 ### Tue, Oct 20, 10:00 AM · Task: Set up the account
 
-- [ ] Switch @jaxsquares to a Professional account (category: App Page).
+- [ ] Switch @jaxsquares to a Professional account. Category: Sports & Recreation (not App Page, which contradicts “no app to download”).
+- [ ] Upload the profile picture: option 1, J² (p-profile-picture/01).
 - [ ] Name field: “JaxSquares · Football Squares”. The name field is searchable.
 - [ ] Paste the bio and link from Setup. Link = app URL + ?ref=ig.
 - [ ] Make 4 Highlights: How it works, Odds, Game days, Thanksgiving. Use story frames as covers.

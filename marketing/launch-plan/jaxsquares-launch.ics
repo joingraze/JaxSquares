@@ -28,13 +28,15 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261020T100000
 DURATION:PT30M
 SUMMARY:[Task] Set up the account
-DESCRIPTION:☐ Switch @jaxsquares to a Professional account (category: App
-  Page).\n☐ Name field: “JaxSquares · Football Squares”. The name fi
- eld is searchable.\n☐ Paste the bio and link from Setup. Link = app URL 
- + ?ref=ig.\n☐ Make 4 Highlights: How it works\, Odds\, Game days\, Thank
- sgiving. Use story frames as covers.\n☐ Run a real test board with 3 fri
- ends and screen-record it (B-roll for the founder Reel).\n☐ Save quick r
- eplies for “link?”\, “is it free?” and “do I need the app?”.
+DESCRIPTION:☐ Switch @jaxsquares to a Professional account. Category: Spo
+ rts & Recreation (not App Page\, which contradicts “no app to download
+ ”).\n☐ Upload the profile picture: option 1\, J² (p-profile-picture/0
+ 1).\n☐ Name field: “JaxSquares · Football Squares”. The name field 
+ is searchable.\n☐ Paste the bio and link from Setup. Link = app URL + ?r
+ ef=ig.\n☐ Make 4 Highlights: How it works\, Odds\, Game days\, Thanksgiv
+ ing. Use story frames as covers.\n☐ Run a real test board with 3 friends
+  and screen-record it (B-roll for the founder Reel).\n☐ Save quick repli
+ es for “link?”\, “is it free?” and “do I need the app?”.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Set up the account

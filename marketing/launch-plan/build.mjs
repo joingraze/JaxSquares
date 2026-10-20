@@ -87,6 +87,8 @@ function markdown() {
   out.push(`- **Bio:**\n\n  \`\`\`\n${s.setup.bio.split("\n").map((l) => `  ${l}`).join("\n")}\n  \`\`\``);
   out.push(`- **Link:** ${s.setup.link}`);
   out.push(`- **Highlights:** ${s.setup.highlights.join(", ")}`);
+  out.push(`- **Category:** ${s.setup.category}`);
+  out.push(`- **Profile picture:** ${s.setup.profilePictures.map((p) => `\`out/${p.file}.png\` (${p.label})`).join("; ")}`);
   out.push("");
   out.push("## Outreach templates");
   out.push("");

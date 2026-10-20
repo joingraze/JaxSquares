@@ -83,6 +83,13 @@ export const PLAN = {
       bio: "Football squares for any game 🏈\nFree · no app · no signup\nWe draw the numbers + call the winners\nNot affiliated w/ NFL or NCAA 👇",
       link: "Your app URL with ?ref=ig on the end, so Instagram visits show up in Cloudflare analytics.",
       highlights: ["How it works", "Odds", "Game days", "Thanksgiving"],
+      category:
+        "Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.",
+      profilePictures: [
+        { file: "p-profile-picture/01", label: "Option 1 (recommended): J², “Jax Squared”. Reads at every size." },
+        { file: "p-profile-picture/02", label: "Option 2: the winning square lit where its row and column cross" },
+        { file: "p-profile-picture/03", label: "Option 3: a square football in brand green" },
+      ],
     },
     outreach: {
       creator:
@@ -144,7 +151,8 @@ export const PLAN = {
       date: "2026-10-20", time: "10:00", kind: "task", week: "prep",
       title: "Set up the account",
       checklist: [
-        "Switch @jaxsquares to a Professional account (category: App Page).",
+        "Switch @jaxsquares to a Professional account. Category: Sports & Recreation (not App Page, which contradicts “no app to download”).",
+        "Upload the profile picture: option 1, J² (p-profile-picture/01).",
         "Name field: “JaxSquares · Football Squares”. The name field is searchable.",
         "Paste the bio and link from Setup. Link = app URL + ?ref=ig.",
         "Make 4 Highlights: How it works, Odds, Game days, Thanksgiving. Use story frames as covers.",

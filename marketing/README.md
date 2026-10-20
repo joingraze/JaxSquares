@@ -57,6 +57,7 @@ The squares odds in `studio/lib/stats.ts` are generated from nflverse's
 | `otd1`–`otd6` | On this day: a famous final score and the square it paid |
 | `c1`–`c4` | Carousels: how squares works, every square ranked, commissioner cheat sheet, Thanksgiving playbook |
 | `s-story-frames` | 8 Story backgrounds with room for native poll/quiz/link stickers |
+| `p-profile-picture` | 3 profile picture options (1080×1080, built for the circle crop): J², the winning square, a square football |
 
 ## The launch plan
 
