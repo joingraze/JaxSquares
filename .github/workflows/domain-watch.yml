@@ -1,0 +1,31 @@
+name: Domain watch
+
+# Watches jaxsquares.com go live after its nameservers move to Cloudflare
+# (docs/domain.md): logs each change in the nameservers, the zone's status,
+# the app's health and the www redirect, and connects the Worker once the zone
+# is active. Read-only apart from that one connect step. Starts when this file
+# or docs/domain.md changes, or by hand; a newer run replaces an older one.
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/domain-watch.yml
+      - scripts/domain-watch.sh
+      - docs/domain.md
+  workflow_dispatch:
+
+concurrency:
+  group: domain-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Watch jaxsquares.com
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bash scripts/domain-watch.sh

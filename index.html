@@ -2,17 +2,84 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
-    />
-    <meta name="theme-color" content="#0b1120" />
+    <!-- Pinch zoom stays available (accessibility). Inputs use 16px+ text so iOS never auto-zooms on focus. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>JaxSquares</title>
     <meta
       name="description"
-      content="JaxSquares — play Super Bowl Squares and more sports games with your friends."
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
     />
+    <!-- Dark by default; the theme script below switches both metas for the light theme. -->
+    <meta name="theme-color" content="#060c09" />
+    <meta name="color-scheme" content="dark" />
+    <!-- Scores like 21-14 must not turn into phone links. -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Installed web app (Add to Home Screen) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="JaxSquares" />
+    <meta name="application-name" content="JaxSquares" />
+
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>JaxSquares</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Default link preview. The worker replaces og:* / twitter:* per board on /g/:id. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="JaxSquares" />
+    <meta property="og:title" content="You're invited to play squares" />
+    <meta
+      property="og:description"
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
+    />
+    <meta property="og:url" content="https://jaxsquares.com/" />
+    <meta property="og:image" content="https://jaxsquares.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="JaxSquares football squares board" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="You're invited to play squares" />
+    <meta
+      name="twitter:description"
+      content="Football squares with your friends. Make a board, share the link, and follow every score live."
+    />
+    <meta name="twitter:image" content="https://jaxsquares.com/og-image.png" />
+
+    <!--
+      Theme before first paint (no dark-to-light flash): the saved choice from Profile
+      ("dark" default, "light", or "system"), resolved like src/lib/theme.ts does, onto
+      <html data-theme> and the metas. Colors = THEME_COLORS in theme.ts (theme.test.ts checks).
+    -->
+    <script id="theme-boot">
+      (function () {
+        var d = document.documentElement, t = "dark", p = null;
+        // TV mode (/g/:id/tv, and a club's TV /club/:id/tv) has its own theme: dark unless picked on that screen (src/features/tv/screen.ts).
+        var tv = /^\/(g|club)\/[^/]+\/tv\/?$/i.test(location.pathname);
+        try {
+          p = localStorage.getItem(tv ? "jaxsquares.tvTheme" : "jaxsquares.theme");
+        } catch (e) {}
+        if (tv) p = p === "light" ? "light" : "dark";
+        // Nothing (or nothing valid) saved: follow the phone, like theme.ts.
+        if (p !== "dark" && p !== "light") p = "system";
+        if (p === "light" || (p === "system" && window.matchMedia && matchMedia("(prefers-color-scheme: light)").matches)) t = "light";
+        d.setAttribute("data-theme", t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute("content", t === "light" ? "#eef2ec" : "#060c09");
+        m = document.querySelector('meta[name="color-scheme"]');
+        if (m) m.setAttribute("content", t);
+        // Home-screen web app on iOS: dark status bar text over the light canvas (read at launch only).
+        m = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (m && t === "light") m.setAttribute("content", "default");
+      })();
+    </script>
+    <!-- Paint the app background before the CSS bundle arrives: no flash on launch. -->
+    <style>
+      html { background: #060c09; color-scheme: dark; }
+      html[data-theme="light"] { background: #eef2ec; color-scheme: light; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

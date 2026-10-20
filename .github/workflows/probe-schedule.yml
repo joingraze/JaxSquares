@@ -1,0 +1,111 @@
+name: Probe schedule
+
+# Diagnostic: runs the app's real schedule + live-score code against ESPN from a
+# GitHub runner (the build sandbox can't reach ESPN), then checks the deployed
+# site's schedule API and landing pages. Runs when this file or the scores
+# module changes on the v1 branch, after every successful deploy, and on demand
+# (Actions > Probe schedule > Run workflow, optionally against another URL).
+#
+# worker/scores/espn.probe.ts holds the ESPN checks (it isn't part of
+# `npm run test`):
+#   - NFL and college football: this week's schedule, the next week, and one
+#     game's live data.
+#   - NBA, WNBA, men's and women's college basketball: the next 7 days (today
+#     first, consecutive days), a date 3 days ahead, a past slate's finals
+#     (scoreboard and summary agree, periods add up to the score, overtime
+#     counted, halftime + final for the men's halves and Q1/Half/Q3/Final for
+#     the rest), the latest finals and any game on now; plus how many college
+#     games each slate lists with and without ESPN's Division I filter.
+#   - Season boards: the NFL's and the NBA's team lists and one team's season
+#     each (the Jaguars, the Lakers: regular season and playoffs, the team on
+#     one side of every game, results on finished games, a final's live data),
+#     and the college and WNBA team lists.
+#   An empty schedule in a league's off-season is logged, not a failure.
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/probe-schedule.yml
+      - worker/scores/**
+      - shared/sports.ts
+  workflow_run:
+    workflows: [Deploy]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      site:
+        description: Deployed site to check (blank to skip the site checks)
+        required: false
+        default: https://jaxsquares.com
+
+jobs:
+  probe:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # After a deploy, probe the code that was deployed.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: App code against real ESPN
+        run: |
+          cp worker/scores/espn.probe.ts worker/scores/probe.live.test.ts
+          status=0
+          npx vitest run worker/scores/probe.live.test.ts --reporter=verbose > probe.log 2>&1 || status=$?
+          grep -vE "^\s*$|^stdout \|" probe.log | head -250
+          exit "$status"
+
+      - name: Deployed site
+        env:
+          SITE: ${{ github.event_name == 'workflow_dispatch' && inputs.site || (github.event_name == 'workflow_run' && 'https://jaxsquares.com' || '') }}
+        run: |
+          if [ -z "$SITE" ]; then echo "No site to check"; exit 0; fi
+          code() { curl -s -o /dev/null -w '%{http_code}' "$SITE$1"; }
+          # Basketball goes by day: 7 days, today first, or one date.
+          for league in nba wnba ncaab ncaaw; do
+            curl -fsS "$SITE/api/schedule?league=$league" | node -e '
+              const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const league = process.argv[1];
+              if (!Array.isArray(r.events) || r.unavailable) throw new Error(`${league}: schedule unavailable`);
+              if (!Array.isArray(r.dates) || r.dates.length !== 7) throw new Error(`${league}: expected 7 dates, got ${JSON.stringify(r.dates)}`);
+              if (r.events.some((e) => e.league !== league)) throw new Error(`${league}: another league in the list`);
+              console.log(`${league}: ${r.events.length} games over ${r.dates[0]}..${r.dates[6]}`);' "$league"
+          done
+          ahead=$(date -u -d '+3 days' +%Y%m%d)
+          curl -fsS "$SITE/api/schedule?league=ncaab&date=$ahead" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (JSON.stringify(r.dates) !== JSON.stringify([process.argv[1]])) throw new Error(`date lookup: ${JSON.stringify(r.dates)}`);
+            console.log(`ncaab ${process.argv[1]}: ${r.events.length} games`);' "$ahead"
+          # Wrong shapes are refused: weeks for basketball, dates for football, bad dates.
+          test "$(code "/api/schedule?league=nba&week=2-1")" = 400
+          test "$(code "/api/schedule?league=nba&date=2026-03-20")" = 400
+          test "$(code "/api/schedule?league=wnba&date=19990101")" = 400
+          test "$(code "/api/schedule?league=nfl&date=$ahead")" = 400
+          test "$(code "/api/schedule?league=hockey")" = 400
+          # Football is unchanged.
+          curl -fsS "$SITE/api/schedule?league=nfl" | grep -q '"events"'
+          # Season boards: a league's teams and one team's season.
+          curl -fsS "$SITE/api/season/teams?league=nfl" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (r.unavailable || r.teams.length < 32) throw new Error(`nfl teams: ${r.teams.length}`);
+            console.log(`nfl: ${r.teams.length} teams`);'
+          curl -fsS "$SITE/api/season/schedule?league=nba&team=13" | node -e '
+            const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (r.unavailable || !r.team || r.events.length === 0) throw new Error("nba team season unavailable");
+            console.log(`${r.team.name} ${r.year}: ${r.events.length} games`);'
+          test "$(code "/api/season/schedule?league=nfl&team=x%2Fy")" = 400
+          # The basketball landing pages and the sitemap.
+          for slug in basketball-squares march-madness-squares; do
+            curl -fsS "$SITE/$slug" | grep -q "rel=\"canonical\" href=\"https://jaxsquares.com/$slug\""
+          done
+          curl -fsS "$SITE/march-madness-squares" | grep -q "affiliated with or endorsed by the NCAA"
+          curl -fsS "$SITE/sitemap.xml" | grep -q "/march-madness-squares"
+          test "$(code "/printables/basketball-squares-10x10-letter.pdf")" = 200
+          echo "Site checks passed: $SITE"

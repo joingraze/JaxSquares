@@ -3,6 +3,7 @@
   "name": "jaxsquares",
   "main": "worker/index.ts",
   "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
   },
@@ -11,14 +12,67 @@
     // back to index.html so client-side routing works on deep links. The
     // binding lets the Worker delegate non-API routes to the asset server.
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Let the Worker see /g/* first so it can add per-game link previews,
+    // /.well-known/* so it can serve universal-link files, and the big game
+    // page's old address so it can redirect it.
+    "run_worker_first": ["/api/*", "/g/*", "/.well-known/*", "/super-bowl-squares", "/super-bowl-squares/"]
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "jaxsquares",
-      "database_id": "74a1e4ae-532c-4145-9cbf-ec3acdb3cfdb",
+      "database_id": "79e14421-73d5-4b10-b571-0c5509e18027",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  // One GameRoom per game: live sockets, presence, and live-score polling.
+  // One ScoreHub per league: every ESPN request goes through it (shared cache).
+  "durable_objects": {
+    "bindings": [
+      { "name": "GAME_ROOM", "class_name": "GameRoom" },
+      { "name": "SCORE_HUB", "class_name": "ScoreHub" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["ScoreHub"] }
+  ],
+  // Wake rooms of linked games that are about to start or in progress, and
+  // read season boards' team schedules for new games (about twice a day each).
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "APP_ORIGIN": "https://jaxsquares.com",
+    // "live" = the real Stripe checkout, once the Stripe keys are set as
+    // secrets (until then the no-charge test checkout runs). The keys and the
+    // two Price ids below are Stripe's TEST ones for now: checkout works end to
+    // end and charges nothing (docs/payments.md "Staging with Stripe test
+    // keys"). The App Store keys only matter once the iOS app ships.
+    "PAYMENTS_MODE": "live",
+    "BOARD_PRICE_CENTS": "499",
+    "IAP_PRODUCT_ID": "com.jaxsquares.app.board",
+    // A season board's one host fee, at its draw, for every game of the season
+    // (docs/payments.md "Season boards"). Its own App Store consumable.
+    "SEASON_BOARD_PRICE_CENTS": "1499",
+    "IAP_SEASON_PRODUCT_ID": "com.jaxsquares.app.seasonboard",
+    // The Host Pass, yearly (docs/payments.md "Host Pass"). In live mode the web
+    // sells it only once STRIPE_HOST_PASS_PRICE_ID names the Stripe Price.
+    "HOST_PASS_PRICE_CENTS": "1999",
+    "STRIPE_HOST_PASS_PRICE_ID": "price_1USU5ZRy2YSRrbHrSyXOAOMH",
+    "IAP_HOST_PASS_PRODUCT_ID": "com.jaxsquares.app.hostpass.yearly",
+    // The Club Pass, yearly, web only (docs/payments.md "Club Pass"). In live
+    // mode the web sells it only once STRIPE_CLUB_PASS_PRICE_ID names its Price.
+    "CLUB_PASS_PRICE_CENTS": "4900",
+    "STRIPE_CLUB_PASS_PRICE_ID": "price_1USU68Ry2YSRrbHrHZQHjFnj",
+    // Optional sign-in (docs/auth.md). Public OAuth client ids, not secrets;
+    // empty = that provider is hidden in the app. Native Sign in with Apple
+    // uses APPLE_BUNDLE_ID (default com.jaxsquares.app, the Capacitor appId).
+    "GOOGLE_WEB_CLIENT_ID": "",
+    "GOOGLE_IOS_CLIENT_ID": "",
+    "APPLE_SERVICES_ID": "",
+    // Email notices (docs/email.md): the sender, e.g. "JaxSquares
+    // <notices@jaxsquares.com>", once the domain is verified with Resend.
+    // Empty = off (with the RESEND_API_KEY and EMAIL_TOKEN_SECRET secrets).
+    "EMAIL_FROM": ""
+  }
 }

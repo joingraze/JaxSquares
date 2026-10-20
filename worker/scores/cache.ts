@@ -1,0 +1,138 @@
+// Small read-through cache on the Workers Cache API (per colo). Every board linked
+// to the same game, and every visitor to the schedule picker, shares one upstream
+// fetch per TTL. We store our parsed, trimmed JSON rather than ESPN's raw payload,
+// so a hit is a few KB to read instead of a megabyte to re-parse.
+//
+// Freshness is tracked with our own header instead of relying on eviction, which
+// lets an entry outlive its TTL and be served as a fallback when upstream fails.
+//
+// Concurrent misses are only de-duplicated when the caller passes its own
+// `inflight` map: sharing one promise across request contexts (e.g. two Durable
+// Objects in one isolate) can hang the waiter if the originating request is
+// cancelled. The ScoreHub Durable Object is a single context, so it does.
+
+const FETCHED_AT = "x-jax-fetched-at";
+
+/**
+ * Per-isolate copies of recent values. The Cache API does nothing on *.workers.dev
+ * and costs a read elsewhere, so warm isolates answer from here first. Only settled
+ * values are shared, never in-flight promises (see above).
+ */
+const memory = new Map<string, CachedValue<unknown>>();
+const MEMORY_MAX = 200;
+
+function remember(key: string, value: CachedValue<unknown>): void {
+  memory.delete(key);
+  memory.set(key, value);
+  if (memory.size > MEMORY_MAX) memory.delete(memory.keys().next().value as string);
+}
+
+/** Tests: forget every in-memory value. */
+export function clearMemoryCache(): void {
+  memory.clear();
+}
+
+export interface CachedValue<T> {
+  value: T;
+  /** When the value was fetched from upstream, epoch ms. */
+  fetchedAt: number;
+}
+
+export interface CachedOptions<T> {
+  /** Cache key; any absolute http(s) URL. Include a version for the stored shape. */
+  key: string;
+  ttlSeconds: number;
+  /** Extra seconds an expired value may be served when a refresh fails. */
+  staleSeconds?: number;
+  /** Fetches and parses from upstream; throws on any failure. */
+  load: () => Promise<T>;
+  /** Defaults to caches.default; null disables caching. Injectable for tests. */
+  cache?: Cache | null;
+  now?: () => number;
+  /**
+   * Lookups in progress, by key: a second caller for the same key waits on the
+   * first one's fetch. Only pass a map owned by a single request context.
+   */
+  inflight?: Map<string, Promise<unknown>>;
+}
+
+function defaultCache(): Cache | null {
+  try {
+    return typeof caches !== "undefined" && caches.default ? caches.default : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns the cached or freshly loaded value, a stale value if loading fails, or null. */
+export function cached<T>(opts: CachedOptions<T>): Promise<CachedValue<T> | null> {
+  const { inflight } = opts;
+  if (!inflight) return lookup(opts);
+  const pending = inflight.get(opts.key) as Promise<CachedValue<T> | null> | undefined;
+  if (pending) return pending;
+  const started = lookup(opts).finally(() => inflight.delete(opts.key));
+  inflight.set(opts.key, started);
+  return started;
+}
+
+async function lookup<T>(opts: CachedOptions<T>): Promise<CachedValue<T> | null> {
+  const now = opts.now ?? Date.now;
+  const cache = opts.cache === undefined ? defaultCache() : opts.cache;
+  const ttlMs = opts.ttlSeconds * 1000;
+  const keepSeconds = opts.ttlSeconds + (opts.staleSeconds ?? 0);
+  let stale: CachedValue<T> | null = null;
+
+  const mem = memory.get(opts.key) as CachedValue<T> | undefined;
+  if (mem) {
+    const age = now() - mem.fetchedAt;
+    if (age < ttlMs) return mem;
+    if (age < keepSeconds * 1000) stale = mem;
+  }
+
+  if (cache) {
+    try {
+      const hit = await cache.match(opts.key);
+      if (hit) {
+        const fetchedAt = Number(hit.headers.get(FETCHED_AT));
+        const value = (await hit.json()) as T;
+        const age = now() - fetchedAt;
+        if (Number.isFinite(fetchedAt) && age < ttlMs) {
+          remember(opts.key, { value, fetchedAt });
+          return { value, fetchedAt };
+        }
+        if (Number.isFinite(fetchedAt) && age < keepSeconds * 1000 && (!stale || fetchedAt > stale.fetchedAt)) {
+          stale = { value, fetchedAt };
+        }
+      }
+    } catch (err) {
+      console.warn("scores cache read failed", err);
+    }
+  }
+
+  let fresh: CachedValue<T>;
+  try {
+    fresh = { value: await opts.load(), fetchedAt: now() };
+  } catch (err) {
+    console.warn(`scores upstream failed for ${opts.key}`, err);
+    return stale;
+  }
+  remember(opts.key, fresh);
+
+  if (cache) {
+    try {
+      await cache.put(
+        opts.key,
+        new Response(JSON.stringify(fresh.value), {
+          headers: {
+            "content-type": "application/json",
+            "cache-control": `public, max-age=${keepSeconds}`,
+            [FETCHED_AT]: String(fresh.fetchedAt),
+          },
+        }),
+      );
+    } catch (err) {
+      console.warn("scores cache write failed", err);
+    }
+  }
+  return fresh;
+}

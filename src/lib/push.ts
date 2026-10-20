@@ -1,0 +1,601 @@
+// Push notifications on this device.
+//
+// Web (incl. iOS 16.4+ home-screen web apps): service worker + Push API, keyed
+// by the VAPID public key from /api/config. Native (Capacitor iOS/Android): FCM
+// via @capacitor-firebase/messaging. Either way the device is registered with
+// POST /api/push/register under this device's clientId (the account's, on the
+// server, while it's signed in: every signed-in device gets the account's pushes).
+//
+// Startup: call initPush() once (safe on every load). In UI code:
+//   getPushState()        -> what to show ("needs-install" = iOS Safari tab: show "Add to Home Screen")
+//   enablePush()          -> from a tap; asks permission and registers
+//   onNotificationTap(cb) -> route to the tapped notification's in-app URL
+//   disablePush()         -> "turn off on this device"; sticks until enablePush (see isPushOff),
+//                            mirrored to Capacitor Preferences so iOS clearing WebView storage can't undo it
+
+import { Capacitor } from "@capacitor/core";
+import type { PushRegistration } from "../../shared/types";
+import { getClientId, isSignedIn } from "./identity";
+import { getStored, onAppResume, removeStored, setStored } from "./native";
+
+export type PushState =
+  | "unsupported" // no push here (old browser, push not configured on the server)
+  | "needs-install" // iOS/iPadOS browser tab: push only works once added to the Home Screen
+  | "default" // can ask
+  | "granted" // on; this device is (being) registered
+  | "denied"; // blocked in system/browser settings
+
+export interface ForegroundPush {
+  title: string;
+  body: string;
+  url: string;
+}
+
+const API_BASE: string = import.meta.env.VITE_API_BASE ?? "";
+const MUTED_KEY = (gameId: string) => `jaxsquares.muted.${gameId}`;
+/** Set when the user turned notifications off in the app; the OS/browser permission may still be granted. */
+const OFF_KEY = "jaxsquares.push.off";
+/** Must match the channel ids in worker/push/fcm.ts. */
+const ANDROID_CHANNEL_ID = "game-updates";
+const ANDROID_QUIET_CHANNEL_ID = "board-activity";
+/**
+ * Re-registering also resets the server's badge count. Throttled when there's no
+ * badge to keep in step (a tab flick needs no refresh); coming back to a cleared
+ * badge always resets it (onAppVisible on web, onAppResume in the app).
+ */
+const SYNC_INTERVAL_MS = 60 * 1000;
+const SW_READY_TIMEOUT_MS = 10 * 1000;
+/** A tap nobody claims (no onNotificationTap listener yet) falls back to a full navigation. */
+const UNCLAIMED_TAP_MS = 2000;
+
+const isNative = () => Capacitor.isNativePlatform();
+
+let lastSync = 0;
+let syncing: Promise<void> | null = null;
+
+// ---- API ----
+
+async function call(method: "GET" | "POST", path: string, body?: unknown): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    method,
+    headers: {
+      "x-client-id": getClientId(),
+      // Signed in, this device registers as its account (see identityHeaders in api.ts).
+      ...(isSignedIn() ? { "x-signed-in": "1" } : {}),
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `Request failed (${res.status})`);
+  return data;
+}
+
+const register = (reg: PushRegistration) => call("POST", "/push/register", reg);
+
+// ---- Environment ----
+
+function iosVersion(ua: string): number | null {
+  const m = /OS (\d+)_(\d+)/.exec(ua);
+  return m ? Number(m[1]) + Number(m[2]) / 100 : null;
+}
+
+function isIos(): boolean {
+  const ua = navigator.userAgent;
+  // iPadOS reports itself as a Mac; touch support gives it away.
+  return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone(): boolean {
+  return (navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia("(display-mode: standalone)").matches;
+}
+
+function webPushSupported(): boolean {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+/**
+ * What an iOS 16.4+ Safari tab reports. It could get push from the Home Screen
+ * app ("needs-install", with an Add to Home Screen guide), but that app keeps
+ * its own storage, apart from Safari's: it opens as a new device, with none of
+ * the boards the player joined in Safari, and joining again there makes a
+ * second player. So it's "unsupported" (no Add to Home Screen prompt) until
+ * sign-in can carry a player over (docs/auth.md); "needs-install" brings the
+ * prompt back.
+ */
+const HOME_SCREEN_PUSH: PushState = "unsupported";
+
+/** Why web push isn't available here. */
+function webUnavailable(): PushState {
+  if (!isIos() || isStandalone()) return "unsupported";
+  const v = iosVersion(navigator.userAgent);
+  // Home-screen web apps got push in iOS 16.4; iPadOS-as-Mac has no version in its UA.
+  return v !== null && v < 16.04 ? "unsupported" : HOME_SCREEN_PUSH;
+}
+
+// ---- Server config (VAPID key) ----
+
+let vapidKey: string | null | undefined; // undefined = not fetched yet
+let vapidLoading: Promise<string | null> | null = null;
+
+function loadVapidKey(): Promise<string | null> {
+  if (vapidKey !== undefined) return Promise.resolve(vapidKey);
+  vapidLoading ??= call("GET", "/config")
+    .then((cfg) => {
+      vapidKey = typeof cfg.vapidPublicKey === "string" && cfg.vapidPublicKey ? cfg.vapidPublicKey : null;
+      return vapidKey;
+    })
+    .catch(() => null) // offline: don't remember, try again next time
+    .finally(() => {
+      vapidLoading = null;
+    });
+  return vapidLoading;
+}
+
+function base64UrlToBytes(s: string): Uint8Array<ArrayBuffer> {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/").replace(/=+$/, ""));
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function sameKey(a: ArrayBuffer | null, b: Uint8Array): boolean {
+  if (!a || a.byteLength !== b.length) return false;
+  const x = new Uint8Array(a);
+  return x.every((v, i) => v === b[i]);
+}
+
+// ---- Taps and foreground pushes ----
+
+const tapListeners = new Set<(url: string) => void>();
+const foregroundListeners = new Set<(push: ForegroundPush) => void>();
+let pendingTap: string | null = null;
+let pendingTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Our own in-app path for a tapped notification, or null for anything else. */
+function appPath(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw) return null;
+  // Paths are taken as-is: the native WebView's capacitor:// origin doesn't survive URL parsing.
+  if (/^\/(?![/\\])/.test(raw)) return raw;
+  try {
+    const url = new URL(raw);
+    const ours = /^https?:$/.test(url.protocol) && (url.origin === location.origin || (!!API_BASE && url.origin === new URL(API_BASE).origin));
+    return ours ? `${url.pathname}${url.search}${url.hash}` : null;
+  } catch {
+    return null;
+  }
+}
+
+function emitTap(raw: unknown): void {
+  const path = appPath(raw);
+  if (!path) return;
+  if (tapListeners.size > 0) {
+    for (const cb of tapListeners) cb(path);
+    return;
+  }
+  // Cold start: the app may not have mounted its router yet.
+  pendingTap = path;
+  clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(() => {
+    if (pendingTap) location.assign(pendingTap);
+    pendingTap = null;
+  }, UNCLAIMED_TAP_MS);
+}
+
+/** Called with the in-app path (e.g. "/g/abc123") when the user taps a notification. Returns an unsubscribe. */
+export function onNotificationTap(cb: (url: string) => void): () => void {
+  tapListeners.add(cb);
+  if (isNative()) void ensureNativeListeners();
+  if (pendingTap) {
+    const path = pendingTap;
+    pendingTap = null;
+    clearTimeout(pendingTimer);
+    queueMicrotask(() => cb(path));
+  }
+  return () => {
+    tapListeners.delete(cb);
+  };
+}
+
+/** Called when a push arrives while the app is open (the system banner still shows). Returns an unsubscribe. */
+export function onForegroundPush(cb: (push: ForegroundPush) => void): () => void {
+  foregroundListeners.add(cb);
+  if (isNative()) void ensureNativeListeners();
+  return () => {
+    foregroundListeners.delete(cb);
+  };
+}
+
+function emitForeground(p: { title?: unknown; body?: unknown; url?: unknown }): void {
+  const push = { title: String(p.title ?? ""), body: String(p.body ?? ""), url: appPath(p.url) ?? "/" };
+  for (const cb of foregroundListeners) cb(push);
+}
+
+// ---- Native (Capacitor + FCM) ----
+
+type Fm = typeof import("@capacitor-firebase/messaging");
+let fm: Promise<Fm> | null = null;
+const loadFm = () => (fm ??= import("@capacitor-firebase/messaging"));
+
+let nativeListeners: Promise<void> | null = null;
+
+function ensureNativeListeners(): Promise<void> {
+  nativeListeners ??= (async () => {
+    const { FirebaseMessaging } = await loadFm();
+    const dataOf = (n: { data?: unknown }) => (n.data && typeof n.data === "object" ? (n.data as Record<string, unknown>) : {});
+    await FirebaseMessaging.addListener("notificationActionPerformed", (e) => emitTap(dataOf(e.notification).url));
+    await FirebaseMessaging.addListener("notificationReceived", (e) =>
+      emitForeground({ title: e.notification.title, body: e.notification.body, url: dataOf(e.notification).url }),
+    );
+    // FCM rotates tokens; keep the server's copy current.
+    await FirebaseMessaging.addListener("tokenReceived", async (e) => {
+      // Turned off in the app: a rotated token must not quietly sign this device back up.
+      await hydratePushOff();
+      if (isPushOff()) return;
+      const { receive } = await FirebaseMessaging.checkPermissions();
+      if (receive === "granted") await registerNative(e.token).catch((err) => console.warn("push re-register failed", err));
+    });
+  })().catch((err) => {
+    nativeListeners = null;
+    console.warn("push listeners unavailable", err);
+  });
+  return nativeListeners;
+}
+
+function nativeState(receive: string): PushState {
+  if (receive === "granted") return "granted";
+  if (receive === "denied") return "denied";
+  return "default";
+}
+
+async function registerNative(token?: string): Promise<void> {
+  const mod = await loadFm();
+  const platform = Capacitor.getPlatform() === "android" ? "android" : "ios";
+  if (platform === "android") {
+    // Two channels so people can keep winning squares loud and silence board chatter in Android settings.
+    await mod.FirebaseMessaging.createChannel({
+      id: ANDROID_CHANNEL_ID,
+      name: "Game updates",
+      description: "Numbers drawn, kickoffs and winning squares",
+      importance: mod.Importance.High,
+      visibility: mod.Visibility.Public,
+      vibration: true,
+    });
+    await mod.FirebaseMessaging.createChannel({
+      id: ANDROID_QUIET_CHANNEL_ID,
+      name: "Board activity",
+      description: "Friends joining your boards",
+      importance: mod.Importance.Low,
+      visibility: mod.Visibility.Public,
+      vibration: false,
+    });
+  }
+  const t = token ?? (await mod.FirebaseMessaging.getToken()).token;
+  await register({ platform, token: t });
+}
+
+async function enableNative(): Promise<PushState> {
+  const { FirebaseMessaging } = await loadFm();
+  await ensureNativeListeners();
+  let { receive } = await FirebaseMessaging.checkPermissions();
+  if (receive !== "granted" && receive !== "denied") ({ receive } = await FirebaseMessaging.requestPermissions());
+  if (receive !== "granted") return nativeState(receive);
+  setPushOff(false);
+  await registerNative();
+  return "granted";
+}
+
+// ---- Web (service worker + Push API) ----
+
+let swRegistration: Promise<ServiceWorkerRegistration | null> | null = null;
+
+function onServiceWorkerMessage(event: MessageEvent): void {
+  const msg = event.data as { type?: string; url?: unknown; payload?: { title?: unknown; body?: unknown; url?: unknown } } | null;
+  if (msg?.type === "jaxsquares:navigate") emitTap(msg.url);
+  else if (msg?.type === "jaxsquares:push" && msg.payload) emitForeground(msg.payload);
+  else if (msg?.type === "jaxsquares:resubscribe") void syncPush(true);
+}
+
+/** Register the service worker (web only; never inside the native app). Safe to call on every load. */
+export async function registerServiceWorker(): Promise<void> {
+  if (isNative() || !("serviceWorker" in navigator)) return;
+  if (!swRegistration) {
+    navigator.serviceWorker.addEventListener("message", onServiceWorkerMessage);
+    swRegistration = navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((err) => {
+      console.warn("service worker registration failed", err);
+      swRegistration = null;
+      return null;
+    });
+  }
+  await swRegistration;
+}
+
+async function readyRegistration(): Promise<ServiceWorkerRegistration> {
+  await registerServiceWorker();
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Service worker didn't start")), SW_READY_TIMEOUT_MS),
+  );
+  return Promise.race([navigator.serviceWorker.ready, timeout]);
+}
+
+async function subscribeWeb(key: string): Promise<void> {
+  const reg = await readyRegistration();
+  const appKey = base64UrlToBytes(key);
+  let sub = await reg.pushManager.getSubscription();
+  // The server's VAPID key changed: the old subscription can't receive our pushes.
+  if (sub && !sameKey(sub.options.applicationServerKey, appKey)) {
+    await sub.unsubscribe().catch(() => false);
+    sub = null;
+  }
+  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+  const json = sub.toJSON();
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) throw new Error("Push subscription is incomplete");
+  await register({ platform: "web", subscription: { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } } });
+}
+
+// ---- Turned off in the app ----
+
+/**
+ * True when notifications were turned off on this device from the app
+ * (disablePush). The system permission usually stays granted, so
+ * getPushState() still says "granted"; nothing re-registers this device until
+ * enablePush() is called again.
+ */
+export function isPushOff(): boolean {
+  try {
+    return localStorage.getItem(OFF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setPushOff(off: boolean): void {
+  // setStored/removeStored write localStorage synchronously (isPushOff reads it), and in the
+  // native app also Capacitor Preferences, which survives iOS clearing the WebView's storage.
+  void (off ? setStored(OFF_KEY, "1") : removeStored(OFF_KEY)).catch(() => undefined);
+  offReady = Promise.resolve();
+}
+
+let offReady: Promise<void> | null = null;
+
+/**
+ * Restores the "turned off in the app" flag from the native store into
+ * localStorage (iOS can clear a WebView's localStorage; without this the next
+ * silent re-sync would turn pushes back on). Runs once; safe to await anywhere.
+ */
+export function hydratePushOff(): Promise<void> {
+  offReady ??= getStored(OFF_KEY)
+    .then((value) => {
+      if (value === "1") void setStored(OFF_KEY, "1");
+    })
+    .catch(() => undefined);
+  return offReady;
+}
+
+// ---- Public API ----
+
+export async function getPushState(): Promise<PushState> {
+  if (isNative()) {
+    try {
+      const { FirebaseMessaging } = await loadFm();
+      return nativeState((await FirebaseMessaging.checkPermissions()).receive);
+    } catch {
+      return "unsupported";
+    }
+  }
+  if (!webPushSupported()) return webUnavailable();
+  if (Notification.permission === "denied") return "denied";
+  if (!(await loadVapidKey())) return "unsupported";
+  return Notification.permission === "granted" ? "granted" : "default";
+}
+
+/**
+ * Ask for permission (call straight from a tap) and register this device.
+ * Resolves to the resulting state; rejects only if the device couldn't be
+ * registered (e.g. offline), in which case permission stays granted and the next
+ * app open retries.
+ */
+export async function enablePush(): Promise<PushState> {
+  if (isNative()) return enableNative();
+  if (!webPushSupported()) return webUnavailable();
+  // Known to be unconfigured: don't prompt for something that can't work.
+  if (vapidKey === null) return "unsupported";
+  // Prompt before any other await: Safari only honors it within the tap itself.
+  const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  if (permission !== "granted") return permission === "denied" ? "denied" : "default";
+  // Allowed: from here on a failed registration is retried on the next open (syncPush).
+  setPushOff(false);
+  const key = await loadVapidKey();
+  if (!key) return "unsupported";
+  await subscribeWeb(key);
+  lastSync = Date.now();
+  return "granted";
+}
+
+/**
+ * Tell the server to forget this device, then drop the subscription here
+ * whatever it answered: a dead endpoint/token gets 404/410 or UNREGISTERED on
+ * the next send, and the server deletes it then. Rejects only when both failed,
+ * i.e. pushes would still arrive.
+ */
+async function unregister(tellServer: () => Promise<unknown>, dropHere: () => Promise<unknown>): Promise<void> {
+  const told = await tellServer().then(
+    () => null,
+    (err: unknown) => err ?? new Error("Couldn't reach the server"),
+  );
+  try {
+    await dropHere();
+  } catch (err) {
+    if (told) throw told;
+    console.warn("push unsubscribe failed; the server already forgot this device", err);
+    return;
+  }
+  if (told) console.warn("push unregister failed; the server drops this device on its next send", told);
+}
+
+/**
+ * Stop pushes to this device (all games). Remembered locally (isPushOff), so
+ * the silent re-sync on the next open doesn't quietly turn them back on.
+ * Works offline (the device unsubscribes itself); rejects, and stays on, only
+ * if this device could still get pushes.
+ */
+export async function disablePush(): Promise<void> {
+  setPushOff(true);
+  try {
+    if (isNative()) {
+      const { FirebaseMessaging } = await loadFm();
+      await unregister(
+        async () => call("POST", "/push/unregister", { token: (await FirebaseMessaging.getToken()).token }),
+        () => FirebaseMessaging.deleteToken(),
+      );
+      return;
+    }
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return;
+    await unregister(
+      () => call("POST", "/push/unregister", { endpoint: sub.endpoint }),
+      async () => {
+        if (!(await sub.unsubscribe())) throw new Error("Push subscription is still active");
+      },
+    );
+  } catch (err) {
+    // Still subscribed here and registered there: it isn't off, so don't remember it as off.
+    setPushOff(false);
+    throw err;
+  }
+}
+
+/**
+ * If push is already allowed, re-register silently: picks up rotated tokens or
+ * subscriptions and tells the server the app was opened (resets the badge count).
+ */
+export function syncPush(force = false): Promise<void> {
+  if (isPushOff()) return Promise.resolve();
+  if (syncing) return syncing;
+  if (!force && Date.now() - lastSync < SYNC_INTERVAL_MS) return Promise.resolve();
+  syncing = (async () => {
+    try {
+      // The flag may only be in the native store right now (WebView storage was cleared).
+      await hydratePushOff();
+      if (isPushOff()) return;
+      if (isNative()) {
+        const { FirebaseMessaging } = await loadFm();
+        if ((await FirebaseMessaging.checkPermissions()).receive === "granted") await registerNative();
+      } else if (webPushSupported() && Notification.permission === "granted") {
+        const key = await loadVapidKey();
+        if (key) await subscribeWeb(key);
+      }
+      lastSync = Date.now();
+    } catch (err) {
+      console.warn("push sync failed", err);
+    } finally {
+      syncing = null;
+    }
+  })();
+  return syncing;
+}
+
+function onAppVisible(): void {
+  if (document.visibilityState !== "visible") return;
+  const clearAppBadge = isNative() ? undefined : (navigator as Partial<Pick<Navigator, "clearAppBadge">>).clearAppBadge;
+  if (!clearAppBadge) {
+    void syncPush();
+    return;
+  }
+  void clearAppBadge.call(navigator).catch(() => undefined);
+  // The badge was just cleared, so reset the server's count now (like the native resume does);
+  // otherwise a push within the throttle window would count the ones already seen.
+  void syncPush(true);
+}
+
+let initialized = false;
+
+/** Startup hook (safe on every load): service worker on web, FCM listeners in the app, silent re-sync. */
+export function initPush(): void {
+  if (initialized) return;
+  initialized = true;
+  if (isNative()) {
+    void ensureNativeListeners();
+    // Coming back to the app clears the badge, so tell the server now (re-registering resets its unread count).
+    onAppResume(() => void syncPush(true));
+  } else {
+    void registerServiceWorker();
+    // Knowing the VAPID key up front lets enablePush skip a pointless prompt when push is off.
+    if (webPushSupported()) void loadVapidKey();
+  }
+  document.addEventListener("visibilitychange", onAppVisible);
+  onAppVisible();
+}
+
+/**
+ * This device's push registration (FCM token or web push endpoint) without
+ * asking for anything, or null when it has none. Signing out sends it so the
+ * account's pushes stop reaching this device.
+ */
+export async function currentPushTarget(): Promise<{ endpoint?: string; token?: string } | null> {
+  try {
+    if (isNative()) {
+      const { FirebaseMessaging } = await loadFm();
+      if ((await FirebaseMessaging.checkPermissions()).receive !== "granted") return null;
+      return { token: (await FirebaseMessaging.getToken()).token };
+    }
+    if (!("serviceWorker" in navigator)) return null;
+    const sub = await (await navigator.serviceWorker.getRegistration())?.pushManager.getSubscription();
+    return sub ? { endpoint: sub.endpoint } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Forgets the per-board mute settings cached here (signing out: they were the account's). */
+export function clearMutedCache(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(MUTED_KEY(""))) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    // storage unavailable: nothing cached
+  }
+}
+
+/** Sends a "you're all set" push to this device. Resolves to how many devices accepted it. */
+export async function sendTestPush(): Promise<number> {
+  const res = await call("POST", "/push/test", {});
+  return typeof res.sent === "number" ? res.sent : 0;
+}
+
+// ---- Per-game mute ----
+
+/** Last known mute setting for this game on this device (kept in sync by setGameMuted / refreshGameMuted). */
+export function isGameMuted(gameId: string): boolean {
+  try {
+    return localStorage.getItem(MUTED_KEY(gameId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberMuted(gameId: string, muted: boolean): void {
+  try {
+    if (muted) localStorage.setItem(MUTED_KEY(gameId), "1");
+    else localStorage.removeItem(MUTED_KEY(gameId));
+  } catch {
+    // storage unavailable: the server still has it
+  }
+}
+
+export async function setGameMuted(gameId: string, muted: boolean): Promise<void> {
+  await call("POST", `/games/${encodeURIComponent(gameId)}/mute`, { muted });
+  rememberMuted(gameId, muted);
+}
+
+export async function refreshGameMuted(gameId: string): Promise<boolean> {
+  const { muted } = await call("GET", `/games/${encodeURIComponent(gameId)}/mute`);
+  rememberMuted(gameId, muted === true);
+  return muted === true;
+}

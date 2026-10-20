@@ -1,39 +1,110 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { NavigationType, Outlet, ScrollRestoration, useLocation, useNavigate, useNavigationType } from "react-router-dom";
+import { checkHostToken } from "../lib/api";
+import { isBoardViewPath } from "../lib/boardViews";
+import { captureHostLink } from "../lib/identity";
+import * as push from "../lib/push";
+import { ShellContext, TAB_PATHS, type ShellApi } from "./shell";
+import { TabBar } from "./ui/TabBar";
+import { useToast } from "./ui/toastContext";
 
-/** Mobile-first centered column with a sticky brand header. */
-export function AppShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col">
-      <header className="safe-top sticky top-0 z-20 border-b border-white/5 bg-pitch-950/80 px-4 pb-3 backdrop-blur">
-        <Link to="/" className="flex items-center gap-2">
-          <Logo />
-          <span className="text-lg font-extrabold tracking-tight">
-            Jax<span className="text-brand-400">Squares</span>
-          </span>
-        </Link>
-      </header>
-      <main className="safe-bottom flex-1 px-4 py-5">{children}</main>
-    </div>
-  );
+type Transition = "none" | "push" | "pop" | "fade";
+
+const ANIMATION: Record<Transition, string> = {
+  none: "",
+  push: "animate-route-push",
+  pop: "animate-route-pop",
+  fade: "animate-route-fade",
+};
+
+function transitionFor(prev: string | null, next: string, navType: NavigationType): Transition {
+  if (prev === null || prev === next) return "none";
+  if (TAB_PATHS.has(prev) && TAB_PATHS.has(next)) return "fade";
+  if (navType === NavigationType.Pop) return "pop";
+  if (navType === NavigationType.Replace) return "fade";
+  return "push";
 }
 
-/*
- * The J² ("Jax Squared") mark. Outlines are traced from Inter Display Black on
- * a 100×100 grid so the logo is identical on every device; public/favicon.svg
- * uses the same paths.
+/**
+ * Root layout: night-stadium backdrop, the page (with a native-feeling enter
+ * transition), the floating tab dock on top-level routes, and overlays.
  */
-export const LOGO_J_PATH =
-  "M38.28 80.96C51.71 80.96 59.17 74.30 59.17 62.37L59.17 23.04L43.26 23.04L43.26 62.06C43.26 65.73 41.38 67.80 38.02 67.80C34.65 67.80 32.77 65.73 32.77 62.06L32.77 57.39L18.08 57.39L18.08 61.91C18.08 74.15 25.31 80.96 38.28 80.96Z";
-export const LOGO_TWO_PATH =
-  "M61.78 46.18L81.92 46.18L81.92 40.52L71.71 40.52L71.71 40.48L75.95 37.03C79.43 34.20 81.85 31.82 81.85 27.90C81.85 22.69 77.62 19.54 71.81 19.54C65.46 19.54 61.52 23.32 61.52 29.43L68.23 29.43C68.23 26.70 69.67 25.17 71.80 25.17C73.75 25.17 75.05 26.44 75.05 28.30C75.05 30.57 73.10 31.95 71.64 33.13L61.78 41.08Z";
+export function AppShell() {
+  const location = useLocation();
+  const navType = useNavigationType();
+  const navigate = useNavigate();
+  const toast = useToast();
 
-export function Logo({ size = 32, tile = "#131c30" }: { size?: number; tile?: string }) {
+  // ---- tab dock visibility ----
+  const [hideCount, setHideCount] = useState(0);
+  const hideTabBar = useCallback(() => {
+    setHideCount((n) => n + 1);
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      setHideCount((n) => n - 1);
+    };
+  }, []);
+  const tabBarVisible = TAB_PATHS.has(location.pathname) && hideCount === 0;
+
+  useLayoutEffect(() => {
+    // Pages pad their bottom with var(--shell-bottom) (pb-shell); without the dock only the home indicator needs clearing.
+    const root = document.documentElement;
+    if (tabBarVisible) root.style.removeProperty("--shell-bottom");
+    else root.style.setProperty("--shell-bottom", "var(--safe-bottom)");
+  }, [tabBarVisible]);
+
+  const [overlayRoot, setOverlayRoot] = useState<HTMLElement | null>(null);
+  const shell = useMemo<ShellApi>(() => ({ tabBarVisible, hideTabBar, overlayRoot }), [tabBarVisible, hideTabBar, overlayRoot]);
+
+  // ---- route transition (decided once per navigation, so later re-renders don't cut it short) ----
+  const lastPath = useRef<string | null>(null);
+  const anim = useRef<{ key: string; transition: Transition }>({ key: "", transition: "none" });
+  if (anim.current.key !== location.key) {
+    anim.current = { key: location.key, transition: transitionFor(lastPath.current, location.pathname, navType) };
+    lastPath.current = location.pathname;
+  }
+  const transition = anim.current.transition;
+  // A board's TV and print views take the whole screen (or page): no phone column, no slide.
+  const fullBleed = isBoardViewPath(location.pathname);
+
+  // ---- host links opened inside the app (#host=<token>, or the older ?host=<token>) ----
+  useEffect(() => {
+    const rest = captureHostLink(location.pathname, location.search, location.hash, checkHostToken);
+    if (rest !== null) navigate({ pathname: location.pathname, ...rest }, { replace: true });
+  }, [location.pathname, location.search, location.hash, navigate]);
+
+  // ---- push received while the app is open ----
+  useEffect(() => {
+    if (typeof push.onForegroundPush !== "function") return;
+    return push.onForegroundPush((p) => {
+      // The open board already shows its own live toasts.
+      if (p.url && p.url === window.location.pathname) return;
+      toast.show({
+        title: p.title,
+        description: p.body,
+        tone: "live",
+        action: p.url && p.url !== "/" ? { label: "View", onClick: () => navigate(p.url) } : undefined,
+      });
+    });
+  }, [navigate, toast]);
+
   return (
-    <svg viewBox="0 0 100 100" width={size} height={size} className="shrink-0" aria-hidden="true">
-      <rect width="100" height="100" rx="24" fill={tile} />
-      <path d={LOGO_J_PATH} fill="#f8fafc" />
-      <path d={LOGO_TWO_PATH} fill="#22c55e" />
-    </svg>
+    <ShellContext.Provider value={shell}>
+      <div aria-hidden className="floodlights pointer-events-none fixed inset-0 -z-10" />
+      <div className={fullBleed ? "flex min-h-dvh w-full flex-col" : "mx-auto flex min-h-dvh w-full max-w-md flex-col"}>
+        <main
+          key={location.pathname}
+          id="main"
+          className={fullBleed ? "flex flex-1 flex-col" : `flex flex-1 flex-col pb-shell ${ANIMATION[transition]}`}
+        >
+          <Outlet />
+        </main>
+      </div>
+      <TabBar hidden={!tabBarVisible} />
+      <div ref={setOverlayRoot} />
+      <ScrollRestoration />
+    </ShellContext.Provider>
   );
 }

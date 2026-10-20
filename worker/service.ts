@@ -1,0 +1,353 @@
+// Core game service shared by the routes, the GameRoom Durable Object and the
+// payments/push modules. See docs/ARCHITECTURE.md "Cross-module function contracts".
+
+import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
+import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
+import {
+  drawNumbers,
+  liveChanged,
+  nextEveryScoreEntries,
+  periodScoresFromLinescores,
+  primaryAward,
+  resolveResults,
+  resultNote,
+  retractedEntries,
+  winnersOf,
+  type PeriodScore,
+} from "../shared/squares";
+import type { Activity, ActivityType, GameState, LiveStatus, LiveUpdate, Score } from "../shared/types";
+import { isClientId } from "../shared/playerId";
+import { canonicalClientId } from "./auth/canonical";
+import * as db from "./db";
+import { emailNotices } from "./email/notices";
+import type { Env } from "./env";
+import { activePass } from "./payments/pass";
+import { notify, type NotifyEvent } from "./push";
+
+export type Deliver = (state: GameState, activities: Activity[]) => Promise<void>;
+
+/** `actor` is a public player id (never a clientId); null for system events. */
+export function newActivity(type: ActivityType, actor: string | null, data: Record<string, unknown> = {}, at = Date.now()): Activity {
+  return { id: db.newActivityId(), type, at, actor, data };
+}
+
+export function roomStub(env: Env, gameId: string): DurableObjectStub {
+  return env.GAME_ROOM.get(env.GAME_ROOM.idFromName(gameId));
+}
+
+/** Sends a state (and its new activity) to every socket in the game's room. Never throws. */
+export async function pushToRoom(env: Env, gameId: string, state: GameState, activities: Activity[] = []): Promise<void> {
+  try {
+    const res = await roomStub(env, gameId).fetch("https://room/broadcast", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-game-id": gameId },
+      body: JSON.stringify({ state, activities }),
+    });
+    if (!res.ok) console.error(`room broadcast ${gameId}: ${res.status}`);
+  } catch (err) {
+    console.error(`room broadcast ${gameId} failed`, err);
+  }
+}
+
+/**
+ * The game was deleted: the room sends `{ type: "deleted" }` to every open
+ * socket, closes them with 4404 and drops its storage (alarm included). Never throws.
+ */
+export async function closeRoom(env: Env, gameId: string): Promise<void> {
+  try {
+    const res = await roomStub(env, gameId).fetch("https://room/close", { method: "POST", headers: { "x-game-id": gameId } });
+    if (!res.ok) console.error(`room close ${gameId}: ${res.status}`);
+  } catch (err) {
+    console.error(`room close ${gameId} failed`, err);
+  }
+}
+
+/**
+ * Runs notify for each event, and the email notices for the batch (worker/email:
+ * confirmed addresses only; it does nothing when email isn't set up), logging
+ * (not throwing) failures.
+ */
+export async function notifyAll(env: Env, gameId: string, events: NotifyEvent[]): Promise<void> {
+  // notify() marks sibling events synchronously, so the pushes are started first, in order.
+  const pushes = events.map((e) => notify(env, gameId, e));
+  const results = await Promise.allSettled([...pushes, emailNotices(env, gameId, events)]);
+  for (const r of results) if (r.status === "rejected") console.error(`notify ${gameId} failed`, r.reason);
+}
+
+export async function loadState(env: Env, gameId: string): Promise<GameState | null> {
+  return db.getGameState(env.DB, gameId);
+}
+
+/**
+ * Re-read state from D1 and push it to every socket in the game's room. When an
+ * activity is given it is recorded (idempotently, by id) and sent as an event.
+ */
+export async function broadcast(env: Env, gameId: string, activity?: Activity): Promise<GameState | null> {
+  const state = activity
+    ? (await db.commit(env.DB, gameId, [db.insertActivity(env.DB, gameId, activity)])).state
+    : await loadState(env, gameId);
+  if (state) await pushToRoom(env, gameId, state, activity ? [activity] : []);
+  return state;
+}
+
+/**
+ * A season's game board changed what its season board shows (a score, a
+ * winner, the final, its feed starting, scoring or ending): the season board's
+ * version moves (its standings and schedule are read from its game boards)
+ * and its open boards get the new state. Never pushed: the game board's own
+ * events notify its players. Never throws.
+ */
+export async function touchSeason(env: Env, seasonId: string): Promise<void> {
+  try {
+    const { state } = await db.commit(env.DB, seasonId, []);
+    if (state) await pushToRoom(env, seasonId, state);
+  } catch (err) {
+    console.error(`season ${seasonId} update failed`, err);
+  }
+}
+
+/** The feed moved in a way a season's schedule shows: it started or ended, or the score changed (not just the clock). */
+function liveMoved(prev: LiveStatus | null, next: LiveStatus): boolean {
+  return !prev || prev.state !== next.state || prev.scoreX !== next.scoreX || prev.scoreY !== next.scoreY;
+}
+
+/**
+ * The board's host fee is paid (the purchase the ledger chose): the host can
+ * draw the numbers now, and a linked board draws its own at kickoff. A
+ * legacy draft opens too. Idempotent; pushes the new state.
+ */
+export async function markPaid(
+  env: Env,
+  gameId: string,
+  purchase: { provider: "test" | "stripe" | "iap" | "pass"; reference: string; amountCents: number },
+): Promise<GameState | null> {
+  const current = await db.getGame(env.DB, gameId);
+  if (!current) return null;
+  if (current.paid) return loadState(env, gameId);
+  const { state } = await db.commit(env.DB, gameId, [db.markPaid(env.DB, gameId, purchase, Date.now())]);
+  if (state) await pushToRoom(env, gameId, state);
+  return state;
+}
+
+/** Constant-time comparison so token checks don't leak how much of a guess matched. */
+export function tokenMatches(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const enc = new TextEncoder();
+  const x = enc.encode(a);
+  const y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+export async function isHost(env: Env, gameId: string, adminToken: string): Promise<boolean> {
+  if (!adminToken) return false;
+  const token = await db.getAdminToken(env.DB, gameId);
+  return !!token && tokenMatches(token, adminToken);
+}
+
+/**
+ * Whether a request may run the board (the payment routes: a co-host can pay
+ * the host fee at the draw too): its x-admin-token is the board's, or its
+ * x-client-id, resolved to the canonical clientId like requireClient does
+ * (`signedIn` = the x-signed-in hint), is one of the board's co-hosts.
+ */
+export async function isHostOrCohost(
+  env: Env,
+  gameId: string,
+  req: { adminToken: string; clientId: string | null | undefined; signedIn: boolean },
+): Promise<boolean> {
+  if (await isHost(env, gameId, req.adminToken)) return true;
+  if (!isClientId(req.clientId)) return false;
+  return db.isCohost(env.DB, gameId, await canonicalClientId(env.DB, req.clientId, { signedIn: req.signedIn }));
+}
+
+/**
+ * Activities + notifications for periods whose score just changed: one "score"
+ * event each, plus a "winner" event when the square is owned. `projected` is
+ * the state as it will be once the writes land.
+ */
+export function scoreEvents(
+  projected: Pick<GameState, "game" | "squares" | "scores" | "manualWinners">,
+  changed: { periodKey: string; label: string; scoreX: number; scoreY: number }[],
+  source: Score["source"],
+  actor: string | null,
+  now: number,
+): { activities: Activity[]; notifications: NotifyEvent[] } {
+  const activities: Activity[] = [];
+  const notifications: NotifyEvent[] = [];
+  const results = resolveResults(projected);
+  for (const c of changed) {
+    activities.push(
+      newActivity("score", actor, { periodKey: c.periodKey, label: c.label, scoreX: c.scoreX, scoreY: c.scoreY, source }, now),
+    );
+    const r = results.find((x) => x.periodKey === c.periodKey);
+    if (!r) continue;
+    const playerIds = winnersOf(r);
+    if (playerIds.length === 0) continue;
+    // `cell` is the square the moment is about (the reverse square when only the reverse wins then).
+    // Notes only: amounts stay out of activity (and so out of anything built from it).
+    const cell = primaryAward(r).cell;
+    const reverseCell = r.awardsSquare ? r.reverseCell : null;
+    activities.push(
+      newActivity("winner", actor, { periodKey: r.periodKey, label: r.label, playerIds, cell, reverseCell, prize: resultNote(r) }, now),
+    );
+    // No actor: a winner hears about their own square even when they entered the score.
+    notifications.push({ kind: "winner", periodKey: r.periodKey, label: r.label, playerIds });
+  }
+  return { activities, notifications };
+}
+
+function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Score[] {
+  const by = new Map(scores.map((s) => [s.periodKey, s]));
+  for (const c of changed) {
+    const s: Score = { periodKey: c.periodKey, scoreX: c.scoreX, scoreY: c.scoreY, source: "live", updatedAt: now };
+    if (everyScoreIndex(c.periodKey) !== null) s.label = c.label;
+    by.set(c.periodKey, s);
+  }
+  return [...by.values()];
+}
+
+/**
+ * Apply a provider update to a linked board: upsert live status + completed
+ * period scores (never replacing a host-entered score), append every-score
+ * entries when the total goes up (a touchdown and its conversion seen in one
+ * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
+ * when it's corrected down, lock at kickoff if the host hasn't (only once the
+ * host fee is paid, the board is free (5 or fewer players hold squares), or
+ * the host's Host Pass covers it: an unpaid board stays open, still taking the
+ * feed's scores, until its host pays and draws), and mark the board final
+ * when the game ends. Pushes the new state and sends pushes.
+ *
+ * `deliver` lets the GameRoom (which calls this from its alarm) broadcast to its
+ * own sockets directly instead of fetching itself.
+ */
+export async function applyLiveUpdate(
+  env: Env,
+  gameId: string,
+  update: LiveUpdate,
+  deliver: Deliver = (state, activities) => pushToRoom(env, gameId, state, activities),
+): Promise<void> {
+  let prev = await loadState(env, gameId);
+  if (!prev || !prev.game.linkedEvent) return;
+  if (prev.game.status === "draft") return;
+
+  const now = Date.now();
+  const live: LiveStatus = { ...update.live, updatedAt: update.live.updatedAt || now };
+  const kickoff = live.state === "in" || update.isFinal;
+  const writes: D1PreparedStatement[] = [];
+  const activities: Activity[] = [];
+  const notifications: NotifyEvent[] = [];
+  // Activities whose insert is conditional on their write applying (lock/final);
+  // their notification is only sent if the activity was actually recorded.
+  const conditional = new Map<string, NotifyEvent>();
+
+  // A free board (FREE_PLAYER_LIMIT or fewer players hold squares) draws at
+  // kickoff with no fee: marked paid ("free") and locked in a batch of its
+  // own, which counts the holders again. A 6th player whose claim landed
+  // after the read makes it a no-op, and the board is decided below with
+  // them counted. Its own batch, so the scores below go against the numbers
+  // that were really drawn (or none).
+  let drewFree = false;
+  if (prev.game.status === "open" && !prev.game.paid && kickoff && isFreeDraw(prev)) {
+    const locked = newActivity("locked", null, { auto: true }, now);
+    const { state } = await db.commit(
+      env.DB,
+      gameId,
+      [
+        db.markFreeDraw(env.DB, gameId, FREE_PLAYER_LIMIT, now),
+        db.lockGame(env.DB, gameId, drawNumbers(prev.game.format), now),
+        db.insertActivityIfChanged(env.DB, gameId, locked),
+      ],
+      now,
+    );
+    if (!state) return;
+    if (state.activity.some((a) => a.id === locked.id)) {
+      drewFree = true;
+      activities.push(locked);
+      conditional.set(locked.id, { kind: "numbers-drawn" });
+    }
+    prev = state;
+  }
+  const { game } = prev;
+
+  if (liveChanged(prev.live, live)) writes.push(db.upsertLive(env.DB, gameId, live));
+
+  if (live.state === "in" && prev.live?.state !== "in" && prev.live?.state !== "post" && game.status !== "final") {
+    notifications.push({ kind: "game-starting" });
+  }
+
+  // Boards linked to a real game lock at kickoff so every period can be decided,
+  // once their host fee is paid, or the host's Host Pass covers it (the board
+  // is marked paid through the pass in the same write); until then the host
+  // draws when they pay. (Not on a "post" that isn't final: that's a
+  // postponed/canceled game.)
+  let numbers = game.numbers;
+  let status = game.status;
+  let pass: { id: string } | null = null;
+  if (status === "open" && !game.paid && kickoff) {
+    const host = await db.hostClientIdOf(env.DB, gameId);
+    pass = host ? await activePass(env.DB, [host], now) : null;
+  }
+  if (status === "open" && (game.paid || pass) && kickoff) {
+    numbers = drawNumbers(game.format);
+    const locked = newActivity("locked", null, { auto: true }, now);
+    if (pass) writes.push(db.markPaid(env.DB, gameId, { provider: "pass", reference: pass.id, amountCents: 0 }, now));
+    writes.push(db.lockGame(env.DB, gameId, numbers, now), db.insertActivityIfChanged(env.DB, gameId, locked));
+    activities.push(locked);
+    conditional.set(locked.id, { kind: "numbers-drawn" });
+    status = "locked";
+  }
+
+  const changed: PeriodScore[] = [];
+  // Every-score entries the feed took back (a score overturned on review). They
+  // are deleted ahead of the upsert below, which may reuse the same index.
+  let retracted: string[] = [];
+  let scores = prev.scores;
+  // A board can award both: every score change (entries) and fixed moments (quarter-ends).
+  if (hasScoreMoment(rulesOf(game.format)) && live.state !== "pre") {
+    retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
+    for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
+    scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
+    changed.push(...nextEveryScoreEntries(scores, live.scoreX, live.scoreY));
+  }
+  const existing = new Map(prev.scores.map((s) => [s.periodKey, s]));
+  for (const ps of periodScoresFromLinescores(game.format, update, game)) {
+    const cur = existing.get(ps.periodKey);
+    if (cur?.source === "host") continue;
+    if (cur && cur.scoreX === ps.scoreX && cur.scoreY === ps.scoreY) continue;
+    changed.push(ps);
+  }
+  for (const c of changed) {
+    const label = everyScoreIndex(c.periodKey) !== null ? c.label : null;
+    writes.push(db.upsertLiveScore(env.DB, gameId, { ...c, label }, now));
+  }
+  if (changed.length > 0) {
+    const manualWinners = prev.manualWinners.filter((m) => !retracted.includes(m.periodKey));
+    const projected = { ...prev, game: { ...game, numbers }, scores: upsertScores(scores, changed, now), manualWinners };
+    const events = scoreEvents(projected, changed, "live", null, now);
+    activities.push(...events.activities);
+    notifications.push(...events.notifications);
+  }
+
+  if (update.isFinal && status === "locked") {
+    const final = newActivity("final", null, {}, now);
+    writes.push(db.setFinal(env.DB, gameId), db.insertActivityIfChanged(env.DB, gameId, final));
+    activities.push(final);
+    conditional.set(final.id, { kind: "final" });
+  }
+
+  for (const a of activities) if (!conditional.has(a.id)) writes.push(db.insertActivity(env.DB, gameId, a));
+  if (writes.length === 0 && !drewFree) return;
+
+  // Nothing more to write after a free draw: its batch already read the state.
+  const state = writes.length > 0 ? (await db.commit(env.DB, gameId, writes, now)).state : prev;
+  if (!state) return;
+  const recorded = new Set(state.activity.map((a) => a.id));
+  for (const [id, event] of conditional) if (recorded.has(id)) notifications.push(event);
+  const delivered = activities.filter((a) => recorded.has(a.id));
+  await deliver(state, delivered);
+  await notifyAll(env, gameId, notifications);
+  // A season's game board: its season board's schedule and standings follow (not on every tick of the clock).
+  if (state.game.seasonId && (delivered.length > 0 || liveMoved(prev.live, live))) await touchSeason(env, state.game.seasonId);
+}

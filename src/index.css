@@ -1,41 +1,613 @@
 @import "tailwindcss";
 
-@import "./theme.css";
+/*
+ * JaxSquares design system — "Under the lights".
+ *
+ * Night turf (pitch) neutrals, a volt-lime hero color (brand) for every primary
+ * action, trophy gold for wins, a flare pink accent for social/hype moments and
+ * red-zone red for live + destructive. Team colors arrive at runtime through
+ * --team-x / --team-y on a board container.
+ *
+ * Type: Bricolage Grotesque (display, optical size pinned to 96 for punch) and
+ * Figtree (UI). Both self-hosted via @fontsource, imported in main.tsx.
+ *
+ * Dark-first on purpose: it's a game-night app, usually used in a dim room
+ * next to a TV. Dark is the default; a light "day game" theme is opt-in from
+ * Profile (src/lib/theme.ts sets data-theme="light" on <html>). The light
+ * theme only redefines the semantic aliases and the material variables below,
+ * so anything built from them follows the theme. The numbered scales (pitch,
+ * brand, gold...) never change: use them for fills that look the same in both
+ * themes (a volt button, a gold trophy chip), and the semantic aliases for
+ * everything that sits on the canvas.
+ */
 
-/* Marketing studio has its own stylesheet; keep its classes out of the app bundle. */
-@source not "../marketing";
+/* `light:` for the rare per-element tweak a token can't express (artwork). */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
-html {
-  -webkit-text-size-adjust: 100%;
-  -webkit-tap-highlight-color: transparent;
+/* static: every token is emitted as a CSS variable even if no class uses it, so
+   inline styles and JS (var(--color-gold-400)) can always rely on them. */
+@theme static {
+  /* ---------- Type ---------- */
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* Scoreboard numbers (board digits, live scores). */
+  --text-score: 3.5rem;
+  --text-score--line-height: 1;
+  --text-score--letter-spacing: -0.03em;
+  --text-hero: 2.5rem;
+  --text-hero--line-height: 1.02;
+  --text-hero--letter-spacing: -0.03em;
+  /* iOS-style large title. */
+  --text-title-1: 2.125rem;
+  --text-title-1--line-height: 1.06;
+  --text-title-1--letter-spacing: -0.025em;
+  --text-title-2: 1.625rem;
+  --text-title-2--line-height: 1.12;
+  --text-title-2--letter-spacing: -0.02em;
+  --text-title-3: 1.25rem;
+  --text-title-3--line-height: 1.2;
+  --text-title-3--letter-spacing: -0.015em;
+  --text-headline: 1.0625rem;
+  --text-headline--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-callout: 0.9375rem;
+  --text-callout--line-height: 1.45;
+  --text-subhead: 0.875rem;
+  --text-subhead--line-height: 1.4;
+  --text-footnote: 0.8125rem;
+  --text-footnote--line-height: 1.35;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.3;
+  /* Overlines / badges: always uppercase + tracked (see .eyebrow). */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.2;
+
+  /* ---------- Color: night turf neutrals ---------- */
+  --color-pitch-50: #f2f7f3;
+  --color-pitch-100: #e1ebe4;
+  --color-pitch-200: #c2d3c8;
+  --color-pitch-300: #93ab9c;
+  --color-pitch-400: #66806f;
+  --color-pitch-500: #45594c;
+  --color-pitch-600: #2f3f35;
+  --color-pitch-700: #223029;
+  --color-pitch-750: #1b281f;
+  --color-pitch-800: #16211b;
+  --color-pitch-850: #111a15;
+  --color-pitch-900: #0c1410;
+  --color-pitch-950: #060c09;
+
+  /* ---------- Color: volt (brand, primary actions) ---------- */
+  --color-brand-50: #f9ffe5;
+  --color-brand-100: #f0ffbf;
+  --color-brand-200: #e3ff8a;
+  --color-brand-300: #d5ff52;
+  --color-brand-400: #c6f91f;
+  --color-brand-500: #aee000;
+  --color-brand-600: #88b300;
+  --color-brand-700: #658500;
+  --color-brand-800: #475e00;
+  --color-brand-900: #2e3d00;
+  --color-brand-950: #192200;
+
+  /* ---------- Color: trophy gold (wins, prizes, celebration) ---------- */
+  --color-gold-100: #fff3d1;
+  --color-gold-200: #ffe7a3;
+  --color-gold-300: #ffd56b;
+  --color-gold-400: #ffc233;
+  --color-gold-500: #ffab0f;
+  --color-gold-600: #e08a00;
+  --color-gold-700: #a86500;
+  --color-gold-800: #6e4200;
+  --color-gold-900: #4a2c00;
+
+  /* ---------- Color: flare (accent: friends, presence, hype) ---------- */
+  --color-accent-200: #ffc2dc;
+  --color-accent-300: #ff94c0;
+  --color-accent-400: #ff66a6;
+  --color-accent-500: #ff3d8e;
+  --color-accent-600: #e0216f;
+  --color-accent-700: #a8124f;
+  --color-accent-900: #4d0624;
+
+  /* ---------- Color: red zone (live, destructive, errors) ---------- */
+  --color-live-300: #ff9b9b;
+  --color-live-400: #ff6b6b;
+  --color-live-500: #ff4040;
+  --color-live-600: #e0252f;
+  --color-live-700: #a6121c;
+  --color-live-900: #4a060b;
+  --color-danger-300: #ff9b9b;
+  --color-danger-400: #ff6b6b;
+  --color-danger-500: #ff4040;
+  --color-danger-600: #e0252f;
+  --color-danger-700: #a6121c;
+  --color-danger-900: #4a060b;
+
+  /* ---------- Semantic aliases (prefer these in screens) ----------
+     Dark values here; the light theme redefines every one of them at the end
+     of this file. */
+  --color-canvas: #060c09;
+  --color-surface: #0c1410;
+  --color-surface-2: #111a15;
+  --color-surface-3: #16211b;
+  --color-surface-4: #223029;
+  /* Hover / pressed state of a surface-4 control (secondary button, keypad key, switch track). */
+  --color-surface-5: #2f3f35;
+  /* The solid edge a neutral keycap (surface-4) sinks into. */
+  --color-edge: #0a120e;
+  --color-ink: #f3f7f1;
+  --color-ink-muted: #a3b8ab;
+  /* AA (4.5:1) on canvas, surface-2 and surface-3. */
+  --color-ink-subtle: #768d7f;
+  /* Text on the bright fills (volt, gold, light team colors). Dark in both themes. */
+  --color-ink-inverse: #060c09;
+  /* Accent text and icons on the canvas or a surface: AA in both themes.
+     Use these (not text-brand-400 etc.) for colored words. */
+  --color-ink-brand: #d5ff52;
+  --color-ink-gold: #ffd56b;
+  --color-ink-live: #ff6b6b;
+  --color-ink-danger: #ff6b6b;
+  --color-ink-accent: #ff66a6;
+  /* Volt / gold as a ring, outline or stroke on the canvas (selected states, focus). */
+  --color-brand-line: #c6f91f;
+  --color-gold-line: #ffc233;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-strong: rgb(255 255 255 / 0.15);
+  /* Behind sheets and dialogs. */
+  --color-scrim: rgb(0 0 0 / 0.65);
+
+  /* ---------- Shape ---------- */
+  --radius-btn: 1rem;
+  --radius-card: 1.375rem;
+  --radius-sheet: 1.75rem;
+  --radius-tile: 0.625rem;
+
+  /* ---------- Depth ----------
+     Values live in the --elevation-* / --glow-* variables (:root below) so the
+     light theme can soften them; Tailwind inlines theme shadows otherwise. */
+  --shadow-card: var(--elevation-card);
+  --shadow-float: var(--elevation-float);
+  --shadow-sheet: var(--elevation-sheet);
+  --shadow-glow-brand: var(--glow-brand);
+  --shadow-glow-gold: var(--glow-gold);
+
+  /* ---------- Motion ---------- */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-bounce: cubic-bezier(0.28, 1.84, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The iOS sheet curve. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --animate-pop: pop 260ms var(--ease-spring) both;
+  --animate-tick: tick 240ms var(--ease-out-quint) both;
+  --animate-shake: shake 360ms ease-in-out both;
+  --animate-float: float 3.2s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-live: live-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-fade-in: fade-in 180ms ease-out both;
+  --animate-route-push: route-push 260ms var(--ease-out-quint) both;
+  --animate-route-pop: route-pop 240ms var(--ease-out-quint) both;
+  --animate-route-fade: route-fade 180ms ease-out both;
+  --animate-toast-in: toast-in 420ms var(--ease-spring) both;
+  --animate-toast-out: toast-out 200ms ease-in both;
+  --animate-tab-bounce: tab-bounce 420ms var(--ease-bounce) both;
+  --animate-win-glow: win-glow 1.8s ease-in-out infinite;
+  --animate-spin-fast: spin 700ms linear infinite;
+
+  @keyframes pop {
+    0% { transform: scale(0.82); opacity: 0; }
+    60% { opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes tick {
+    0% { transform: translateY(45%); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(-3deg); }
+    50% { transform: translateY(-6px) rotate(3deg); }
+  }
+  @keyframes shimmer {
+    0% { background-position: 150% 0; }
+    100% { background-position: -50% 0; }
+  }
+  @keyframes live-ping {
+    0% { transform: scale(1); opacity: 0.75; }
+    80%, 100% { transform: scale(2.4); opacity: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes route-push {
+    from { opacity: 0; transform: translate3d(28px, 0, 0); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes route-pop {
+    from { opacity: 0; transform: translate3d(-20px, 0, 0); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes route-fade {
+    from { opacity: 0; transform: translate3d(0, 6px, 0); }
+    to { opacity: 1; transform: none; }
+  }
+  /* Toasts rise from the bottom (above the dock / action bar) and sink back out. */
+  @keyframes toast-in {
+    from { opacity: 0; transform: translate3d(0, 70%, 0) scale(0.94); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes toast-out {
+    to { opacity: 0; transform: translate3d(0, 35%, 0) scale(0.96); }
+  }
+  @keyframes tab-bounce {
+    0% { transform: scale(1); }
+    35% { transform: scale(0.82); }
+    100% { transform: scale(1); }
+  }
+  @keyframes win-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgb(255 194 51 / 0.55), 0 0 24px -4px rgb(255 171 15 / 0.6); }
+    50% { box-shadow: 0 0 0 6px rgb(255 194 51 / 0), 0 0 36px 0 rgb(255 171 15 / 0.35); }
+  }
 }
 
-body {
-  margin: 0;
-  min-height: 100dvh;
+/* Team colors are runtime values: set --team-x / --team-y on a board container
+   (see teamVars() in src/lib/format.ts) and use bg-team-x, text-team-y, etc. */
+@theme inline {
+  --color-team-x: var(--team-x, #3ab7ff);
+  --color-team-y: var(--team-y, #ff66a6);
+  --color-team-x-ink: var(--team-x-ink, #060c09);
+  --color-team-y-ink: var(--team-y-ink, #060c09);
+}
+
+/* ---------- Layout tokens used by the shell and fixed bars ---------- */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --topbar-h: 2.75rem;
+  /* Floating tab dock: 64px tall, 10px off the bottom edge (plus home indicator). */
+  --tabbar-h: 4rem;
+  --tabbar-gap: 0.625rem;
+  /* Space a page must leave at the bottom; the shell sets it to 0 when the tab bar is hidden. */
+  --shell-bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + max(var(--safe-bottom), 0.5rem));
+
+  /* ---------- Materials (dark values; the light theme redefines them below) ---------- */
+  --elevation-card: inset 0 1px 0 0 rgb(255 255 255 / 0.05), 0 16px 32px -20px rgb(0 0 0 / 0.8);
+  --elevation-float: inset 0 1px 0 0 rgb(255 255 255 / 0.07), 0 18px 40px -12px rgb(0 0 0 / 0.75), 0 2px 6px rgb(0 0 0 / 0.35);
+  --elevation-sheet: 0 -20px 60px -10px rgb(0 0 0 / 0.75);
+  --glow-brand: 0 0 0 1px rgb(198 249 31 / 0.35), 0 10px 32px -8px rgb(198 249 31 / 0.45);
+  --glow-gold: 0 0 0 1px rgb(255 194 51 / 0.45), 0 12px 36px -8px rgb(255 171 15 / 0.55);
+  /* A soft halo / drop used by small floating things (thumbs, callouts, chips). */
+  --drop-color: rgb(0 0 0 / 0.6);
+  --glass-bg: rgb(12 20 16 / 0.95);
+  --bar-bg: rgb(10 17 13);
+  --floodlight-left: rgb(214 255 120 / 0.1);
+  --floodlight-right: rgb(214 255 120 / 0.08);
+  --yard-line: rgb(255 255 255 / 0.03);
+  --shimmer-highlight: rgb(255 255 255 / 0.06);
+  --foil: linear-gradient(180deg, var(--color-gold-200) 0%, var(--color-gold-400) 55%, var(--color-gold-600) 100%);
+  /* Volt washes on the canvas: open squares, "yours" glows. */
+  --brand-wash: rgb(198 249 31 / 0.045);
+  --brand-wash-ring: rgb(198 249 31 / 0.13);
+  --brand-glow: rgb(198 249 31 / 0.65);
+  --gold-glow: rgb(255 171 15 / 0.75);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-canvas);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    /* Transparent so the shell's fixed stadium backdrop (z -10) shows; html paints the canvas. */
+    background: transparent;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Display face: pin the optical size so headlines get Bricolage's tight, inky cut. */
+  .font-display {
+    font-variation-settings: "opsz" 96;
+  }
+
+  button,
+  [role="button"],
+  a {
+    touch-action: manipulation;
+  }
+
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="switch"],
+  [role="radio"] {
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-line);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-brand-400) 30%, transparent);
+    color: var(--color-ink);
+  }
+
+  input::placeholder {
+    color: var(--color-ink-subtle);
+  }
+
+  /* Number inputs: no browser spinners; Stepper owns +/-. */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+/* ---------- Utilities ---------- */
+
+@utility pt-safe {
+  padding-top: var(--safe-top);
+}
+@utility pb-safe {
+  padding-bottom: var(--safe-bottom);
+}
+@utility px-safe {
+  padding-left: max(1rem, var(--safe-left));
+  padding-right: max(1rem, var(--safe-right));
+}
+/* Bottom padding that clears the tab dock / home indicator. */
+@utility pb-shell {
+  padding-bottom: calc(var(--shell-bottom) + 1.5rem);
+}
+
+/* Tactile press: quick squash on touch, springy release. */
+@utility pressable {
+  transition:
+    transform 260ms var(--ease-spring),
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+  &:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: scale(0.96);
+    transition-duration: 70ms;
+  }
+}
+
+/*
+ * Chunky "keycap" press for primary actions: a solid edge under the button that
+ * the button sinks into when pressed. Set --keycap-edge to a darker shade of the
+ * button color.
+ */
+@utility keycap {
+  --keycap-depth: 4px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.28),
+    0 var(--keycap-depth) 0 var(--keycap-edge, var(--color-edge));
+  transition:
+    transform 240ms var(--ease-spring),
+    box-shadow 240ms var(--ease-spring),
+    background-color 150ms ease,
+    opacity 150ms ease;
+  &:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: translateY(calc(var(--keycap-depth) - 1px));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.2),
+      0 1px 0 var(--keycap-edge, var(--color-edge));
+    transition-duration: 60ms;
+  }
+}
+
+/* Grows the hit area to 44x44 without changing layout (small chips, icon buttons). */
+@utility tap-target {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* Small tracked caps label, e.g. "LIVE", "Q3", section overlines. */
+@utility eyebrow {
+  font-size: var(--text-micro);
+  line-height: var(--text-micro--line-height);
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/*
+ * Frosted material for floating chrome (the tab dock, action trays, chips over
+ * content). Nearly opaque on purpose: content behind may tint it, but text
+ * behind never competes with the labels on top.
+ */
+@utility glass {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
+}
+
+/* A sticky top bar once content scrolls under it: solid (nothing ghosts behind the title), with a hairline under it. */
+@utility bar-solid {
+  background-color: var(--bar-bg);
+  box-shadow: 0 1px 0 var(--color-line);
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Gold foil text for wins. */
+@utility text-foil {
+  background: var(--foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Diagonal end-zone stripes; tint with text color (uses currentColor). */
+@utility endzone-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, currentColor 14%, transparent) 0 10px,
+    transparent 10px 20px
+  );
+}
+
+/* The stadium at night: floodlight haze from two light towers, plus faint yard
+   lines that fade out down the screen. Used on the shell's fixed backdrop. */
+@utility floodlights {
   background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(34, 197, 94, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 100% 10%, rgba(56, 189, 248, 0.1), transparent 55%),
-    var(--color-pitch-950);
-  color: #e6edf6;
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+    radial-gradient(70% 38% at 8% -6%, var(--floodlight-left), transparent 70%),
+    radial-gradient(70% 38% at 92% -6%, var(--floodlight-right), transparent 70%),
+    var(--color-canvas);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(180deg, transparent 0 87px, var(--yard-line) 87px 88px);
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, transparent 55%);
+    mask-image: linear-gradient(180deg, #000 0%, transparent 55%);
+  }
 }
 
-/* Respect device safe areas (notches / home indicator) on phones. */
-.safe-bottom {
-  padding-bottom: max(1rem, env(safe-area-inset-bottom));
-}
-.safe-top {
-  padding-top: max(0.5rem, env(safe-area-inset-top));
+/* Skeleton shimmer surface. */
+@utility shimmer {
+  background-color: var(--color-surface-3);
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    var(--shimmer-highlight) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
 }
 
-@keyframes pop {
-  0% { transform: scale(0.85); opacity: 0.4; }
-  60% { transform: scale(1.05); }
-  100% { transform: scale(1); opacity: 1; }
+/* ---------- Light theme: "day game" ----------
+ * Sun on the turf instead of floodlights: a pale green-grey canvas with white
+ * cards, deep green-black ink, volt kept as the energetic fill (always with
+ * dark text) and darker volt / gold / red for text and rings so they pass AA.
+ * Contrast (WCAG) on canvas / white / surface-4: ink 15.7 / 17.8 / 14.5;
+ * ink-muted 6.6 / 7.5 / 6.1; ink-subtle 5.0 / 5.7 / 4.6; ink-brand 5.3 / 6.0 / 4.8;
+ * ink-gold 5.1 / 5.8 / 4.7; ink-live and ink-danger 5.2 / 5.8 / 4.7; brand-line
+ * 3.2 / 3.6 and gold-line 3.1 / 3.5 (rings and focus: 3:1 for UI).
+ * Keep in sync: THEME_COLORS in src/lib/theme.ts and the pre-paint style in index.html.
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-canvas: #eef2ec;
+  --color-surface: #f6f8f4;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #f2f5f0;
+  --color-surface-4: #e3e9e2;
+  --color-surface-5: #d5ddd5;
+  --color-edge: #bfcbc1;
+  --color-ink: #0f1a14;
+  --color-ink-muted: #46594d;
+  --color-ink-subtle: #586b5f;
+  --color-ink-brand: #4a6e00;
+  --color-ink-gold: #8f5a00;
+  --color-ink-live: #c8152a;
+  --color-ink-danger: #c8152a;
+  --color-ink-accent: #c0135a;
+  --color-brand-line: #6d9400;
+  --color-gold-line: #c27a00;
+  --color-line: rgb(16 42 26 / 0.1);
+  --color-line-strong: rgb(16 42 26 / 0.18);
+  --color-scrim: rgb(9 22 14 / 0.4);
+
+  --elevation-card: inset 0 1px 0 0 rgb(255 255 255 / 0.8), 0 1px 2px rgb(20 44 28 / 0.06), 0 12px 28px -18px rgb(20 44 28 / 0.28);
+  --elevation-float: inset 0 1px 0 0 rgb(255 255 255 / 0.8), 0 14px 32px -14px rgb(20 44 28 / 0.3), 0 2px 6px rgb(20 44 28 / 0.08);
+  --elevation-sheet: 0 -12px 40px -12px rgb(20 44 28 / 0.22);
+  --glow-brand: 0 0 0 1px rgb(109 148 0 / 0.35), 0 10px 26px -10px rgb(136 179 0 / 0.6);
+  --glow-gold: 0 0 0 1px rgb(194 122 0 / 0.4), 0 12px 30px -10px rgb(224 138 0 / 0.5);
+  --drop-color: rgb(20 44 28 / 0.22);
+  --glass-bg: rgb(255 255 255 / 0.9);
+  --bar-bg: rgb(244 247 242);
+  --floodlight-left: rgb(198 249 31 / 0.22);
+  --floodlight-right: rgb(255 213 107 / 0.18);
+  --yard-line: rgb(16 42 26 / 0.035);
+  --shimmer-highlight: rgb(255 255 255 / 0.85);
+  --foil: linear-gradient(180deg, #d98a00 0%, #a86500 55%, #6e4200 100%);
+  --brand-wash: rgb(150 200 0 / 0.1);
+  --brand-wash-ring: rgb(90 130 0 / 0.25);
+  --brand-glow: rgb(136 179 0 / 0.5);
+  --gold-glow: rgb(224 138 0 / 0.5);
 }
-.animate-pop {
-  animation: pop 0.18s ease-out;
+
+/* ---------- Switching themes (src/lib/theme.ts) ----------
+ * A short crossfade: a view transition where supported, else colors ease for
+ * a moment (in the base layer, so anything with its own transition keeps it).
+ * Reduced motion switches instantly (theme.ts skips both). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: ease;
+}
+@layer base {
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition:
+      background-color 260ms ease,
+      color 260ms ease,
+      border-color 260ms ease,
+      box-shadow 260ms ease,
+      fill 260ms ease,
+      stroke 260ms ease;
+  }
+}
+
+/* ---------- Motion preferences ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* 1ms rather than 0 so animationend/transitionend still fire. */
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }

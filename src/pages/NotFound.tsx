@@ -1,14 +1,22 @@
 import { Link } from "react-router-dom";
+import { buttonStyles, EmptyState, Jax, TopBar } from "../components/ui";
 
 export default function NotFound() {
   return (
-    <div className="flex flex-col items-center gap-4 py-20 text-center">
-      <div className="text-5xl">🏟️</div>
-      <h1 className="text-xl font-bold">Page not found</h1>
-      <p className="text-slate-400">That play didn’t go anywhere.</p>
-      <Link to="/" className="text-brand-400 underline">
-        Back to home
-      </Link>
-    </div>
+    <>
+      <TopBar title="Not found" large={false} back="/" />
+      <div className="flex flex-1 items-center justify-center px-safe">
+        <EmptyState
+          illustration={<Jax pose="peek" size={156} />}
+          title="Out of bounds"
+          description="Jax sniffed all over and this page isn't here. Let's get you back on the field."
+          action={
+            <Link to="/" replace className={buttonStyles({ size: "lg", block: true })}>
+              Back to Home
+            </Link>
+          }
+        />
+      </div>
+    </>
   );
 }

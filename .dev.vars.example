@@ -1,0 +1,42 @@
+# Local dev secrets for `npm run dev`. Copy to .dev.vars (gitignored) and fill in
+# only what you want to test locally; everything is optional and the app falls
+# back gracefully (test checkout, no push) when a value is missing.
+# Production values are set with `npx wrangler secret put NAME`, never here.
+
+# Payments (docs/payments.md). Leave PAYMENTS_MODE unset for the no-charge test checkout.
+# PAYMENTS_MODE=live
+# STRIPE_SECRET_KEY=
+# STRIPE_PUBLISHABLE_KEY=
+# STRIPE_WEBHOOK_SECRET=
+# APPLE_IAP_KEY_ID=
+# APPLE_IAP_ISSUER_ID=
+# APPLE_IAP_PRIVATE_KEY=
+# APPLE_BUNDLE_ID=com.jaxsquares.app
+# APPLE_TEAM_ID=
+# The Host Pass on the web in live mode: the Stripe Price id (normally in wrangler.jsonc vars).
+# STRIPE_HOST_PASS_PRICE_ID=
+
+# Optional sign-in (docs/auth.md). The client ids are public and normally live in
+# wrangler.jsonc vars; set them here to try sign-in locally.
+# GOOGLE_WEB_CLIENT_ID=
+# GOOGLE_IOS_CLIENT_ID=
+# APPLE_SERVICES_ID=
+# Sign in with Apple key, for token revocation on account deletion (with APPLE_TEAM_ID):
+# APPLE_KEY_ID=
+# APPLE_SIGNIN_PRIVATE_KEY=
+
+# Push (docs/push.md)
+# VAPID_PUBLIC_KEY=
+# VAPID_PRIVATE_KEY=
+# VAPID_SUBJECT=mailto:support@jaxsquares.com
+# FCM_SERVICE_ACCOUNT=
+
+# Email notices (docs/email.md). All three, or the opt-in stays hidden.
+# EMAIL_FROM is normally a wrangler.jsonc var.
+# RESEND_API_KEY=
+# EMAIL_FROM=JaxSquares <notices@jaxsquares.com>
+# EMAIL_TOKEN_SECRET=
+
+# Android app links
+# ANDROID_PACKAGE=com.jaxsquares.app
+# ANDROID_SHA256_CERT_FINGERPRINTS=

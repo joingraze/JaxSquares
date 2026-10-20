@@ -1,0 +1,301 @@
+/*
+ * The printable board (/g/:id/print). The sheet is paper: black ink on white
+ * in millimetres, whatever the app's theme, and on screen it's the same sheet
+ * scaled to fit (a preview of exactly what prints). Print rules are scoped to
+ * html[data-print-page] (set only while this page is open), because a lazy
+ * chunk's CSS stays in the document after you leave the page. The @page size
+ * and margin are written by the page itself for the same reason.
+ */
+
+/* In the components layer, so a Tailwind utility on the same element wins. */
+@layer components {
+  /* On screen: the page (paper with its margins) scaled to fit, the sheet inside it. */
+  .jx-paper-frame {
+    position: relative;
+    margin: 0 auto;
+  }
+  .jx-paper-page {
+    position: absolute;
+    left: 0;
+    top: 0;
+    box-sizing: border-box;
+    transform-origin: 0 0;
+    background: #fff;
+    border-radius: 2px;
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.25),
+      0 18px 50px -18px rgb(0 0 0 / 0.55);
+  }
+
+  .jx-paper {
+    --ink: #000;
+    --rule: #000;
+    --wash: #ececec;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 4mm;
+    background: #fff;
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    overflow: hidden;
+  }
+
+  .jx-paper-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 6mm;
+    border-bottom: 0.5mm solid var(--rule);
+    padding-bottom: 2.5mm;
+  }
+  .jx-paper-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: 20pt;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .jx-paper-sub {
+    margin: 1.2mm 0 0;
+    font-size: 10.5pt;
+    font-weight: 600;
+  }
+  .jx-paper-tag {
+    flex: none;
+    border: 0.4mm solid var(--rule);
+    border-radius: 1.5mm;
+    padding: 1mm 2.5mm;
+    font-size: 9pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+
+  .jx-paper-body {
+    display: flex;
+    gap: 8mm;
+    min-height: 0;
+    flex: 1;
+  }
+  .jx-paper[data-orientation="portrait"] .jx-paper-body {
+    flex-direction: column;
+    align-items: center;
+    gap: 6mm;
+  }
+
+  /* ---------- The grid ---------- */
+
+  .jx-paper-grid {
+    flex: none;
+    display: grid;
+    grid-template-columns: var(--band) var(--axis) repeat(var(--n), var(--cell));
+    grid-template-rows: var(--band) var(--axis) repeat(var(--n), var(--cell));
+    width: max-content;
+  }
+  .jx-paper-grid > * {
+    box-sizing: border-box;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    text-align: center;
+  }
+  .jx-paper-band {
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: 10pt;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+  }
+  .jx-paper-band-x {
+    grid-row: 1;
+    grid-column: 3 / span var(--n);
+  }
+  .jx-paper-band-y {
+    grid-row: 3 / span var(--n);
+    grid-column: 1;
+  }
+  .jx-paper-band-y > span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+  }
+  .jx-paper-axis {
+    background: var(--wash);
+    border: 0.25mm solid var(--rule);
+    font-family: var(--font-display);
+    font-variation-settings: "opsz" 96;
+    font-weight: 800;
+    font-size: 13pt;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .jx-paper[data-orientation="portrait"] .jx-paper-axis {
+    font-size: 15pt;
+  }
+  .jx-paper-axis-x {
+    grid-row: 2;
+    margin-left: -0.25mm;
+  }
+  .jx-paper-axis-y {
+    grid-column: 2;
+    margin-top: -0.25mm;
+  }
+  .jx-paper-cell {
+    border: 0.25mm solid var(--rule);
+    margin: -0.25mm 0 0 -0.25mm;
+    padding: 0.6mm;
+    font-weight: 700;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+  .jx-paper-cell > span {
+    display: block;
+  }
+  .jx-paper-cell[data-winner="true"] {
+    background: var(--wash);
+    box-shadow: inset 0 0 0 0.5mm var(--rule);
+  }
+
+  /* ---------- Beside (or under) the grid ---------- */
+
+  .jx-paper-side {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 4mm;
+    font-size: 9pt;
+    line-height: 1.3;
+  }
+  .jx-paper[data-orientation="portrait"] .jx-paper-side {
+    width: 100%;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 8mm;
+  }
+  /* Landscape: the rules on top, then the winners, the QR code at the bottom. Portrait: two columns. */
+  .jx-paper-rulesbox {
+    flex: none;
+  }
+  .jx-paper-more {
+    flex: 1;
+  }
+  .jx-paper[data-orientation="portrait"] .jx-paper-rulesbox {
+    flex: 1;
+  }
+  .jx-paper-h {
+    margin: 0 0 1.5mm;
+    font-size: 8pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .jx-paper-rules {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1.8mm;
+  }
+  .jx-paper-rule {
+    display: grid;
+    grid-template-columns: 9mm minmax(0, 1fr);
+    gap: 2mm;
+    align-items: start;
+  }
+  .jx-paper-chip {
+    display: grid;
+    place-items: center;
+    height: 6mm;
+    border: 0.35mm solid var(--rule);
+    border-radius: 1.2mm;
+    font-weight: 800;
+    font-size: 8.5pt;
+  }
+  .jx-paper-winners {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 2.5mm;
+    row-gap: 2.2mm;
+    align-items: end;
+  }
+  .jx-paper-line {
+    min-height: 5mm;
+    border-bottom: 0.3mm solid var(--rule);
+    font-weight: 700;
+  }
+  .jx-paper-qr {
+    display: flex;
+    align-items: center;
+    gap: 3.5mm;
+    margin-top: auto;
+    border: 0.35mm solid var(--rule);
+    border-radius: 2.5mm;
+    padding: 3mm;
+  }
+  .jx-paper-qr > svg {
+    flex: none;
+    width: 30mm;
+    height: 30mm;
+  }
+  .jx-paper-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4mm;
+    font-size: 8pt;
+    font-weight: 600;
+  }
+  .jx-paper-foot svg {
+    filter: grayscale(1) contrast(1.4);
+  }
+
+  /* ---------- Printing ---------- */
+
+  @media print {
+    html[data-print-page],
+    html[data-print-page] body {
+      background: #fff !important;
+      min-height: 0 !important;
+    }
+    html[data-print-page] [data-print-hide],
+    html[data-print-page] .floodlights,
+    html[data-print-page] nav {
+      display: none !important;
+    }
+    html[data-print-page] .min-h-dvh {
+      min-height: 0 !important;
+    }
+    html[data-print-page] .jx-paper-frame {
+      width: auto !important;
+      height: auto !important;
+      margin: 0;
+    }
+    html[data-print-page] .jx-paper-page {
+      position: static;
+      width: auto !important;
+      height: auto !important;
+      padding: 0 !important;
+      transform: none !important;
+      box-shadow: none;
+      border-radius: 0;
+    }
+    html[data-print-page] .jx-print-page,
+    html[data-print-page] .jx-print-preview {
+      padding: 0 !important;
+      margin: 0 !important;
+      max-width: none !important;
+    }
+  }
+}
