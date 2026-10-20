@@ -19,7 +19,11 @@
     "seo:pages": "node --experimental-strip-types scripts/seo/build.ts",
     "seo:images": "node --experimental-strip-types scripts/seo/images.ts",
     "seo:printables": "node --experimental-transform-types scripts/seo/printables.ts",
-    "ios": "VITE_API_BASE=https://jaxsquares.com npm run build && cap sync ios && cap open ios"
+    "ios": "VITE_API_BASE=https://jaxsquares.com npm run build && cap sync ios && cap open ios",
+    "marketing:capture": "node marketing/capture/record.mjs",
+    "marketing:studio": "vite --config marketing/studio/vite.config.ts",
+    "marketing:render": "node marketing/studio/render.mjs",
+    "marketing:typecheck": "tsc -p marketing/studio/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^2.0.0",

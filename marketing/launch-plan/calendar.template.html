@@ -3,46 +3,47 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Barlow:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400..800&display=swap">
 <style>
 /* Layout: a broadcast-style run sheet. Sticky scoreboard bar, "up next" rail,
    then one row of seven days per week; collapses to a day-by-day agenda on phones. */
 :root {
-  --bg: #f3f6f2;
+  --bg: #f4f7f1;
   --surface: #ffffff;
-  --surface-2: #eaf0e8;
-  --ink: #0b1120;
-  --muted: #566173;
-  --line: #d7dfd4;
-  --brand: #15803d;
-  --brand-soft: #dcf3e3;
+  --surface-2: #e9f0e6;
+  --ink: #0b130e;
+  --muted: #4f6155;
+  --line: #d5dfd2;
+  --brand: #4d7c0f;
+  --brand-soft: #eaf6cc;
   --accent: #0369a1;
   --gold: #a16207;
   --gold-soft: #fbefd0;
-  --rose: #be123c;
-  --k-reel: #15803d;
+  --rose: #be185d;
+  --k-reel: #4d7c0f;
   --k-carousel: #0369a1;
   --k-story: #a16207;
-  --k-task: #475569;
-  --k-film: #be123c;
-  --shadow: 0 1px 2px rgba(11, 17, 32, 0.06), 0 8px 24px rgba(11, 17, 32, 0.06);
-  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
-  --body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --k-task: #4f6155;
+  --k-film: #be185d;
+  --shadow: 0 1px 2px rgba(6, 12, 9, 0.06), 0 8px 24px rgba(6, 12, 9, 0.06);
+  --display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, sans-serif;
 }
+/* Dark is the app's own look ("Under the lights"): night turf, volt and gold. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #060a16; --surface: #0e1528; --surface-2: #131c30; --ink: #e6edf6; --muted: #93a1b6;
-    --line: #1f2b45; --brand: #4ade80; --brand-soft: #12301f; --accent: #38bdf8; --gold: #fbbf24;
-    --gold-soft: #33270b; --rose: #fb7185; --k-reel: #4ade80; --k-carousel: #38bdf8; --k-story: #fbbf24;
-    --k-task: #94a3b8; --k-film: #fb7185; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+    --bg: #060c09; --surface: #0c1410; --surface-2: #111a15; --ink: #f3f7f1; --muted: #a3b8ab;
+    --line: #1f2c25; --brand: #c6f91f; --brand-soft: #1c260b; --accent: #3ab7ff; --gold: #ffc233;
+    --gold-soft: #33270b; --rose: #ff66a6; --k-reel: #c6f91f; --k-carousel: #3ab7ff; --k-story: #ffc233;
+    --k-task: #a3b8ab; --k-film: #ff66a6; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #060a16; --surface: #0e1528; --surface-2: #131c30; --ink: #e6edf6; --muted: #93a1b6;
-  --line: #1f2b45; --brand: #4ade80; --brand-soft: #12301f; --accent: #38bdf8; --gold: #fbbf24;
-  --gold-soft: #33270b; --rose: #fb7185; --k-reel: #4ade80; --k-carousel: #38bdf8; --k-story: #fbbf24;
-  --k-task: #94a3b8; --k-film: #fb7185; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --bg: #060c09; --surface: #0c1410; --surface-2: #111a15; --ink: #f3f7f1; --muted: #a3b8ab;
+  --line: #1f2c25; --brand: #c6f91f; --brand-soft: #1c260b; --accent: #3ab7ff; --gold: #ffc233;
+  --gold-soft: #33270b; --rose: #ff66a6; --k-reel: #c6f91f; --k-carousel: #3ab7ff; --k-story: #ffc233;
+  --k-task: #a3b8ab; --k-film: #ff66a6; --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
 }
 
@@ -68,7 +69,7 @@ body::before {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
-h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.02em; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tabnum { font-variant-numeric: tabular-nums; }
@@ -100,7 +101,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
 
 main { padding-block: 22px 60px; display: flex; flex-direction: column; gap: 34px; }
 .sectionhead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.sectionhead h2 { font-size: 30px; font-weight: 800; text-transform: uppercase; }
+.sectionhead h2 { font-size: 28px; font-weight: 800; }
 .sectionhead p { margin: 0; color: var(--muted); font-size: 14px; }
 
 /* ---- up next ---- */
@@ -129,7 +130,7 @@ main { padding-block: 22px 60px; display: flex; flex-direction: column; gap: 34p
 .weeks { display: flex; flex-direction: column; gap: 22px; }
 .week { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 .weekhead { display: flex; gap: 14px; align-items: baseline; padding: 14px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.weekhead .lbl { font-family: var(--display); font-size: 26px; font-weight: 800; text-transform: uppercase; line-height: 1; }
+.weekhead .lbl { font-family: var(--display); font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
 .weekhead .dates { font-family: var(--display); font-size: 18px; color: var(--muted); font-weight: 600; }
 .weekhead .theme { font-weight: 700; }
 .weekhead .goal { flex-basis: 100%; color: var(--muted); font-size: 13.5px; }
@@ -196,7 +197,7 @@ ol.clean { margin: 0; padding-left: 20px; display: flex; flex-direction: column;
 /* ---- strategy ---- */
 .strategy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 details.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 0 16px; min-width: 0; }
-details.panel summary { cursor: pointer; list-style: none; padding: 14px 0; font-family: var(--display); font-weight: 800; font-size: 21px; text-transform: uppercase; display: flex; justify-content: space-between; }
+details.panel summary { cursor: pointer; list-style: none; padding: 14px 0; font-family: var(--display); font-weight: 800; font-size: 20px; letter-spacing: -0.02em; display: flex; justify-content: space-between; }
 details.panel summary::after { content: "+"; color: var(--muted); }
 details.panel[open] summary::after { content: "–"; }
 details.panel > div { padding-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -238,7 +239,7 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
 
 <header class="bar">
   <div class="wrap">
-    <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#131c30"/><path d="M38.28 80.96C51.71 80.96 59.17 74.30 59.17 62.37L59.17 23.04L43.26 23.04L43.26 62.06C43.26 65.73 41.38 67.80 38.02 67.80C34.65 67.80 32.77 65.73 32.77 62.06L32.77 57.39L18.08 57.39L18.08 61.91C18.08 74.15 25.31 80.96 38.28 80.96Z" fill="#f8fafc"/><path d="M61.78 46.18L81.92 46.18L81.92 40.52L71.71 40.52L71.71 40.48L75.95 37.03C79.43 34.20 81.85 31.82 81.85 27.90C81.85 22.69 77.62 19.54 71.81 19.54C65.46 19.54 61.52 23.32 61.52 29.43L68.23 29.43C68.23 26.70 69.67 25.17 71.80 25.17C73.75 25.17 75.05 26.44 75.05 28.30C75.05 30.57 73.10 31.95 71.64 33.13L61.78 41.08Z" fill="#22c55e"/></svg>
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#060c09"/><rect x="4.0" y="4.0" width="7.2" height="7.2" rx="2" fill="#c6f91f"/><rect x="12.3" y="4.0" width="7.2" height="7.2" rx="2" fill="#aee000"/><rect x="20.6" y="4.0" width="7.2" height="7.2" rx="2" fill="#c6f91f"/><rect x="4.0" y="12.3" width="7.2" height="7.2" rx="2" fill="#aee000"/><rect x="12.3" y="12.3" width="7.2" height="7.2" rx="2" fill="#c6f91f"/><rect x="20.6" y="12.3" width="7.2" height="7.2" rx="2" fill="#ffc233"/><rect x="4.0" y="20.6" width="7.2" height="7.2" rx="2" fill="#c6f91f"/><rect x="12.3" y="20.6" width="7.2" height="7.2" rx="2" fill="#aee000"/><rect x="20.6" y="20.6" width="7.2" height="7.2" rx="2" fill="#c6f91f"/></svg>
     <div>
       <div class="brandname">Jax<em>Squares</em> launch</div>
       <div class="brandsub">Instagram · Oct 20 – Nov 29, 2026 · all times ET</div>
@@ -257,7 +258,6 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
 </header>
 
 <main class="wrap">
-  <div role="note" style="background:var(--gold-soft);border:1px solid var(--gold);border-radius:14px;padding:12px 16px;font-weight:600">Hold off posting: these videos and slides show an older version of the app (square prices, pots and payouts, the old logo). They're being rebuilt to match jaxsquares.com. The schedule and timing still stand.</div>
   <section id="upnext" aria-labelledby="upnext-h">
     <div class="sectionhead">
       <h2 id="upnext-h">Up next</h2>

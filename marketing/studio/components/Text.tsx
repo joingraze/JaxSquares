@@ -1,12 +1,12 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Easing, interpolate, spring } from "../lib/anim";
 import { COLORS } from "../brand";
 
 const FPS = 30;
 
 /**
- * Kinetic headline: words spring up one after another. Wrap words in *stars*
- * to highlight them; "|" forces a line break.
+ * Kinetic headline in the store art's type: words spring up one after another.
+ * Wrap words in *stars* for the volt accent; "|" forces a line break.
  */
 export function Headline({
   text,
@@ -15,8 +15,8 @@ export function Headline({
   exit,
   size = 34,
   stagger = 2.5,
-  color = COLORS.text,
-  highlight = COLORS.brandLight,
+  color = COLORS.ink,
+  highlight = COLORS.volt,
   align = "center",
   style,
 }: {
@@ -38,14 +38,15 @@ export function Headline({
     exit === undefined ? 1 : interpolate(frame, [exit, exit + 8], [1, 0], { easing: Easing.in });
   return (
     <div
-      className="font-black-display"
+      className="display"
       style={{
         fontSize: size,
-        lineHeight: 1.04,
+        lineHeight: 0.98,
         color,
         textAlign: align,
         opacity: out,
         transform: `translateY(${(1 - out) * -14}px)`,
+        textShadow: "0 4px 24px rgba(0,0,0,0.45)",
         ...style,
       }}
     >
@@ -56,14 +57,11 @@ export function Headline({
             display: "flex",
             flexWrap: "wrap",
             justifyContent: align === "center" ? "center" : "flex-start",
-            columnGap: size * 0.26,
+            columnGap: size * 0.24,
           }}
         >
           {words.map((runs, wi) => {
-            const s = spring(frame - start - wordIndex++ * stagger, FPS, {
-              stiffness: 220,
-              damping: 20,
-            });
+            const s = spring(frame - start - wordIndex++ * stagger, FPS, { stiffness: 220, damping: 20 });
             return (
               <span
                 key={wi}
@@ -87,7 +85,7 @@ export function Headline({
   );
 }
 
-/** Split a line into words, each a list of runs; "*...*" toggles highlight mid-word too. */
+/** Split a line into words, each a list of runs; "*...*" toggles the accent mid-word too. */
 function parseLine(line: string): { text: string; hl: boolean }[][] {
   const words: { text: string; hl: boolean }[][] = [];
   let word: { text: string; hl: boolean }[] = [];
@@ -108,15 +106,15 @@ function parseLine(line: string): { text: string; hl: boolean }[][] {
   return words;
 }
 
-/** Small uppercase label above a headline. */
+/** Eyebrow label, like the app's: uppercase, tracked, with a dot. */
 export function Kicker({
   children,
   frame,
   start = 0,
-  color = COLORS.brandLight,
+  color = COLORS.voltLight,
   style,
 }: {
-  children: string;
+  children: ReactNode;
   frame: number;
   start?: number;
   color?: string;
@@ -138,7 +136,7 @@ export function Kicker({
           textTransform: "uppercase",
           color,
           background: "rgba(255,255,255,0.06)",
-          border: "1px solid rgba(255,255,255,0.10)",
+          border: `1px solid ${COLORS.lineStrong}`,
           opacity: s,
           transform: `translateY(${(1 - s) * 10}px)`,
         }}
@@ -163,19 +161,13 @@ export function Rise({
   start?: number;
   exit?: number;
   distance?: number;
-  children: React.ReactNode;
+  children: ReactNode;
   style?: CSSProperties;
 }) {
   const s = spring(frame - start, FPS, { stiffness: 190, damping: 21 });
   const out = exit === undefined ? 1 : interpolate(frame, [exit, exit + 8], [1, 0]);
   return (
-    <div
-      style={{
-        opacity: Math.min(s, out),
-        transform: `translateY(${(1 - s) * distance}px)`,
-        ...style,
-      }}
-    >
+    <div style={{ opacity: Math.min(s, out), transform: `translateY(${(1 - s) * distance}px)`, ...style }}>
       {children}
     </div>
   );

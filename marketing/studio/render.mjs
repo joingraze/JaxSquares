@@ -8,7 +8,7 @@
 // Each frame is set via window.__studio.setFrame(n) and screenshotted at 3×
 // device scale, then piped into ffmpeg (H.264, yuv420p, faststart) — the format
 // Instagram expects. Needs ffmpeg on PATH and a Chromium (set CHROMIUM_PATH or
-// let playwright-core find one).
+// let Playwright find one).
 
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { createServer } from "vite";
-import { chromium } from "playwright-core";
+import { chromium } from "@playwright/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(here, "../out");

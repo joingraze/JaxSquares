@@ -3,17 +3,17 @@ import { Easing, interpolate, spring } from "../lib/anim";
 import { Backdrop } from "../components/Backdrop";
 import { Headline } from "../components/Text";
 import { EndCard } from "../components/Brand";
-import { Sticker } from "../components/Layout";
-import { Logo } from "../../../src/components/AppShell";
+import { Sticker, poseTrack, POSE_LOW } from "../components/Layout";
+import { Cuts, Phone, type Cut } from "../components/Phone";
+import { ASSETS } from "../lib/assets";
+import { COLORS } from "../brand";
 
-export const CHAT_FRAMES = 420;
 const FPS = 30;
 
 interface Msg {
   from: string;
   text: string;
   color: string;
-  me?: boolean;
 }
 
 export interface ChatVariant {
@@ -21,45 +21,42 @@ export interface ChatVariant {
   icon: string;
   members: string;
   hook: string;
-  boardName: string;
+  /** The invite text the app writes ("Grab a square on my … board 🏈"). */
+  invite: string;
   sticker: string;
   endLine: string;
   chaos: Msg[];
   calm: Msg[];
 }
 
-const SUNDAY_CHAOS: Msg[] = [
-  { from: "Big Mike", text: "who has the 7-3 square??", color: "#facc15" },
-  { from: "Tasha", text: "wait were the numbers drawn yet", color: "#f472b6" },
-  { from: "Dev", text: "can someone resend the spreadsheet", color: "#f59e0b" },
-  { from: "Nina", text: "the whiteboard pic is blurry 😭", color: "#fb7185" },
-  { from: "Chris", text: "I thought I had row 4?", color: "#2dd4bf" },
-  { from: "Jordan", text: "it's 10-7 so 0-7 wins right??", color: "#22c55e" },
-  { from: "Maya", text: "no it's the OTHER way", color: "#38bdf8" },
-  { from: "Big Mike", text: "who won the 1st quarter", color: "#facc15" },
-  { from: "Tasha", text: "who still owes for squares", color: "#f472b6" },
-  { from: "Dev", text: "I'm so confused", color: "#f59e0b" },
-  { from: "Nina", text: "MIKE", color: "#fb7185" },
-  { from: "Chris", text: "MIKE.", color: "#2dd4bf" },
-];
-
-const SUNDAY_CALM: Msg[] = [
-  { from: "Maya", text: "claimed 5 🙌", color: "#38bdf8" },
-  { from: "Big Mike", text: "wait it draws the numbers for us?", color: "#facc15" },
-  { from: "Tasha", text: "and it says who won?? 🤯", color: "#f472b6" },
-  { from: "Dev", text: "ok this is clean", color: "#f59e0b" },
-];
-
 export const SUNDAY_CHAT: ChatVariant = {
   chatName: "Sunday Crew",
   icon: "🏈",
   members: "14 people",
-  hook: "Every squares pool|group chat:",
-  boardName: "Sunday Squares 🏈",
+  hook: "Every squares|group chat:",
+  invite: "Grab a square on my Hawks vs Wolves board 🏈",
   sticker: "One link. Zero spreadsheets.",
-  endLine: "The squares pool|your group chat deserves.",
-  chaos: SUNDAY_CHAOS,
-  calm: SUNDAY_CALM,
+  endLine: "The squares board|your group chat deserves.",
+  chaos: [
+    { from: "Big Mike", text: "who has the 7-3 square??", color: "#ffd23f" },
+    { from: "Tasha", text: "wait were the numbers drawn yet", color: "#ff4f9a" },
+    { from: "Dev", text: "can someone resend the spreadsheet", color: "#ffa26b" },
+    { from: "Nina", text: "the whiteboard pic is blurry 😭", color: "#ff4757" },
+    { from: "Chris", text: "I thought I had row 4?", color: "#1fd1c1" },
+    { from: "Jordan", text: "it's 10-7 so 0-7 wins right??", color: "#c6f91f" },
+    { from: "Maya", text: "no it's the OTHER way", color: "#38b6ff" },
+    { from: "Big Mike", text: "who won the 1st quarter", color: "#ffd23f" },
+    { from: "Tasha", text: "who's even got the Q1 square", color: "#ff4f9a" },
+    { from: "Dev", text: "I'm so confused", color: "#ffa26b" },
+    { from: "Nina", text: "MIKE", color: "#ff4757" },
+    { from: "Chris", text: "MIKE.", color: "#1fd1c1" },
+  ],
+  calm: [
+    { from: "Maya", text: "grabbed 5 🙌", color: "#38b6ff" },
+    { from: "Big Mike", text: "wait it draws the numbers for us?", color: "#ffd23f" },
+    { from: "Tasha", text: "and it shows who won?? 🤯", color: "#ff4f9a" },
+    { from: "Dev", text: "ok this is clean", color: "#ffa26b" },
+  ],
 };
 
 export const FAMILY_CHAT: ChatVariant = {
@@ -67,28 +64,28 @@ export const FAMILY_CHAT: ChatVariant = {
   icon: "🦃",
   members: "23 people",
   hook: "Every Thanksgiving|family group chat:",
-  boardName: "Thanksgiving Squares 🦃",
+  invite: "Grab a square on my Bears vs Lions board 🏈",
   sticker: "One link. Even Grandma's in.",
   endLine: "Thanksgiving squares.|One link per game.",
   chaos: [
-    { from: "Aunt Linda", text: "are we doing squares again this year??", color: "#f472b6" },
-    { from: "Grandma", text: "what's a square", color: "#a78bfa" },
-    { from: "Uncle Ray", text: "I call the 7-0 🦃", color: "#facc15" },
-    { from: "Cousin Jess", text: "can someone explain the numbers to grandma", color: "#2dd4bf" },
-    { from: "Dad", text: "I'll make a spreadsheet", color: "#38bdf8" },
-    { from: "Mom", text: "who's bringing the pie", color: "#fb7185" },
-    { from: "Cousin Tyler", text: "Uncle Ray you can't CALL the 7-0", color: "#22c55e" },
-    { from: "Grandma", text: "I have a square?", color: "#a78bfa" },
-    { from: "Aunt Linda", text: "which game is this for", color: "#f472b6" },
-    { from: "Dad", text: "spreadsheet attached", color: "#38bdf8" },
-    { from: "Cousin Jess", text: "DAD", color: "#2dd4bf" },
-    { from: "Mom", text: "DAD.", color: "#fb7185" },
+    { from: "Aunt Linda", text: "are we doing squares again this year??", color: "#ff4f9a" },
+    { from: "Grandma", text: "what's a square", color: "#9b6bff" },
+    { from: "Uncle Ray", text: "I call the 7-0 🦃", color: "#ffd23f" },
+    { from: "Cousin Jess", text: "can someone explain the numbers to grandma", color: "#1fd1c1" },
+    { from: "Dad", text: "I'll make a spreadsheet", color: "#38b6ff" },
+    { from: "Mom", text: "who's bringing the pie", color: "#ff4757" },
+    { from: "Cousin Tyler", text: "Uncle Ray you can't CALL the 7-0", color: "#c6f91f" },
+    { from: "Grandma", text: "I have a square?", color: "#9b6bff" },
+    { from: "Aunt Linda", text: "which game is this for", color: "#ff4f9a" },
+    { from: "Dad", text: "spreadsheet attached", color: "#38b6ff" },
+    { from: "Cousin Jess", text: "DAD", color: "#1fd1c1" },
+    { from: "Mom", text: "DAD.", color: "#ff4757" },
   ],
   calm: [
-    { from: "Grandma", text: "I got 3 squares! 🥧", color: "#a78bfa" },
-    { from: "Uncle Ray", text: "fine I'll take the 2-2 😤", color: "#facc15" },
-    { from: "Cousin Jess", text: "it draws the numbers itself??", color: "#2dd4bf" },
-    { from: "Dad", text: "ok this beats my spreadsheet", color: "#38bdf8" },
+    { from: "Grandma", text: "I got 3 squares! 🥧", color: "#9b6bff" },
+    { from: "Uncle Ray", text: "fine I'll take the 2-2 😤", color: "#ffd23f" },
+    { from: "Cousin Jess", text: "it draws the numbers itself??", color: "#1fd1c1" },
+    { from: "Dad", text: "ok this beats my spreadsheet", color: "#38b6ff" },
   ],
 };
 
@@ -96,75 +93,92 @@ export const FAMILY_CHAT: ChatVariant = {
 const chaosAt = (i: number, n: number) => 24 + Math.round(150 * Math.pow(i / n, 0.72));
 const FREEZE = 196;
 const LINK = 236;
-const calmAt = (i: number) => LINK + 30 + i * 16;
-const END = 352;
+const calmAt = (i: number) => LINK + 34 + i * 16;
+const PHONE = 344;
+const END = 430;
+export const CHAT_FRAMES = 510;
 
-/** Group-chat chaos → one JaxSquares link. */
+const CLAIM: Cut = { at: PHONE, scene: "claim", from: 10, speed: 1.4 };
+
+/** Group-chat chaos → one JaxSquares link → everyone picks. */
 export function makeGroupChat(v: ChatVariant) {
   return function GroupChat({ frame }: CompProps) {
-    const CHAOS = v.chaos;
     const chaos = frame < LINK;
     const visible = chaos
-      ? CHAOS.filter((_, i) => frame >= chaosAt(i, CHAOS.length))
+      ? v.chaos.filter((_, i) => frame >= chaosAt(i, v.chaos.length))
       : v.calm.filter((_, i) => frame >= calmAt(i));
-    const unread = chaos ? Math.min(99, Math.floor(interpolate(frame, [24, FREEZE], [3, 140]))) : 0;
+    const unread = chaos ? Math.floor(interpolate(frame, [24, FREEZE], [3, 140])) : 0;
     const shake =
       chaos && frame > 120 && frame < FREEZE
         ? Math.sin(frame * 2.1) * interpolate(frame, [120, FREEZE], [0, 2.2])
         : 0;
     const freeze = interpolate(frame, [FREEZE, FREEZE + 6], [0, 1]);
+    const away = spring(frame - PHONE, FPS, { stiffness: 140, damping: 20 });
+    const pose = poseTrack(frame, [
+      [0, POSE_LOW],
+      [PHONE, { cx: 180, top: 138, scale: 0.62 }],
+    ]);
 
     return (
       <div className="absolute inset-0">
-        <Backdrop frame={frame} tint={chaos ? "rose" : "brand"} />
+        <Backdrop frame={frame} tint={chaos ? "flare" : "volt"} />
 
         {/* Chat window */}
         <div
-          className="absolute overflow-hidden rounded-[34px]"
+          className="absolute overflow-hidden"
           style={{
             left: 22,
             right: 22,
-            top: 160,
-            height: 340,
-            background: "#0d1322",
-            border: "1px solid rgba(255,255,255,0.08)",
+            top: 150,
+            height: 392,
+            borderRadius: 34,
+            background: "#0b0d0c",
+            border: `1px solid ${COLORS.line}`,
             boxShadow: "0 40px 80px rgba(0,0,0,0.55)",
-            transform: `translateX(${shake}px) rotate(${shake * 0.3}deg)`,
-            filter:
-              chaos && freeze > 0
-                ? `grayscale(${freeze}) brightness(${1 - 0.45 * freeze})`
-                : undefined,
+            transform: `translateX(${shake}px) rotate(${shake * 0.3}deg) translateY(${away * -520}px)`,
+            filter: chaos && freeze > 0 ? `grayscale(${freeze}) brightness(${1 - 0.45 * freeze})` : undefined,
           }}
         >
-          <div className="relative z-10 flex items-center gap-2 border-b border-white/5 bg-[#0d1322] px-4 py-2.5">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500/20 text-base">
+          <div
+            className="relative z-10 flex flex-col items-center"
+            style={{ padding: "10px 16px 8px", background: "#141615", borderBottom: `1px solid ${COLORS.line}` }}
+          >
+            <span className="grid place-items-center rounded-full" style={{ width: 34, height: 34, background: "#2a2d2b", fontSize: 18 }}>
               {v.icon}
             </span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-bold">{v.chatName}</div>
-              <div className="text-[10px] text-slate-400">{v.members}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, marginTop: 3 }}>
+              {v.chatName} <span style={{ color: COLORS.subtle, fontWeight: 500 }}>· {v.members}</span>
             </div>
             {unread > 0 && (
-              <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-extrabold text-white">
+              <span
+                className="absolute rounded-full"
+                style={{ right: 14, top: 16, padding: "2px 8px", fontSize: 11, fontWeight: 800, background: COLORS.live, color: "#fff" }}
+              >
                 {unread >= 99 ? "99+" : unread}
               </span>
             )}
           </div>
           <div
-            className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 overflow-hidden px-3 pb-3"
-            style={{ top: 52, justifyContent: "flex-end" }}
+            className="absolute inset-x-0 bottom-0 flex flex-col overflow-hidden"
+            style={{ top: 66, gap: 6, padding: "0 12px 12px", justifyContent: "flex-end" }}
           >
-            {!chaos && <LinkBubble frame={frame} boardName={v.boardName} />}
+            {!chaos && <LinkBubble frame={frame} text={v.invite} />}
             {visible.map((m, i) => (
               <Bubble
                 key={(chaos ? "c" : "k") + i}
                 msg={m}
                 frame={frame}
-                at={chaos ? chaosAt(CHAOS.indexOf(m), CHAOS.length) : calmAt(i)}
+                at={chaos ? chaosAt(v.chaos.indexOf(m), v.chaos.length) : calmAt(i)}
               />
             ))}
           </div>
         </div>
+
+        {frame >= PHONE - 4 && (
+          <Phone {...pose}>
+            <Cuts frame={frame} cuts={[CLAIM]} />
+          </Phone>
+        )}
 
         {frame < FREEZE && (
           <Headline
@@ -172,7 +186,7 @@ export function makeGroupChat(v: ChatVariant) {
             text={v.hook}
             size={34}
             exit={FREEZE - 10}
-            style={{ position: "absolute", top: 86, left: 0, right: 0 }}
+            style={{ position: "absolute", top: 84, left: 0, right: 0 }}
           />
         )}
         {frame >= FREEZE && frame < LINK && (
@@ -180,14 +194,16 @@ export function makeGroupChat(v: ChatVariant) {
             frame={frame}
             start={FREEZE + 4}
             text="or…|send *one link.*"
-            size={40}
-            style={{ position: "absolute", top: 260, left: 0, right: 0, zIndex: 20 }}
+            size={42}
+            style={{ position: "absolute", top: 262, left: 0, right: 0, zIndex: 20 }}
           />
         )}
-        <Sticker frame={frame} start={LINK + 4} end={END - 4} tone="brand">
+        <Sticker frame={frame} start={LINK + 4} end={PHONE - 4} tone="volt">
           {v.sticker}
         </Sticker>
-
+        <Sticker frame={frame} start={PHONE + 6} end={END - 4}>
+          Everyone picks from their phone
+        </Sticker>
         <EndCard frame={frame} start={END} line={v.endLine} />
       </div>
     );
@@ -198,14 +214,12 @@ function Bubble({ msg, frame, at }: { msg: Msg; frame: number; at: number }) {
   const s = spring(frame - at, FPS, { stiffness: 300, damping: 20 });
   return (
     <div
-      className={`flex ${msg.me ? "justify-end" : "justify-start"}`}
+      className="flex justify-start"
       style={{ transform: `scale(${0.6 + 0.4 * s})`, transformOrigin: "bottom left", opacity: s }}
     >
-      <div className="max-w-[78%]">
-        <div className="mb-0.5 ml-2 text-[9.5px] font-bold" style={{ color: msg.color }}>
-          {msg.from}
-        </div>
-        <div className="rounded-2xl rounded-bl-md bg-[#262f44] px-3 py-1.5 text-[13px] leading-snug">
+      <div style={{ maxWidth: "78%" }}>
+        <div style={{ margin: "0 0 2px 10px", fontSize: 9.5, fontWeight: 700, color: msg.color }}>{msg.from}</div>
+        <div style={{ borderRadius: 18, background: "#262827", padding: "6px 12px", fontSize: 13, lineHeight: 1.3 }}>
           {msg.text}
         </div>
       </div>
@@ -213,34 +227,34 @@ function Bubble({ msg, frame, at }: { msg: Msg; frame: number; at: number }) {
   );
 }
 
-function LinkBubble({ frame, boardName }: { frame: number; boardName: string }) {
+/** What the invite looks like in a chat: the app's text plus the jaxsquares.com link preview. */
+function LinkBubble({ frame, text }: { frame: number; text: string }) {
   const s = spring(frame - LINK, FPS, { stiffness: 220, damping: 18 });
+  const textIn = interpolate(frame, [LINK + 10, LINK + 16], [0, 1], { easing: Easing.out });
   return (
     <div
-      className="flex justify-end"
-      style={{ transform: `translateY(${(1 - s) * 40}px)`, opacity: s }}
+      className="flex flex-col items-end"
+      style={{ gap: 4, transform: `translateY(${(1 - s) * 40}px)`, opacity: s }}
     >
+      <div className="overflow-hidden" style={{ width: "70%", borderRadius: 18, background: "#262827" }}>
+        <img src={ASSETS.og} alt="" style={{ display: "block", width: "100%" }} />
+        <div style={{ padding: "7px 11px 8px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.2 }}>You're invited to play squares</div>
+          <div style={{ fontSize: 10.5, color: COLORS.subtle }}>jaxsquares.com</div>
+        </div>
+      </div>
       <div
-        className="w-[82%] overflow-hidden rounded-2xl rounded-br-md"
-        style={{ background: "#1f6f3f" }}
+        style={{
+          maxWidth: "80%",
+          borderRadius: 18,
+          background: "#0a84ff",
+          padding: "6px 12px",
+          fontSize: 13,
+          lineHeight: 1.3,
+          opacity: textIn,
+        }}
       >
-        <div className="flex items-center gap-2.5 bg-black/20 p-2.5">
-          <Logo size={40} />
-          <div className="min-w-0">
-            <div className="text-[12px] font-bold leading-tight">
-              Join my squares pool: {boardName}
-            </div>
-            <div className="text-[10px] text-white/70">JaxSquares · tap to claim</div>
-          </div>
-        </div>
-        <div
-          className="px-3 py-1.5 text-[13px]"
-          style={{
-            opacity: interpolate(frame, [LINK + 8, LINK + 14], [0, 1], { easing: Easing.out }),
-          }}
-        >
-          board's up, grab your squares 👇
-        </div>
+        {text}
       </div>
     </div>
   );

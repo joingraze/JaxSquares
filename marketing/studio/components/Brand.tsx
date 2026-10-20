@@ -1,93 +1,82 @@
 import type { CSSProperties } from "react";
 import { Easing, interpolate, spring } from "../lib/anim";
 import { BRAND, COLORS } from "../brand";
-import { Backdrop } from "./Backdrop";
-import { Logo } from "../../../src/components/AppShell";
+import { Backdrop, type Tint } from "./Backdrop";
+import { Jax, LogoMark, TeamMark } from "../../../src/components/ui";
+import type { Team } from "../lib/world";
 
 const FPS = 30;
 
-/** The app's J² logo (src/components/AppShell.tsx) at poster size, with depth. */
-export function BigLogo({ size = 64, style }: { size?: number; style?: CSSProperties }) {
+/** The app's lockup: the 3×3 mark and "Jax" + volt "Squares". */
+export function Lockup({ size = 22, style }: { size?: number; style?: CSSProperties }) {
   return (
-    <span
-      style={{
-        display: "inline-block",
-        width: size,
-        height: size,
-        borderRadius: size * 0.24,
-        boxShadow: "0 18px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset",
-        ...style,
-      }}
-    >
-      <Logo size={size} />
+    <span className="inline-flex items-center" style={{ gap: size * 0.36, ...style }}>
+      <LogoMark size={size * 1.3} />
+      <span className="display" style={{ fontSize: size, letterSpacing: "-0.03em", color: COLORS.ink }}>
+        Jax<span style={{ color: COLORS.volt }}>Squares</span>
+      </span>
     </span>
   );
 }
 
-export function Wordmark({ size = 30 }: { size?: number }) {
-  return (
-    <span className="font-black-display" style={{ fontSize: size, letterSpacing: "-0.04em" }}>
-      Jax<span style={{ color: COLORS.brandLight }}>Squares</span>
-    </span>
-  );
-}
-
-/** Closing card used by every video: logo, promise, CTA. */
+/** Closing card used by every video: Jax, the lockup, the promise, the URL. */
 export function EndCard({
   frame,
   start,
-  line = "Run your squares pool|in 30 seconds.",
-  tint = "brand",
+  line = "Squares for any game.|Set up in 30 seconds.",
+  tint = "volt",
 }: {
   frame: number;
   start: number;
   line?: string;
-  tint?: "brand" | "gold" | "accent" | "rose";
+  tint?: Tint;
 }) {
   const f = frame - start;
   if (f < 0) return null;
   const wipe = interpolate(f, [0, 10], [0, 1], { easing: Easing.out });
-  const logo = spring(f - 4, FPS, { stiffness: 210, damping: 14 });
+  const jax = spring(f - 3, FPS, { stiffness: 190, damping: 13 });
   const word = spring(f - 9, FPS, { stiffness: 200, damping: 20 });
   const sub = spring(f - 14, FPS, { stiffness: 200, damping: 22 });
   const chips = (i: number) => spring(f - 20 - i * 3, FPS, { stiffness: 260, damping: 18 });
   const cta = spring(f - 30, FPS, { stiffness: 220, damping: 15 });
-  const pulse = 1 + 0.035 * Math.sin(Math.max(0, f - 40) / 4);
-  const lines = line.split("|");
+  const pulse = 1 + 0.03 * Math.sin(Math.max(0, f - 40) / 4);
   return (
     <div className="absolute inset-0" style={{ opacity: wipe, zIndex: 80 }}>
-      <Backdrop frame={frame} tint={tint} />
-      <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: 150 }}>
-        <BigLogo size={78} style={{ transform: `scale(${logo}) rotate(${(1 - logo) * -25}deg)` }} />
-        <div
-          style={{ marginTop: 18, opacity: word, transform: `translateY(${(1 - word) * 16}px)` }}
-        >
-          <Wordmark size={40} />
+      <Backdrop frame={frame} tint={tint} glowY={40} />
+      <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: 118 }}>
+        <div style={{ transform: `translateY(${(1 - jax) * 40}px) scale(${0.6 + 0.4 * jax})`, opacity: Math.min(1, jax * 1.5) }}>
+          <Jax pose="sit" size={118} />
+        </div>
+        <div style={{ marginTop: 10, opacity: word, transform: `translateY(${(1 - word) * 16}px)` }}>
+          <Lockup size={34} />
         </div>
         <div
-          className="font-black-display text-center"
+          className="display text-center"
           style={{
             marginTop: 14,
-            fontSize: 21,
-            lineHeight: 1.15,
-            color: COLORS.text,
+            fontSize: 22,
+            lineHeight: 1.12,
+            color: COLORS.ink,
             opacity: sub,
             transform: `translateY(${(1 - sub) * 14}px)`,
           }}
         >
-          {lines.map((l) => (
+          {line.split("|").map((l) => (
             <div key={l}>{l}</div>
           ))}
         </div>
-        <div className="mt-5 flex gap-2">
+        <div className="flex" style={{ marginTop: 18, gap: 6 }}>
           {BRAND.taglines.map((t, i) => (
             <span
               key={t}
-              className="rounded-full px-3 py-1.5 text-[12px] font-bold"
+              className="rounded-full"
               style={{
-                background: "rgba(34,197,94,0.14)",
-                color: COLORS.brandLight,
-                border: "1px solid rgba(34,197,94,0.35)",
+                padding: "5px 10px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                background: "rgba(198,249,31,0.10)",
+                color: COLORS.voltLight,
+                border: "1px solid rgba(198,249,31,0.30)",
                 transform: `scale(${chips(i)})`,
               }}
             >
@@ -96,86 +85,115 @@ export function EndCard({
           ))}
         </div>
         <div
-          className="mt-7 rounded-2xl px-6 py-3.5 text-[17px] font-extrabold"
+          className="display"
           style={{
-            background: COLORS.brand,
-            color: COLORS.pitch950,
+            marginTop: 24,
+            padding: "13px 26px",
+            borderRadius: 18,
+            fontSize: 20,
+            letterSpacing: "-0.02em",
+            background: COLORS.volt,
+            color: COLORS.canvas,
             transform: `scale(${cta * pulse})`,
-            boxShadow: "0 14px 36px rgba(34,197,94,0.35)",
+            boxShadow: "0 14px 36px rgba(198,249,31,0.28)",
           }}
         >
-          {BRAND.cta} ↗
+          {BRAND.url}
         </div>
-        <div
-          className="mt-4 text-[13px] font-semibold"
-          style={{ color: COLORS.muted, opacity: cta }}
-        >
-          {BRAND.handle}
+        <div style={{ marginTop: 12, fontSize: 13, fontWeight: 600, color: COLORS.muted, opacity: cta }}>
+          {BRAND.cta} · {BRAND.handle}
         </div>
       </div>
     </div>
   );
 }
 
-/** TV-style score bug. */
+/**
+ * The board's scoreboard strip (src/features/board/Scorebug.tsx), drawn from
+ * plain props: team marks, big scores, and the moment in the middle.
+ */
 export function ScoreBug({
-  awayName,
-  homeName,
-  away,
-  home,
+  teamX,
+  teamY,
+  x,
+  y,
   period,
-  awayColor = COLORS.gold,
-  homeColor = COLORS.accent,
+  sub,
   flash = 0,
+  width = 300,
   style,
 }: {
-  awayName: string;
-  homeName: string;
-  away: number;
-  home: number;
+  teamX: Team;
+  teamY: Team;
+  x: number;
+  y: number;
   period: string;
-  awayColor?: string;
-  homeColor?: string;
-  /** 0 → 1 highlight when the score just changed. */
+  sub?: string;
+  /** 0 → 1 gold glow when the score just changed. */
   flash?: number;
+  width?: number;
   style?: CSSProperties;
 }) {
-  const team = (name: string, score: number, color: string) => (
-    <div className="flex items-center gap-2 px-3 py-2">
-      <span style={{ width: 5, height: 22, borderRadius: 3, background: color }} />
-      <span className="text-[13px] font-extrabold uppercase tracking-wide">{name}</span>
-      <span
-        className="ml-1 text-[22px] font-black tabular-nums"
-        style={{ minWidth: 26, textAlign: "right" }}
-      >
-        {score}
+  const side = (team: Team, score: number, right: boolean, dim: boolean) => (
+    <div className="flex min-w-0 flex-col" style={{ gap: 2, alignItems: right ? "flex-end" : "flex-start" }}>
+      <div className="flex items-center" style={{ gap: 8, flexDirection: right ? "row-reverse" : "row" }}>
+        <TeamMark team={team} size="sm" className="!h-8 !w-8" />
+        <span
+          className="display tabular-nums"
+          style={{ fontSize: 34, lineHeight: 1, color: dim ? COLORS.muted : COLORS.ink }}
+        >
+          {score}
+        </span>
+      </div>
+      <span className="max-w-full truncate" style={{ fontSize: 11, fontWeight: 600, color: COLORS.muted }}>
+        {team.name}
       </span>
     </div>
   );
   return (
     <div
-      className="inline-flex items-center overflow-hidden rounded-2xl"
+      className="relative overflow-hidden"
       style={{
-        background: "rgba(11,17,32,0.92)",
-        border: "1px solid rgba(255,255,255,0.1)",
-        boxShadow: `0 16px 34px rgba(0,0,0,0.5), 0 0 ${26 * flash}px rgba(251,191,36,${0.6 * flash})`,
+        width,
+        borderRadius: 20,
+        background: COLORS.surface2,
+        boxShadow: `0 16px 34px rgba(0,0,0,0.5), inset 0 0 0 1px ${COLORS.line}, 0 0 ${28 * flash}px rgba(255,194,51,${0.65 * flash})`,
         ...style,
       }}
     >
-      {team(awayName, away, awayColor)}
-      <div className="h-8 w-px bg-white/10" />
-      {team(homeName, home, homeColor)}
       <div
-        className="self-stretch px-3 text-[12px] font-extrabold uppercase"
+        className="absolute inset-0"
         style={{
-          display: "grid",
-          placeItems: "center",
-          background: flash > 0.05 ? COLORS.gold : "rgba(255,255,255,0.06)",
-          color: flash > 0.05 ? COLORS.pitch950 : COLORS.text,
+          background: `linear-gradient(90deg, ${team30(teamX.color)}, transparent 38%, transparent 62%, ${team30(teamY.color)})`,
         }}
-      >
-        {period}
+      />
+      <div className="absolute inset-y-0 left-0" style={{ width: 4, background: teamX.color }} />
+      <div className="absolute inset-y-0 right-0" style={{ width: 4, background: teamY.color }} />
+      <div className="relative grid items-center" style={{ gridTemplateColumns: "1fr auto 1fr", gap: 8, padding: "10px 14px" }}>
+        {side(teamX, x, false, x < y)}
+        <div className="flex flex-col items-center" style={{ gap: 2 }}>
+          <span
+            className="rounded-full"
+            style={{
+              padding: "3px 8px",
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              background: flash > 0.05 ? COLORS.gold : "rgba(255,255,255,0.06)",
+              color: flash > 0.05 ? COLORS.canvas : COLORS.ink,
+            }}
+          >
+            {period}
+          </span>
+          {sub && <span style={{ fontSize: 10, fontWeight: 600, color: COLORS.subtle }}>{sub}</span>}
+        </div>
+        {side(teamY, y, true, y < x)}
       </div>
     </div>
   );
+}
+
+function team30(hex: string): string {
+  return `color-mix(in srgb, ${hex} 30%, transparent)`;
 }

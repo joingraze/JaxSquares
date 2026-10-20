@@ -41,12 +41,12 @@ export const PLAN = {
 
   strategy: {
     positioning:
-      "Squares for any game. No app, no signup, no math, and we never touch the money. Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram.",
+      "Squares for any game, with Jax. No app for players, no signup, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Host Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
     pillars: [
-      { name: "Show the product", share: "35%", what: "20-second demos, the live draw, winners lighting up. Every post shows the real app." },
-      { name: "Squares nerdery", share: "25%", what: "Real odds from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent." },
+      { name: "Show the product", share: "35%", what: "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up. Every video is screen footage of the real app." },
+      { name: "Squares nerdery", share: "25%", what: "Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent." },
       { name: "This game, this week", share: "25%", what: "Primetime, Jaguars, Gators and Thanksgiving games. Make the board the plan for the game." },
-      { name: "On this day", share: "15%", what: "Verified history with a squares twist: which square that famous final score paid." },
+      { name: "On this day", share: "15%", what: "Verified history with a squares twist: which square that famous final score landed on." },
     ],
     cadence: [
       "4–5 feed posts a week: about 4 Reels and 1 carousel. Buffer's 2026 data: 3–5 posts/week roughly doubles follower growth vs. 1–2.",
@@ -62,40 +62,40 @@ export const PLAN = {
       "Reply to every comment in the first hour after posting. Answer good questions with 'Reply with Reel'.",
     ],
     compliance: [
-      "Say 'the Big Game', never 'Super Bowl', in posts and ads (NFL trademark). Team names are fine to identify a game. No logos, uniforms, team colors, broadcast footage or player photos.",
-      "Never use 'bet', 'wager', 'gamble' or 'cash out'. Say 'squares pool', 'board', 'bragging rights'.",
-      "Paid boosts: only $0-pool creatives. Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07.",
-      "Lean on 'we never touch the money'. Buy-ins are just numbers you track, or set to $0.",
-      "Bars and offices: only pitch free boards with no purchase needed to claim a square.",
+      "Say 'the big game', never 'Super Bowl', in posts and ads (NFL trademark). Team names are fine to identify a game. No logos, uniforms, team colors, broadcast footage or player photos.",
+      "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
+      "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
+      "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
+      "Paid boosts: only creatives with no amounts on screen (true of every video here; the Just for fun ones are safest). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07.",
+      "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
       "Add 'Not affiliated with the NFL or NCAA' to the bio.",
     ],
     kpis: [
       { metric: "Boards created (north star)", how: "npx wrangler d1 execute jaxsquares --remote --command \"SELECT date(created_at/1000,'unixepoch') AS day, COUNT(*) AS boards FROM games GROUP BY day ORDER BY day DESC LIMIT 14\"" },
       { metric: "Sends per reach and skip rate", how: "Reel insights. Double down on whatever gets sent." },
-      { metric: "Saves", how: "Carousel insights. Saves mean the odds and how-to content is working." },
+      { metric: "Saves", how: "Carousel insights. Saves mean the data and how-to content is working." },
       { metric: "Profile visits → link taps", how: "Professional dashboard. If taps lag visits, rewrite the bio's first line." },
     ],
     targets:
       "Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29, and one Reel past 10k views. Benchmarks for brand-new accounts are thin; the boards count matters more than followers.",
     setup: {
       name: "JaxSquares · Football Squares",
-      bio: "Football squares for any game 🏈\nFree · no app · no signup\nWe draw the numbers + call the winners\nNot affiliated w/ NFL or NCAA 👇",
-      link: "Your app URL with ?ref=ig on the end, so Instagram visits show up in Cloudflare analytics.",
-      highlights: ["How it works", "Odds", "Game days", "Thanksgiving"],
+      bio: "Squares for any game 🏈🐶\nFree to set up · no app · no signup\nJax draws the numbers, live scores call winners\nNot affiliated w/ NFL or NCAA 👇",
+      link: "https://jaxsquares.com/?ref=ig (the ?ref=ig makes Instagram visits show up in Cloudflare analytics).",
+      highlights: ["How it works", "Square stats", "Game days", "Thanksgiving"],
       category:
         "Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.",
       profilePictures: [
-        { file: "p-profile-picture/01", label: "Option 1 (recommended): J², “Jax Squared”. Reads at every size." },
-        { file: "p-profile-picture/02", label: "Option 2: the winning square lit where its row and column cross" },
-        { file: "p-profile-picture/03", label: "Option 3: a square football in brand green" },
+        { file: "p-profile-picture/01", label: "Option 1 (recommended): Jax over the board, the app icon. A face reads at every size." },
+        { file: "p-profile-picture/02", label: "Option 2: the website's 3×3 mark with the gold winning square" },
       ],
     },
     outreach: {
       creator:
-        "Hey [name]! Love your [team] content. We built JaxSquares, a free squares pool app (no download, no signup). Want to run a free followers' board for [game]? We set it up, you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.",
+        "Hey [name]! Love your [team] content. We built JaxSquares: squares for any game, no download or signup for players. Want to run a Just for fun followers' board for [game]? We set it up (on us), you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.",
       bar:
-        "Hi! We make JaxSquares, a free squares board your regulars can join with a QR code or link. No app and no purchase needed to play. Want us to set up a free board for [game] for your crowd?",
+        "Hi! We make JaxSquares, a squares board your regulars join with a QR code or link. No app, and no purchase needed to play. Want us to set up a Just for fun board for [game] for your crowd (on us)?",
       ugc: "Screenshot your board and tag @jaxsquares. We reshare the best ones (with your OK).",
     },
   },
@@ -120,14 +120,14 @@ export const PLAN = {
       label: "Week 2",
       dates: "Nov 2–8",
       theme: "Proof and personality",
-      goal: "Jaguars primetime, the commissioner cheat sheet, on-this-day hits. First creator DMs.",
+      goal: "Jaguars primetime, the host cheat sheet, on-this-day hits. First creator DMs.",
     },
     {
       key: "w3",
       label: "Week 3",
       dates: "Nov 9–15",
       theme: "Community and creators",
-      goal: "Founder story, first Collab post, first small boost on the best $0 Reel.",
+      goal: "Founder story (and Jax), first Collab post, first small boost on the best Reel.",
     },
     {
       key: "w4",
@@ -152,12 +152,12 @@ export const PLAN = {
       title: "Set up the account",
       checklist: [
         "Switch @jaxsquares to a Professional account. Category: Sports & Recreation (not App Page, which contradicts “no app to download”).",
-        "Upload the profile picture: option 1, J² (p-profile-picture/01).",
+        "Upload the profile picture: option 1, Jax over the board (p-profile-picture/01).",
         "Name field: “JaxSquares · Football Squares”. The name field is searchable.",
-        "Paste the bio and link from Setup. Link = app URL + ?ref=ig.",
-        "Make 4 Highlights: How it works, Odds, Game days, Thanksgiving. Use story frames as covers.",
+        "Paste the bio and link from Setup. Link = jaxsquares.com/?ref=ig.",
+        "Make 4 Highlights: How it works, Square stats, Game days, Thanksgiving. Use story frames as covers.",
         "Run a real test board with 3 friends and screen-record it (B-roll for the founder Reel).",
-        "Save quick replies for “link?”, “is it free?” and “do I need the app?”.",
+        "Save quick replies for “link?” (jaxsquares.com), “is it free?” (“Free to set up and invite, and free to draw with up to 5 players. Bigger boards are $4.99 for the host. Players never pay.”) and “do I need the app?” (“No. Friends tap the link and pick.”).",
       ],
     },
     {
@@ -165,10 +165,10 @@ export const PLAN = {
       title: "Seed post: how football squares works",
       asset: "c1-how-squares-works", slides: 7,
       caption:
-        "How football squares works, in 7 slides 🏈\n\nThe grid, the draw, the last-digit rule and how a quarter gets paid. Save this for game day.\n\nSend it to the person who always asks “wait, which square is mine?”\n\nRun your own board free → link in bio",
+        "How football squares works, in 7 slides 🏈\n\nThe grid, the draw, the last-digit rule and how a quarter gets won. Save this for game day.\n\nSend it to the person who always asks “wait, which square is mine?”\n\nSet up your own board free → link in bio",
       hashtags: [...H.core, H.office, H.fantasy, "#gameday"],
       altText:
-        "Seven-slide explainer of football squares: a 10 by 10 grid, friends claim squares, digits 0 to 9 are drawn for each row and column, and the last digit of each team's score picks the winning square each quarter.",
+        "Seven-slide explainer of football squares: a 10 by 10 grid, friends pick squares, digits 0 to 9 are drawn for each row and column, and the last digit of each team's score picks the winning square each quarter.",
       notes: ["Pin this post (pin 3 total by launch)."],
     },
     {
@@ -176,7 +176,7 @@ export const PLAN = {
       title: "Seed post: feature rundown",
       asset: "07-features",
       caption:
-        "Football squares, minus the spreadsheet 🏈\n\nNo app to download. No accounts. Free pools at $0, or track a buy-in. Cap squares per player. Winners called automatically.\n\nWorks for football, hoops, baseball, hockey and soccer. Link in bio.",
+        "Football squares, minus the spreadsheet 🏈\n\nNo app to download. Same room? Scan the code. Can't decide? Let Jax pick. Prize notes, or just for fun. Scores update themselves, and every board lives on one home screen.\n\nNFL, college and NBA games score themselves, or type in any matchup. Free to set up → link in bio.",
       hashtags: [...H.core, H.office, H.fantasy, "#gamedayparty"],
       notes: [AUDIO_EXPLAINER, COVER, "Boost candidate later: no dollar amounts on screen."],
     },
@@ -185,7 +185,7 @@ export const PLAN = {
       title: "TNF: Patriots at Bears",
       asset: "s-story-frames/06",
       tieIn: "Thursday Night Football · Patriots at Bears · 8:15 PM ET · Prime Video",
-      story: { sticker: "Link → app", text: "TNF: Patriots at Bears, 8:15 on Prime. Board takes 20 seconds 👇" },
+      story: { sticker: "Link → app", text: "TNF: Patriots at Bears, 8:15 on Prime. Board takes 30 seconds 👇" },
     },
     {
       date: "2026-10-23", time: "13:00", kind: "reel", week: "prep",
@@ -215,7 +215,7 @@ export const PLAN = {
       date: "2026-10-25", time: "11:30", kind: "story", week: "prep",
       title: "Game day checklist",
       asset: "s-story-frames/06",
-      story: { sticker: "Link → app", text: "(Frame says it all.) Lock before the 1:00 kickoffs." },
+      story: { sticker: "Link → app", text: "(Frame says it all.) Draw before the 1:00 kickoffs." },
     },
     {
       date: "2026-10-25", time: "19:30", kind: "story", week: "prep",
@@ -230,17 +230,17 @@ export const PLAN = {
       title: "Launch prep",
       checklist: [
         "Open the app link from the bio on your phone and make sure it works.",
-        "Line up 20 friends who run (or play in) a pool and 3 group chats to post in.",
+        "Line up 20 friends who run (or play in) squares and 3 group chats to post in.",
         "Ask 5 friends to share the launch Reel to their stories at 2:05.",
       ],
     },
     {
       date: "2026-10-26", time: "14:00", kind: "reel", week: "w1",
-      title: "LAUNCH: How it works in 20 seconds",
+      title: "LAUNCH: How it works in 30 seconds",
       asset: "01-how-it-works",
       tieIn: "Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESPN/ABC",
       caption:
-        "Squares pools, fixed. JaxSquares is live 🏈🟩\n\nCreate a board in 20 seconds, drop one link in the group chat, and everyone claims squares from their phone. We draw the numbers live and light up the winner every quarter.\n\nFree. No app. No signup. Running a Cowboys–Eagles board tonight? Link in bio.",
+        "Squares, fixed. JaxSquares is live 🏈🐶\n\nPick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.\n\nFree to set up. No app. No signup. Running a Cowboys–Eagles board tonight? Link in bio.",
       hashtags: [...H.core, H.mnf, H.office, H.nfl],
       notes: [AUDIO_EXPLAINER, COVER, "Pin it first (pinned: this, the carousel, best/worst)."],
     },
@@ -249,7 +249,7 @@ export const PLAN = {
       title: "Personal push",
       checklist: [
         "Share the Reel to your personal story and to the 3 group chats.",
-        "Text the 20 people directly: “made this for our pool, try it tonight for MNF?”",
+        "Text the 20 people directly: “made this for our squares, try it tonight for MNF?”",
         "Reply to every comment for the next hour.",
       ],
     },
@@ -270,7 +270,7 @@ export const PLAN = {
       title: "On this day: Emmitt breaks the record (2002)",
       asset: "otd1-oct27-emmitt",
       caption:
-        "On this day in 2002, former Gator Emmitt Smith passed Walter Payton for the NFL's career rushing record 🐊🏈\n\nThe final? Seahawks 17, Cowboys 14. History for Emmitt, and the 7–4 square for somebody's pool.\n\nWhat square would you have had? 👇",
+        "On this day in 2002, former Gator Emmitt Smith passed Walter Payton for the NFL's career rushing record 🐊🏈\n\nThe final? Seahawks 17, Cowboys 14. History for Emmitt, and the 7–4 square for somebody's board.\n\nWhat square would you have had? 👇",
       hashtags: [H.otd, H.history, H.gators, "#emmittsmith", "#footballsquares"],
       notes: [AUDIO_NOSTALGIC, COVER],
     },
@@ -283,9 +283,9 @@ export const PLAN = {
     {
       date: "2026-10-28", time: "12:30", kind: "carousel", week: "w1",
       title: "Every square, ranked",
-      asset: "c2-squares-odds", slides: 6,
+      asset: "c2-every-square-ranked", slides: 6,
       caption:
-        "Every square in football, ranked 📊 (7,276 NFL final scores, 1999–2025)\n\nS-tier digits: 0 and 7. D-tier: 2 and 5. The 2–2 square has hit 4 times in 27 seasons.\n\nSave this before your next draw, and send it to your pool's 2–2 holder.",
+        "Every square in football, ranked 📊 (7,276 NFL final scores, 1999–2025)\n\nS-tier digits: 0 and 7. D-tier: 2 and 5. The 2–2 square has hit 4 times in 27 seasons.\n\nSave this before your next draw, and send it to your board's 2–2 holder.",
       hashtags: [...H.core, H.nfl, H.stats, H.fantasy],
       altText:
         "Heat map and rankings of football squares by how often NFL final scores land on them since 1999. Best: 0-7, 4-7 and 0-3. Worst: 2-2, 5-5 and 5-9. Most common final since 1999: 23-20.",
@@ -298,11 +298,11 @@ export const PLAN = {
     },
     {
       date: "2026-10-29", time: "12:30", kind: "reel", week: "w1",
-      title: "Every squares pool group chat",
+      title: "Every squares group chat",
       asset: "05-group-chat",
       tieIn: "Thursday Night Football · Panthers at Packers · 8:15 PM ET · Prime Video",
       caption:
-        "Every squares pool group chat: “who has the 7–3??” “resend the spreadsheet” “MIKE.” 😭\n\nOr… one link. Everyone claims from their phone, the numbers draw themselves, and the board tells you who won.\n\nSend this to the person who runs your pool 📲",
+        "Every squares group chat: “who has the 7–3??” “resend the spreadsheet” “MIKE.” 😭\n\nOr… one link. Everyone picks from their phone, Jax draws the numbers, and the board shows who won.\n\nSend this to the person who runs your squares 📲",
       hashtags: [...H.core, "#groupchat", H.office, H.tnf],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -332,7 +332,7 @@ export const PLAN = {
       asset: "m2-florida-georgia",
       tieIn: "Florida vs. Georgia · 3:30 PM ET · ABC · Mercedes-Benz Stadium, Atlanta",
       caption:
-        "The Cocktail Party left Jacksonville this year. Your squares board doesn't have to 🐊🐶\n\nFlorida vs. Georgia, 3:30 ET on ABC, in Atlanta while EverBank gets renovated. It's the first time since 1995 the game isn't in Jax.\n\nRun the board from anywhere: 20 seconds, one link, free. Gators or Dawgs? 🐊 / 🐶",
+        "The Cocktail Party left Jacksonville this year. Your squares board doesn't have to 🐊🐶\n\nFlorida vs. Georgia, 3:30 ET on ABC, in Atlanta while EverBank gets renovated. It's the first time since 1995 the game isn't in Jax.\n\nRun the board from anywhere: 30 seconds, one link, free to set up. Gators or Dawgs? 🐊 / 🐶",
       hashtags: [H.gators, "#godawgs", "#floridageorgia", H.cfb, "#footballsquares"],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -403,13 +403,13 @@ export const PLAN = {
     },
     {
       date: "2026-11-04", time: "12:30", kind: "carousel", week: "w2",
-      title: "Commissioner cheat sheet",
-      asset: "c3-commissioner-cheat-sheet", slides: 6,
+      title: "Host cheat sheet",
+      asset: "c3-host-cheat-sheet", slides: 6,
       caption:
-        "The squares commissioner cheat sheet 📋 5 rules that keep your pool fair.\n\nLock before kickoff. Cap squares per player. Pay out every quarter. Make the office pool free. Let the board do the math.\n\nSave it, then send it to whoever runs your pool.",
-      hashtags: [...H.core, H.office, "#commissioner", H.fantasy],
+        "The squares host cheat sheet 📋 5 rules that keep your board fair.\n\nDraw before kickoff. Cap squares per player. Winners every quarter. Make the office board Just for fun. Let the board do the math.\n\nSave it, then send it to whoever runs your squares.",
+      hashtags: [...H.core, H.office, "#gameday", H.fantasy],
       altText:
-        "Six slides of tips for running a football squares pool: lock the board before kickoff, cap squares per player, pay out every quarter, make office pools free, and let the app call the winners.",
+        "Six slides of tips for hosting a football squares board: draw the numbers before kickoff, cap squares per player, have a winner every quarter, make office boards Just for fun, and let the app call the winners.",
     },
     {
       date: "2026-11-04", time: "18:00", kind: "story", week: "w2",
@@ -423,7 +423,7 @@ export const PLAN = {
       asset: "m4-tnf-jaguars-ravens",
       tieIn: "Thursday Night Football · Jaguars at Ravens · 8:15 PM ET · Prime Video",
       caption:
-        "Jags in primetime 🐆 Thursday Night Football: Jaguars at Ravens, 8:15 ET on Prime Video.\n\nMake the board at lunch, drop the link in the group chat, lock it before kickoff. We'll call every quarter's winner.\n\nWho's running the Duval board tonight? 👇",
+        "Jags in primetime 🐆 Thursday Night Football: Jaguars at Ravens, 8:15 ET on Prime Video.\n\nMake the board at lunch, drop the link in the group chat, lock it before kickoff. Live scores call every quarter's winner.\n\nWho's running the Duval board tonight? 👇",
       hashtags: [H.duval, H.jags, H.tnf, ...H.core],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -435,7 +435,7 @@ export const PLAN = {
     },
     {
       date: "2026-11-05", time: "23:30", kind: "story", week: "w2",
-      title: "Which square cashed?",
+      title: "Which square hit?",
       story: { sticker: "Questions", text: "Final: Jaguars __, Ravens __. That's the _–_ square. Who had it? 🙋" },
       notes: ["Fill in the final score and digits after the game."],
     },
@@ -444,7 +444,7 @@ export const PLAN = {
       title: "1869: the first college football game",
       story: {
         sticker: "None",
-        text: "On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, 6–4 cashes. 🏈",
+        text: "On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, the 6–4 square takes it. 🏈",
       },
     },
     {
@@ -461,7 +461,7 @@ export const PLAN = {
       asset: "m5-miami-notre-dame",
       tieIn: "Miami at Notre Dame · 7:30 PM ET · NBC/Peacock",
       caption:
-        "Saturday night in South Bend: Miami at Notre Dame, 7:30 ET on NBC 🏟️\n\nCollege boards work exactly the same: create, share one link, lock it before kickoff. Free.\n\nCanes or Irish? 👇",
+        "Saturday night in South Bend: Miami at Notre Dame, 7:30 ET on NBC 🏟️\n\nCollege boards work the same: pick the game, share one link, and scores update themselves. Free to set up.\n\nCanes or Irish? 👇",
       hashtags: [H.cfb, "#canes", "#notredame", ...H.core],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -482,7 +482,7 @@ export const PLAN = {
       title: "On this day: Dempsey's 63-yarder (1970)",
       asset: "otd3-nov08-dempsey",
       caption:
-        "On this day in 1970, Tom Dempsey kicked a 63-yard field goal at the gun. Saints 19, Lions 17 🦵\n\n19–17 is a squares legend: the Miracle at the Meadowlands (1978) ended 19–17 too. The 9–7 square keeps cashing in chaos.\n\nGot a 9 this week? 👀",
+        "On this day in 1970, Tom Dempsey kicked a 63-yard field goal at the gun. Saints 19, Lions 17 🦵\n\n19–17 is a squares legend: the Miracle at the Meadowlands (1978) ended 19–17 too. The 9–7 square keeps winning in chaos.\n\nGot a 9 this week? 👀",
       hashtags: [H.otd, H.history, "#saints", ...H.core],
       notes: [AUDIO_NOSTALGIC, COVER],
     },
@@ -492,18 +492,18 @@ export const PLAN = {
       checklist: [
         "Weekly review (same as last Sunday).",
         "DM 5 micro-creators (Jax sports, Gators, fantasy football) with the creator template. Goal: 1 Collab for Nov 15.",
-        "DM 3 local bars or office managers with the bar template (free boards only).",
+        "DM 3 local bars or office managers with the bar template (Just for fun boards only).",
       ],
     },
 
     // ------------------------------------------------------------ WEEK 3
     {
       date: "2026-11-09", time: "14:00", kind: "reel", week: "w3",
-      title: "POV: you hit LOCK",
+      title: "POV: you hit Draw",
       asset: "03-the-draw",
       tieIn: "Monday Night Football · Bills at Vikings · 8:15 PM ET · ESPN/ABC",
       caption:
-        "POV: the board is full and you hit LOCK 🎲\n\nThe numbers draw live, right in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.\n\nSend this to your commissioner 📲",
+        "POV: the board is full and you hit Draw 🎲\n\nJax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.\n\nSend this to whoever hosts your squares 📲",
       hashtags: [...H.core, H.mnf, H.office, H.nfl],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -519,7 +519,7 @@ export const PLAN = {
       asset: "06-winners-light-up",
       tieIn: "NFL trade deadline 4 PM ET · CFP rankings 9 PM ET",
       caption:
-        "Who won the quarter? The board already knows 🏆\n\nEnter the score at Q1, Half, Q3 and Final and the winning square lights up with its payout. No math, no arguing, no “wait, which way do the numbers go?”\n\nSend this to the friend who always does the math wrong.",
+        "Who won the quarter? The board already knows 🏆\n\nLive scores are built in, so the winning square lights up at Q1, Half, Q3 and the Final, and the winner's phone gets the news. No math, no arguing, no “wait, which way do the numbers go?”\n\nSend this to the friend who always does the math wrong.",
       hashtags: [...H.core, H.office, H.nfl, H.fantasy],
       notes: [AUDIO_EXPLAINER, COVER],
     },
@@ -527,7 +527,7 @@ export const PLAN = {
       date: "2026-11-10", time: "13:30", kind: "task", week: "w3",
       title: "Boost decision",
       checklist: [
-        "Compare sends per reach across the $0 creatives: 02, 04, 07 (and 03 if you re-cut it without the pot pill).",
+        "Compare sends per reach across the boost candidates: 02, 04, 07 (none of the videos show amounts).",
         "Boost the winner with $50–150 over 5 days. Audience: US, 21+, football / fantasy football interests. Goal: profile visits.",
         "Judge it on boards created, not likes.",
       ],
@@ -540,16 +540,16 @@ export const PLAN = {
     },
     {
       date: "2026-11-11", time: "12:30", kind: "film", week: "w3",
-      title: "Founder Reel: why we built it",
+      title: "Founder Reel: why we built it (and who Jax is)",
       script: [
         "0–2s (on-screen text): “I built a squares app because our group chat broke.”",
         "2–10s: hold up the old way. Show the whiteboard photo, the spreadsheet, the 99+ unread chat.",
         "10–25s: screen-record making a real board, start to share link (you recorded this in Prep).",
-        "25–35s, to camera: “Free, no app, no signup. Numbers draw live, winners light up.”",
+        "25–35s, to camera: “Free to set up, no app, no signup. Jax draws the numbers live, winners light up.” If you can, film the real Jax here: he's the logo.",
         "35–40s, ask: “What do we build next: Pick'em, Bracket Battles, or King of the Hill?”",
       ],
       caption:
-        "Why we built JaxSquares 🟩 (and what's next)\n\nOur squares pool lived in a group chat, a blurry whiteboard photo and a spreadsheet nobody could find. So we built the board we wanted: one link, everyone claims from their phone, numbers draw live, winners light up.\n\nNext up: Pick'em, Bracket Battles or King of the Hill? Vote in the comments 👇",
+        "Why we built JaxSquares 🐶 (and what's next)\n\nOur squares lived in a group chat, a blurry whiteboard photo and a spreadsheet nobody could find. So we built the board we wanted, and named it after Jax: one link, everyone picks from their phone, numbers draw live, winners light up.\n\nNext up: Pick'em, Bracket Battles or King of the Hill? Vote in the comments 👇",
       hashtags: ["#buildinpublic", "#startup", "#jacksonville", ...H.core],
       notes: ["Film vertical, natural light, captions on (Instagram's auto-captions are fine)."],
     },
@@ -589,11 +589,11 @@ export const PLAN = {
     },
     {
       date: "2026-11-15", time: "11:00", kind: "reel", week: "w3",
-      title: "COLLAB: a free pool for your crew",
-      asset: "02-how-it-works-free",
+      title: "COLLAB: Let Jax pick",
+      asset: "02-let-jax-pick",
       tieIn: "Jaguars at Titans · 1:00 PM ET · FOX",
       caption:
-        "A free squares pool for your whole crew 🏈 No money, no app, no signup.\n\nSet the price to $0 and play for bragging rights. Create the board, share one link, and we'll draw the numbers and call every quarter.\n\nJags at Titans at 1. Board's open 👇",
+        "Can't pick a square? Let Jax pick 🐶\n\nTap “Let Jax pick”, choose how many, and he grabs random open squares for you. JaxSquares is named after him, and he has no favorites.\n\nJags at Titans at 1. Board's open 👇",
       hashtags: [H.duval, ...H.core, H.office, H.nfl],
       notes: ["Post as a Collab (Tag people → Invite collaborator).", AUDIO_EXPLAINER, COVER],
     },
@@ -610,7 +610,7 @@ export const PLAN = {
       asset: "08-thanksgiving-slate",
       tieIn: "Monday Night Football · Chargers at Ravens · 8:15 PM ET · ESPN",
       caption:
-        "Thanksgiving week: 5 NFL games + Florida–FSU in 3 days 🦃🏈\n\nWed: Packers at Rams, 8:00 Netflix (the first-ever Thanksgiving Eve game)\nThu: Bears at Lions 1:00 CBS · Eagles at Cowboys 4:30 FOX · Chiefs at Bills 8:20 NBC\nFri: Broncos at Steelers 3:00 Prime · Florida at FSU 3:30 ABC\n\nOne board per game. Kids' table board = $0. Save this.",
+        "Thanksgiving week: 5 NFL games + Florida–FSU in 3 days 🦃🏈\n\nWed: Packers at Rams, 8:00 Netflix (the first-ever Thanksgiving Eve game)\nThu: Bears at Lions 1:00 CBS · Eagles at Cowboys 4:30 FOX · Chiefs at Bills 8:20 NBC\nFri: Broncos at Steelers 3:00 Prime · Florida at FSU 3:30 ABC\n\nOne board per game. Kids' table board? Just for fun. Save this.",
       hashtags: [H.tg, "#thanksgiving", ...H.core, H.friendsgiving],
       notes: [AUDIO_EXPLAINER, COVER, "Check the Florida–FSU kickoff the week of. ACC and CBS list 3:30; one outlet listed 8:30."],
     },
@@ -637,10 +637,10 @@ export const PLAN = {
       title: "Thanksgiving squares playbook",
       asset: "c4-thanksgiving-playbook", slides: 6,
       caption:
-        "The Thanksgiving squares playbook 🦃 Save it for next week.\n\nOne board per game, a $0 kids' table board, and stakes that aren't cash: loser does the dishes, winner gets the first plate.\n\nSend this to whoever's hosting.",
+        "The Thanksgiving squares playbook 🦃 Save it for next week.\n\nOne board per game, a Just for fun board for the kids' table, and prizes that aren't cash: loser does the dishes, winner gets the first plate.\n\nSend this to whoever's hosting.",
       hashtags: ["#thanksgiving", H.tg, H.friendsgiving, "#footballsquares", "#familygamenight"],
       altText:
-        "Six-slide Thanksgiving guide to football squares: the 2026 Thanksgiving week schedule, one board per game, a free kids' table board, and non-cash stakes like doing the dishes.",
+        "Six-slide Thanksgiving guide to football squares: the 2026 Thanksgiving week schedule, one board per game, a Just for fun kids' table board, and prizes like doing the dishes.",
     },
     {
       date: "2026-11-19", time: "12:30", kind: "reel", week: "w4",
@@ -708,7 +708,7 @@ export const PLAN = {
       asset: "05b-group-chat-thanksgiving",
       tieIn: "Monday Night Football · Bengals at Commanders · 8:15 PM ET · ESPN",
       caption:
-        "Every Thanksgiving family group chat: “what's a square” “I call the 7–0” “spreadsheet attached” 😭🦃\n\nOr… one link. Grandma claims from her phone, the numbers draw themselves, and the board calls the winner every quarter. Free.\n\nSend this to the family group chat. You know the one.",
+        "Every Thanksgiving family group chat: “what's a square” “I call the 7–0” “spreadsheet attached” 😭🦃\n\nOr… one link. Grandma picks from her phone, Jax draws the numbers, and the board calls the winner every quarter. Free to set up.\n\nSend this to the family group chat. You know the one.",
       hashtags: ["#thanksgiving", "#familygroupchat", H.tg, "#footballsquares", H.friendsgiving],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -722,7 +722,7 @@ export const PLAN = {
       date: "2026-11-24", time: "12:00", kind: "story", week: "tg",
       title: "Hosting Thursday?",
       asset: "s-story-frames/07",
-      story: { sticker: "Link → app", text: "Hosting Thursday? Make your boards tonight. 20 seconds each 🦃" },
+      story: { sticker: "Link → app", text: "Hosting Thursday? Make your boards tonight. 30 seconds each 🦃" },
     },
     {
       date: "2026-11-25", time: "12:00", kind: "reel", week: "tg",
@@ -730,7 +730,7 @@ export const PLAN = {
       asset: "m7-thanksgiving-eve",
       tieIn: "Packers at Rams · 8:00 PM ET · Netflix · first-ever Thanksgiving Eve game",
       caption:
-        "The first-ever Thanksgiving Eve NFL game: Packers at Rams, 8:00 ET on Netflix 🦃📺\n\nFriendsgiving board, anyone? 20 seconds to make, one link to share, free to run.\n\nWho's hosting Friendsgiving tonight? 👇",
+        "The first-ever Thanksgiving Eve NFL game: Packers at Rams, 8:00 ET on Netflix 🦃📺\n\nFriendsgiving board, anyone? 30 seconds to make, one link to share, free to set up.\n\nWho's hosting Friendsgiving tonight? 👇",
       hashtags: ["#thanksgivingeve", H.friendsgiving, H.tg, "#footballsquares", H.nfl],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -745,7 +745,7 @@ export const PLAN = {
       title: "Happy Thanksgiving: Red Grange, 101 years ago",
       asset: "otd6-nov26-grange",
       caption:
-        "101 years ago today, Red Grange made his NFL debut on Thanksgiving. Bears 0, Cardinals 0 🦃\n\nA 0–0 tie means the same square paid every quarter. Happy Thanksgiving from JaxSquares: three games today, three boards, one link each.\n\nWhat's your square for Bears–Lions? 👇",
+        "101 years ago today, Red Grange made his NFL debut on Thanksgiving. Bears 0, Cardinals 0 🦃\n\nA 0–0 tie means the same square won every quarter. Happy Thanksgiving from JaxSquares: three games today, three boards, one link each.\n\nWhat's your square for Bears–Lions? 👇",
       hashtags: ["#thanksgiving", H.tg, H.otd, H.history, "#footballsquares"],
       notes: [AUDIO_NOSTALGIC, COVER],
     },
@@ -795,7 +795,7 @@ export const PLAN = {
       checklist: [
         "Pull 6 weeks of insights: top 3 Reels by sends per reach, top carousel by saves.",
         "Boards created per week (query in KPIs). Compare with the posting calendar.",
-        "Plan December around what worked: rivalry week, conference title games, the Big Game run-up.",
+        "Plan December around what worked: rivalry week, conference title games, the big game run-up.",
         "Post a thank-you carousel of the best user boards (with permission).",
       ],
     },

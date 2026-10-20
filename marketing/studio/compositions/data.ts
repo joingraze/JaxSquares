@@ -2,7 +2,7 @@ import type { MatchupProps, OnThisDayProps } from "./Templates";
 
 // Schedule facts: nflverse 2026 schedule + network/time confirmations from 2026
 // sources (see marketing/launch-plan/research/). Team names are used only to
-// identify games — no logos or team colors.
+// identify games: no logos or team colors (see namedTeam in Templates.tsx).
 export const MATCHUPS: { id: string; title: string; props: MatchupProps }[] = [
   {
     id: "m1-mnf-cowboys-eagles",
@@ -110,8 +110,8 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       day: 27,
       year: 2002,
       fact: "Ex-Gator *Emmitt Smith*|breaks Walter Payton's|rushing record",
-      winner: { name: "Seahawks", score: 17 },
-      loser: { name: "Cowboys", score: 14 },
+      winner: { name: "Seahawks", score: 17, abbr: "SEA" },
+      loser: { name: "Cowboys", score: 14, abbr: "DAL" },
       note: "Emmitt made history. Dallas still lost. The 7–4 square didn't care.",
     },
   },
@@ -124,8 +124,8 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       year: 2025,
       tag: "1 year ago today",
       fact: "Cam Little drills an|NFL-record *68-yard*|field goal",
-      winner: { name: "Jaguars", score: 30 },
-      loser: { name: "Raiders", score: 29 },
+      winner: { name: "Jaguars", score: 30, abbr: "JAX" },
+      loser: { name: "Raiders", score: 29, abbr: "LV" },
       note: "A record kick in a 30–29 overtime win in Las Vegas.",
     },
   },
@@ -137,8 +137,8 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       day: 8,
       year: 1970,
       fact: "Tom Dempsey's *63-yarder*|wins it at the gun",
-      winner: { name: "Saints", score: 19 },
-      loser: { name: "Lions", score: 17 },
+      winner: { name: "Saints", score: 19, abbr: "NO" },
+      loser: { name: "Lions", score: 17, abbr: "DET" },
       note: "19–17 strikes again: same final as the Miracle at the Meadowlands (1978).",
     },
   },
@@ -150,8 +150,8 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       day: 19,
       year: 2018,
       fact: "The first NFL game with|*both teams over 50*",
-      winner: { name: "Rams", score: 54 },
-      loser: { name: "Chiefs", score: 51 },
+      winner: { name: "Rams", score: 54, abbr: "LA" },
+      loser: { name: "Chiefs", score: 51, abbr: "KC" },
       note: "105 points on Monday Night — still the highest-scoring MNF game.",
     },
   },
@@ -163,8 +163,8 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       day: 20,
       year: 1982,
       fact: "*The Play:* five laterals|through the Stanford band",
-      winner: { name: "Cal", score: 25 },
-      loser: { name: "Stanford", score: 20 },
+      winner: { name: "Cal", score: 25, abbr: "CAL" },
+      loser: { name: "Stanford", score: 20, abbr: "STAN" },
       note: "Stanford led 20–19 with 4 seconds left. The winning square flipped from 9–0 to 5–0 on the last play.",
     },
   },
@@ -177,9 +177,9 @@ export const ON_THIS_DAY: { id: string; title: string; props: OnThisDayProps }[]
       year: 1925,
       tag: "Thanksgiving, 101 years ago",
       fact: "Red Grange makes his|NFL debut *on Thanksgiving*",
-      winner: { name: "Bears", score: 0 },
-      loser: { name: "Cardinals", score: 0 },
-      note: "A 0–0 tie, so the same square paid every quarter.",
+      winner: { name: "Bears", score: 0, abbr: "CHI" },
+      loser: { name: "Cardinals", score: 0, abbr: "CHC" },
+      note: "A 0–0 tie, so the same square won every quarter.",
     },
   },
 ];

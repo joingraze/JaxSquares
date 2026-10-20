@@ -1,30 +1,30 @@
 import type { CSSProperties, ReactNode } from "react";
-import { Logo } from "../../../src/components/AppShell";
+import { COLORS } from "../brand";
+import { clipFrame, type Scene } from "../lib/clips";
 
-export const SCREEN_W = 375;
-export const SCREEN_H = 812;
-const BEZEL = 11;
+/** The recorded phone: 440×956 pt (6.9-inch iPhone), the clips' viewport. */
+export const SCREEN_W = 440;
+export const SCREEN_H = 956;
+const STATUS_H = 62; // Dynamic Island safe area, left empty by the app
 
-/** The app's page background (mirrors body in src/index.css). */
-export const APP_BG = [
-  "radial-gradient(1200px 600px at 50% -10%, rgba(34,197,94,0.12), transparent 60%)",
-  "radial-gradient(900px 500px at 100% 10%, rgba(56,189,248,0.1), transparent 55%)",
-  "#060a16",
-].join(", ");
+export interface PhonePose {
+  cx: number;
+  top: number;
+  scale: number;
+}
 
 /**
- * An iPhone-sized device rendering app UI at its real 375pt width, scaled to fit
- * the stage. `cx`/`top` place it in stage CSS px. `overlay` draws above the app
- * content in screen coordinates (share sheets, taps, toasts).
+ * A device-free rounded screen, as in the App Store art: the real app's frame
+ * with a drawn 9:41 status bar in the top safe area. `cx`/`top` place it in
+ * stage CSS px; `overlay` draws above the screen in screen points.
  */
 export function Phone({
   children,
   overlay,
   cx = 180,
-  top = 170,
-  scale = 0.72,
+  top = 120,
+  scale = 0.62,
   rotate = 0,
-  header = true,
   style,
 }: {
   children?: ReactNode;
@@ -33,81 +33,156 @@ export function Phone({
   top?: number;
   scale?: number;
   rotate?: number;
-  header?: boolean;
   style?: CSSProperties;
 }) {
-  const outerW = SCREEN_W + BEZEL * 2;
-  const outerH = SCREEN_H + BEZEL * 2;
   return (
     <div
       className="absolute"
       style={{
-        left: cx - (outerW * scale) / 2,
+        left: cx - (SCREEN_W * scale) / 2,
         top,
-        width: outerW,
-        height: outerH,
+        width: SCREEN_W,
+        height: SCREEN_H,
         transform: `scale(${scale}) rotate(${rotate}deg)`,
         transformOrigin: "top left",
         ...style,
       }}
     >
       <div
+        className="relative overflow-hidden"
         style={{
-          width: outerW,
-          height: outerH,
-          borderRadius: 58,
-          padding: BEZEL,
-          background: "linear-gradient(145deg, #323c52, #0d1220 38%, #1c2435)",
+          width: SCREEN_W,
+          height: SCREEN_H,
+          borderRadius: 55,
+          background: COLORS.canvas,
           boxShadow:
-            "0 50px 90px rgba(0,0,0,0.6), 0 0 0 1.5px rgba(255,255,255,0.10) inset, 0 0 60px rgba(34,197,94,0.10)",
+            "0 0 0 2px rgba(255,255,255,0.10), 0 40px 90px rgba(0,0,0,0.65), 0 0 80px rgba(198,249,31,0.08)",
         }}
       >
-        <div
-          className="relative overflow-hidden text-[#e6edf6]"
-          style={{ width: SCREEN_W, height: SCREEN_H, borderRadius: 47, background: APP_BG }}
-        >
-          <StatusBar />
-          {header && <AppHeader />}
-          <div className="px-4 pt-4">{children}</div>
-          {overlay}
-        </div>
+        {children}
+        <StatusBar />
+        {overlay}
       </div>
+    </div>
+  );
+}
+
+/** One frame of a recorded clip, filling the screen. */
+export function Clip({ scene, at }: { scene: Scene; at: number }) {
+  return (
+    <img
+      src={clipFrame(scene, at)}
+      alt=""
+      draggable={false}
+      style={{ display: "block", width: SCREEN_W, height: SCREEN_H, objectFit: "cover" }}
+    />
+  );
+}
+
+/** One shot of a phone edit: from composition frame `at`, play `scene` from clip frame `from`. */
+export interface Cut {
+  at: number;
+  scene: Scene;
+  from?: number;
+  /** Clip frames per composition frame (1.5 = 50% faster). */
+  speed?: number;
+}
+
+/** Clip frame a cut shows at composition frame `frame`. */
+export function cutFrame(cut: Cut, frame: number): number {
+  return (cut.from ?? 0) + Math.max(0, frame - cut.at) * (cut.speed ?? 1);
+}
+
+/** Plays a list of cuts on the phone screen, cross-dissolving into each new one. */
+export function Cuts({ frame, cuts, fade = 5 }: { frame: number; cuts: Cut[]; fade?: number }) {
+  let i = 0;
+  while (i + 1 < cuts.length && frame >= cuts[i + 1].at) i++;
+  const cur = cuts[i];
+  const prev = i > 0 ? cuts[i - 1] : null;
+  const t = prev ? Math.min(1, (frame - cur.at) / fade) : 1;
+  return (
+    <>
+      {prev && t < 1 && (
+        <div className="absolute inset-0">
+          <Clip scene={prev.scene} at={cutFrame(prev, frame)} />
+        </div>
+      )}
+      <div className="absolute inset-0" style={{ opacity: t }}>
+        <Clip scene={cur.scene} at={cutFrame(cur, frame)} />
+      </div>
+    </>
+  );
+}
+
+/** Screen rows `y0`..`y1` (pts) of a clip frame as a rounded card `width` CSS px wide. */
+export function ClipCrop({
+  scene,
+  at,
+  y0,
+  y1,
+  width,
+  style,
+}: {
+  scene: Scene;
+  at: number;
+  y0: number;
+  y1: number;
+  width: number;
+  style?: CSSProperties;
+}) {
+  const scale = width / SCREEN_W;
+  return (
+    <div
+      className="relative overflow-hidden"
+      style={{
+        width,
+        height: (y1 - y0) * scale,
+        borderRadius: 18,
+        background: COLORS.canvas,
+        boxShadow: `0 0 0 1px ${COLORS.lineStrong}, 0 24px 50px rgba(0,0,0,0.55)`,
+        ...style,
+      }}
+    >
+      <img
+        src={clipFrame(scene, at)}
+        alt=""
+        draggable={false}
+        style={{ position: "absolute", left: 0, top: -y0 * scale, width, height: SCREEN_H * scale }}
+      />
     </div>
   );
 }
 
 function StatusBar() {
   return (
-    <div className="relative flex h-[50px] items-center justify-between px-8 pt-1 text-[15px] font-semibold">
-      <span>9:41</span>
+    <div
+      className="absolute inset-x-0 top-0 flex items-center justify-between"
+      style={{ height: STATUS_H, padding: "14px 34px 0 46px", color: "#fff", zIndex: 5 }}
+    >
+      <span style={{ fontWeight: 700, fontSize: 17, letterSpacing: "-0.01em" }}>9:41</span>
       <span
-        className="absolute left-1/2 top-[11px] h-[32px] w-[118px] -translate-x-1/2 rounded-full bg-black"
-        aria-hidden
+        className="absolute left-1/2 rounded-full bg-black"
+        style={{ top: 14, width: 124, height: 36, transform: "translateX(-50%)" }}
       />
-      <span className="flex items-center gap-1.5">
-        <span className="flex items-end gap-[2px]">
-          {[5, 7, 9, 11].map((h) => (
-            <span key={h} className="w-[3px] rounded-sm bg-white" style={{ height: h }} />
+      <span className="flex items-center" style={{ gap: 6 }}>
+        <span className="flex items-end" style={{ gap: 2 }}>
+          {[5, 7, 9.5, 12].map((h) => (
+            <span key={h} style={{ width: 3.6, height: h, borderRadius: 1, background: "#fff" }} />
           ))}
         </span>
-        <span className="ml-1 h-[11px] w-[22px] rounded-[3px] border border-white/60 p-[1.5px]">
-          <span className="block h-full w-[78%] rounded-[1.5px] bg-white" />
+        <span
+          style={{
+            width: 25,
+            height: 12,
+            borderRadius: 3.5,
+            border: "1px solid rgba(255,255,255,0.45)",
+            padding: 1.5,
+            marginLeft: 4,
+          }}
+        >
+          <span style={{ display: "block", height: "100%", borderRadius: 2, background: "#fff" }} />
         </span>
       </span>
     </div>
-  );
-}
-
-/** Mirrors the sticky header in src/components/AppShell.tsx. */
-function AppHeader() {
-  return (
-    <header className="border-b border-white/5 bg-pitch-950/80 px-4 pb-3 pt-1">
-      <div className="flex items-center gap-2">
-        <Logo />
-        <span className="text-lg font-extrabold tracking-tight">
-          Jax<span className="text-brand-400">Squares</span>
-        </span>
-      </div>
-    </header>
   );
 }

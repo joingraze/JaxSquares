@@ -1,26 +1,29 @@
 import { COLORS } from "../brand";
 
 const GLOWS = {
-  brand: "rgba(34,197,94,0.24)",
-  gold: "rgba(251,191,36,0.22)",
-  accent: "rgba(56,189,248,0.22)",
-  rose: "rgba(251,113,133,0.2)",
+  volt: "214,255,120",
+  gold: "255,194,51",
+  flare: "255,102,166",
+  sky: "58,183,255",
 } as const;
 
 export type Tint = keyof typeof GLOWS;
 
-/** Full-bleed brand background: the app's pitch-dark gradient plus a drifting 10×10 grid motif. */
-export function Backdrop({ frame, tint = "brand" }: { frame: number; tint?: Tint }) {
-  const drift = (frame * 0.12) % 36;
+/**
+ * Night turf: the canvas of the App Store art (scripts/store/frames.mjs), with
+ * volt light from the top corners and a glow in the tint behind the content.
+ */
+export function Backdrop({ frame, tint = "volt", glowY = 62 }: { frame: number; tint?: Tint; glowY?: number }) {
+  const drift = (frame * 0.1) % 40;
   return (
-    <div className="absolute inset-0" style={{ background: COLORS.pitch950 }}>
+    <div className="absolute inset-0" style={{ background: COLORS.canvas }}>
       <div
         className="absolute inset-0"
         style={{
           background: [
-            `radial-gradient(440px 320px at 50% -8%, ${GLOWS[tint]}, transparent 65%)`,
-            "radial-gradient(320px 260px at 108% 24%, rgba(56,189,248,0.14), transparent 60%)",
-            "radial-gradient(300px 260px at -12% 88%, rgba(245,158,11,0.10), transparent 60%)",
+            "radial-gradient(270px 210px at -4% -6%, rgba(214,255,120,.17), transparent 70%)",
+            "radial-gradient(270px 210px at 104% -6%, rgba(214,255,120,.10), transparent 70%)",
+            `radial-gradient(360px 300px at 50% ${glowY}%, rgba(${GLOWS[tint]},.14), transparent 68%)`,
           ].join(", "),
         }}
       />
@@ -28,11 +31,11 @@ export function Backdrop({ frame, tint = "brand" }: { frame: number; tint?: Tint
         className="absolute inset-0"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)",
-          backgroundSize: "36px 36px",
+            "linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px)",
+          backgroundSize: "40px 40px",
           backgroundPosition: `${drift}px ${drift}px`,
-          maskImage: "radial-gradient(ellipse at 50% 40%, black 25%, transparent 78%)",
-          WebkitMaskImage: "radial-gradient(ellipse at 50% 40%, black 25%, transparent 78%)",
+          maskImage: "radial-gradient(ellipse at 50% 35%, black 20%, transparent 75%)",
+          WebkitMaskImage: "radial-gradient(ellipse at 50% 35%, black 20%, transparent 75%)",
         }}
       />
     </div>
