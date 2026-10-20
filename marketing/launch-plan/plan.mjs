@@ -25,11 +25,11 @@ const H = {
 };
 
 const AUDIO_EXPLAINER =
-  "Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.";
+  "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).";
 const AUDIO_TRENDING =
-  "Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.";
+  "Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.";
 const AUDIO_NOSTALGIC =
-  "Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.";
+  "Has its own retro soundtrack (original music). Post it as is.";
 const COVER = "Upload the matching cover image as the Reel cover so the profile grid stays clean.";
 
 export const PLAN = {

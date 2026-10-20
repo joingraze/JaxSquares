@@ -590,7 +590,7 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
           h("div", { class: "row", style: "flex-direction:column;align-items:flex-start" },
             h("button", { class: "btn primary", onclick: () => saveFile(u.video, `${it.asset}.mp4`), text: "Save video" }),
             h("button", { class: "btn", onclick: () => saveFile(u.cover, `${it.asset}-cover.jpg`), text: "Save cover" }),
-            h("span", { class: "note", text: it.kind === "story" ? "Post as a Story; add the sticker below." : "1080×1920 · silent, add audio in the Reels editor." })))));
+            h("span", { class: "note", text: it.kind === "story" ? "Post as a Story; add the sticker below." : "1080×1920 · with its own soundtrack (original audio)." })))));
     }
     if (u && u.slides) {
       body.append(h("div", { class: "block" }, h("h4", { text: `Slides (${u.slides.length}), post in this order` }),

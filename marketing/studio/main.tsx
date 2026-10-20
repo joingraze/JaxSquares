@@ -8,6 +8,7 @@ import { flushSync } from "react-dom";
 import { SCALE } from "./brand";
 import { loadClips } from "./lib/clips";
 import type { Composition } from "./types";
+import type { Stem } from "./audio/engine";
 
 // Two modes:
 //   ?comp=<id>  capture mode, driven frame by frame by render.mjs via window.__studio
@@ -18,9 +19,11 @@ declare global {
     __studio?: {
       comps: Pick<
         Composition,
-        "id" | "title" | "width" | "height" | "fps" | "durationInFrames" | "kind" | "coverFrame"
+        "id" | "title" | "width" | "height" | "fps" | "durationInFrames" | "kind" | "coverFrame" | "audio"
       >[];
       setFrame: (frame: number) => Promise<void>;
+      /** The composition's soundtrack as a base64 float WAV (null without one). */
+      renderAudio: (id: string, solo?: Stem) => Promise<string | null>;
     };
   }
 }
@@ -129,7 +132,7 @@ const compId = params.get("comp");
 const comp = compId ? COMPOSITIONS.find((c) => c.id === compId) : undefined;
 
 window.__studio = {
-  comps: COMPOSITIONS.map(({ id, title, width, height, fps, durationInFrames, kind, coverFrame }) => ({
+  comps: COMPOSITIONS.map(({ id, title, width, height, fps, durationInFrames, kind, coverFrame, audio }) => ({
     id,
     title,
     width,
@@ -138,7 +141,14 @@ window.__studio = {
     durationInFrames,
     kind,
     coverFrame,
+    audio,
   })),
+  renderAudio: async (id, solo) => {
+    const c = COMPOSITIONS.find((x) => x.id === id);
+    if (!c?.audio) return null;
+    const { renderSoundtrack, wavBase64 } = await import("./audio/engine");
+    return wavBase64(await renderSoundtrack(c.id, c.audio, c.durationInFrames, c.fps, solo));
+  },
   setFrame: async (n) => {
     flushSync(() => pushFrame(n));
     await imagesReady();

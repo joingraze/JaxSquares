@@ -7,6 +7,7 @@ import { Sticker, poseTrack, POSE_LOW } from "../components/Layout";
 import { Cuts, Phone, type Cut } from "../components/Phone";
 import { ASSETS } from "../lib/assets";
 import { COLORS } from "../brand";
+import type { AudioSpec } from "../audio/types";
 
 const FPS = 30;
 
@@ -99,6 +100,26 @@ const END = 430;
 export const CHAT_FRAMES = 510;
 
 const CLAIM: Cut = { at: PHONE, scene: "claim", from: 10, speed: 1.4 };
+
+/** Every bubble pops; the chaos builds, the music stops dead on the freeze, and drops back in with the link. */
+export function chatAudio(v: ChatVariant): AudioSpec {
+  return {
+    style: "bounce",
+    end: END,
+    intro: 0.85,
+    builds: [[110, FREEZE]],
+    breaks: [{ from: FREEZE, to: LINK, level: 0 }],
+    drops: [LINK],
+    sfx: [
+      ...v.chaos.map((_, i) => ({ at: chaosAt(i, v.chaos.length), kind: "pop" as const, gain: 0.8 })),
+      { at: FREEZE, kind: "stop" },
+      { at: LINK, kind: "whoosh", gain: 0.7 },
+      { at: LINK + 8, kind: "ding", gain: 0.8 },
+      ...v.calm.map((_, i) => ({ at: calmAt(i), kind: "pop" as const, gain: 0.8 })),
+      { at: PHONE, kind: "whoosh", gain: 0.7 },
+    ],
+  };
+}
 
 /** Group-chat chaos → one JaxSquares link → everyone picks. */
 export function makeGroupChat(v: ChatVariant) {

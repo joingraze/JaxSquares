@@ -60,10 +60,30 @@ Playwright Chromium; elsewhere set `CHROMIUM_PATH` (e.g. your Chrome binary).
 
 Output formats follow Instagram's current specs:
 
-- Reels and Stories: 1080×1920, 30 fps, H.264 High, yuv420p, faststart. Exported
-  silent, so add music from Instagram's library when posting.
+- Reels and Stories: 1080×1920, 30 fps, H.264 High, yuv420p, faststart, with
+  an AAC 48 kHz stereo soundtrack at -14 LUFS (Instagram's playback loudness).
 - Carousels: 1080×1440 (3:4, the profile grid's tile shape since 2025).
 - Key text stays inside the Reels safe zone (`REEL_SAFE` in `studio/brand.ts`).
+
+### Soundtracks
+
+Every video has its own original music and sound effects, composed in code
+(`studio/audio/`) and rendered in the page with Web Audio (OfflineAudioContext,
+seeded, so a re-render sounds identical). A composition lists its cues in an
+`audio` spec, from the same constants that drive the visuals: `drops` (impact,
+full groove), `builds` (riser, snare roll, filter sweep), `breaks` (thinner or
+silent), `sfx` (tap, pop, whoosh, ding, sparkle, tick, womp, stop, cheer) and
+`end`. The bar grid is anchored on the end card, so it lands on the home
+chord with the JaxSquares sting. Five styles live in `audio/styles.ts`:
+`anthem` (game-day pop), `bounce` (Jax, the group chat), `pulse` (data),
+`retro` (On this day, 90 BPM boom-bap) and `harvest` (Thanksgiving). The mix
+is EQ'd for phone speakers, then render.mjs normalizes it (two-pass loudnorm)
+and muxes it in.
+
+```bash
+npm run marketing:render -- --audio                 # re-mix every soundtrack (no frame re-render)
+npm run marketing:render -- --audio 03-the-draw     # just this one
+```
 
 Copy follows the app's product rules (CLAUDE.md): no money between players and
 no betting words (no pot, payout, buy-in, odds, stakes...), "the big game",

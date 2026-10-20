@@ -8,6 +8,7 @@ import { EndCard } from "../components/Brand";
 import { Panel } from "../components/Layout";
 import { GAMES, HITS, SEASONS, pct } from "../lib/stats";
 import { COLORS } from "../brand";
+import type { AudioSpec } from "../audio/types";
 
 export const BEST_WORST_FRAMES = 500;
 const FPS = 30;
@@ -41,6 +42,23 @@ const BEST = { x: 0, y: 7 };
 const WORST = { x: 2, y: 2 };
 const T = { fill: 18, best: 128, worst: 214, compare: 300, send: 372, end: 420 };
 const BOARD = { left: 16, top: 190, width: 328 };
+
+export const BEST_WORST_AUDIO: AudioSpec = {
+  style: "pulse",
+  end: T.end,
+  intro: 0.7,
+  // Best square drops in; the worst one gets a sad trombone and a thinner groove; build into the 65× card.
+  drops: [T.best, T.compare],
+  breaks: [{ from: T.worst, to: 250, level: 0.45 }],
+  builds: [[250, T.compare]],
+  sfx: [
+    { at: T.fill, kind: "sparkle", gain: 0.6 },
+    { at: T.best + 10, kind: "pop" },
+    { at: T.worst + 2, kind: "womp" },
+    { at: T.worst + 10, kind: "pop" },
+    { at: T.send, kind: "whoosh", gain: 0.7 },
+  ],
+};
 
 /** Data Reel: the best and worst squares from every NFL final since 1999. */
 export function BestWorst({ frame }: CompProps) {

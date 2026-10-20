@@ -1,4 +1,5 @@
 import type { FC } from "react";
+import type { AudioSpec } from "./audio/types";
 
 export interface CompProps {
   frame: number;
@@ -15,5 +16,7 @@ export interface Composition {
   kind: "video" | "stills";
   /** Video frame also saved as a PNG for the Reel cover. */
   coverFrame?: number;
+  /** Soundtrack cues (videos only); render.mjs mixes and muxes it in. */
+  audio?: AudioSpec;
   component: FC<CompProps>;
 }

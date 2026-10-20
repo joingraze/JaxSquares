@@ -4,14 +4,17 @@
 //   node marketing/studio/render.mjs                 # everything
 //   node marketing/studio/render.mjs 01-how-it-works # one or more ids
 //   node marketing/studio/render.mjs --frames 01-how-it-works:0,120,300   # spot-check stills
+//   node marketing/studio/render.mjs --audio [ids]   # re-mix soundtracks into existing MP4s
 //
 // Each frame is set via window.__studio.setFrame(n) and screenshotted at 3×
 // device scale, then piped into ffmpeg (H.264, yuv420p, faststart): the format
-// Instagram expects. Needs ffmpeg on PATH and a Chromium (set CHROMIUM_PATH or
-// let Playwright find one).
+// Instagram expects. A composition with `audio` cues gets its soundtrack
+// rendered in the page (studio/audio, Web Audio offline), normalized to
+// -14 LUFS (Instagram's playback loudness) and muxed in as AAC. Needs ffmpeg
+// on PATH and a Chromium (set CHROMIUM_PATH or let Playwright find one).
 
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -20,12 +23,14 @@ import { chromium } from "@playwright/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.resolve(here, "../out");
+const TMP = path.join(OUT, ".tmp");
 const SCALE = 3;
 const CONCURRENCY = Number(process.env.RENDER_CONCURRENCY ?? 3);
 
 const args = process.argv.slice(2);
 const spot = args[0] === "--frames" ? args.slice(1) : null;
-const only = spot ? spot.map((a) => a.split(":")[0]) : args;
+const audioOnly = args[0] === "--audio";
+const only = spot ? spot.map((a) => a.split(":")[0]) : audioOnly ? args.slice(1) : args;
 
 function chromiumPath() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
@@ -81,6 +86,58 @@ function ffmpeg(meta, file) {
   return { stdin: proc.stdin, done };
 }
 
+function run(cmd, argv) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, argv, { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    proc.stderr.on("data", (d) => (stderr += d));
+    proc.on("close", (code) => (code === 0 ? resolve(stderr) : reject(new Error(`${cmd} exited ${code}: ${stderr.slice(-800)}`))));
+  });
+}
+
+/** Renders the composition's soundtrack in the page; returns the WAV path, or null without one. */
+async function soundtrack(page, meta) {
+  if (!meta.audio) return null;
+  const b64 = await page.evaluate((id) => window.__studio.renderAudio(id), meta.id);
+  if (!b64) return null;
+  const wav = path.join(TMP, `${meta.id}.wav`);
+  await writeFile(wav, Buffer.from(b64, "base64"));
+  return wav;
+}
+
+// Two-pass loudness normalization, so every Reel plays at the same level.
+const LOUDNESS = "I=-14:TP=-1.5:LRA=11";
+
+/** Copies the video stream of `video` and adds `wav` as normalized AAC, writing `out`. */
+async function mux(video, wav, out) {
+  const probe = await run("ffmpeg", ["-hide_banner", "-nostats", "-i", wav, "-af", `loudnorm=${LOUDNESS}:print_format=json`, "-f", "null", "-"]);
+  const m = JSON.parse(probe.slice(probe.lastIndexOf("{"), probe.lastIndexOf("}") + 1));
+  const norm =
+    `loudnorm=${LOUDNESS}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}` +
+    `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true`;
+  await run("ffmpeg", [
+    "-y", "-loglevel", "error", "-i", video, "-i", wav,
+    "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy",
+    "-af", `${norm},aresample=48000`, "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+    "-shortest", "-movflags", "+faststart", out,
+  ]);
+}
+
+/** Re-mixes the soundtrack of an already-rendered video. */
+async function remixAudio(meta) {
+  const file = path.join(OUT, `${meta.id}.mp4`);
+  if (meta.kind !== "video" || !meta.audio) return;
+  if (!existsSync(file)) throw new Error(`${file} is missing: render it first`);
+  const page = await openComp(meta);
+  const wav = await soundtrack(page, meta);
+  await page.close();
+  const tmp = path.join(TMP, `${meta.id}.mp4`);
+  await mux(file, wav, tmp);
+  await rename(tmp, file);
+  await rm(wav);
+  console.log(`♪ ${meta.id}`);
+}
+
 async function render(meta) {
   const page = await openComp(meta);
   const t0 = Date.now();
@@ -92,13 +149,22 @@ async function render(meta) {
     }
   } else {
     const file = path.join(OUT, `${meta.id}.mp4`);
-    const enc = ffmpeg(meta, file);
+    const silent = path.join(TMP, `${meta.id}.video.mp4`);
+    const enc = ffmpeg(meta, silent);
     for (let f = 0; f < meta.durationInFrames; f++) {
       const buf = await shot(page, f, "jpeg");
       if (!enc.stdin.write(buf)) await new Promise((r) => enc.stdin.once("drain", r));
     }
     enc.stdin.end();
     await enc.done;
+    const wav = await soundtrack(page, meta);
+    if (wav) {
+      await mux(silent, wav, file);
+      await rm(silent);
+      await rm(wav);
+    } else {
+      await rename(silent, file);
+    }
     if (meta.coverFrame !== undefined) {
       await writeFile(path.join(OUT, `${meta.id}-cover.png`), await shot(page, meta.coverFrame));
     }
@@ -108,7 +174,7 @@ async function render(meta) {
 }
 
 try {
-  await mkdir(OUT, { recursive: true });
+  await mkdir(TMP, { recursive: true });
   const probe = await browser.newPage();
   await probe.goto(base);
   await probe.waitForFunction(() => window.__studio !== undefined);
@@ -135,9 +201,10 @@ try {
     console.log(`spot frames → ${dir}`);
   } else {
     const queue = [...todo];
+    const job = audioOnly ? remixAudio : render;
     await Promise.all(
       Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
-        while (queue.length) await render(queue.shift());
+        while (queue.length) await job(queue.shift());
       }),
     );
   }

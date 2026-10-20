@@ -11,6 +11,7 @@ import { boardOf, digitsOf, type Team } from "../lib/world";
 import { pct } from "../lib/stats";
 import { lastDigit } from "../../../shared/squares";
 import { COLORS } from "../brand";
+import type { AudioSpec } from "../audio/types";
 
 const FPS = 30;
 const DIGITS = Array.from({ length: 10 }, (_, i) => i);
@@ -41,6 +42,23 @@ export interface MatchupProps {
 }
 
 export const MATCHUP_FRAMES = 300;
+
+export const MATCHUP_AUDIO: AudioSpec = {
+  style: "anthem",
+  end: MATCHUP_FRAMES - 44,
+  intro: 0.75,
+  // The draw rolls from 150; every digit lands with a tick; the hook sticker drops at 198.
+  builds: [[150, 198]],
+  drops: [198],
+  sfx: [
+    { at: 2, kind: "impact", gain: 0.55 },
+    { at: 46, kind: "whoosh", gain: 0.6 },
+    ...Array.from({ length: 10 }, (_, i) => [160 + i * 3, 166 + i * 3])
+      .flat()
+      .map((at) => ({ at, kind: "tick" as const, gain: 0.7 })),
+    { at: 206, kind: "pop", gain: 0.7 },
+  ],
+};
 
 export function makeMatchup(p: MatchupProps) {
   return function Matchup({ frame }: CompProps) {
@@ -145,6 +163,22 @@ export interface OnThisDayProps {
 }
 
 export const OTD_FRAMES = 330;
+
+export const OTD_AUDIO: AudioSpec = {
+  style: "retro",
+  end: OTD_FRAMES - 44,
+  // Date card, the final score slams in (70), the board (118), the crosshair (150), the square lights (172).
+  drops: [172],
+  sfx: [
+    { at: 2, kind: "pop" },
+    { at: 70, kind: "impact", gain: 0.45 },
+    { at: 118, kind: "whoosh", gain: 0.6 },
+    { at: 150, kind: "tick" },
+    { at: 172, kind: "sparkle" },
+    { at: 178, kind: "pop", gain: 0.7 },
+    { at: 200, kind: "pop", gain: 0.5 },
+  ],
+};
 const OTD_BOARD = { left: 52, top: 168, width: 256 };
 
 export function makeOnThisDay(p: OnThisDayProps) {
@@ -275,6 +309,18 @@ export function makeOnThisDay(p: OnThisDayProps) {
 // ---------------------------------------------------------------------------
 
 export const THANKSGIVING_FRAMES = 420;
+const TG_ROW_AT = (i: number) => 54 + i * 16;
+
+export const THANKSGIVING_AUDIO: AudioSpec = {
+  style: "harvest",
+  end: 340,
+  drops: [258],
+  sfx: [
+    ...Array.from({ length: 6 }, (_, i) => ({ at: TG_ROW_AT(i), kind: "pop" as const, gain: 0.6 })),
+    { at: 282, kind: "pop" },
+    { at: 290, kind: "pop" },
+  ],
+};
 
 /** 2026 Thanksgiving week (times ET): see marketing/launch-plan/research/. */
 export const SLATE = [
@@ -287,7 +333,7 @@ export const SLATE = [
 ];
 
 export function Thanksgiving({ frame }: CompProps) {
-  const rowAt = (i: number) => 54 + i * 16;
+  const rowAt = TG_ROW_AT;
   const listOut = interpolate(frame, [250, 260], [1, 0]);
   return (
     <div className="absolute inset-0">

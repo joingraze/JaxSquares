@@ -136,7 +136,7 @@ NFL, college and NBA games score themselves, or type in any matchup. Free to set
 #footballsquares #squarespool #officepool #fantasyfootball #gamedayparty
 ```
 
-- Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Boost candidate later: no dollar amounts on screen.
 
@@ -156,7 +156,7 @@ Send this to whoever drew 2–2 this week.
 #footballsquares #squarespool #nfl #footballstats #fantasyfootball
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Pin it. Top boost candidate (no money on screen).
 - Data: nflverse games.csv, NFL finals 1999–2025.
@@ -219,7 +219,7 @@ Free to set up. No app. No signup. Running a Cowboys–Eagles board tonight? Lin
 #footballsquares #squarespool #mondaynightfootball #officepool #nfl
 ```
 
-- Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Pin it first (pinned: this, the carousel, best/worst).
 
@@ -245,7 +245,7 @@ What square would you have had? 👇
 #onthisday #nflhistory #gogators #emmittsmith #footballsquares
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Wed, Oct 28, 12:30 PM · Carousel: Every square, ranked
@@ -284,7 +284,7 @@ Send this to the person who runs your squares 📲
 #footballsquares #squarespool #groupchat #officepool #thursdaynightfootball
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Fri, Oct 30, 5:15 PM · Task: Reply with a Reel
@@ -310,7 +310,7 @@ Run the board from anywhere: 30 seconds, one link, free to set up. Gators or Daw
 #gogators #godawgs #floridageorgia #collegefootball #footballsquares
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 1, 8:00 PM · Task: Weekly review (15 min)
@@ -373,7 +373,7 @@ Duval, where were you for this one?
 #duuuval #jaguars #onthisday #nflhistory #footballsquares
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Wed, Nov 4, 12:30 PM · Carousel: Host cheat sheet
@@ -412,7 +412,7 @@ Who's running the Duval board tonight? 👇
 #duuuval #jaguars #thursdaynightfootball #footballsquares #squarespool
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Fri, Nov 6, 12:15 PM · Task: Optional: comment-to-DM link
@@ -438,7 +438,7 @@ Canes or Irish? 👇
 #collegefootball #canes #notredame #footballsquares #squarespool
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 8, 11:00 AM · Reel: On this day: Dempsey's 63-yarder (1970)
@@ -457,7 +457,7 @@ Got a 9 this week? 👀
 #onthisday #nflhistory #saints #footballsquares #squarespool
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 8, 8:00 PM · Task: Weekly review + creator outreach
@@ -516,7 +516,7 @@ Send this to whoever hosts your squares 📲
 #footballsquares #squarespool #mondaynightfootball #officepool #nfl
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Tue, Nov 10, 1:00 PM · Reel: Winners light up
@@ -537,7 +537,7 @@ Send this to the friend who always does the math wrong.
 #footballsquares #squarespool #officepool #nfl #fantasyfootball
 ```
 
-- Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Tue, Nov 10, 1:30 PM · Task: Boost decision
@@ -594,7 +594,7 @@ Jags at Titans at 1. Board's open 👇
 ```
 
 - Post as a Collab (Tag people → Invite collaborator).
-- Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 15, 8:00 PM · Task: Weekly review
@@ -650,7 +650,7 @@ One board per game. Kids' table board? Just for fun. Save this.
 #thanksgivingfootball #thanksgiving #footballsquares #squarespool #friendsgiving
 ```
 
-- Videos are exported silent. In the Reels editor, add an upbeat instrumental from Instagram's audio library at low volume.
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Check the Florida–FSU kickoff the week of. ACC and CBS list 3:30; one outlet listed 8:30.
 
@@ -690,7 +690,7 @@ Send this to the friend who still talks about this game.
 #onthisday #nflhistory #mondaynightfootball #footballsquares #squarespool
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Fri, Nov 20, 12:00 PM · Reel: On this day: The Play (1982)
@@ -709,7 +709,7 @@ Send this to the most heartbroken squares player you know.
 #onthisday #collegefootball #theplay #calbears #footballsquares
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 22, 12:00 PM · Reel: SNF from Mexico City
@@ -730,7 +730,7 @@ Who's taking the Vikings–49ers board? 👇
 #sundaynightfootball #nfl #mexicocity #footballsquares #squarespool
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 22, 8:00 PM · Task: Weekly review + Thanksgiving prep
@@ -787,7 +787,7 @@ Send this to the family group chat. You know the one.
 #thanksgiving #familygroupchat #thanksgivingfootball #footballsquares #friendsgiving
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Wed, Nov 25, 12:00 PM · Reel: Thanksgiving Eve: Packers at Rams
@@ -808,7 +808,7 @@ Who's hosting Friendsgiving tonight? 👇
 #thanksgivingeve #friendsgiving #thanksgivingfootball #footballsquares #nfl
 ```
 
-- Videos are exported silent. Add a trending sound (the ↗ arrow in the audio browser) with a build or drop. The chaos and the reveal are cut for it.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Thu, Nov 26, 9:30 AM · Reel: Happy Thanksgiving: Red Grange, 101 years ago
@@ -827,7 +827,7 @@ What's your square for Bears–Lions? 👇
 #thanksgiving #thanksgivingfootball #onthisday #nflhistory #footballsquares
 ```
 
-- Videos are exported silent. Add a broadcast-style or nostalgic instrumental at low volume.
+- Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
 ### Sun, Nov 29, 8:00 PM · Task: Launch retro

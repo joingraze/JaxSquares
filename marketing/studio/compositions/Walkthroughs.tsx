@@ -12,13 +12,18 @@ import { Confetti, Flash, PushBanner, Tap } from "../components/Effects";
 import { EndCard } from "../components/Brand";
 import { Jax } from "../../../src/components/ui";
 import { COLORS } from "../brand";
+import type { AudioSpec } from "../audio/types";
 
 const FPS = 30;
 
+/** Composition frame at which cut `cut` reaches clip frame `clipAt`. */
+function clipMoment(cut: Cut, clipAt: number): number {
+  return Math.round(cut.at + (clipAt - (cut.from ?? 0)) / (cut.speed ?? 1));
+}
+
 /** Tap ripple at screen point (x, y) when cut `cut` reaches clip frame `clipAt`. */
 function TapAt({ frame, cut, clipAt, x, y }: { frame: number; cut: Cut; clipAt: number; x: number; y: number }) {
-  const start = cut.at + (clipAt - (cut.from ?? 0)) / (cut.speed ?? 1);
-  return <Tap frame={frame} start={Math.round(start)} x={x} y={y} />;
+  return <Tap frame={frame} start={clipMoment(cut, clipAt)} x={x} y={y} />;
 }
 
 /** Pushed in on the board, the top of the screen just under the caption. */
@@ -39,6 +44,27 @@ const HOW = {
 } satisfies Record<string, Cut | number>;
 
 export const HOW_FRAMES = 690;
+
+export const HOW_AUDIO: AudioSpec = {
+  style: "anthem",
+  end: HOW.end,
+  // The shuffle (draw clip 90) builds into "The numbers are in!" (195); the Q3 score lands 27 frames into the live cut.
+  builds: [[clipMoment(HOW.draw, 90), clipMoment(HOW.draw, 195)]],
+  drops: [clipMoment(HOW.draw, 195), HOW.live.at + 27],
+  sfx: [
+    { at: 2, kind: "whoosh", gain: 0.7 },
+    { at: clipMoment(HOW.create, 186), kind: "tap" },
+    { at: clipMoment(HOW.create, 198), kind: "sparkle" },
+    { at: HOW.claim.at, kind: "whoosh", gain: 0.7 },
+    ...[52, 67, 82].map((c) => ({ at: clipMoment(HOW.claim, c), kind: "tap" as const })),
+    { at: HOW.draw.at, kind: "whoosh", gain: 0.7 },
+    { at: clipMoment(HOW.draw, 84), kind: "tap" },
+    { at: clipMoment(HOW.draw, 195), kind: "sparkle" },
+    { at: HOW.live.at, kind: "whoosh", gain: 0.7 },
+    { at: HOW.live.at + 27, kind: "cheer" },
+    { at: HOW.live.at + 28, kind: "sparkle" },
+  ],
+};
 
 export function HowItWorks({ frame }: CompProps) {
   const pose = poseTrack(frame, [
@@ -105,6 +131,21 @@ const JAX_CUT: Cut = { at: 60, scene: "jax", from: 0, speed: 1 };
 const JAX_STORY = 250;
 const JAX_END = 318;
 export const JAX_FRAMES = 400;
+
+export const JAX_AUDIO: AudioSpec = {
+  style: "bounce",
+  end: JAX_END,
+  // Jax's 5 squares land on clip frame 102; "Meet Jax" sits on a softer groove.
+  drops: [clipMoment(JAX_CUT, 102)],
+  breaks: [{ from: JAX_STORY, to: JAX_END, level: 0.4 }],
+  sfx: [
+    { at: 6, kind: "pop" },
+    { at: JAX_CUT.at - 6, kind: "whoosh", gain: 0.7 },
+    ...[37, 67, 93].map((c) => ({ at: clipMoment(JAX_CUT, c), kind: "tap" as const })),
+    { at: clipMoment(JAX_CUT, 102), kind: "sparkle" },
+    { at: JAX_STORY + 4, kind: "pop" },
+  ],
+};
 
 export function LetJaxPick({ frame }: CompProps) {
   const pose = poseTrack(frame, [
@@ -203,6 +244,21 @@ const DRAW_CUT: Cut = { at: 10, scene: "draw", from: 0, speed: 1 };
 const DRAW_END = 330;
 export const DRAW_FRAMES = 410;
 
+export const DRAW_AUDIO: AudioSpec = {
+  style: "anthem",
+  end: DRAW_END,
+  intro: 0.7,
+  // Tap "Draw the numbers" (clip 84), the shuffle (90) builds into "The numbers are in!" (195).
+  builds: [[clipMoment(DRAW_CUT, 90), clipMoment(DRAW_CUT, 195)]],
+  drops: [clipMoment(DRAW_CUT, 195)],
+  sfx: [
+    { at: clipMoment(DRAW_CUT, 40), kind: "whoosh", gain: 0.6 },
+    { at: clipMoment(DRAW_CUT, 84), kind: "tap" },
+    { at: clipMoment(DRAW_CUT, 195), kind: "sparkle" },
+    { at: clipMoment(DRAW_CUT, 195), kind: "cheer", gain: 0.6 },
+  ],
+};
+
 export function TheDraw({ frame }: CompProps) {
   const pose = poseTrack(frame, [
     [0, POSE_LOW],
@@ -248,13 +304,31 @@ const WIN = {
 } satisfies Record<string, Cut | number>;
 export const WINNERS_FRAMES = 460;
 
+const WIN_HIT = clipMoment(WIN.live, 67);
+export const WINNERS_AUDIO: AudioSpec = {
+  style: "anthem",
+  end: WIN.end,
+  intro: 0.75,
+  builds: [[WIN.live.at + 4, WIN_HIT]],
+  drops: [WIN_HIT],
+  sfx: [
+    { at: 16, kind: "ding" },
+    { at: WIN.live.at - 8, kind: "whoosh", gain: 0.7 },
+    { at: WIN_HIT, kind: "cheer" },
+    { at: WIN_HIT + 1, kind: "sparkle" },
+    { at: WIN.home.at, kind: "whoosh", gain: 0.7 },
+    // The Activity sheet opens around home clip frame 120.
+    { at: clipMoment(WIN.home, 120), kind: "pop" },
+  ],
+};
+
 export function WinnersLightUp({ frame }: CompProps) {
   const pose = poseTrack(frame, [
     [0, POSE_LOW],
     [WIN.live.at - 8, POSE_BOARD],
     [WIN.home.at, POSE_FULL],
   ]);
-  const hit = WIN.live.at + (67 - 30);
+  const hit = WIN_HIT;
   return (
     <div className="absolute inset-0">
       <Backdrop frame={frame} tint="gold" />
@@ -350,6 +424,13 @@ const BEATS: Beat[] = [
 const BEAT = 84;
 const FEATURES_END = BEATS.length * BEAT;
 export const FEATURES_FRAMES = FEATURES_END + 80;
+
+export const FEATURES_AUDIO: AudioSpec = {
+  style: "anthem",
+  end: FEATURES_END,
+  drops: [BEAT],
+  sfx: BEATS.slice(1).map((_, k) => ({ at: (k + 1) * BEAT, kind: "whoosh" as const, gain: 0.6 })),
+};
 
 export function Features({ frame }: CompProps) {
   const i = Math.min(BEATS.length - 1, Math.floor(frame / BEAT));
