@@ -2,31 +2,24 @@ import type { CSSProperties } from "react";
 import { Easing, interpolate, spring } from "../lib/anim";
 import { BRAND, COLORS } from "../brand";
 import { Backdrop } from "./Backdrop";
+import { Logo } from "../../../src/components/AppShell";
 
 const FPS = 30;
 
-/** Large version of the 2×2 logo from src/components/AppShell.tsx. */
+/** The app's J² logo (src/components/AppShell.tsx) at poster size, with depth. */
 export function BigLogo({ size = 64, style }: { size?: number; style?: CSSProperties }) {
-  const gap = size * 0.07;
-  const pad = size * 0.14;
   return (
     <span
       style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap,
-        padding: pad,
+        display: "inline-block",
         width: size,
         height: size,
-        borderRadius: size * 0.26,
-        background: COLORS.pitch800,
+        borderRadius: size * 0.24,
         boxShadow: "0 18px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset",
         ...style,
       }}
     >
-      {["#22c55e", "#0ea5e9", "#f59e0b", "#f43f5e"].map((c) => (
-        <span key={c} style={{ background: c, borderRadius: size * 0.07 }} />
-      ))}
+      <Logo size={size} />
     </span>
   );
 }

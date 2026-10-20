@@ -106,6 +106,38 @@ function Step({ n, label }: { n: number; label: string }) {
   );
 }
 
+/**
+ * Lays a board out at its natural width, then scales it to `width`. Rows can't
+ * shrink below the 16px line height of their number labels, so narrowing a
+ * grid directly makes it no shorter and pushes it off the slide.
+ */
+function ScaledBoard({
+  top,
+  width,
+  natural,
+  children,
+}: {
+  top: number;
+  width: number;
+  natural: number;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="absolute"
+      style={{
+        top,
+        left: (360 - width) / 2,
+        width: natural,
+        transform: `scale(${width / natural})`,
+        transformOrigin: "top left",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 const DEMO = (() => {
   const numbers = drawNumbers(9);
   const events = claimSequence(42);
@@ -133,7 +165,7 @@ function MiniGrid({
     ),
   );
   return (
-    <div className="absolute" style={{ top, left: (360 - width) / 2, width }}>
+    <ScaledBoard top={top} width={width} natural={260}>
       <Card className="p-2.5">
         <StudioGrid
           teamX="Jaguars"
@@ -148,7 +180,7 @@ function MiniGrid({
           dim={winner ? 0.45 : 0}
         />
       </Card>
-    </div>
+    </ScaledBoard>
   );
 }
 
@@ -183,7 +215,7 @@ function HowItWorks({ frame: i }: CompProps) {
     <>
       <Title text="How football|squares *works*" top={78} size={46} />
       <Body top={196}>The 60-second explainer. Save it for game day 📌</Body>
-      <MiniGrid top={232} width={222} claimsUpTo={0.7} locked />
+      <MiniGrid top={228} width={198} claimsUpTo={0.7} locked />
     </>,
     <>
       <Step n={1} label="The board" />
@@ -192,7 +224,7 @@ function HowItWorks({ frame: i }: CompProps) {
         One team runs across the top, the other down the side. Every square pairs one digit from
         each team.
       </Body>
-      <MiniGrid top={246} width={222} />
+      <MiniGrid top={240} width={190} />
     </>,
     <>
       <Step n={2} label="Claim" />
@@ -201,7 +233,7 @@ function HowItWorks({ frame: i }: CompProps) {
         Everyone picks squares until the board is full. The commissioner can cap how many each
         person gets.
       </Body>
-      <MiniGrid top={246} width={222} claimsUpTo={0.65} />
+      <MiniGrid top={240} width={190} claimsUpTo={0.65} />
     </>,
     <>
       <Step n={3} label="The draw" />
@@ -210,7 +242,7 @@ function HowItWorks({ frame: i }: CompProps) {
         Once the board is full, 0–9 are randomly assigned to every row and column. Nobody knows
         their digits until now.
       </Body>
-      <MiniGrid top={246} width={222} claimsUpTo={1} locked />
+      <MiniGrid top={240} width={190} claimsUpTo={1} locked />
     </>,
     <>
       <Step n={4} label="Score check" />
@@ -248,8 +280,8 @@ function HowItWorks({ frame: i }: CompProps) {
         Jaguars 7 across, Titans 4 down. That square takes Q3. Repeat for Q1, Half, Q3 and Final.
       </Body>
       <MiniGrid
-        top={246}
-        width={222}
+        top={240}
+        width={190}
         claimsUpTo={1}
         locked
         hot={{ col: x7, row: y4 }}
@@ -280,11 +312,11 @@ function HowItWorks({ frame: i }: CompProps) {
 
 function HeatGrid({ top, width = 300 }: { top: number; width?: number }) {
   return (
-    <div className="absolute" style={{ top, left: (360 - width) / 2, width }}>
+    <ScaledBoard top={top} width={width} natural={300}>
       <Card className="p-2.5">
         <StudioGrid
-          teamX="Team A last digit"
-          teamY="Team B last digit"
+          teamX="Team A"
+          teamY="Team B"
           claims={new Map()}
           colLabels={DIGITS}
           rowLabels={DIGITS}
@@ -299,7 +331,7 @@ function HeatGrid({ top, width = 300 }: { top: number; width?: number }) {
           )}
         />
       </Card>
-    </div>
+    </ScaledBoard>
   );
 }
 
@@ -351,31 +383,31 @@ function Odds({ frame: i }: CompProps) {
       <Body top={196}>
         {GAMES.toLocaleString()} NFL final scores ({SEASONS}). Your 2–2 is cooked. 💀
       </Body>
-      <HeatGrid top={240} width={212} />
+      <HeatGrid top={228} width={196} />
     </>,
     <>
       <Title text="The *heat map*" top={70} size={32} highlight={COLORS.gold} />
       <Body top={112}>% of NFL finals landing on each square. Brighter = cashes more.</Body>
-      <HeatGrid top={150} width={296} />
+      <HeatGrid top={150} width={278} />
     </>,
     <>
       <Title text="Digit *tier list*" top={70} size={34} highlight={COLORS.gold} />
       <Body top={116}>Share of final team scores ending in each digit.</Body>
-      <div className="absolute flex flex-col gap-2.5" style={{ top: 160, left: 22, right: 22 }}>
+      <div className="absolute flex flex-col gap-2" style={{ top: 150, left: 22, right: 22 }}>
         {tiers.map((t) => (
           <div
             key={t.tier}
-            className="flex items-center gap-3 rounded-2xl bg-pitch-900/80 p-2.5 ring-1 ring-white/5"
+            className="flex items-center gap-3 rounded-2xl bg-pitch-900/80 p-2 ring-1 ring-white/5"
           >
             <span
-              className="font-black-display grid h-12 w-12 place-items-center rounded-xl text-[26px]"
+              className="font-black-display grid h-10 w-10 place-items-center rounded-xl text-[22px]"
               style={{ background: t.color, color: COLORS.pitch950 }}
             >
               {t.tier}
             </span>
             {t.digits.map((d) => (
               <div key={d} className="flex flex-1 items-baseline gap-2">
-                <span className="font-black-display text-[30px]">{d}</span>
+                <span className="font-black-display text-[26px]">{d}</span>
                 <span className="text-[13px] font-semibold text-slate-400">
                   {DIGIT_SHARE[d].toFixed(1)}%
                 </span>
@@ -601,7 +633,7 @@ function ThanksgivingPlaybook({ frame: i }: CompProps) {
         Lions game is the warm-up. Cowboys is the main event. Bills at night is the nightcap. A new
         board takes 20 seconds.
       </Body>
-      <MiniGrid top={292} width={170} claimsUpTo={1} locked />
+      <MiniGrid top={262} width={170} claimsUpTo={1} locked />
     </>,
     <>
       <Step n={2} label="Play" />

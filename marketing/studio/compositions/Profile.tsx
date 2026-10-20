@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import type { Composition, CompProps } from "../types";
 import { COLORS } from "../brand";
+import { LOGO_J_PATH, LOGO_TWO_PATH } from "../../../src/components/AppShell";
 
 // Instagram profile picture: 1080×1080, shown as a circle (110pt on the profile,
 // ~32pt next to comments). Everything sits inside the inscribed circle with
 // margin, and each mark is a single bold shape so it still reads at 32pt.
-// (The app's 2×2 colored-square logo reads as the Microsoft logo at avatar
-// size, so these marks deliberately avoid a 2×2 of colors.)
+// Option 1 is the app's J² logo; the old 2×2 colored-square mark was dropped
+// because it read as the Microsoft logo.
 
 const SIZE = 360; // stage CSS px (×3 = 1080)
 const NAVY = `radial-gradient(circle at 50% 30%, #17223b 0%, ${COLORS.pitch900} 55%, ${COLORS.pitch950} 100%)`;
@@ -19,33 +20,14 @@ function Ground({ children, background = NAVY }: { children: ReactNode; backgrou
   );
 }
 
-/** J² — "Jax Squared". */
+/** J² — "Jax Squared": the app logo's outlines without the tile. */
 function Monogram() {
   return (
     <Ground>
-      <div
-        className="font-black-display relative"
-        style={{
-          fontSize: SIZE * 0.6,
-          lineHeight: 1,
-          color: "#f8fafc",
-          transform: `translateX(-${SIZE * 0.05}px)`,
-        }}
-      >
-        J
-        <span
-          className="absolute"
-          style={{
-            left: "100%",
-            top: "-0.02em",
-            marginLeft: "0.04em",
-            fontSize: "0.46em",
-            color: COLORS.brand,
-          }}
-        >
-          2
-        </span>
-      </div>
+      <svg viewBox="0 0 100 100" width={SIZE * 0.86} height={SIZE * 0.86} aria-hidden="true">
+        <path d={LOGO_J_PATH} fill="#f8fafc" />
+        <path d={LOGO_TWO_PATH} fill={COLORS.brand} />
+      </svg>
     </Ground>
   );
 }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Card, Field, Pill, TextInput } from "../../../src/components/ui";
+import { Logo } from "../../../src/components/AppShell";
 import { money } from "../../../src/lib/format";
 import { StudioGrid, type StudioGridProps } from "./StudioGrid";
 import { spring } from "../lib/anim";
@@ -217,12 +218,7 @@ export function ShareSheet({
       >
         <div className="mx-auto mb-4 h-1.5 w-10 rounded-full bg-white/25" />
         <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
-          <span className="grid h-12 w-12 shrink-0 grid-cols-2 grid-rows-2 gap-0.5 rounded-xl bg-pitch-800 p-1.5">
-            <span className="rounded-sm bg-brand-500" />
-            <span className="rounded-sm bg-accent-500" />
-            <span className="rounded-sm bg-gold-500" />
-            <span className="rounded-sm bg-rose-500" />
-          </span>
+          <Logo size={48} />
           <span className="min-w-0">
             <span className="block text-[15px] font-bold">Join my squares pool: {gameName}</span>
             <span className="block text-[13px] text-slate-400">

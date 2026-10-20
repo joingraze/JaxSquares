@@ -4,6 +4,7 @@ import { Backdrop } from "../components/Backdrop";
 import { Headline } from "../components/Text";
 import { EndCard } from "../components/Brand";
 import { Sticker } from "../components/Layout";
+import { Logo } from "../../../src/components/AppShell";
 
 export const CHAT_FRAMES = 420;
 const FPS = 30;
@@ -224,12 +225,7 @@ function LinkBubble({ frame, boardName }: { frame: number; boardName: string }) 
         style={{ background: "#1f6f3f" }}
       >
         <div className="flex items-center gap-2.5 bg-black/20 p-2.5">
-          <span className="grid h-10 w-10 shrink-0 grid-cols-2 grid-rows-2 gap-0.5 rounded-lg bg-pitch-800 p-1">
-            <span className="rounded-sm bg-brand-500" />
-            <span className="rounded-sm bg-accent-500" />
-            <span className="rounded-sm bg-gold-500" />
-            <span className="rounded-sm bg-rose-500" />
-          </span>
+          <Logo size={40} />
           <div className="min-w-0">
             <div className="text-[12px] font-bold leading-tight">
               Join my squares pool: {boardName}
