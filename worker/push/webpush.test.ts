@@ -7,7 +7,7 @@ import { sendWebPush, vapidFromEnv, webPayload, webPushOutcome, webTopic } from 
 const ENDPOINT = "https://fcm.googleapis.com/fcm/send/dQw4w9WgXcQ:APA91bExample";
 
 const content: PushContent = {
-  title: "Super Bowl LX",
+  title: "Big Game Night",
   body: "🎉 Your square hit at Half!",
   url: "/g/abc234",
   gameId: "abc234",
@@ -86,7 +86,7 @@ describe("sendWebPush", () => {
 
     const plaintext = await decryptWebPush(new Uint8Array(init.body as Uint8Array), browser);
     expect(JSON.parse(plaintext)).toEqual(webPayload(content, 4));
-    expect(JSON.parse(plaintext)).toMatchObject({ title: "Super Bowl LX", url: "/g/abc234", badge: 4, renotify: true });
+    expect(JSON.parse(plaintext)).toMatchObject({ title: "Big Game Night", url: "/g/abc234", badge: 4, renotify: true });
   });
 
   it("maps push service replies and never throws", async () => {

@@ -54,7 +54,7 @@ function loadWorker(opts: { windows?: FakeWindow[]; fetch?: (req: unknown) => Pr
 
 const pushData = (obj: unknown) => ({ data: { json: () => obj, text: () => JSON.stringify(obj) } });
 const payload = {
-  title: "Super Bowl LX",
+  title: "Big Game Night",
   body: "🎉 Your square hit at Half!",
   url: "/g/abc234",
   tag: "abc234:win:q2",
@@ -70,7 +70,7 @@ describe("sw.js push", () => {
     const { self, fire } = loadWorker({ windows: [open] });
     await fire("push", pushData(payload));
     expect(self.registration.showNotification).toHaveBeenCalledWith(
-      "Super Bowl LX",
+      "Big Game Night",
       expect.objectContaining({
         body: "🎉 Your square hit at Half!",
         tag: "abc234:win:q2",
@@ -100,7 +100,7 @@ describe("sw.js push", () => {
   it("shows board chatter silently", async () => {
     const { self, fire } = loadWorker();
     await fire("push", pushData({ ...payload, quiet: true }));
-    expect(self.registration.showNotification).toHaveBeenCalledWith("Super Bowl LX", expect.objectContaining({ silent: true }));
+    expect(self.registration.showNotification).toHaveBeenCalledWith("Big Game Night", expect.objectContaining({ silent: true }));
   });
 });
 

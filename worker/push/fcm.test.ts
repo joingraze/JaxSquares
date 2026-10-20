@@ -33,7 +33,7 @@ afterEach(() => resetTokenCache());
 const decodePart = (s: string) => JSON.parse(new TextDecoder().decode(fromB64url(s)));
 
 const content: PushContent = {
-  title: "Super Bowl LX",
+  title: "Big Game Night",
   body: "🎉 Your square hit at Half!",
   url: "/g/abc234",
   gameId: "abc234",
@@ -148,7 +148,7 @@ describe("fcmMessage", () => {
   it("carries the notification, string-only data and per-platform fields", () => {
     const m = fcmMessage(sub.endpoint_or_token, content, 3, 1_760_000_000).message;
     expect(m.token).toBe(sub.endpoint_or_token);
-    expect(m.notification).toEqual({ title: "Super Bowl LX", body: "🎉 Your square hit at Half!" });
+    expect(m.notification).toEqual({ title: "Big Game Night", body: "🎉 Your square hit at Half!" });
     expect(m.data).toEqual({ url: "/g/abc234", gameId: "abc234", kind: "winner", tag: "abc234:win:q2" });
     for (const v of Object.values(m.data)) expect(typeof v).toBe("string");
     expect(m.apns.payload.aps).toEqual({ sound: "default", badge: 3, "thread-id": "game-abc234" });

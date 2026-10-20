@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Mobile-first web app for playing sports games with friends — starting with Super Bowl Squares.",
+  "description": "Mobile-first web app for playing sports games with friends — starting with football squares for the big game.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && npm run seo:pages",

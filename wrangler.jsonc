@@ -13,9 +13,10 @@
     // binding lets the Worker delegate non-API routes to the asset server.
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    // Let the Worker see /g/* first so it can add per-game link previews, and
-    // /.well-known/* so it can serve universal-link files.
-    "run_worker_first": ["/api/*", "/g/*", "/.well-known/*"]
+    // Let the Worker see /g/* first so it can add per-game link previews,
+    // /.well-known/* so it can serve universal-link files, and the big game
+    // page's old address so it can redirect it.
+    "run_worker_first": ["/api/*", "/g/*", "/.well-known/*", "/super-bowl-squares", "/super-bowl-squares/"]
   },
   "d1_databases": [
     {

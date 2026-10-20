@@ -76,10 +76,10 @@ const NCAA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NCAA.";
 const MONEY_NOTICE =
   "JaxSquares never collects, holds or sends money between players. A square price or prize a host shows is information only.";
 const OG_IMAGE = `${ORIGIN}/og-image.png`;
-const HEADER_NAV: LandingSlug[] = ["how-to-play-football-squares", "super-bowl-squares", "basketball-squares", "printable-football-squares"];
+const HEADER_NAV: LandingSlug[] = ["how-to-play-football-squares", "big-game-squares", "basketball-squares", "printable-football-squares"];
 const HEADER_LABELS: Partial<Record<LandingSlug, string>> = {
   "how-to-play-football-squares": "How to play",
-  "super-bowl-squares": "Super Bowl",
+  "big-game-squares": "Big game",
   "basketball-squares": "Basketball",
   "printable-football-squares": "Printables",
 };

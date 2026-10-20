@@ -94,7 +94,7 @@ describe("copy", () => {
     expect(Array.from(long).length).toBeLessThanOrEqual(60);
     expect(long.endsWith(" · Board 10")).toBe(true);
     // A board name is every push's title: the suggestion never mentions money.
-    for (const name of [siblingBoardName("Bills vs Chiefs Squares", 2), siblingBoardName("Super Bowl", 9)]) expect(mentionsMoney(name)).toBe(false);
+    for (const name of [siblingBoardName("Bills vs Chiefs Squares", 2), siblingBoardName("Big Game", 9)]) expect(mentionsMoney(name)).toBe(false);
   });
 
   it("suggests the next number in the group, past any in use", () => {

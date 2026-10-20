@@ -9,7 +9,7 @@ export const SITE_NAME = "JaxSquares";
 /** Every landing page, in nav order. The hub comes first. */
 export const LANDING_SLUGS = [
   "football-squares",
-  "super-bowl-squares",
+  "big-game-squares",
   "nfl-squares",
   "college-football-squares",
   "basketball-squares",
@@ -36,6 +36,12 @@ export const APP_PAGES = ["/", "/terms", "/privacy", "/support"] as const;
  */
 export const BANNED_WORDS =
   /\b(?:bets?|betting|bettors?|wager\w*|pots?|payouts?|pay-outs?|buy[\s-]?ins?|jackpots?|odds|stakes?|gambl\w*)\b/i;
+
+/**
+ * The football championship's trademarked name: the pages say "the big game".
+ * (The old /super-bowl-squares address redirects to /big-game-squares: worker/index.ts.)
+ */
+export const TRADEMARKED_EVENT = /super[\s-]?bowl/i;
 
 /** A currency amount ("$5", "€10", "20 USD"). Landing pages never quote one: amounts are the host's to show in the app. */
 export const CURRENCY_AMOUNT = /[$€£]\s?\d|\d\s?(?:usd|dollars?|bucks)\b/i;

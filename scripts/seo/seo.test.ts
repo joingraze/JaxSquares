@@ -9,7 +9,7 @@ import { encodeQr, isDark } from "../../src/features/invite/qr.ts";
 import { PAGES } from "./content.ts";
 import { SHEETS, qrSvg, sheetHtml, type SheetAssets, type SheetKind } from "./print.ts";
 import { renderPage, renderRobots, renderSitemap, type JaxPose, type RenderContext } from "./render.ts";
-import { APP_PAGES, BANNED_WORDS, CURRENCY_AMOUNT, HUB, LANDING_SLUGS, ORIGIN, PRINTABLES, SPA_SEGMENTS, pageUrl } from "./site.ts";
+import { APP_PAGES, BANNED_WORDS, CURRENCY_AMOUNT, HUB, LANDING_SLUGS, ORIGIN, PRINTABLES, SPA_SEGMENTS, TRADEMARKED_EVENT, pageUrl } from "./site.ts";
 
 const jax = (pose: JaxPose) =>
   `<svg width="120" height="124" viewBox="0 0 128 132" role="img" class="shrink-0" data-pose="${pose}"><title>Jax</title><rect/></svg>`;
@@ -113,10 +113,10 @@ describe("landing pages", () => {
     }
   });
 
-  it("carries the NFL line on the Super Bowl and NFL pages", () => {
+  it("carries the NFL line on the big game and NFL pages", () => {
     for (const { page, doc } of rendered) {
       const footer = doc.querySelector("footer")?.textContent ?? "";
-      if (page.slug === "super-bowl-squares" || page.slug === "nfl-squares") {
+      if (page.slug === "big-game-squares" || page.slug === "nfl-squares") {
         expect(footer).toContain("JaxSquares isn't affiliated with or endorsed by the NFL.");
       }
       expect(footer).toContain("never collects, holds or sends money between players");
@@ -190,6 +190,14 @@ describe("landing pages", () => {
     for (const text of [renderRobots(), renderSitemap("2026-01-01")]) expect(text).not.toMatch(BANNED_WORDS);
   });
 
+  it("says the big game, never the championship's trademarked name", () => {
+    for (const { page, html } of rendered) {
+      expect({ slug: page.slug, match: TRADEMARKED_EVENT.exec(html)?.[0] ?? null }).toEqual({ slug: page.slug, match: null });
+    }
+    for (const text of [renderRobots(), renderSitemap("2026-01-01")]) expect(text).not.toMatch(TRADEMARKED_EVENT);
+    for (const name of ["Super Bowl", "super-bowl", "SUPERBOWL"]) expect(name).toMatch(TRADEMARKED_EVENT);
+  });
+
   it("catches the banned words on word boundaries only", () => {
     for (const bad of ["Place a bet", "the pot", "payouts", "buy-in", "jackpot", "the odds", "high stakes", "no gambling", "wagering"]) {
       expect(bad).toMatch(BANNED_WORDS);
@@ -222,6 +230,7 @@ describe("printables", () => {
     }
     expect(doc.querySelector("svg[aria-label^='QR code']")).not.toBeNull();
     expect(sheetHtml(kind, assets)).not.toMatch(BANNED_WORDS);
+    expect(sheetHtml(kind, assets)).not.toMatch(TRADEMARKED_EVENT);
     expect(text).not.toMatch(CURRENCY_AMOUNT);
   });
 

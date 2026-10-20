@@ -71,7 +71,9 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 - No league, team or event logos anywhere (app, link previews, printables,
   landing pages): they're trademarks. A team shows as its name, abbreviation
   and color (`TeamMark`); names appear only to describe the matchup, and the
-  leagues are named as not affiliated (Terms, landing-page footers).
+  leagues are named as not affiliated (Terms, landing-page footers). The
+  football championship is "the big game", never its trademarked name (the
+  landing page is `/big-game-squares`; the old address redirects).
 - Amounts stay in the app: never in push notifications (`worker/push/copy.ts`
   quotes notes only), link previews (`worker/og.ts`), invite/share text or
   activity data. Show them on the board, rules sheet, results, winners, players.

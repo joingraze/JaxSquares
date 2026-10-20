@@ -52,7 +52,7 @@ beforeEach(async () => {
   t = await createTestD1(["migrations/0002_core_model.sql", "migrations/0004_push.sql"]);
   t.query(
     `INSERT INTO games (id, name, team_x, team_y, format, periods, host_client_id, admin_token, created_at, updated_at)
-     VALUES ('abc234', 'Super Bowl LX', '{}', '{}', '{}', '[]', ?, 'tok', 0, 0)`,
+     VALUES ('abc234', 'Big Game Night', '{}', '{}', '{}', '[]', ?, 'tok', 0, 0)`,
     HOST,
   );
   env = {
@@ -110,7 +110,7 @@ describe("notify", () => {
     await notify(env, "abc234", { kind: "winner", periodKey: "q2", label: "Half", playerIds: [pid(JAX)] });
 
     const jax = sent.web.find((w) => w.endpoint === jaxBrowser.endpoint)!.payload;
-    expect(jax).toMatchObject({ title: "Super Bowl LX", body: "🎉 Your square hit at Half!", url: "/g/abc234", badge: 1 });
+    expect(jax).toMatchObject({ title: "Big Game Night", body: "🎉 Your square hit at Half!", url: "/g/abc234", badge: 1 });
     expect(sent.web.find((w) => w.endpoint === hostBrowser.endpoint)!.payload.body).toBe("Jax's square hit at Half.");
     expect(sent.fcm.map((f) => [f.token, f.body]).sort()).toEqual([
       ["lee-android-token-0000000000000000", "Jax's square hit at Half."],

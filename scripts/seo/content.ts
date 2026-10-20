@@ -1,9 +1,10 @@
 // The copy for every landing page. Plain language, no betting vocabulary
 // (BANNED_WORDS in site.ts; seo.test.ts checks), no prices (the host fee is
 // changing: say "free to set up and invite"), and amounts only ever described
-// as the host's display-only information. "Super Bowl", "NFL", "NBA", "WNBA",
-// "NCAA" and "March Madness" are used only to describe the games; those pages
-// carry the matching "not affiliated" line.
+// as the host's display-only information. "NFL", "NBA", "WNBA", "NCAA" and
+// "March Madness" are used only to describe the games; those pages carry the
+// matching "not affiliated" line. The football championship is "the big game",
+// never its trademarked name (TRADEMARKED_EVENT in site.ts; seo.test.ts checks).
 
 import { boardDiagram, callout, features, link, paras, printableCards, shots, steps, table, terms, ticks } from "./blocks.ts";
 import type { LandingPage } from "./render.ts";
@@ -88,7 +89,7 @@ When a quarter ends, look at the last digit of each team's score. If it's Hawks 
       id: "every-game",
       h2: "Squares for every game",
       body: paras(`
-The Super Bowl is the biggest squares day of the year, and the ${link("super-bowl-squares", "Super Bowl squares guide")} covers planning a board for a party, an office or a family group chat. Running a board every week? ${link("nfl-squares", "NFL squares")} has ideas for Sunday afternoons, prime-time games, Thanksgiving and the playoffs.
+The big game in February is the biggest squares day of the year, and the ${link("big-game-squares", "big game squares guide")} covers planning a board for a party, an office or a family group chat. Running a board every week? ${link("nfl-squares", "NFL squares")} has ideas for Sunday afternoons, prime-time games, Thanksgiving and the playoffs.
 
 College fans get a full slate every Saturday, plus rivalry week and bowl season: see ${link("college-football-squares", "college football squares")}. And if you'd like a sheet for the fridge door too, grab a ${link(PRINTABLES, "free printable football squares template")}. Each one has a QR code that turns it into a live board.
 
@@ -129,7 +130,7 @@ Plenty of groups skip amounts entirely. Mark the board Just for fun, or add a pr
       a: "No. JaxSquares never collects, holds or sends money between players. A square price or prize amount on a board is information the host chooses to show, and any settling up happens among the players.",
     },
   ],
-  related: ["super-bowl-squares", "nfl-squares", "college-football-squares", HOW_TO],
+  related: ["big-game-squares", "nfl-squares", "college-football-squares", HOW_TO],
   nflNotice: true,
   cta: {
     h2: "Make your board in a minute",
@@ -137,34 +138,34 @@ Plenty of groups skip amounts entirely. Mark the board Just for fun, or add a pr
   },
 };
 
-const superBowl: LandingPage = {
-  slug: "super-bowl-squares",
-  nav: "Super Bowl squares",
+const bigGame: LandingPage = {
+  slug: "big-game-squares",
+  nav: "Big game squares",
   blurb: "Plan a board for the biggest squares day of the year, for a party, an office or the family chat.",
-  title: "Super Bowl Squares: A Live Board, Free to Set Up | JaxSquares",
+  title: "Big Game Squares: A Live Board, Free to Set Up | JaxSquares",
   description:
-    "Plan Super Bowl squares for your party, office or family in minutes. Text one link, draw the numbers live, and let every score light up the winner. Free to set up.",
-  eyebrow: "Super Bowl squares",
-  h1: `Super Bowl squares, <span class="hl">the easy way</span>`,
+    "Plan big game squares for your party, office or family in minutes. Text one link, draw the numbers live, and let every score light up the winner. Free to set up.",
+  eyebrow: "Big game squares",
+  h1: `Big game squares, <span class="hl">the easy way</span>`,
   lede:
     "The biggest game of the year is also the biggest squares day of the year. Set up a live board for your party, office or family group chat in a couple of minutes, and let the scores do the rest.",
   hero: {
     jax: "cheer",
     win: { x: 1, y: 4 },
-    art: "An example Super Bowl squares board with the Hawks 1, Wolves 4 square lit gold as the winner.",
+    art: "An example big game squares board with the Hawks 1, Wolves 4 square lit gold as the winner.",
   },
   sections: [
     {
       id: "why-squares",
-      h2: "Why squares and the Super Bowl go together",
+      h2: "Why squares and the big game go together",
       body: paras(`
-Super Bowl parties are full of people who came for the food, the commercials, the halftime show or each other. Squares gives every one of them a reason to care about the score in the fourth quarter. It takes ten seconds to explain, nobody needs to know a single player's name, and the winner is often the person who asked which team is which.
+Big game parties are full of people who came for the food, the commercials, the halftime show or each other. Squares gives every one of them a reason to care about the score in the fourth quarter. It takes ten seconds to explain, nobody needs to know a single player's name, and the winner is often the person who asked which team is which.
 
 It's built for a crowd, too. A 10×10 board has 100 squares, so a big party, a whole office or an extended family can all play on one board. With a winner at the end of every quarter, there's something to cheer about from the opening kickoff to the final whistle.`),
     },
     {
       id: "plan",
-      h2: "Plan your Super Bowl board",
+      h2: "Plan your big game board",
       body: steps([
         [
           "A week or two before: make the board",
@@ -200,7 +201,7 @@ It's built for a crowd, too. A 10×10 board has 100 squares, so a big party, a w
       id: "format",
       h2: "Which format for the big game?",
       body: paras(`
-<strong>Every quarter</strong> is the Super Bowl standard. Four winners, at the end of Q1, at halftime, at the end of Q3 and at the final score, keep the whole party in it. For a bigger crowd, add <strong>reverse winners</strong>: the square with the digits swapped wins too, which doubles the winning squares without changing anything else.
+<strong>Every quarter</strong> is the big game standard. Four winners, at the end of Q1, at halftime, at the end of Q3 and at the final score, keep the whole party in it. For a bigger crowd, add <strong>reverse winners</strong>: the square with the digits swapped wins too, which doubles the winning squares without changing anything else.
 
 Small group? A <strong>5×5 board</strong> has 25 squares and fills up fast, and since each row and column gets two numbers, every score is still covered. Want something happening all night? Try <strong>every score</strong>: each time the scoreboard changes, a square wins.
 
@@ -210,14 +211,14 @@ One more big-game detail: if the game goes to overtime, the final score includes
       id: "office-family",
       h2: "Office and family boards",
       body: paras(`
-An office board is the classic Super Bowl squares setup (some people still call it the office pool). On JaxSquares there's no sheet to walk around the building and nobody has to photograph it for the people working from home. Post the link in the team channel and everyone, in the office or not, picks from their own phone. Keep it friendly: plenty of offices play just for fun or for a prize like first pick of the leftover snacks, and JaxSquares never handles money between players.
+An office board is the classic big game squares setup (some people still call it the office pool). On JaxSquares there's no sheet to walk around the building and nobody has to photograph it for the people working from home. Post the link in the team channel and everyone, in the office or not, picks from their own phone. Keep it friendly: plenty of offices play just for fun or for a prize like first pick of the leftover snacks, and JaxSquares never handles money between players.
 
 For a family board, 100 squares leave room for every cousin, and the kids can play too: picking squares is just tapping a grid.`),
     },
   ],
   faqs: [
     {
-      q: "When should I draw the numbers for Super Bowl squares?",
+      q: "When should I draw the numbers for big game squares?",
       a: "After everyone has picked their squares and before kickoff. Drawing after the picks keeps it fair: nobody knows which squares will get the good numbers when they choose. If the board isn't full by kickoff, decide as a group whether to draw anyway.",
     },
     {
@@ -233,8 +234,8 @@ For a family board, 100 squares leave room for every cousin, and the kids can pl
       a: "No. Guests open your link in their phone's browser, pick a name, a color and an emoji, and tap their squares. There's nothing to download and no account to make.",
     },
     {
-      q: "Is JaxSquares affiliated with the NFL or the Super Bowl?",
-      a: "No. JaxSquares isn't affiliated with or endorsed by the NFL. We use the name Super Bowl only to describe the game your board is for.",
+      q: "Is JaxSquares affiliated with the NFL?",
+      a: "No. JaxSquares isn't affiliated with or endorsed by the NFL or any team. Team names appear only to describe the game your board is for.",
     },
     {
       q: "Does JaxSquares collect money for the board?",
@@ -244,7 +245,7 @@ For a family board, 100 squares leave room for every cousin, and the kids can pl
   related: ["football-squares", HOW_TO, PRINTABLES, "nfl-squares"],
   nflNotice: true,
   cta: {
-    h2: "Get your Super Bowl board ready",
+    h2: "Get your big game board ready",
     text: "Make the board now, text the link this week, and draw the numbers before kickoff. Setting it up is free.",
   },
 };
@@ -282,7 +283,7 @@ Watching a game that isn't listed? Type in any two teams instead. Entering a sco
         "Prime time: Sunday, Monday and Thursday night games give you a whole evening with one game, which is exactly what a board wants.",
         "Thanksgiving: a family board on the holiday games gives the whole house something to follow between plates.",
         "The playoffs: from the wild card round to the conference championships, the games get bigger and so do the crowds on the couch.",
-        `The Super Bowl: the big one. See the ${link("super-bowl-squares", "Super Bowl squares guide")} for planning a party board.`,
+        `The big game: the biggest squares day of the year. See the ${link("big-game-squares", "big game squares guide")} for planning a party board.`,
       ]),
     },
     {
@@ -326,7 +327,7 @@ That's exactly why the numbers are drawn at random after everyone has picked. No
       a: "No. JaxSquares isn't affiliated with or endorsed by the NFL. We use the name only to describe the games your board can follow.",
     },
   ],
-  related: ["football-squares", "super-bowl-squares", "college-football-squares", HOW_TO],
+  related: ["football-squares", "big-game-squares", "college-football-squares", HOW_TO],
   nflNotice: true,
   cta: {
     h2: "Pick this week's game",
@@ -781,7 +782,7 @@ Paper works until someone's out of the room, the sheet picks up a salsa stain, o
       a: "So the rules are written down before anyone picks, if your group uses them. They're optional. JaxSquares never collects or sends money, and plenty of boards are played just for fun.",
     },
   ],
-  related: ["football-squares", HOW_TO, "super-bowl-squares", "college-football-squares"],
+  related: ["football-squares", HOW_TO, "big-game-squares", "college-football-squares"],
   cta: {
     h2: "Or run it live",
     text: "Same game, no clipboard. Make a board, text the link, and every score lands on every phone.",
@@ -929,7 +930,7 @@ Squares works great just for fun, for bragging rights or for a prize like the la
           "Keep it friendly: it's a party game. Cheer for the score you need, and save some sympathy for whoever drew the 2 and the 5.",
         ]) +
         shots(["pick", "draw", "winning", "pinged"]) +
-        `<p>Ready to try it? Our guides for ${link("super-bowl-squares", "Super Bowl squares")}, ${link("nfl-squares", "NFL squares")} and ${link("college-football-squares", "college football squares")} have ideas for every kind of game day, and the ${link(PRINTABLES, "printable templates")} are free.</p>`,
+        `<p>Ready to try it? Our guides for ${link("big-game-squares", "big game squares")}, ${link("nfl-squares", "NFL squares")} and ${link("college-football-squares", "college football squares")} have ideas for every kind of game day, and the ${link(PRINTABLES, "printable templates")} are free.</p>`,
     },
   ],
   faqs: [
@@ -958,11 +959,11 @@ Squares works great just for fun, for bragging rights or for a prize like the la
       a: "Whatever your group agrees on. On JaxSquares the host sets a per-player limit when making the board and can change it later.",
     },
   ],
-  related: ["football-squares", "super-bowl-squares", "nfl-squares", PRINTABLES],
+  related: ["football-squares", "big-game-squares", "nfl-squares", PRINTABLES],
   cta: {
     h2: "Run your first board",
     text: "JaxSquares draws the numbers, keeps the score and lights up every winner. Free to set up, and friends join from a link.",
   },
 };
 
-export const PAGES: readonly LandingPage[] = [hub, superBowl, nfl, college, basketball, marchMadness, printables, howTo];
+export const PAGES: readonly LandingPage[] = [hub, bigGame, nfl, college, basketball, marchMadness, printables, howTo];

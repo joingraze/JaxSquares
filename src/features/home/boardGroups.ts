@@ -1,5 +1,5 @@
 // Home shows a player's boards from one game together: a host's $1, $5 and
-// $20 boards on the Super Bowl (GameSummary.group, the board group from
+// $20 boards on the big game (GameSummary.group, the board group from
 // migration 0012) sit next to each other in their section, under one
 // "Chiefs vs Bills · 3 boards" label. Pure: no React, no IO.
 

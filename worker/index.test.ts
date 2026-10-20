@@ -1423,6 +1423,16 @@ describe("app config", () => {
   });
 });
 
+describe("the big game page's old address", () => {
+  it("redirects to /big-game-squares for good, keeping the query", async () => {
+    for (const path of ["/super-bowl-squares?utm_source=x", "/super-bowl-squares/?utm_source=x"]) {
+      const res = await worker.fetch(new Request(`https://jaxsquares.test${path}`), env, {} as ExecutionContext);
+      expect(res.status).toBe(301);
+      expect(res.headers.get("location")).toBe("https://jaxsquares.test/big-game-squares?utm_source=x");
+    }
+  });
+});
+
 describe("well-known files", () => {
   it("serves assetlinks.json from the Android env vars", async () => {
     env.ANDROID_PACKAGE = "com.example.squares";

@@ -1205,6 +1205,17 @@ async function invitePage(c: Ctx): Promise<Response> {
 app.get("/g/:id", invitePage);
 app.get("/g/:id/*", invitePage);
 
+// The big game's landing page moved from its trademarked name (scripts/seo/site.ts
+// TRADEMARKED_EVENT); old links and search results land on the new page.
+const OLD_BIG_GAME_PAGE = "/super-bowl-squares";
+function toBigGamePage(c: Ctx): Response {
+  const url = new URL(c.req.url);
+  url.pathname = "/big-game-squares";
+  return c.redirect(url.toString(), 301);
+}
+app.get(OLD_BIG_GAME_PAGE, toBigGamePage);
+app.get(`${OLD_BIG_GAME_PAGE}/`, toBigGamePage);
+
 // Everything else is the React SPA; `not_found_handling: single-page-application`
 // serves index.html for deep links so client-side routing works on refresh.
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));

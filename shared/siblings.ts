@@ -1,5 +1,5 @@
 // Several boards for one game (a $1 board, a $5 board and a $20 board on the
-// same Super Bowl): the pure rules both sides share. A host adds a board from
+// same big game): the pure rules both sides share. A host adds a board from
 // one they host (CreateGameInput.fromGameId); the boards share a group
 // (games.board_group, migration 0012), and each board's public state lists the
 // others (GameState.siblings). No framework or IO here.

@@ -301,7 +301,7 @@ export default function Kit() {
             <ListRow title="Delete board" destructive onClick={() => toast.error("Board deleted")} />
           </ListGroup>
           <TextField label="Your name" value={name} onChange={(e) => setName(e.target.value)} maxLength={24} counter hint="Friends see this on the board." />
-          <TextField label="Board name" value="" onChange={() => {}} error="Give your board a name" placeholder="Super Bowl at Jax's" />
+          <TextField label="Board name" value="" onChange={() => {}} error="Give your board a name" placeholder="Big game at Jax's" />
           <div className="flex items-center justify-between">
             <span className="text-callout font-semibold">Squares per player</span>
             <Stepper label="Squares per player" value={limit} onChange={setLimit} min={0} max={100} format={(v) => (v === 0 ? "∞" : v)} />

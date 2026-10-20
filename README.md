@@ -132,7 +132,7 @@ scripts/seo/     Static landing pages (/football-squares, ...) and printable PDF
 
 ## Landing pages and printables
 
-`/football-squares`, `/super-bowl-squares`, `/nfl-squares`,
+`/football-squares`, `/big-game-squares`, `/nfl-squares`,
 `/college-football-squares`, `/basketball-squares`, `/march-madness-squares`,
 `/printable-football-squares` and `/how-to-play-football-squares` are static
 HTML written from

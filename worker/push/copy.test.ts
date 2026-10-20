@@ -33,7 +33,7 @@ describe("buildDeliveries", () => {
     const ds = buildDeliveries(makeGame(), players, { kind: "numbers-drawn" }, NOW);
     expect(ds).toHaveLength(3);
     for (const d of ds) {
-      expect(d.content).toMatchObject({ title: "Super Bowl LX", url: "/g/abc234", gameId: "abc234", kind: "numbers-drawn" });
+      expect(d.content).toMatchObject({ title: "Big Game Night", url: "/g/abc234", gameId: "abc234", kind: "numbers-drawn" });
     }
     expect(ds[0].content.body).toBe("🔢 Numbers are in. Find your squares.");
   });

@@ -52,7 +52,7 @@ function makeState(over: Partial<GameState["game"]> = {}, rest: Partial<GameStat
   return {
     game: {
       id: "prt123",
-      name: "Office Super Bowl Pool",
+      name: "Office Big Game Board",
       sport: "football",
       league: "custom",
       teamX: { name: "Eagles", abbr: "PHI", color: "#004c54" },
@@ -139,7 +139,7 @@ describe("Printable board", () => {
     board.state = makeState();
     renderPrint();
     const sheet = screen.getByTestId("print-sheet");
-    expect(within(sheet).getByRole("heading", { level: 1 })).toHaveTextContent("Office Super Bowl Pool");
+    expect(within(sheet).getByRole("heading", { level: 1 })).toHaveTextContent("Office Big Game Board");
     expect(screen.getByTestId("print-subtitle")).toHaveTextContent(/^Eagles vs 49ers · .*2027/);
     const cells = screen.getAllByTestId("print-cell");
     expect(cells).toHaveLength(100);

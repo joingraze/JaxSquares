@@ -1086,7 +1086,7 @@ ends keeps the co-hosts it has, but takes no new one past 3.
 
 ## Several boards for one game
 
-Super Bowl and office groups run two or three boards on one game at different
+Big game and office groups run two or three boards on one game at different
 square prices (a $1, a $5 and a $20 board). Pure rules in `shared/siblings.ts`.
 
 - **Groups** (core, migration `0012_board_groups.sql`, only `worker/db.ts`):

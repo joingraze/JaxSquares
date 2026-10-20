@@ -14,7 +14,7 @@ export const pid = (clientId: string): string => derivePlayerIdSync(clientId);
 export function makeGame(over: Partial<Game> = {}): Game {
   return {
     id: "abc234",
-    name: "Super Bowl LX",
+    name: "Big Game Night",
     sport: "football",
     league: "custom",
     teamX: { name: "Chiefs", abbr: "KC" },
