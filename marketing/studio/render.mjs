@@ -6,7 +6,7 @@
 //   node marketing/studio/render.mjs --frames 01-how-it-works:0,120,300   # spot-check stills
 //
 // Each frame is set via window.__studio.setFrame(n) and screenshotted at 3×
-// device scale, then piped into ffmpeg (H.264, yuv420p, faststart) — the format
+// device scale, then piped into ffmpeg (H.264, yuv420p, faststart): the format
 // Instagram expects. Needs ffmpeg on PATH and a Chromium (set CHROMIUM_PATH or
 // let Playwright find one).
 
@@ -53,9 +53,13 @@ async function openComp(meta) {
   return page;
 }
 
-async function shot(page, frame) {
+// Video frames go to ffmpeg as JPEG (q95): a PNG of 1080×1920 takes ~3× as long
+// to encode, and H.264 at CRF 18 can't tell the difference. Stills stay PNG.
+async function shot(page, frame, type = "png") {
   await page.evaluate((n) => window.__studio.setFrame(n), frame);
-  return page.screenshot({ type: "png", animations: "disabled" });
+  return page.screenshot(
+    type === "png" ? { type: "png", animations: "disabled" } : { type: "jpeg", quality: 95, animations: "disabled" },
+  );
 }
 
 function ffmpeg(meta, file) {
@@ -63,8 +67,8 @@ function ffmpeg(meta, file) {
     "ffmpeg",
     [
       "-y", "-loglevel", "error",
-      "-f", "image2pipe", "-framerate", String(meta.fps), "-i", "-",
-      "-c:v", "libx264", "-preset", "slow", "-crf", "18",
+      "-f", "image2pipe", "-c:v", "mjpeg", "-framerate", String(meta.fps), "-i", "-",
+      "-c:v", "libx264", "-preset", "medium", "-crf", "18",
       "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
       "-movflags", "+faststart",
       file,
@@ -90,7 +94,7 @@ async function render(meta) {
     const file = path.join(OUT, `${meta.id}.mp4`);
     const enc = ffmpeg(meta, file);
     for (let f = 0; f < meta.durationInFrames; f++) {
-      const buf = await shot(page, f);
+      const buf = await shot(page, f, "jpeg");
       if (!enc.stdin.write(buf)) await new Promise((r) => enc.stdin.once("drain", r));
     }
     enc.stdin.end();

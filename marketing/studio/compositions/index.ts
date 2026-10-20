@@ -26,7 +26,7 @@ const reel = (c: Omit<Composition, "width" | "height" | "fps" | "kind">): Compos
 });
 
 export const COMPOSITIONS: Composition[] = [
-  reel({ id: "01-how-it-works", title: "How it works", durationInFrames: HOW_FRAMES, coverFrame: 300, component: HowItWorks }),
+  reel({ id: "01-how-it-works", title: "How it works", durationInFrames: HOW_FRAMES, coverFrame: 36, component: HowItWorks }),
   reel({ id: "02-let-jax-pick", title: "Let Jax pick", durationInFrames: JAX_FRAMES, coverFrame: 30, component: LetJaxPick }),
   reel({ id: "03-the-draw", title: "POV: you hit Draw", durationInFrames: DRAW_FRAMES, coverFrame: 250, component: TheDraw }),
   reel({
