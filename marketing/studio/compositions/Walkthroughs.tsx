@@ -96,7 +96,7 @@ export function HowItWorks({ frame }: CompProps) {
       {frame < 52 && (
         <Headline
           frame={frame}
-          text="Squares for any game.|Set up in *30 seconds.*"
+          text="Football & basketball|squares in *30 seconds.*"
           size={31}
           exit={42}
           style={{ position: "absolute", top: 84, left: 0, right: 0, zIndex: 30 }}
@@ -467,7 +467,7 @@ export function Features({ frame }: CompProps) {
           opacity: frame < FEATURES_END ? 1 : 0,
         }}
       />
-      <EndCard frame={frame} start={FEATURES_END} line="Squares for any game.|Free to set up." />
+      <EndCard frame={frame} start={FEATURES_END} line="Football & basketball squares.|Free to set up." />
     </div>
   );
 }

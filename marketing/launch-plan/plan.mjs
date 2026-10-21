@@ -22,6 +22,7 @@ const H = {
   mnf: "#mondaynightfootball",
   tnf: "#thursdaynightfootball",
   snf: "#sundaynightfootball",
+  hoops: "#basketballsquares",
 };
 
 const AUDIO_EXPLAINER =
@@ -34,9 +35,9 @@ const COVER = "Upload the matching cover image as the Reel cover so the profile 
 
 // The profile, exactly as it goes into Instagram (the setup steps copy from here).
 const PROFILE = {
-  name: "JaxSquares · Football Squares",
+  name: "JaxSquares · Football & Basketball Squares",
   username: "jaxsquares",
-  bio: "Squares for any game 🏈🐶\nFree to set up · no app · no signup\nJax draws the numbers, live scores call winners\nNot affiliated w/ NFL or NCAA 👇",
+  bio: "Football & basketball squares 🏈🏀\nFree to set up · no app · no signup\nJax draws numbers, live scores call winners\nNot affiliated w/ NFL, NBA or NCAA 👇",
   linkUrl: "https://jaxsquares.com/?ref=ig",
   linkTitle: "Make a board",
   category: "Sports & Recreation",
@@ -56,7 +57,7 @@ export const PLAN = {
 
   strategy: {
     positioning:
-      "Squares for any game, with Jax. No app for players, no signup, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Host Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
+      "Football and basketball squares, run by Jax and live now at jaxsquares.com. No app for players, no signup, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Host Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
     pillars: [
       { name: "Show the product", share: "35%", what: "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up. Every video is screen footage of the real app." },
       { name: "Squares nerdery", share: "25%", what: "Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent." },
@@ -84,7 +85,7 @@ export const PLAN = {
       "Paid boosts: only creatives with no amounts on screen (true of every video here; the Just for fun ones are safest). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07.",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
-      "Add 'Not affiliated with the NFL or NCAA' to the bio.",
+      "Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.",
     ],
     kpis: [
       { metric: "Boards created (north star)", how: "npx wrangler d1 execute jaxsquares --remote --command \"SELECT date(created_at/1000,'unixepoch') AS day, COUNT(*) AS boards FROM games GROUP BY day ORDER BY day DESC LIMIT 14\"" },
@@ -119,7 +120,7 @@ export const PLAN = {
     },
     outreach: {
       creator:
-        "Hey [name]! Love your [team] content. We built JaxSquares: squares for any game, no download or signup for players. Want to run a Just for fun followers' board for [game]? We set it up (on us), you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.",
+        "Hey [name]! Love your [team] content. We built JaxSquares: football and basketball squares, no download or signup for players. Want to run a Just for fun followers' board for [game]? We set it up (on us), you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.",
       bar:
         "Hi! We make JaxSquares, a squares board your regulars join with a QR code or link. No app, and no purchase needed to play. Want us to set up a Just for fun board for [game] for your crowd (on us)?",
       ugc: "Screenshot your board and tag @jaxsquares. We reshare the best ones (with your OK).",
@@ -203,7 +204,7 @@ export const PLAN = {
       date: "2026-10-21", time: "14:40", kind: "task", week: "prep", start: true,
       title: "Profile 3/7: Name and username",
       checklist: [
-        "Edit profile → Name: paste the name. The name field is searchable, so “Football Squares” helps people find you.",
+        "Edit profile → Name: paste the name. The name field is searchable, so “Football & Basketball Squares” helps people find you either way.",
         "Username: make sure it's jaxsquares (the whole plan uses @jaxsquares).",
         "Instagram allows two name changes every 14 days, so paste it carefully.",
       ],
@@ -217,7 +218,7 @@ export const PLAN = {
       title: "Profile 4/7: Bio",
       checklist: [
         "Edit profile → Bio → paste the bio. Keep the line breaks.",
-        "142 characters, inside Instagram's 150. Leave Pronouns empty.",
+        "149 characters, inside Instagram's 150. Leave Pronouns empty.",
       ],
       copy: [{ label: "Bio", text: PROFILE.bio }],
     },
@@ -321,13 +322,13 @@ export const PLAN = {
     // ------------------------------------------------------------ LAUNCH GRID (bottom row Sat, middle row Sun, top row Mon)
     {
       date: "2026-10-21", time: "17:00", kind: "carousel", week: "prep", start: true,
-      title: "Grid 1/9: Your board starts here",
-      asset: "g1-your-board-starts-here", slides: 2,
+      title: "Grid 1/9: JaxSquares is live",
+      asset: "g1-jaxsquares-is-live", slides: 2,
       caption:
-        "Square 1 of 9 🟩 The board is open.\n\nJaxSquares is squares for any game: pick the game, text one link, and Jax draws the numbers. Live scores call every winner.\n\nWatch this grid fill up this week. Your first board → link in bio",
-      hashtags: [...H.core, "#gameday"],
+        "JaxSquares is live 🟩 Square 1 of 9.\n\nIt's the squares app for football and basketball season. Pick an NFL, college or NBA game, text your crew one link, and everyone picks squares from their own phone. Jax draws the numbers and live scores call every winner.\n\nFree to set up at jaxsquares.com (link in bio). Watch this grid fill up this week 👀",
+      hashtags: [...H.core, H.hoops, "#gameday"],
       altText:
-        "A bright green board square reading “Your board starts here” with jaxsquares.com: square 1 of 9 in the JaxSquares launch grid. Slide 2 lists three steps: pick the game, text your crew one link, Jax draws the numbers.",
+        "A bright green board square with the JaxSquares logo, a 3 by 3 board with one gold square, reading “JaxSquares is live” over jaxsquares.com: the squares app for football and basketball games. Slide 2 lists three steps: pick a football or basketball game, text your crew one link, Jax draws the numbers and live scores call every winner.",
       notes: ["Launch grid, bottom row (bottom right). Post squares 1, 2 and 3 back to back, in order."],
     },
     {
@@ -335,8 +336,8 @@ export const PLAN = {
       title: "Grid 2/9: Scores update themselves",
       asset: "g2-scores-update-themselves", slides: 2,
       caption:
-        "Square 2 of 9 📺 Scores update themselves.\n\nPick an NFL, college or NBA game and the board follows it live: who's winning right now, and the score that would change it. No refreshing a score app, no math.\n\nSend this to whoever keeps score with a pen.",
-      hashtags: ["#footballsquares", H.nfl, H.cfb],
+        "Square 2 of 9 📺 Scores update themselves.\n\nPick an NFL, college football, NBA or college basketball game and the board follows it live: who's winning right now, and the score that would change it. No refreshing a score app, no math.\n\nSend this to whoever keeps score with a pen.",
+      hashtags: ["#footballsquares", H.hoops, H.nfl, H.cfb],
       altText:
         "A green board square reading “Scores update themselves”: square 2 of 9. Slide 2 shows the JaxSquares scoreboard at 16 to 13 with the next winner called out.",
       notes: ["Launch grid, bottom row (middle)."],
@@ -346,7 +347,7 @@ export const PLAN = {
       title: "Grid 3/9: Jax draws the numbers",
       asset: "g3-jax-draws-the-numbers", slides: 2,
       caption:
-        "Square 3 of 9 🎲 Jax draws the numbers.\n\nOnce the board is full, 0–9 get shuffled live for both teams, right in front of everyone. Nobody can say the host rigged it.\n\nSend this to your board's most suspicious player.",
+        "Square 3 of 9 🔢 Jax draws the numbers.\n\nOnce the board is full, 0–9 get shuffled live for both teams, right in front of everyone. Nobody can say the host rigged it.\n\nSend this to your board's most suspicious player.",
       hashtags: [...H.core, "#gameday"],
       altText:
         "A green board square reading “Jax draws the numbers”: square 3 of 9. Slide 2 shows the app's “The numbers are in!” screen with digits across both team axes.",
@@ -421,13 +422,13 @@ export const PLAN = {
     },
     {
       date: "2026-10-23", time: "13:10", kind: "carousel", week: "prep", start: true,
-      title: "Grid 9/9: Squares for any game",
-      asset: "g9-squares-for-any-game", slides: 2,
+      title: "Grid 9/9: Football and basketball squares",
+      asset: "g9-football-and-basketball", slides: 2,
       caption:
-        "Square 9 of 9 🏈 The board's full, and that's our logo up there.\n\nJaxSquares is squares for any game: pick an NFL, college or NBA game (or type in any matchup), choose how squares win, and your board is live in about 30 seconds.\n\nMake yours → link in bio",
-      hashtags: [...H.core, H.nfl, H.cfb],
+        "Square 9 of 9 🏈🏀 The board's full, and that's our logo up there.\n\nJaxSquares runs football and basketball squares, live now. Pick an NFL or college football game, an NBA or college basketball game, or type in any matchup. Choose how squares win and your board is ready in about 30 seconds.\n\nFootball season, then basketball season, then the big game. Make yours → link in bio",
+      hashtags: [...H.core, H.hoops, H.nfl, "#nba"],
       altText:
-        "A bright green board square with a football reading “Squares for any game”: square 9 of 9, completing the JaxSquares launch grid. Slide 2 shows the app's game picker with NFL and college games and a custom option.",
+        "A bright green board square with a football and a basketball reading “Football and basketball squares. Set up in 30 seconds. Live now.”: square 9 of 9, completing the JaxSquares launch grid. Slide 2 shows the app's game picker with Football and Basketball tabs, NFL and college games, and a custom option.",
       notes: ["Launch grid, top row (top left): the last square. Open your profile and check the logo lines up."],
     },
     {
@@ -746,7 +747,7 @@ export const PLAN = {
       asset: "03-the-draw",
       tieIn: "Monday Night Football · Bills at Vikings · 8:15 PM ET · ESPN/ABC",
       caption:
-        "POV: the board is full and you hit Draw 🎲\n\nJax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.\n\nSend this to whoever hosts your squares 📲",
+        "POV: the board is full and you hit Draw 🔢\n\nJax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.\n\nSend this to whoever hosts your squares 📲",
       hashtags: [...H.core, H.mnf, H.office, H.nfl],
       notes: [AUDIO_TRENDING, COVER],
     },
@@ -754,7 +755,7 @@ export const PLAN = {
       date: "2026-11-09", time: "19:00", kind: "story", week: "w3",
       title: "MNF: Bills at Vikings",
       tieIn: "8:15 PM ET · ESPN/ABC",
-      story: { sticker: "Link → app", text: "MNF: Bills at Vikings. Draw your numbers live 🎲" },
+      story: { sticker: "Link → app", text: "MNF: Bills at Vikings. Draw your numbers live 🔢" },
     },
     {
       date: "2026-11-10", time: "13:00", kind: "reel", week: "w3",

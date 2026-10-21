@@ -21,7 +21,7 @@ const TILE_H = 480;
 /** The board's gutter: half of it on each side of every tile. */
 const MARGIN = 20;
 
-type Art = { emoji: string } | { jax: true } | { trophy: true } | { url: true };
+type Art = { emoji: string } | { jax: true } | { trophy: true } | { url: true } | { digits: true };
 
 interface Crop {
   scene: Scene;
@@ -44,16 +44,20 @@ export interface GridTile {
 
 export const GRID: GridTile[] = [
   {
-    id: "g1-your-board-starts-here",
+    id: "g1-jaxsquares-is-live",
     order: 1,
     row: 2,
     col: 2,
     art: { url: true },
-    headline: "Your board starts here.",
-    sub: "Squares for any game.",
+    headline: "JaxSquares is live.",
+    sub: "The squares app for football and basketball games.",
     proof: {
-      title: "Your first board in *30 seconds*",
-      steps: ["Pick the game and how squares win", "Text your crew one link", "Jax draws the numbers. Live scores do the rest."],
+      title: "What's *JaxSquares?*",
+      steps: [
+        "Pick a football or basketball game",
+        "Text your crew one link. They pick squares from their phone.",
+        "Jax draws the numbers. Live scores call every winner.",
+      ],
     },
   },
   {
@@ -63,7 +67,7 @@ export const GRID: GridTile[] = [
     col: 1,
     art: { emoji: "📺" },
     headline: "Scores update themselves.",
-    sub: "NFL, college and NBA games score on their own.",
+    sub: "NFL, NBA and college games score on their own.",
     proof: {
       title: "Live scores, *built in*",
       crops: [{ scene: "live", at: 30, y0: 100, y1: 372 }],
@@ -75,7 +79,7 @@ export const GRID: GridTile[] = [
     order: 3,
     row: 2,
     col: 0,
-    art: { emoji: "🎲" },
+    art: { digits: true },
     headline: "Jax draws the numbers.",
     sub: "Shuffled live, in front of everyone.",
     proof: {
@@ -92,7 +96,7 @@ export const GRID: GridTile[] = [
     col: 2,
     art: { trophy: true },
     headline: "Your square hits.",
-    sub: "Winners light up every quarter.",
+    sub: "Winners light up as the game goes.",
     proof: {
       title: "Winners called *for you*",
       crops: [{ scene: "live", at: 100, y0: 100, y1: 560 }],
@@ -163,17 +167,17 @@ export const GRID: GridTile[] = [
     },
   },
   {
-    id: "g9-squares-for-any-game",
+    id: "g9-football-and-basketball",
     order: 9,
     row: 0,
     col: 0,
-    art: { emoji: "🏈" },
-    headline: "Squares for any game.",
-    sub: "Set up in 30 seconds.",
+    art: { emoji: "🏈🏀" },
+    headline: "Football and basketball squares.",
+    sub: "Set up in 30 seconds. Live now.",
     proof: {
-      title: "Pick a game. *Any game.*",
+      title: "Football or basketball. *Your pick.*",
       crops: [{ scene: "create", at: 10, y0: 118, y1: 560 }],
-      note: "NFL, college and NBA games score themselves. Or type in any matchup.",
+      note: "NFL, NBA and college games score themselves. Or type in any matchup.",
       width: 270,
     },
   },
@@ -189,10 +193,45 @@ const INK = COLORS.canvas;
 
 function TileArt({ art }: { art: Art }) {
   if ("jax" in art) return <Jax pose="sit" size={176} />;
+  if ("digits" in art) {
+    // The draw as the app shows it: 0–9 shuffled for each team, in the axis colors.
+    const rows = [
+      { color: COLORS.sky, digits: [7, 0, 3, 9, 4] },
+      { color: COLORS.flare, digits: [2, 8, 5, 1, 6] },
+    ];
+    return (
+      <div
+        className="flex flex-col"
+        style={{ gap: 6, padding: 14, borderRadius: 26, background: INK, boxShadow: "inset 0 -5px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(6,12,9,0.25)" }}
+      >
+        {rows.map((r) => (
+          <div key={r.color} className="flex" style={{ gap: 6 }}>
+            {r.digits.map((d) => (
+              <span
+                key={d}
+                className="display grid place-items-center"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 9,
+                  fontSize: 22,
+                  color: "#fff",
+                  background: r.color,
+                  boxShadow: "inset 0 -3px 0 rgba(0,0,0,0.18), inset 0 2px 0 rgba(255,255,255,0.3)",
+                }}
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
   if ("url" in art) {
     return (
       <div className="flex flex-col items-center" style={{ gap: 14 }}>
-        <span style={{ fontSize: 72, lineHeight: 1 }}>👇</span>
+        <img src={ASSETS.mark} alt="" style={{ width: 92, height: 92, filter: "drop-shadow(0 8px 16px rgba(6,12,9,0.25))" }} />
         <span className="display" style={{ padding: "10px 18px", borderRadius: 999, background: INK, color: COLORS.volt, fontSize: 22, letterSpacing: "-0.02em" }}>
           {BRAND.url}
         </span>
@@ -207,11 +246,11 @@ function TileArt({ art }: { art: Art }) {
         width: 128,
         height: 128,
         background: INK,
-        fontSize: 68,
+        fontSize: [...emoji].length > 1 ? 46 : 68,
         boxShadow: "inset 0 -5px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(6,12,9,0.25)",
       }}
     >
-      <span style={{ transform: "translateY(3px)" }}>{emoji}</span>
+      <span style={{ transform: "translateY(3px)", letterSpacing: 2 }}>{emoji}</span>
     </span>
   );
 }
@@ -287,11 +326,11 @@ export function Tile({ tile }: { tile: GridTile }) {
           <TileArt art={tile.art} />
           <div
             className="display text-center"
-            style={{ marginTop: "jax" in tile.art ? 10 : 24, fontSize: tile.headline.length > 18 ? 34 : 40, lineHeight: 0.98, color: INK }}
+            style={{ marginTop: "jax" in tile.art ? 10 : 24, fontSize: tile.headline.length > 26 ? 31 : tile.headline.length > 18 ? 34 : 40, lineHeight: 0.98, color: INK }}
           >
             {tile.headline}
           </div>
-          <div className="text-center" style={{ marginTop: 10, fontSize: 15, fontWeight: 600, lineHeight: 1.3, color: "rgba(6,12,9,0.72)" }}>
+          <div className="text-center" style={{ marginTop: 10, fontSize: 15, fontWeight: 600, lineHeight: 1.3, color: "rgba(6,12,9,0.72)", textWrap: "balance" }}>
             {tile.sub}
           </div>
         </div>
@@ -423,7 +462,7 @@ function GridPreview() {
         </span>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{BRAND.handle.slice(1)}</div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>JaxSquares · Football Squares</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>JaxSquares · Football &amp; Basketball Squares</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Sports & Recreation</div>
         </div>
       </div>

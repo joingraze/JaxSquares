@@ -65,10 +65,11 @@ DTSTART;TZID=America/New_York:20261021T144000
 DURATION:PT30M
 SUMMARY:[Task] Profile 3/7: Name and username
 DESCRIPTION:☐ Edit profile → Name: paste the name. The name field is se
- archable\, so “Football Squares” helps people find you.\n☐ Username:
-  make sure it's jaxsquares (the whole plan uses @jaxsquares).\n☐ Instagr
- am allows two name changes every 14 days\, so paste it carefully.\n\nNAME:
- \nJaxSquares · Football Squares\nUSERNAME:\njaxsquares
+ archable\, so “Football & Basketball Squares” helps people find you ei
+ ther way.\n☐ Username: make sure it's jaxsquares (the whole plan uses @j
+ axsquares).\n☐ Instagram allows two name changes every 14 days\, so past
+ e it carefully.\n\nNAME:\nJaxSquares · Football & Basketball Squares\nUSE
+ RNAME:\njaxsquares
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Profile 3/7: Name and username
@@ -82,10 +83,10 @@ DTSTART;TZID=America/New_York:20261021T144500
 DURATION:PT30M
 SUMMARY:[Task] Profile 4/7: Bio
 DESCRIPTION:☐ Edit profile → Bio → paste the bio. Keep the line break
- s.\n☐ 142 characters\, inside Instagram's 150. Leave Pronouns empty.\n\n
- BIO:\nSquares for any game 🏈🐶\nFree to set up · no app · no signup
- \nJax draws the numbers\, live scores call winners\nNot affiliated w/ NFL 
- or NCAA 👇
+ s.\n☐ 149 characters\, inside Instagram's 150. Leave Pronouns empty.\n\n
+ BIO:\nFootball & basketball squares 🏈🏀\nFree to set up · no app · 
+ no signup\nJax draws numbers\, live scores call winners\nNot affiliated w/
+  NFL\, NBA or NCAA 👇
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Profile 4/7: Bio
@@ -154,20 +155,24 @@ UID:2026-10-21T1700-carousel@jaxsquares-launch
 DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261021T170000
 DURATION:PT20M
-SUMMARY:[Carousel] Grid 1/9: Your board starts here
-DESCRIPTION:Asset: g1-your-board-starts-here/01.png\, g1-your-board-starts-
- here/02.png\n\nCAPTION:\nSquare 1 of 9 🟩 The board is open.\n\nJaxSquar
- es is squares for any game: pick the game\, text one link\, and Jax draws 
- the numbers. Live scores call every winner.\n\nWatch this grid fill up thi
- s week. Your first board → link in bio\n\n#footballsquares #squarespool 
- #gameday\n\nAlt text: A bright green board square reading “Your board st
- arts here” with jaxsquares.com: square 1 of 9 in the JaxSquares launch g
- rid. Slide 2 lists three steps: pick the game\, text your crew one link\, 
- Jax draws the numbers.\n\n• Launch grid\, bottom row (bottom right). Pos
- t squares 1\, 2 and 3 back to back\, in order.
+SUMMARY:[Carousel] Grid 1/9: JaxSquares is live
+DESCRIPTION:Asset: g1-jaxsquares-is-live/01.png\, g1-jaxsquares-is-live/02.
+ png\n\nCAPTION:\nJaxSquares is live 🟩 Square 1 of 9.\n\nIt's the square
+ s app for football and basketball season. Pick an NFL\, college or NBA gam
+ e\, text your crew one link\, and everyone picks squares from their own ph
+ one. Jax draws the numbers and live scores call every winner.\n\nFree to s
+ et up at jaxsquares.com (link in bio). Watch this grid fill up this week 
+ 👀\n\n#footballsquares #squarespool #basketballsquares #gameday\n\nAlt t
+ ext: A bright green board square with the JaxSquares logo\, a 3 by 3 board
+  with one gold square\, reading “JaxSquares is live” over jaxsquares.c
+ om: the squares app for football and basketball games. Slide 2 lists three
+  steps: pick a football or basketball game\, text your crew one link\, Jax
+  draws the numbers and live scores call every winner.\n\n• Launch grid\,
+  bottom row (bottom right). Post squares 1\, 2 and 3 back to back\, in ord
+ er.
 BEGIN:VALARM
 ACTION:DISPLAY
-DESCRIPTION:Carousel: Grid 1/9: Your board starts here
+DESCRIPTION:Carousel: Grid 1/9: JaxSquares is live
 TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
@@ -179,13 +184,14 @@ DURATION:PT20M
 SUMMARY:[Carousel] Grid 2/9: Scores update themselves
 DESCRIPTION:Asset: g2-scores-update-themselves/01.png\, g2-scores-update-th
  emselves/02.png\n\nCAPTION:\nSquare 2 of 9 📺 Scores update themselves.\
- n\nPick an NFL\, college or NBA game and the board follows it live: who's 
- winning right now\, and the score that would change it. No refreshing a sc
- ore app\, no math.\n\nSend this to whoever keeps score with a pen.\n\n#foo
- tballsquares #nfl #collegefootball\n\nAlt text: A green board square readi
- ng “Scores update themselves”: square 2 of 9. Slide 2 shows the JaxSqu
- ares scoreboard at 16 to 13 with the next winner called out.\n\n• Launch
-  grid\, bottom row (middle).
+ n\nPick an NFL\, college football\, NBA or college basketball game and the
+  board follows it live: who's winning right now\, and the score that would
+  change it. No refreshing a score app\, no math.\n\nSend this to whoever k
+ eeps score with a pen.\n\n#footballsquares #basketballsquares #nfl #colleg
+ efootball\n\nAlt text: A green board square reading “Scores update thems
+ elves”: square 2 of 9. Slide 2 shows the JaxSquares scoreboard at 16 to 
+ 13 with the next winner called out.\n\n• Launch grid\, bottom row (middl
+ e).
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Carousel: Grid 2/9: Scores update themselves
@@ -199,7 +205,7 @@ DTSTART;TZID=America/New_York:20261021T171000
 DURATION:PT20M
 SUMMARY:[Carousel] Grid 3/9: Jax draws the numbers
 DESCRIPTION:Asset: g3-jax-draws-the-numbers/01.png\, g3-jax-draws-the-numbe
- rs/02.png\n\nCAPTION:\nSquare 3 of 9 🎲 Jax draws the numbers.\n\nOnce t
+ rs/02.png\n\nCAPTION:\nSquare 3 of 9 🔢 Jax draws the numbers.\n\nOnce t
  he board is full\, 0–9 get shuffled live for both teams\, right in front
   of everyone. Nobody can say the host rigged it.\n\nSend this to your boar
  d's most suspicious player.\n\n#footballsquares #squarespool #gameday\n\nA
@@ -382,21 +388,24 @@ UID:2026-10-23T1310-carousel@jaxsquares-launch
 DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261023T131000
 DURATION:PT20M
-SUMMARY:[Carousel] Grid 9/9: Squares for any game
-DESCRIPTION:Asset: g9-squares-for-any-game/01.png\, g9-squares-for-any-game
- /02.png\n\nCAPTION:\nSquare 9 of 9 🏈 The board's full\, and that's our 
- logo up there.\n\nJaxSquares is squares for any game: pick an NFL\, colleg
- e or NBA game (or type in any matchup)\, choose how squares win\, and your
-  board is live in about 30 seconds.\n\nMake yours → link in bio\n\n#foot
- ballsquares #squarespool #nfl #collegefootball\n\nAlt text: A bright green
-  board square with a football reading “Squares for any game”: square 9
-  of 9\, completing the JaxSquares launch grid. Slide 2 shows the app's gam
- e picker with NFL and college games and a custom option.\n\n• Launch gri
- d\, top row (top left): the last square. Open your profile and check the l
- ogo lines up.
+SUMMARY:[Carousel] Grid 9/9: Football and basketball squares
+DESCRIPTION:Asset: g9-football-and-basketball/01.png\, g9-football-and-bask
+ etball/02.png\n\nCAPTION:\nSquare 9 of 9 🏈🏀 The board's full\, and t
+ hat's our logo up there.\n\nJaxSquares runs football and basketball square
+ s\, live now. Pick an NFL or college football game\, an NBA or college bas
+ ketball game\, or type in any matchup. Choose how squares win and your boa
+ rd is ready in about 30 seconds.\n\nFootball season\, then basketball seas
+ on\, then the big game. Make yours → link in bio\n\n#footballsquares #sq
+ uarespool #basketballsquares #nfl #nba\n\nAlt text: A bright green board s
+ quare with a football and a basketball reading “Football and basketball 
+ squares. Set up in 30 seconds. Live now.”: square 9 of 9\, completing th
+ e JaxSquares launch grid. Slide 2 shows the app's game picker with Footbal
+ l and Basketball tabs\, NFL and college games\, and a custom option.\n\n
+ • Launch grid\, top row (top left): the last square. Open your profile a
+ nd check the logo lines up.
 BEGIN:VALARM
 ACTION:DISPLAY
-DESCRIPTION:Carousel: Grid 9/9: Squares for any game
+DESCRIPTION:Carousel: Grid 9/9: Football and basketball squares
 TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
@@ -1161,7 +1170,7 @@ DURATION:PT20M
 SUMMARY:[Reel] POV: you hit Draw
 DESCRIPTION:Monday Night Football · Bills at Vikings · 8:15 PM ET · ESPN
  /ABC\nAsset: 03-the-draw.mp4\, 03-the-draw-cover.png\n\nCAPTION:\nPOV: the
-  board is full and you hit Draw 🎲\n\nJax shuffles 0–9 for each team\,
+  board is full and you hit Draw 🔢\n\nJax shuffles 0–9 for each team\,
   live\, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. No
  body can say you rigged it.\n\nSend this to whoever hosts your squares 
  📲\n\n#footballsquares #squarespool #mondaynightfootball #officepool #nf
@@ -1182,7 +1191,7 @@ DTSTART;TZID=America/New_York:20261109T190000
 DURATION:PT10M
 SUMMARY:[Story] MNF: Bills at Vikings
 DESCRIPTION:8:15 PM ET · ESPN/ABC\nSticker: Link → app\nText: MNF: Bills
-  at Vikings. Draw your numbers live 🎲
+  at Vikings. Draw your numbers live 🔢
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: MNF: Bills at Vikings

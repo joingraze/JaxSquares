@@ -564,7 +564,7 @@ function Stories({ frame: i }: CompProps) {
     <StoryShell key="checklist">
       {big("Game day|*checklist*", 140, 36)}
       <div className="absolute flex flex-col" style={{ top: 240, left: 40, right: 40, gap: 8 }}>
-        {["✅ Board full", "🎲 Draw before kickoff", "📲 Link in the group chat", "🏆 Winners light up"].map((s) => (
+        {["✅ Board full", "🔢 Draw before kickoff", "📲 Link in the group chat", "🏆 Winners light up"].map((s) => (
           <Panel key={s} style={{ padding: "10px 16px", borderRadius: 14, fontSize: 16, fontWeight: 700 }}>
             {s}
           </Panel>
