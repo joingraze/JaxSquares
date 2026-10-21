@@ -38,6 +38,7 @@ const MIGRATIONS = [
   "migrations/0017_season.sql",
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
+  "migrations/0021_tv_pairings.sql",
 ];
 const INDEX_HTML = "<html><head><title>JaxSquares</title></head><body><div id=\"root\"></div></body></html>";
 
@@ -114,6 +115,47 @@ describe("a TV or a printer that never joined", () => {
     expect(state.game.hostPlayerId).toBe(derivePlayerIdSync(HOST));
     // Public ids only: no clientId and no admin token anywhere in it.
     for (const secret of [HOST, ANA, admin]) expect(text).not.toContain(secret);
+  });
+});
+
+describe("a smart TV opening a board's link", () => {
+  const TIZEN = "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/537.36 (KHTML, like Gecko) 85.0.4183.93/6.0 TV Safari/537.36";
+
+  it("lands in TV mode; a phone, the TV view itself and ?board=1 don't", async () => {
+    vi.stubGlobal("HTMLRewriter", FakeRewriter);
+    const { id } = await createBoard();
+    const tv = await fetchWorker(`/g/${id}`, { headers: { "user-agent": TIZEN } });
+    expect(tv.status).toBe(302);
+    expect(tv.headers.get("location")).toBe(`https://jaxsquares.test/g/${id}/tv`);
+    const phone = await fetchWorker(`/g/${id}`, { headers: { "user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)" } });
+    expect(phone.status).toBe(200);
+    expect((await fetchWorker(`/g/${id}?board=1`, { headers: { "user-agent": TIZEN } })).status).toBe(200);
+    expect((await fetchWorker(`/g/${id}/tv`, { headers: { "user-agent": TIZEN } })).status).toBe(200);
+  });
+});
+
+describe("pairing a TV with a code", () => {
+  const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
+    fetchWorker(path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+
+  it("gives the TV a code; the host sends the board to it, and only that TV learns which", async () => {
+    const { id, admin } = await createBoard();
+    const start = await json("POST", "/api/tv/pair");
+    expect(start.status).toBe(201);
+    const { code, token } = (await start.json()) as { code: string; token: string; expiresAt: number };
+    expect(code).toMatch(/^[ACDEFHJKMNPRTUVWXY34679]{4}$/);
+    const ask = (t = token) => fetchWorker(`/api/tv/pair/${code}`, { headers: { "x-tv-token": t } });
+    expect(await (await ask()).json()).toMatchObject({ gameId: null });
+    // Someone else's secret learns nothing.
+    expect((await ask("not-the-tv")).status).toBe(404);
+
+    // A player on the board can't send it; the host can, typing the code any way.
+    expect((await json("POST", `/api/games/${id}/tv`, { code }, { "x-client-id": ANA })).status).toBe(403);
+    expect((await json("POST", `/api/games/${id}/tv`, { code: "zz" }, { "x-client-id": HOST, "x-admin-token": admin })).status).toBe(400);
+    expect((await json("POST", `/api/games/${id}/tv`, { code: "KKKK" === code ? "MMMM" : "KKKK" }, { "x-client-id": HOST, "x-admin-token": admin })).status).toBe(404);
+    const sent = await json("POST", `/api/games/${id}/tv`, { code: ` ${code.slice(0, 2).toLowerCase()} ${code.slice(2)} ` }, { "x-client-id": HOST, "x-admin-token": admin });
+    expect(sent.status).toBe(200);
+    expect(await (await ask()).json()).toMatchObject({ gameId: id });
   });
 });
 

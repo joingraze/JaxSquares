@@ -31,6 +31,7 @@ const TOO_MANY = {
   club: "That's a lot of club changes for one hour. Take a breather and try again a little later.",
   clubTv: "That's a lot of new TV links for one hour. Try again a little later.",
   download: "That's a lot of downloads for one hour. Try again a little later.",
+  tvSend: "That's a lot of TV codes tried. Check the code on the TV and try again a little later.",
 };
 
 export interface RateRule {
@@ -230,6 +231,27 @@ export const RATE_LIMITS = {
     limit: 120,
     windowMs: HOUR,
     message: TOO_MANY.download,
+  },
+  /** POST /api/tv/pair (a TV asking for a code), per network address: a room's TVs, never a flood. */
+  tvCodeIp: {
+    name: "tv-code-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: "That's a lot of TV codes for one hour. Try again a little later.",
+  },
+  /** POST /api/games/:id/tv (sending a board to a TV's code), per device: enough for typos, too few to guess codes. */
+  tvSend: {
+    name: "tv-send",
+    limit: 20,
+    windowMs: HOUR,
+    message: TOO_MANY.tvSend,
+  },
+  /** Per network address: `tvSend` for everyone behind one address (devices are free to mint). */
+  tvSendIp: {
+    name: "tv-send-ip",
+    limit: 60,
+    windowMs: HOUR,
+    message: TOO_MANY.tvSend,
   },
   /**
    * New players joining one board, keyed by game id: clientIds are free to

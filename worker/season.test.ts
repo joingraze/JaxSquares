@@ -54,6 +54,7 @@ const MIGRATIONS = [
   "migrations/0017_season.sql",
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
+  "migrations/0021_tv_pairings.sql",
 ];
 
 const DAY = 86_400_000;

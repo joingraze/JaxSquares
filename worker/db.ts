@@ -1084,6 +1084,39 @@ export async function cohostGamesFor(db: D1Database, clientId: string): Promise<
 }
 
 /** Housekeeping: drops co-host invites that expired or were used before `before`. Returns how many went. */
+// ---- Pairing a TV (migration 0021) ----
+
+/** A TV's new code; false when the code is taken (draw another). */
+export async function insertTvPairing(db: D1Database, p: { code: string; tokenHash: string; now: number; expiresAt: number }): Promise<boolean> {
+  // A taken code that has expired is free again.
+  await db.prepare(`DELETE FROM tv_pairings WHERE code = ? AND expires_at < ?`).bind(p.code, p.now).run();
+  const res = await db
+    .prepare(`INSERT OR IGNORE INTO tv_pairings (code, token_hash, game_id, created_at, expires_at) VALUES (?, ?, NULL, ?, ?)`)
+    .bind(p.code, p.tokenHash, p.now, p.expiresAt)
+    .run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** What a TV was sent, asked with its own secret's hash; null when the code is unknown, someone else's or expired. */
+export async function tvPairing(db: D1Database, code: string, tokenHash: string, now: number): Promise<{ gameId: string | null; expiresAt: number } | null> {
+  const row = await db
+    .prepare(`SELECT game_id, expires_at FROM tv_pairings WHERE code = ? AND token_hash = ? AND expires_at >= ?`)
+    .bind(code, tokenHash, now)
+    .first<{ game_id: string | null; expires_at: number }>();
+  return row ? { gameId: row.game_id, expiresAt: row.expires_at } : null;
+}
+
+/** Sends a board to the TV showing `code`; false when no live TV has it. */
+export async function sendToTv(db: D1Database, code: string, gameId: string, now: number): Promise<boolean> {
+  const res = await db.prepare(`UPDATE tv_pairings SET game_id = ? WHERE code = ? AND expires_at >= ?`).bind(gameId, code, now).run();
+  return (res.meta.changes ?? 0) > 0;
+}
+
+export async function pruneTvPairings(db: D1Database, before: number): Promise<number> {
+  const res = await db.prepare(`DELETE FROM tv_pairings WHERE expires_at < ?`).bind(before).run();
+  return res.meta.changes ?? 0;
+}
+
 export async function pruneCohostInvites(db: D1Database, before: number): Promise<number> {
   const res = await db.prepare(`DELETE FROM cohost_invites WHERE expires_at < ?1 OR used_at < ?1`).bind(before).run();
   return res.meta.changes ?? 0;

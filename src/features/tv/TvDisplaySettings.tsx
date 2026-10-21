@@ -1,6 +1,6 @@
 // What TV mode shows (shared/tv.ts): a switch per part, saved as the host
 // flips it (shown at once, put back if the save fails), and every TV on the
-// board follows. In Host tools ("TV display") and behind the TV toolbar's
+// board follows. In Host tools ("Show on a smart TV") and behind the TV toolbar's
 // "Display" button for the host (or a co-host). "Free to play" only means
 // something on a board with no square price, so it's off and says so on one
 // that has one.

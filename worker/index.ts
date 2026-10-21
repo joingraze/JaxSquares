@@ -50,6 +50,8 @@ import type { Env } from "./env";
 import { claimCodesFor } from "./claims";
 import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor } from "../shared/venue";
 import { cleanTvDisplay, tvDisplayError } from "../shared/tv";
+import { TV_CODE_TTL_MS, cleanTvCode, isTvBrowser } from "../shared/tvBrowser";
+import { drawTvCode, newTvToken, tvTokenHash } from "./tvPair";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -523,6 +525,48 @@ api.get("/games/:id/claims", requireClient, async (c) => {
   const me = c.get("playerId");
   const body: ClaimsResponse = { enabled: true, mine: codes.filter((k) => k.playerId === me), all: runsIt ? codes : null };
   return c.json(body, 200, { "cache-control": "no-store" });
+});
+
+// ---- Pairing a TV (docs/ARCHITECTURE.md "TV mode and the printable board") ----
+
+/** A TV on jaxsquares.com/tv asks for a code to show; its secret comes back once, for asking what it was sent. */
+api.post("/tv/pair", async (c) => {
+  const ip = c.req.header("cf-connecting-ip")?.trim();
+  const limited = ip ? await rateLimited(c, RATE_LIMITS.tvCodeIp, await addressSubject(ip)) : null;
+  if (limited) return limited;
+  const token = newTvToken();
+  const tokenHash = await tvTokenHash(token);
+  const now = Date.now();
+  const expiresAt = now + TV_CODE_TTL_MS;
+  for (let tries = 0; tries < 6; tries++) {
+    const code = drawTvCode();
+    if (await db.insertTvPairing(c.env.DB, { code, tokenHash, now, expiresAt })) {
+      return c.json({ code, token, expiresAt }, 201, { "cache-control": "no-store" });
+    }
+  }
+  return c.json({ error: "Couldn't make a TV code just now. Try again in a moment." }, 503);
+});
+
+/** The TV asks (every few seconds, with its secret) whether a board was sent to its code. */
+api.get("/tv/pair/:code", async (c) => {
+  const code = cleanTvCode(c.req.param("code"));
+  const token = c.req.header("x-tv-token") ?? "";
+  const found = code && token ? await db.tvPairing(c.env.DB, code, await tvTokenHash(token), Date.now()) : null;
+  if (!found) fail(404, "This TV's code expired. A new one is on its way.");
+  return c.json(found, 200, { "cache-control": "no-store" });
+});
+
+/** The host (or a co-host) sends this board to the TV showing `code`. */
+api.post("/games/:id/tv", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const limited = await deviceLimited(c, RATE_LIMITS.tvSend, RATE_LIMITS.tvSendIp);
+  if (limited) return limited;
+  await hostState(c, id);
+  const body = await readJson(c);
+  const code = cleanTvCode(body.code);
+  if (!code) fail(400, "Enter the 4-character code on the TV.");
+  if (!(await db.sendToTv(c.env.DB, code, id, Date.now()))) fail(404, "No TV is showing that code. Check the TV: its code changes every 15 minutes.");
+  return c.json({ ok: true });
 });
 
 /**
@@ -1265,6 +1309,11 @@ async function invitePage(c: Ctx): Promise<Response> {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.replace(`/g/${id}`, `/g/${lower}`);
     return c.redirect(url.toString(), 301);
+  }
+  // A smart TV's browser opening a board's link gets its TV mode, not the phone page (?board=1 keeps the board).
+  const url0 = new URL(c.req.url);
+  if (GAME_ID_RE.test(id) && /^\/g\/[^/]+\/?$/.test(url0.pathname) && !url0.searchParams.has("board") && isTvBrowser(c.req.header("user-agent"))) {
+    return c.redirect(`${url0.origin}/g/${id}/tv`, 302);
   }
   const indexReq = new Request(new URL("/", c.req.url), { headers: { accept: "text/html" } });
   const [html, state] = await Promise.all([

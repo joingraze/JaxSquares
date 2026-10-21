@@ -8,7 +8,8 @@ import { boardCountLine } from "../../../shared/siblings";
 import type { GameState, Player } from "../../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronRightIcon, CopyIcon, GridIcon, PlusIcon, PrinterIcon, TvIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
-import { inviteUrl } from "../../lib/api";
+import { PUBLIC_ORIGIN, inviteUrl } from "../../lib/api";
+import { tvPairAddress } from "../../lib/boardViews";
 import { readableTeamColor, shortMatchup, shortTeam, teamVars } from "../../lib/format";
 import { getPlayerId, getProfile, isHostOf } from "../../lib/identity";
 import { copyText, haptic, shareLink } from "../../lib/native";
@@ -190,7 +191,8 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               <span className="min-w-0 flex-1">
                 <span className="block font-display text-headline font-extrabold leading-tight text-ink">Put it on your TV</span>
                 <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">
-                  Open TV mode on your TV, or a laptop plugged into it. Guests scan its QR code to grab a square.
+                  On a smart TV, open <b className="font-bold text-ink">{tvPairAddress(PUBLIC_ORIGIN)}</b> and send the board from Host tools. Or open TV mode on a laptop
+                  plugged into it. Guests scan its QR code to grab a square.
                 </span>
               </span>
             </div>

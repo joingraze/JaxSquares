@@ -170,7 +170,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
-  the newest 200 per game, drops expired rate-limit windows, and deletes
+  the newest 200 per game, drops expired rate-limit windows and TV codes
+  (`tv_pairings`, see "TV mode and the printable board"), and deletes
   email-notice addresses past their keep (a week after the board's final, an
   unconfirmed one when its link expires; docs/email.md). An App Store
   purchase for a board deleted before it was confirmed isn't lost: `/pay/iap`
@@ -219,6 +220,9 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
 | GET | `/api/games/:id/claims` | C (H for `all`) | – | `ClaimsResponse` `{ enabled, mine, all }` (`no-store`): a board with claim codes (`format.claimCodes`, see "Venue boards"): `mine` lists the caller's own winning awards with their codes; `all` every award's code for the host (its admin token) or a co-host, else null. `{ enabled: false, mine: [], all: null }` when the board doesn't use them; 404 |
 | POST | `/api/games/:id/claims/collect` | C (the winner, or H) | `CollectInput` `{ periodKey, reverse, collected }` | `{ state }`: marks that award's prize handed over to its current winner (`GameState.collected`, broadcast like any change), by the host or a co-host (`by: "host"`) or on the winner's own phone (`by: "winner"`); marking it again is a no-op. `collected: false` takes it back (host only, else 403). 400 bad body, 403 anyone else, 404 nobody has won that award, 409 the board doesn't use claim codes, or the winner's phone after their time to collect (`claimDeadline` + `CLAIM_GRACE_MS`, `CLAIM_EXPIRED_ERROR`; the host still can) |
+| POST | `/api/tv/pair` | – | – | `{ code, token, expiresAt }` (201, `no-store`): a smart TV's pairing code (`TV_CODE_LENGTH` characters from `TV_CODE_ALPHABET`, `shared/tvBrowser.ts`, good for `TV_CODE_TTL_MS`) and the secret only that TV holds; only the secret's hash is kept (`tv_pairings`, migration 0021). 503 when no free code turned up in 6 tries; 429 per address |
+| GET | `/api/tv/pair/:code` | – (`x-tv-token`) | – | `{ gameId, expiresAt }` (`no-store`): the board sent to that code, null until one is. 404 for a wrong secret, an unknown code or one past its time (the TV takes a new code) |
+| POST | `/api/games/:id/tv` | C H | `{ code }` | `{ ok: true }`: sends this board to the TV showing `code` (typed any way: case, spaces and dashes don't matter; `cleanTvCode`), by the host or a co-host. Sending again replaces it. 400 not a code, 403, 404 no TV is showing it (or it ran out); 429 |
 | GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
@@ -283,6 +287,9 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `club-tv-view-ip` | 120 per address per minute | `GET /api/clubs/:id/tv`, counted before the token is checked |
 | `club-export` | 30 per device per hour | players CSV downloads |
 | `club-export-ip` | 120 per address per hour | what `club-export` counts, for every device behind one address |
+| `tv-code-ip` | 60 per address per hour | TV pairing codes (`POST /api/tv/pair`) |
+| `tv-send` | 20 per device per hour | boards sent to a TV's code, counted before the code is looked up (codes can't be guessed at speed) |
+| `tv-send-ip` | 60 per address per hour | what `tv-send` counts, for every device behind one address |
 | `email` | 20 per device per hour | adding, resending or removing an email-notice address |
 | `email-ip` | 60 per address per hour | what `email` counts, for every device behind one address |
 | `email-send` | 5 per email address per hour | confirmation emails to one address, whoever asks (keyed by the address's keyed hash, never the address) |
@@ -313,6 +320,10 @@ Non-API routes:
   · A printable board with a QR code to follow it live"), `og:url` the view's own
   link. Never an amount. A code typed in capitals redirects (301) to the
   lowercase view, like the board.
+- A smart TV's browser opening `GET /g/:id` (`isTvBrowser` on its user agent,
+  `shared/tvBrowser.ts`: Tizen, webOS, Android TV, Fire TV, consoles and the
+  like) is sent (302) to `/g/:id/tv`; `?board=1` keeps the board. A phone,
+  tablet or computer never is.
 - `/club/:clubId/tv` (the club TV, see "The Club Pass") isn't a Worker route:
   the assets' SPA fallback serves `index.html`, and the page reads its token
   from the URL's fragment.
@@ -833,6 +844,7 @@ the phone column or the route slide (`isBoardViewPath`).
 | Route | Screen | For |
 |---|---|---|
 | `/g/:id/tv` | `src/pages/TvView.tsx` (`src/features/tv`) | a TV or laptop at a watch party or bar (AirPlay, Chromecast, HDMI, a smart TV's browser), landscape 1280×720 to 4K; a portrait screen stacks |
+| `/tv` | `src/pages/TvPair.tsx` | a smart TV's browser with no board yet: shows a code the host sends a board to (see below) |
 | `/g/:id/print` | `src/pages/PrintView.tsx` (`src/features/print`) | an office wall: US Letter or A4, landscape for 10×10, portrait for 5×5 |
 
 - Who can open them: anyone with the board link. Both read the public board
@@ -850,6 +862,18 @@ the phone column or the route slide (`isBoardViewPath`).
   (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
   the host sheet's hint "Hosting a watch party? Show the board on your TV."
   (`host-tv`).
+- A smart TV gets there without typing a long link. Its browser opening a
+  board's link lands in TV mode (the Worker's redirect, see "Non-API routes");
+  opening jaxsquares.com lands on `/tv` (`src/main.tsx`, before the app
+  renders, `isTvBrowser`). `/tv` (`TvPair`) asks for a code
+  (`POST /api/tv/pair`) and shows it in large tiles; the host or a co-host
+  types it in Host tools → "Show on a smart TV" (`host-tv-display`,
+  `SendToTv`, `POST /api/games/:id/tv`). The TV asks every
+  `TV_PAIR_POLL_MS` with its secret (`x-tv-token`, never in a URL), opens
+  `/g/:id/tv` once a board is sent (pushed, so Exit comes back to a new code),
+  takes a new code when one runs out (15 minutes) or the server forgets it,
+  and keeps the screen awake while it waits. A code only says which board to
+  open: the TV still reads the public board like any other.
 - TV mode shows the app's own board (`TvBoard` draws `board.css`'s markup:
   the team labels, the team-tinted digits, each owner's sticker with their
   first name, the winners' gold, the square the score points at right now
@@ -875,7 +899,7 @@ the phone column or the route slide (`isBoardViewPath`).
   square price), `now`, `winners`, `upcoming` and `celebrations`. A part the
   host never touched shows as its default (`tvShows`): all on, except
   `freeToPlay`, which a venue's or named club's board starts with. The host or
-  a co-host changes them in Host tools → "TV display" (`host-tv-display`) or
+  a co-host changes them in Host tools → "Show on a smart TV" (`host-tv-display`) or
   from the TV toolbar's "Display" (`tv-display-open`, their device only):
   `TvDisplaySettings`, each switch saved as it flips (`PATCH` `tv`), every TV
   on the board following at once. A season's game board on the TV follows its
@@ -1619,7 +1643,9 @@ game") and `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0016_club.sql` (payments' `host_passes.plan` and clubs' `clubs`; 0015 is
 left to a parallel change), and `0017_season.sql` (core: `games.kind`,
 `season`, `season_id`, `season_event`, `season_synced_at`; see "Season
-boards").
+boards"), and `0021_tv_pairings.sql` (core: `tv_pairings`, a TV's pairing
+code, its secret's hash and the board sent to it; see "TV mode and the
+printable board").
 
 `worker/email/index.ts` (email notices, docs/email.md):
 ```ts

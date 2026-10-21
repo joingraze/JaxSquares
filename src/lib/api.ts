@@ -82,6 +82,8 @@ export class ApiError extends Error {
 export interface RequestOptions {
   body?: unknown;
   adminToken?: string | null;
+  /** More headers (a TV's pairing secret, x-tv-token). */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
 }
@@ -110,7 +112,7 @@ export function identityHeaders(): Record<string, string> {
 }
 
 export async function request<T>(method: Method, path: string, opts: RequestOptions = {}): Promise<T> {
-  const headers = identityHeaders();
+  const headers = { ...identityHeaders(), ...opts.headers };
   if (opts.adminToken) headers["x-admin-token"] = opts.adminToken;
   if (opts.body !== undefined) headers["content-type"] = "application/json";
 
@@ -236,6 +238,12 @@ export const api = {
   getGame: (id: string, signal?: AbortSignal) => request<GameState>("GET", g(id), { signal }),
   /** Claim codes (venue boards): mine, and every winner's for the host (admin token) or a co-host. */
   claims: (id: string, adminToken?: string | null) => request<ClaimsResponse>("GET", `${g(id)}/claims`, { adminToken }),
+  /** A TV on /tv asks for a code to show (shared/tvBrowser.ts); `token` is its secret for asking what it was sent. */
+  tvPairStart: () => request<{ code: string; token: string; expiresAt: number }>("POST", "/tv/pair"),
+  tvPairPoll: (code: string, token: string) =>
+    request<{ gameId: string | null; expiresAt: number }>("GET", `/tv/pair/${encodeURIComponent(code)}`, { headers: { "x-tv-token": token } }),
+  /** The host (or a co-host) sends this board to the TV showing `code`. */
+  sendToTv: (id: string, code: string, adminToken?: string | null) => asHost<{ ok: true }>("POST", id, "/tv", adminToken, { code }),
   /** A prize handed over (or, host only, taken back): from Host tools with the admin token, or the winner's own phone without one. */
   collect: (id: string, input: CollectInput) => request<StateResponse>("POST", `${g(id)}/claims/collect`, { body: input }),
   collectAsHost: (id: string, input: CollectInput, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/claims/collect", adminToken, input),

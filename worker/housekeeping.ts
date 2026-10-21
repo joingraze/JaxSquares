@@ -40,6 +40,8 @@ export async function housekeeping(env: Pick<Env, "DB">, now = Date.now()): Prom
   await db.pruneRateLimits(env.DB, now - RATE_WINDOW_MAX_MS);
   // Fails quietly until migration 0014 is applied.
   await db.pruneCohostInvites(env.DB, now - COHOST_INVITE_KEEP_MS).catch((err: unknown) => console.error("co-host invite cleanup failed", err));
+  // Expired TV codes (migration 0021).
+  await db.pruneTvPairings(env.DB, now).catch((err: unknown) => console.error("TV code cleanup failed", err));
   const emails = await pruneEmail(env, now);
   if (opened.length > 0 || activity > 0 || emails > 0) {
     console.log(`housekeeping: ${opened.length} leftover drafts opened, ${activity} old activity rows pruned, ${emails} email addresses deleted`);

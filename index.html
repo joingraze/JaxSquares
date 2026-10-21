@@ -56,8 +56,8 @@
     <script id="theme-boot">
       (function () {
         var d = document.documentElement, t = "dark", p = null;
-        // TV mode (/g/:id/tv, and a club's TV /club/:id/tv) has its own theme: dark unless picked on that screen (src/features/tv/screen.ts).
-        var tv = /^\/(g|club)\/[^/]+\/tv\/?$/i.test(location.pathname);
+        // TV mode (/g/:id/tv, a club's TV /club/:id/tv, and pairing a TV /tv) has its own theme: dark unless picked on that screen (src/features/tv/screen.ts).
+        var tv = /^\/((g|club)\/[^/]+\/)?tv\/?$/i.test(location.pathname);
         try {
           p = localStorage.getItem(tv ? "jaxsquares.tvTheme" : "jaxsquares.theme");
         } catch (e) {}

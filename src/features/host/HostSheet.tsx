@@ -124,6 +124,7 @@ import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } fr
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
+import { SendToTv } from "../tv/SendToTv";
 import { TvDisplaySettings } from "../tv/TvDisplaySettings";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
@@ -542,9 +543,21 @@ export function HostSheet(props: HostSheetProps) {
       </Button>
     );
   } else if (view === "tv") {
-    title = <>{back()}TV display</>;
-    description = "What the TV shows. Every TV with this board changes right away.";
-    body = <TvDisplaySettings game={game} onChange={async (tv) => (await actions.update({ tv })) !== null} />;
+    title = <>{back()}On a TV</>;
+    description = seasonGame
+      ? "Put this game's board on a smart TV. What it shows is set on the season board."
+      : "Put the board on a smart TV, and choose what it shows. Every TV with this board changes right away.";
+    body = (
+      <div className="flex flex-col gap-5">
+        <SendToTv gameId={game.id} />
+        {!seasonGame && (
+          <section aria-label="What the TV shows" className="flex flex-col gap-2">
+            <p className="eyebrow px-1 text-ink-subtle">What the TV shows</p>
+            <TvDisplaySettings game={game} onChange={async (tv) => (await actions.update({ tv })) !== null} />
+          </section>
+        )}
+      </div>
+    );
     footer = (
       <Link
         to={boardViewPath(game.id, "tv")}
@@ -838,25 +851,23 @@ export function HostSheet(props: HostSheetProps) {
           </span>
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
         </Link>
-        {!seasonGame && (
-          <button
-            type="button"
-            data-testid="host-tv-display"
-            onClick={() => {
-              void haptic("selection");
-              onView("tv");
-            }}
-            className="pressable -mt-1 flex min-h-12 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2 text-left ring-1 ring-inset ring-line"
-          >
-            <RowIcon>
-              <SlidersIcon size={18} />
-            </RowIcon>
-            <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
-              <b className="font-bold text-ink">TV display</b> Choose what the TV shows
-            </span>
-            <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
-          </button>
-        )}
+        <button
+          type="button"
+          data-testid="host-tv-display"
+          onClick={() => {
+            void haptic("selection");
+            onView("tv");
+          }}
+          className="pressable -mt-1 flex min-h-12 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2 text-left ring-1 ring-inset ring-line"
+        >
+          <RowIcon>
+            <SlidersIcon size={18} />
+          </RowIcon>
+          <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
+            <b className="font-bold text-ink">Show on a smart TV</b> {seasonGame ? "Send the board to one" : "Send the board to one, choose what it shows"}
+          </span>
+          <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
+        </button>
 
         {seasonGame && game.seasonId ? (
           <ListGroup title="Season">
