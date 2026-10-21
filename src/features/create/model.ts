@@ -318,6 +318,24 @@ export function rulesTitle(format: GameFormat): string {
   return isEveryScoreSetup(rules) ? PRESET_INFO["every-score"].label : PRESET_INFO.custom.label;
 }
 
+/** A venue's board name: "The Rusty Anchor · Chiefs vs Bills" (just the matchup's until the venue has a name), within the board name's limit. */
+export function venueBoardName(venueName: string, matchupName: string): string {
+  const venue = venueName.trim();
+  if (!venue) return matchupName;
+  const name = matchupName ? `${venue} · ${matchupName}` : `${venue} Squares`;
+  return [...name].slice(0, BOARD_NAME_MAX).join("").trim();
+}
+
+/** Review's venue line: "Free to play · One square each · Winners collect from staff within 5 minutes". */
+export function venueSummary(format: Pick<GameFormat, "claimCodes" | "claimMinutes">, maxPerPlayer: number): string {
+  const collect = format.claimCodes
+    ? format.claimMinutes
+      ? `Winners collect from staff within ${format.claimMinutes} minutes`
+      : "Winners collect from staff"
+    : null;
+  return ["Free to play", capLine(maxPerPlayer), collect].filter(Boolean).join(" · ");
+}
+
 /** The details row's second line: "No max per player" or "Up to 5 squares each". */
 export function detailsSummary(maxPerPlayer: number): string {
   return capLine(maxPerPlayer) ?? "No max per player";
@@ -555,8 +573,10 @@ export type CreateBlocker =
 
 export interface BlockerInput {
   matchup: Matchup | null;
-  /** Null when this device already has a name (the field isn't shown). */
+  /** Null when this device already has a name (the field isn't shown), or on a venue's board (it asks for the venue's). */
   hostName: string | null;
+  /** A venue's board: the venue's name, the host's name on this board (null otherwise). */
+  venueName?: string | null;
   format: GameFormat;
   /** Custom boards: the kickoff (null = no set time). */
   kickoff?: number | null;
@@ -589,7 +609,8 @@ export function blockersOf(d: BlockerInput): CreateBlocker[] {
   }
   const prize = firstPrizeProblem(d.format);
   if (prize) out.push({ field: "prize", key: prize.key, label: "Fix the prize note to continue" });
-  if (d.hostName !== null && !d.hostName.trim()) out.push({ field: "host", label: "Add your name to continue" });
+  if (d.venueName != null && !d.venueName.trim()) out.push({ field: "host", label: "Add your venue's name to continue" });
+  else if (d.hostName !== null && !d.hostName.trim()) out.push({ field: "host", label: "Add your name to continue" });
   if (d.name && mentionsMoney(d.name)) out.push({ field: "name", label: "Change the board name to continue" });
   return out;
 }

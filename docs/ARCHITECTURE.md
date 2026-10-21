@@ -942,6 +942,26 @@ one) and `review` (a card per step, then Create). Every step starts filled
 in: the default path is pick the game (a tapped game moves on by itself),
 Next x3, Create.
 
+**Who's playing?** The `game` step opens with it (`AudiencePicker`,
+`audience`; never on another board for a game): "Friends & family" or "A bar
+or restaurant". The second is venue mode (`setVenue`, see "Venue boards"),
+and every step after it speaks to a venue: the prizes step is "What do
+winners get?" (labelled "Prizes", `stepLabel`), leading with a "Prize" field
+per moment (venue ideas like "Free appetizer"), prize values an optional
+switch in dollars (`venue-prize-values`, no square price) and house rules,
+claim codes and time to collect under "At your venue" (its own "Venue mode"
+switch only shows where there's no first step: another board for a game, and
+Host tools). Final touches asks for the venue's name (`venue-name`, needed;
+the host's name on this board only: the device's profile name stays, and the
+next venue board starts with it, `jaxsquares.venueName`), names the board
+"The Rusty Anchor · Chiefs vs Bills" (`venueBoardName`) and says why it's one
+square each (`venue-cap-note`). Review leads with a venue summary
+(`review-venue`, `venueSummary`: "Free to play · One square each · Winners
+collect from staff within 5 minutes") and lists the prizes. The board opens
+with the invite sheet led by "Put it on your TV" (`invite-venue-tv`, Open TV
+mode), venue copy ("Your venue board is live", "Share the link", "our"
+board) and no "Claim yours first".
+
 "Add another board for this game" runs the same flow from a board this device
 runs (host or co-host): `/new?from=<id>&step=prizes` (`parseFrom`; every
 step's URL keeps `from`). `CreateGame` loads that board (its cached live state

@@ -2,10 +2,11 @@
 // progress bar and "2 of 5 · How squares win".
 
 import { cx } from "../../components/ui";
-import { STEP_INFO, STEPS, stepNumber, type Steps, type WizardStep } from "./wizard";
+import { STEPS, stepLabel, stepNumber, type Steps, type WizardStep } from "./wizard";
 
-export function WizardProgress({ step, steps = STEPS }: { step: WizardStep; steps?: Steps }) {
+export function WizardProgress({ step, steps = STEPS, venue = false }: { step: WizardStep; steps?: Steps; venue?: boolean }) {
   const n = stepNumber(step, steps);
+  const label = stepLabel(step, venue);
   return (
     <div className="px-4 pb-2.5">
       <div
@@ -13,7 +14,7 @@ export function WizardProgress({ step, steps = STEPS }: { step: WizardStep; step
         aria-valuemin={1}
         aria-valuemax={steps.length}
         aria-valuenow={n}
-        aria-valuetext={`Step ${n} of ${steps.length}: ${STEP_INFO[step].label}`}
+        aria-valuetext={`Step ${n} of ${steps.length}: ${label}`}
         className="grid gap-1.5"
         style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
       >
@@ -33,7 +34,7 @@ export function WizardProgress({ step, steps = STEPS }: { step: WizardStep; step
           {n} of {steps.length}
         </span>
         <span className="mx-1.5 text-ink-subtle">·</span>
-        {STEP_INFO[step].label}
+        {label}
       </p>
     </div>
   );

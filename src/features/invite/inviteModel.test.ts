@@ -169,6 +169,18 @@ describe("invite sheet pitch", () => {
     expect(friendsIn(makeState())).toBe(1);
   });
 
+  it("speaks for a venue: the TV's QR code first, the house's board", () => {
+    const venue = (over: Parameters<typeof makeState>[0] = {}) => {
+      const s = makeState(over);
+      s.game.format = { ...s.game.format, venue: true, justForFun: true };
+      return s;
+    };
+    expect(invitePitch(venue({ players: onlyHost }), true)).toMatchObject({ title: "Your venue board is live", cta: "Share the link" });
+    expect(invitePitch(venue({ claimed: 58 }), true)).toMatchObject({ title: "42 squares left", cta: "Share the link" });
+    expect(invitePitch(venue({ claimed: 97 }), true).cta).toBe("Send last call");
+    expect(inviteMessage(venue(), "host")).toBe("Grab a square on our Chiefs vs Bills board 🏈");
+  });
+
   it("changes the header and button with the board", () => {
     const fresh = invitePitch(makeState({ players: onlyHost }), true);
     expect(fresh.title).toBe("Your board's live. Who's first?");

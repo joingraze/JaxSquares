@@ -37,6 +37,8 @@ export function VenueMode({ on, onChange }: { on: boolean; onChange: (on: boolea
 }
 
 export interface HouseRulesProps {
+  /** A venue's board: the section is "At your venue". */
+  venue?: boolean;
   rules: string[];
   claimCodes: boolean;
   /** Minutes a winner has to collect (with claim codes); null = no limit. */
@@ -46,7 +48,7 @@ export interface HouseRulesProps {
   onClaimMinutes: (minutes: number | null) => void;
 }
 
-export function HouseRules({ rules, claimCodes, claimMinutes, onRules, onClaimCodes, onClaimMinutes }: HouseRulesProps) {
+export function HouseRules({ venue = false, rules, claimCodes, claimMinutes, onRules, onClaimCodes, onClaimMinutes }: HouseRulesProps) {
   const [text, setText] = useState("");
   const [tried, setTried] = useState(false);
   const full = rules.length >= HOUSE_RULES_MAX;
@@ -69,8 +71,12 @@ export function HouseRules({ rules, claimCodes, claimMinutes, onRules, onClaimCo
   return (
     <section aria-label="House rules" data-testid="house-rules" className="flex flex-col gap-2.5">
       <div className="px-1">
-        <p className="eyebrow text-ink-subtle">House rules</p>
-        <p className="mt-1 text-footnote text-ink-subtle">How to play and claim a prize, on the board and its TV. Great for a bar or a party.</p>
+        <p className="eyebrow text-ink-subtle">{venue ? "At your venue" : "House rules"}</p>
+        <p className="mt-1 text-footnote text-ink-subtle">
+          {venue
+            ? "House rules, and how winners collect their prizes from your staff. Guests see them on the board and the TV."
+            : "How to play and claim a prize, on the board and its TV. Great for a bar or a party."}
+        </p>
       </div>
 
       {rules.length > 0 && (
@@ -99,7 +105,7 @@ export function HouseRules({ rules, claimCodes, claimMinutes, onRules, onClaimCo
               className="min-w-0 flex-1"
               value={text}
               maxLength={HOUSE_RULE_MAX_LENGTH}
-              placeholder="Must be present to win"
+              placeholder={ideas[0] ?? "Must be present to win"}
               enterKeyHint="done"
               error={tried || text.length > 0 ? (problem ?? undefined) : undefined}
               onChange={(e) => setText(e.target.value)}

@@ -78,7 +78,9 @@ import { haptic } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
 import { useNow } from "../features/board/useNow";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, TEAM_INPUT_ID } from "../features/create/CustomMatchup";
+import { AudiencePicker } from "../features/create/AudiencePicker";
 import { BOARD_NAME_INPUT_ID, DetailsPanel } from "../features/create/DetailsSection";
+import { rememberedVenueName, rememberVenueName } from "../features/create/venueName";
 import { FormatPicker } from "../features/create/FormatPicker";
 import { GamePicker, type BoardScope, type PickerTab } from "../features/create/GamePicker";
 import { defaultKickoff, kickoffError } from "../features/create/kickoff";
@@ -95,6 +97,8 @@ import {
   seasonGamesAhead,
   seasonMatchupLabel,
   teamColorsFrom,
+  venueBoardName,
+  venueSummary,
   type CreateBlocker,
   type Matchup,
   type SeasonMatchup,
@@ -126,7 +130,7 @@ import {
 } from "../features/create/wizard";
 import { WizardProgress } from "../features/create/WizardProgress";
 import { RulesEditor } from "../features/rules/RulesEditor";
-import { autoFill, type PrizeChoice, type RulesDraft } from "../features/rules/rulesModel";
+import { autoFill, setVenue, type PrizeChoice, type RulesDraft } from "../features/rules/rulesModel";
 
 type Phase = "idle" | "working" | "live";
 
@@ -269,6 +273,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   // Ask for the host's name only when this device has never set one.
   const [needsName] = useState(() => !profile.name.trim());
   const [hostName, setHostName] = useState(restored?.hostName || profile.name);
+  // A venue's board: the venue's name is the host's name on this board only (this device's profile keeps its own).
+  const [venueName, setVenueName] = useState(() => restored?.venueName ?? rememberedVenueName());
   const [shake, setShake] = useState(0);
 
   // ---- a season board (one game's board by default; never for another board for a game) ----
@@ -424,16 +430,32 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const teams = matchupTeams(matchup, colors);
   const shortNames = matchupShortNames(matchup);
   // Another board for a game is "Office Squares · Board 2", never named for its price; a season "Jaguars Season Squares".
-  const autoName = sibling
+  // A venue's board (picked on the first step): its steps speak to a venue, and it's "The Rusty Anchor · Chiefs vs Bills".
+  const venueFlow = !sibling && format.venue === true;
+  const matchupAutoName = sibling
     ? sibling.name
     : seasonMatchup
       ? seasonBoardName(seasonMatchup)
       : shortNames
         ? boardNameFor(shortNames[0], shortNames[1])
         : "";
+  const autoName =
+    venueFlow && venueName.trim()
+      ? venueBoardName(venueName, seasonMatchup ? seasonBoardName(seasonMatchup) : shortNames ? `${shortNames[0]} vs ${shortNames[1]}` : "")
+      : matchupAutoName;
   const shownName = nameTouched ? name : autoName;
   const customKickoff = sibling ? (sibling.matchup.from.linkedEvent ? null : sibling.matchup.from.startsAt) : tab === "custom" ? kickoff : null;
-  const check: WizardCheck = { matchup, kickoff: customKickoff, hostName: needsName ? hostName : null, format, name: nameTouched ? name : "", now };
+  const check: WizardCheck = {
+    matchup,
+    kickoff: customKickoff,
+    hostName: needsName && !venueFlow ? hostName : null,
+    venueName: venueFlow ? venueName : null,
+    format,
+    name: nameTouched ? name : "",
+    now,
+  };
+  /** The host's name on this board: the venue's on a venue's board. */
+  const boardHostName = venueFlow ? venueName.trim() : hostName;
 
   // ---- steps (the URL says which; history state says how we got here) ----
   const nav = readNav(location.state);
@@ -473,6 +495,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       nameTouched,
       maxPerPlayer,
       hostName,
+      venueName,
       ...(from ? { from } : { boardScope, seasonScope, seasonNumbers, seasonTeams, seasonPicks }),
     });
   }, [
@@ -488,6 +511,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     nameTouched,
     maxPerPlayer,
     hostName,
+    venueName,
     frozen,
     from,
     boardScope,
@@ -613,13 +637,16 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       kickoff: customKickoff,
       format,
       prizeChoice,
-      name: nameTouched ? name : sibling ? autoName : "",
+      // Another board for a game is named for it, a venue's board for the venue; otherwise the matchup's (buildCreateInput).
+      name: nameTouched ? name : sibling || venueFlow ? autoName : "",
       maxPerPlayer,
-      host: { name: hostName, color: profile.color, emoji: profile.emoji },
+      host: { name: boardHostName, color: profile.color, emoji: profile.emoji },
       now: Date.now(),
     });
     if (!input) return;
-    if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
+    // A venue's name is only this board's: the device's own name stays as it is.
+    if (venueFlow) rememberVenueName(venueName);
+    else if (hostName.trim() !== profile.name) setProfile({ name: hostName.trim() });
     if (mustSignIn && !signedIn) {
       void haptic("light");
       setSigningIn(true);
@@ -722,14 +749,19 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
           ? { ...STEP_INFO.format, subtitle: "The same rules for every game of the season. Prizes come next." }
           : seasonMode && step === "prizes"
             ? { ...STEP_INFO.prizes, subtitle: "One square price, and the same prizes every game. Or keep it just for fun." }
-            : STEP_INFO[step];
+            : venueFlow && step === "prizes"
+              ? { ...STEP_INFO.prizes, title: "What do winners get?", subtitle: "Prizes from your venue, like free food or team gear. Guests see them on the board and the TV." }
+              : venueFlow && step === "details"
+                ? { ...STEP_INFO.details, subtitle: "Your venue's name, the board's name and squares per person." }
+                : STEP_INFO[step];
   const seasonAhead = seasonMatchup ? seasonGamesAhead(seasonMatchup, now) : [];
 
   let body: ReactNode;
   switch (step) {
     case "game":
       body = (
-        <section id={GAME_SECTION_ID} aria-label="The game" className="scroll-mt-24">
+        <section id={GAME_SECTION_ID} aria-label="The game" className="flex scroll-mt-24 flex-col gap-5">
+          {!sibling && <AudiencePicker value={venueFlow ? "venue" : "friends"} onChange={(a) => editRules(setVenue(rulesDraft, a === "venue"))} />}
           <GamePicker
             schedule={schedule}
             sport={sport}
@@ -785,14 +817,33 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       body = (
         <>
           {sibling && teams && <SiblingIntro seed={sibling} teamX={teams.teamX} teamY={teams.teamY} matchup={matchupLabel} />}
-          <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} kind={kind} />
+          {/* Venue mode is the first step's "Who's playing?"; another board for a game keeps the switch here. */}
+          <RulesEditor draft={rulesDraft} onChange={editRules} boardSize={format.boardSize} kind={kind} venueSwitch={!!sibling} />
         </>
       );
       break;
     case "details":
       body = (
         <div className="flex flex-col gap-5">
-          {needsName && (
+          {venueFlow ? (
+            <TextField
+              id={HOST_INPUT_ID}
+              data-testid="venue-name"
+              label="Venue name"
+              value={venueName}
+              maxLength={NAME_MAX_LENGTH}
+              placeholder="The Rusty Anchor"
+              autoComplete="organization"
+              autoCapitalize="words"
+              enterKeyHint="done"
+              onChange={(e) => setVenueName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              leading={<Avatar name={venueName || "Venue"} color={profile.color} emoji={profile.emoji} size="sm" decorative />}
+              hint="Guests see it as the board's host. Only on this board: your name everywhere else stays yours."
+              error={shake > 0 && !venueName.trim() ? "Add your venue's name so guests know whose board it is." : undefined}
+              inputClassName="font-semibold"
+            />
+          ) : needsName && (
             <TextField
               id={HOST_INPUT_ID}
               data-testid="host-name"
@@ -821,6 +872,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
             }}
             maxPerPlayer={maxPerPlayer}
             onMaxPerPlayer={setMaxPerPlayer}
+            venue={venueFlow}
           />
         </div>
       );
@@ -835,7 +887,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
           format={shownFormat}
           name={(nameTouched ? name.trim() : "") || autoName || "Squares"}
           maxPerPlayer={maxPerPlayer}
-          host={{ name: hostName, color: profile.color, emoji: profile.emoji }}
+          host={{ name: boardHostName, color: profile.color, emoji: profile.emoji }}
+          venue={venueFlow ? venueSummary(format, maxPerPlayer) : null}
           now={now}
           onEdit={(s) => go(s, { fromReview: true })}
           sibling={sibling ? { sourceName: sibling.source.name } : null}
@@ -875,7 +928,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
         title={sibling ? "Another board" : "New board"}
         large={false}
         leading={<IconButton label="Close" icon={<XIcon size={22} />} onClick={close} />}
-        accessory={<WizardProgress step={step} steps={steps} />}
+        accessory={<WizardProgress step={step} steps={steps} venue={venueFlow} />}
       />
 
       {/* Clipped sideways: a step sliding in never widens the page (the phone would zoom out). */}
