@@ -850,12 +850,16 @@ the phone column or the route slide (`isBoardViewPath`).
   (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
   the host sheet's hint "Hosting a watch party? Show the board on your TV."
   (`host-tv`).
-- TV mode shows the board as large as the screen allows (`tvLayout`: the full
+- TV mode shows the app's own board (`TvBoard` draws `board.css`'s markup:
+  the team labels, the team-tinted digits, each owner's sticker with their
+  first name, the winners' gold, the square the score points at right now
+  glowing, red when live) as large as the screen allows (`tvLayout`: the full
   height on 16:9, the panel keeps the rest; type scales with `--u`, 1% of the
-  short side), first names or initials in the squares (`tvCellName`), the
-  drawn digits, team colors (the panel's chips use the board's `--team-x/y`),
-  and the square the score points at right now (`rightNow`, glowing; red when
-  live). While squares are open the panel is a big QR code to the invite link
+  short side; tv.css scales the board's fixed rings, corners and trophy pip
+  with `--cell`, unlayered like board.css). Only what a room needs differs:
+  nothing to tap, nothing "mine", and a square's name as large as it reads
+  from across the room (`tvCellName`: the board's size, smaller for a long
+  name, never below 17% of the square; longer still clips like the board's). While squares are open the panel is a big QR code to the invite link
   ("Scan to grab a square", the short link, squares left, the prize lineup);
   once the numbers are drawn it's the score with the quarter and clock, "Right
   now", the winners so far (`tvWinners`: each moment's label as the result

@@ -1,6 +1,7 @@
 // Pure view-model helpers for TV mode (/g/:id/tv): how big the board can be on
-// this screen, what fits in a square from across the room, the winners-so-far
-// strip and the winner celebration card. No React, no IO (tvModel.test.ts).
+// this screen (the app's board, drawn larger: TvBoard), how big a square's
+// name can be, the winners-so-far strip and the winner celebration card. No
+// React, no IO (tvModel.test.ts).
 //
 // Amounts show here (TV mode is an in-app view, like the board), read from the
 // results (PeriodResult) only, never from the rules. What shows at all is the
@@ -12,7 +13,6 @@ import { primaryAward, resolveResults, type PeriodResult } from "../../../shared
 import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
 import { tvShowAll, type TvShow } from "../../../shared/tv";
 import { CLAIM_LINE, collectedFor, freeToPlayLines, shownHouseRules } from "../../../shared/venue";
-import { initialsOf } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 import type { PeriodCard } from "../board/boardModel";
 import { momentPrizes, priceLine, type MomentPrize } from "../rules/rulesModel";
@@ -23,9 +23,9 @@ export interface TvLayout {
   orientation: "landscape" | "portrait";
   /** Outer padding, px. */
   pad: number;
-  /** The board's side, px: team band + digit axis + every square and gap. */
+  /** The board's side, px: team band + digit axis + every square, with a gap before each axis and square. */
   board: number;
-  /** The team-name band along the top and the left, px. */
+  /** The team-name label along the top and the left, px. */
   band: number;
   /** The drawn digits' row and column, px. */
   axis: number;
@@ -61,8 +61,8 @@ export function tvLayout(width: number, height: number, n: number): TvLayout {
   const band = Math.round(room * 0.05);
   const axis = Math.round(room * (n > 5 ? 0.065 : 0.09));
   const gap = Math.max(2, Math.round(room * (n > 5 ? 0.004 : 0.008)));
-  const cell = Math.max(8, Math.floor((room - band - axis - n * gap) / n));
-  const board = band + axis + n * (cell + gap);
+  const cell = Math.max(8, Math.floor((room - band - axis - (n + 1) * gap) / n));
+  const board = band + axis + n * cell + (n + 1) * gap;
   const panel = landscape
     ? { width: Math.max(0, w - board - 3 * pad), height: h - 2 * pad }
     : { width: w - 2 * pad, height: Math.max(0, h - board - 3 * pad) };
@@ -71,8 +71,8 @@ export function tvLayout(width: number, height: number, n: number): TvLayout {
 
 // ---- What a square says ----
 
-/** Share of a square's width the text may use. */
-const TEXT_ROOM = 0.86;
+/** Share of a square's width the name may use. */
+const TEXT_ROOM = 0.9;
 /** The TV's names are extra bold: a touch wider than the measured bold advances. */
 const HEAVY = 1.03;
 
@@ -82,22 +82,16 @@ export function firstName(name: string): string {
 }
 
 /**
- * A square's text on the TV: the first name as large as it fits (up to about
- * a quarter of the square), or the initials once a name would have to shrink
- * below what reads from across the room.
+ * A square's name on the TV, under the player's sticker as on the board: the
+ * first name at the board's own size (about a quarter of the square), smaller
+ * when it's long, never below what reads from across the room; a name longer
+ * still clips, like the board's.
  */
-export function tvCellName(name: string, cell: number): { text: string; size: number; initials: boolean } {
-  const first = firstName(name);
-  const max = cell * 0.24;
-  const min = cell * 0.17;
-  if (first) {
-    const fit = Math.min(max, (cell * TEXT_ROOM) / (textEm(first) * HEAVY));
-    if (fit >= min) return { text: first, size: Math.floor(fit * 10) / 10, initials: false };
-  }
-  return { text: initialsOf(name), size: round1(cell * 0.3), initials: true };
+export function tvCellName(name: string, cell: number): { text: string; size: number } {
+  const first = firstName(name) || "?";
+  const fit = (cell * TEXT_ROOM) / (textEm(first) * HEAVY);
+  return { text: first, size: Math.floor(Math.max(cell * 0.17, Math.min(cell * 0.26, fit)) * 10) / 10 };
 }
-
-const round1 = (n: number) => Math.round(n * 10) / 10;
 
 // ---- Winners so far ----
 

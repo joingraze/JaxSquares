@@ -1,22 +1,26 @@
-// The board for a TV: read-only, sized to the screen (tvLayout), team bands in
-// the teams' colors, the drawn digits big on both edges, and each square's
-// owner by first name (or initials) on their color. The square the score
-// points at right now glows; earlier winners keep a gold ring and a trophy.
+// The board for a TV: the app's board (src/features/board, board.css), drawn
+// as large as the screen allows. Same team labels, same team-tinted digits,
+// same squares (each owner's sticker on their color, first name underneath),
+// same gold for winners and the same glow on the square the score points at.
+// Only what a room needs differs: sizes from tvLayout (tv.css scales the
+// board's fixed bits), nothing to tap, nothing "mine" (the TV is nobody's),
+// and a square's name sized to read from across the room (tvCellName).
 
 import { memo, type CSSProperties } from "react";
 import type { Game } from "../../../shared/types";
 import { TrophyIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
-import { shortTeam } from "../../lib/format";
+import { contrastText, shortTeam } from "../../lib/format";
 import type { CellView } from "../board/boardModel";
+import "../board/board.css";
 import { tvCellName, type TvLayout } from "./tvModel";
 
 export interface TvBoardProps {
-  game: Pick<Game, "teamX" | "teamY" | "league" | "status">;
+  game: Pick<Game, "teamX" | "teamY" | "league" | "status" | "format">;
   cells: CellView[][];
   axis: { x: string[]; y: string[]; drawn: boolean };
   layout: TvLayout;
-  /** How the square in play reads: live (red) or the last recorded score (volt). */
+  /** How the square in play reads: live (red) or the last recorded score. */
   nowKind: "live" | "projected" | null;
 }
 
@@ -28,95 +32,123 @@ function shortWin(label: string): string {
 
 export function TvBoard({ game, cells, axis, layout, nowKind }: TvBoardProps) {
   const n = cells.length;
+  const pair = game.format.boardSize === 25;
+  const open = game.status === "open" || game.status === "draft";
   const hotX = new Set<number>();
   const hotY = new Set<number>();
   for (const line of cells) for (const c of line) if (c.live) {
     hotX.add(c.col);
     hotY.add(c.row);
   }
-  const style = {
-    "--n": n,
+  const sizes = {
     "--band": `${layout.band}px`,
     "--axis": `${layout.axis}px`,
     "--cell": `${layout.cell}px`,
     "--gap": `${layout.gap}px`,
   } as CSSProperties;
   return (
-    <div
-      role="group"
-      aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}
-      data-testid="tv-board"
-      data-size={n}
-      data-drawn={axis.drawn}
-      data-final={game.status === "final"}
-      data-now={nowKind ?? "none"}
-      className="tv-board"
-      style={style}
-    >
-      <div className="tv-band tv-band-x" aria-hidden>
-        <span>{shortTeam(game.teamX, game.league)}</span>
-      </div>
-      <div className="tv-band tv-band-y" aria-hidden>
-        <span>{shortTeam(game.teamY, game.league)}</span>
-      </div>
-      {axis.drawn ? (
-        <>
-          {axis.x.map((label, i) => (
-            <div key={`x${i}`} aria-hidden className="tv-axis tv-axis-x" data-hot={hotX.has(i)} style={{ gridColumn: i + 3 } as CSSProperties}>
+    <div className="tv-board" style={sizes} data-testid="tv-board" data-drawn={axis.drawn} data-final={game.status === "final"}>
+      <div aria-hidden />
+      <TeamBand axis="x" name={shortTeam(game.teamX, game.league)} />
+      <TeamBand axis="y" name={shortTeam(game.teamY, game.league)} />
+      <div
+        role="group"
+        aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}
+        className="jx-board tv-jx"
+        data-size={n}
+        data-open={open}
+        data-spot="false"
+        data-picking="false"
+        data-final={game.status === "final"}
+        data-now={nowKind ?? "none"}
+        data-drawn={axis.drawn}
+        style={{ ...sizes, "--n": n } as CSSProperties}
+      >
+        <div className="jx-corner" aria-hidden />
+        {axis.drawn ? (
+          axis.x.map((label, i) => (
+            <div key={`x${i}`} aria-hidden className="jx-axis jx-axis-x" data-pair={pair} data-hot={hotX.has(i)} style={{ "--i": i } as CSSProperties}>
               {label}
             </div>
-          ))}
-          {axis.y.map((label, i) => (
-            <div key={`y${i}`} aria-hidden className="tv-axis tv-axis-y" data-hot={hotY.has(i)} style={{ gridRow: i + 3 } as CSSProperties}>
-              {label}
-            </div>
-          ))}
-        </>
-      ) : (
-        // Before the draw: one quiet line instead of a row of question marks.
-        <>
-          <div className="tv-axis-strip tv-axis-strip-x" data-testid="tv-predraw">
+          ))
+        ) : (
+          // Before the draw: one quiet line instead of a row of question marks, as on the board.
+          <div className="jx-axis-strip" data-testid="tv-predraw" style={{ gridColumn: `2 / span ${n}` }}>
             <span>Numbers get drawn when the host locks the board</span>
           </div>
-          <div className="tv-axis-strip tv-axis-strip-y" aria-hidden />
-        </>
-      )}
-      {cells.flat().map((cell) => (
-        <TvSquare key={cell.key} cell={cell} size={layout.cell} sig={signature(cell)} />
-      ))}
+        )}
+        {cells.map((line, row) => (
+          <div key={row} className="contents">
+            <div
+              aria-hidden
+              className="jx-axis jx-axis-y"
+              data-blank={!axis.drawn}
+              data-pair={pair}
+              data-hot={hotY.has(row)}
+              style={{ "--i": row } as CSSProperties}
+            >
+              {axis.drawn ? axis.y[row] : ""}
+            </div>
+            {line.map((cell) => (
+              <TvSquare key={cell.key} cell={cell} size={layout.cell} sig={signature(cell)} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The board's team label: the name between two rules, in the team's color. */
+function TeamBand({ axis, name }: { axis: "x" | "y"; name: string }) {
+  return (
+    <div aria-hidden className={cx("tv-team-band", axis === "x" ? "jx-band-x" : "jx-band-y")} data-testid={`tv-band-${axis}`}>
+      <span className="tv-team-rule" />
+      <span className="tv-team-name-label">{name}</span>
+      <span className="tv-team-rule" />
     </div>
   );
 }
 
 function signature(c: CellView): string {
   const o = c.owner;
-  return [c.state, c.ownerId ?? "", o ? `${o.name}|${o.color}` : "", c.wins.map((w) => w.periodKey + (w.reverse ? "r" : "")).join(","), c.live ? "L" : "", c.liveReverse ? "R" : ""].join("~");
+  return [c.state, c.ownerId ?? "", o ? `${o.name}|${o.color}|${o.emoji}` : "", c.wins.map((w) => w.periodKey + (w.reverse ? "r" : "")).join(","), c.live ? "L" : "", c.liveReverse ? "R" : ""].join("~");
 }
 
 const TvSquare = memo(
   function TvSquare({ cell, size }: { cell: CellView; size: number; sig: string }) {
     const owner = cell.owner;
-    const label = owner ? tvCellName(owner.name, size) : cell.ownerId ? tvCellName("?", size) : null;
+    const color = owner?.color ?? "#45594c";
+    const named = cell.ownerId !== null;
+    const name = named ? tvCellName(owner?.name ?? "", size) : null;
     const lastWin = cell.wins.at(-1) ?? null;
     return (
       <div
         data-testid="tv-cell"
         data-row={cell.row}
         data-col={cell.col}
+        // The TV is nobody's: a square someone holds is just taken.
         data-state={cell.state === "mine" ? "taken" : cell.state}
+        data-mine={false}
+        data-named={named || undefined}
         data-live={cell.live || undefined}
         data-live-reverse={cell.liveReverse || undefined}
-        className={cx("tv-cell", label?.initials && "tv-cell-initials")}
-        style={{ "--p": owner?.color ?? "#45594c", gridRow: cell.row + 3, gridColumn: cell.col + 3 } as CSSProperties}
+        className="jx-cell"
+        style={{ "--p": color, "--pi": contrastText(color), "--r": cell.row, "--c": cell.col } as CSSProperties}
       >
-        {label && (
-          <span className="tv-name" style={{ fontSize: label.size }}>
-            {label.text}
+        {named && (
+          <span className="jx-sticker" data-initials={!owner?.emoji} aria-hidden>
+            <span>{owner?.emoji || [...(owner?.name.trim() || "?")][0].toUpperCase()}</span>
+          </span>
+        )}
+        {name && (
+          <span className="jx-cell-name" style={{ fontSize: name.size }}>
+            {name.text}
           </span>
         )}
         {lastWin && (
-          <span className="tv-pip" aria-hidden>
-            <TrophyIcon size={Math.max(10, Math.round(size * 0.16))} filled />
+          <span aria-hidden className="jx-pip">
+            <TrophyIcon size={Math.max(10, Math.round(size * 0.14))} filled />
             <span>{cell.wins.length > 1 ? `×${cell.wins.length}` : shortWin(lastWin.label)}</span>
           </span>
         )}

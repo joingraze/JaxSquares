@@ -375,6 +375,10 @@
 .jx-board[data-now="projected"] .jx-cell[data-live="true"]::after {
   animation: none;
 }
+/* ...on its light fill the name reads in ink, not white. */
+.jx-board[data-now="projected"] .jx-cell[data-live="true"] .jx-cell-name {
+  color: var(--color-ink);
+}
 
 .jx-cell[data-live-reverse="true"]::after {
   content: "";

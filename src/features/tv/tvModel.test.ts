@@ -73,7 +73,7 @@ describe("tvLayout (grid sizing)", () => {
     expect(l.panel.width).toBeGreaterThan(700);
     // Whole pixels, and the parts add up to the board.
     expect(Number.isInteger(l.cell)).toBe(true);
-    expect(l.band + l.axis + 10 * (l.cell + l.gap)).toBe(l.board);
+    expect(l.band + l.axis + 10 * l.cell + 11 * l.gap).toBe(l.board);
     expect(l.cell).toBeGreaterThanOrEqual(80);
   });
 
@@ -106,23 +106,18 @@ describe("tvLayout (grid sizing)", () => {
   });
 });
 
-describe("tvCellName (what fits in a square)", () => {
-  it("shows the first name as large as it fits, up to a quarter of the square", () => {
+describe("tvCellName (a square's name under its sticker)", () => {
+  it("shows the first name at the board's size, smaller when it's long, never below what reads across a room", () => {
     const maya = tvCellName("Maya", 90);
-    expect(maya).toMatchObject({ text: "Maya", initials: false });
-    expect(maya.size).toBeLessThanOrEqual(90 * 0.24);
+    expect(maya.text).toBe("Maya");
+    expect(maya.size).toBeLessThanOrEqual(90 * 0.26);
     expect(tvCellName("Mary Elizabeth Johnson", 90).text).toBe("Mary");
-    // Longer names shrink, but never below what reads across a room.
     const priya = tvCellName("Priyanka", 90);
-    expect(priya.initials).toBe(false);
-    expect(priya.size).toBeLessThan(maya.size);
+    expect(priya.size).toBeLessThanOrEqual(maya.size);
     expect(priya.size).toBeGreaterThanOrEqual(90 * 0.17);
-  });
-
-  it("falls back to initials when a name would get too small", () => {
-    expect(tvCellName("Christopher", 60)).toMatchObject({ text: "CH", initials: true });
-    expect(tvCellName("Jean-Christophe Lambert", 40)).toMatchObject({ text: "JL", initials: true });
-    expect(tvCellName("   ", 90)).toMatchObject({ text: "?", initials: true });
+    // Longer still: the floor, and the square clips the rest (like the board's).
+    expect(tvCellName("Christopher", 60)).toEqual({ text: "Christopher", size: Math.floor(60 * 0.17 * 10) / 10 });
+    expect(tvCellName("   ", 90).text).toBe("?");
   });
 
   it("takes the first word as the first name", () => {

@@ -39,227 +39,42 @@
     padding-top: calc(var(--pad) + var(--safe-top) + 4.25rem);
   }
 
-  /* ---------- The board ---------- */
+  /* ---------- The board: the app's (board.css), larger ---------- */
 
+  /* The team labels along the top and the left, then the board itself. */
   .tv-board {
     display: grid;
-    grid-template-columns: var(--band) var(--axis) repeat(var(--n), var(--cell));
-    grid-template-rows: var(--band) var(--axis) repeat(var(--n), var(--cell));
+    grid-template-columns: var(--band) max-content;
+    grid-template-rows: var(--band) max-content;
     gap: var(--gap);
     flex: none;
     align-self: center;
   }
-
-  .tv-band {
+  .tv-team-band {
     display: flex;
+    min-width: 0;
+    min-height: 0;
     align-items: center;
     justify-content: center;
+    gap: calc(var(--band) * 0.3);
     overflow: hidden;
-    border-radius: calc(var(--band) * 0.28);
-    font-family: var(--font-display);
-    font-variation-settings: "opsz" 96;
+  }
+  .tv-team-rule {
+    flex: 1;
+    block-size: max(1px, calc(var(--band) * 0.035));
+    background: currentColor;
+    opacity: 0.35;
+  }
+  .tv-team-name-label {
+    max-inline-size: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(var(--band) * 0.44);
     font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-size: calc(var(--band) * 0.5);
-    line-height: 1;
-    white-space: nowrap;
-  }
-  .tv-band > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 92%;
-  }
-  .tv-band-x {
-    grid-row: 1;
-    grid-column: 3 / span var(--n);
-    background: var(--team-x);
-    color: var(--team-x-ink);
-  }
-  .tv-band-y {
-    grid-row: 3 / span var(--n);
-    grid-column: 1;
-    background: var(--team-y);
-    color: var(--team-y-ink);
-  }
-  .tv-band-y > span {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
-    max-width: none;
-    max-height: 92%;
-  }
-
-  .tv-axis {
-    display: grid;
-    place-items: center;
-    border-radius: calc(var(--axis) * 0.18);
-    background: var(--color-surface-3);
-    box-shadow: inset 0 0 0 1px var(--color-line-strong);
-    font-family: var(--font-display);
-    font-variation-settings: "opsz" 96;
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    line-height: 1;
-    letter-spacing: -0.02em;
-    font-size: calc(var(--axis) * 0.62);
-    color: var(--color-ink);
-  }
-  .tv-board[data-size="5"] .tv-axis {
-    font-size: calc(var(--axis) * 0.42);
-  }
-  .tv-axis-x {
-    grid-row: 2;
-  }
-  .tv-axis-y {
-    grid-column: 2;
-  }
-  .tv-axis-strip {
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    border-radius: calc(var(--axis) * 0.18);
-    border: 1px dashed var(--color-line-strong);
-    color: var(--color-ink-muted);
-    font-weight: 700;
-    font-size: max(0.625rem, calc(var(--axis) * 0.34));
-    white-space: nowrap;
-  }
-  .tv-axis-strip > span {
-    max-width: 96%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .tv-axis-strip-x {
-    grid-row: 2;
-    grid-column: 3 / span var(--n);
-  }
-  .tv-axis-strip-y {
-    grid-row: 3 / span var(--n);
-    grid-column: 2;
-  }
-  .tv-axis[data-hot="true"] {
-    background: var(--color-live-500);
-    color: #fff;
-    box-shadow: 0 0 calc(var(--axis) * 0.5) -0.1em rgb(255 64 64 / 0.7);
-  }
-  .tv-board[data-now="projected"] .tv-axis[data-hot="true"] {
-    background: var(--color-brand-400);
-    color: var(--color-ink-inverse);
-    box-shadow: none;
-  }
-
-  /* ---------- Squares ---------- */
-
-  .tv-cell {
-    position: relative;
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    border-radius: calc(var(--cell) * 0.12);
-    background: color-mix(in srgb, var(--p) 24%, var(--color-surface-2));
-    /* The owner's color as a jersey stripe along the bottom. */
-    box-shadow:
-      inset 0 calc(var(--cell) * -0.07) 0 var(--p),
-      inset 0 0 0 1px var(--color-line);
-    color: var(--color-ink);
-  }
-  .tv-cell[data-state="empty"] {
-    background: var(--color-surface);
-    box-shadow: inset 0 0 0 1px var(--color-line-strong);
-  }
-  .tv-board[data-drawn="false"] .tv-cell[data-state="empty"] {
-    /* Squares still up for grabs: a faint volt wash. */
-    background: var(--brand-wash);
-    box-shadow: inset 0 0 0 1px var(--brand-wash-ring);
-  }
-
-  .tv-name {
-    max-width: 92%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 800;
-    line-height: 1;
-    letter-spacing: -0.01em;
-    /* Lifted a little above the stripe. */
-    margin-bottom: calc(var(--cell) * 0.04);
-  }
-  .tv-cell-initials .tv-name {
-    font-family: var(--font-display);
-    font-variation-settings: "opsz" 96;
-    letter-spacing: 0;
-  }
-
-  /* Earlier winners: a gold ring and a trophy pip with the moment. */
-  .tv-cell[data-state="winner"] {
-    box-shadow:
-      inset 0 0 0 calc(var(--cell) * 0.05) var(--color-gold-line),
-      inset 0 calc(var(--cell) * -0.07) 0 var(--p);
-  }
-  .tv-pip {
-    position: absolute;
-    top: calc(var(--cell) * 0.05);
-    right: calc(var(--cell) * 0.05);
-    display: inline-flex;
-    align-items: center;
-    gap: calc(var(--cell) * 0.03);
-    border-radius: 999px;
-    padding: calc(var(--cell) * 0.025) calc(var(--cell) * 0.06);
-    background: var(--color-gold-400);
-    color: var(--color-ink-inverse);
-    font-size: calc(var(--cell) * 0.155);
-    font-weight: 800;
-    line-height: 1;
-  }
-  /* Final whistle: the winners take the full gold. */
-  .tv-board[data-final="true"] .tv-cell[data-state="winner"] {
-    background: var(--foil);
-    color: var(--color-ink-inverse);
-  }
-  .tv-board[data-final="true"] .tv-cell:not([data-state="winner"]) {
-    opacity: 0.62;
-  }
-
-  /* The square the score points at right now. */
-  .tv-cell[data-live="true"] {
-    z-index: 2;
-    overflow: visible;
-    outline: calc(var(--cell) * 0.09) solid var(--color-live-500);
-    outline-offset: calc(var(--cell) * 0.01);
-    transform: scale(1.06);
-    animation: tv-now 1.6s ease-in-out infinite;
-  }
-  .tv-board[data-now="projected"] .tv-cell[data-live="true"] {
-    outline-color: var(--color-brand-line);
-    animation: none;
-    box-shadow:
-      0 0 calc(var(--cell) * 0.5) calc(var(--cell) * -0.05) var(--brand-glow),
-      inset 0 calc(var(--cell) * -0.07) 0 var(--p);
-  }
-  .tv-cell[data-live-reverse="true"] {
-    outline: calc(var(--cell) * 0.04) dashed var(--color-live-500);
-    outline-offset: calc(var(--cell) * -0.02);
-  }
-  @keyframes tv-now {
-    0%,
-    100% {
-      box-shadow:
-        0 0 calc(var(--cell) * 0.25) 0 rgb(255 64 64 / 0.55),
-        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
-    }
-    50% {
-      box-shadow:
-        0 0 calc(var(--cell) * 0.6) calc(var(--cell) * 0.06) rgb(255 64 64 / 0.75),
-        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .tv-cell[data-live="true"] {
-      animation: none;
-      box-shadow:
-        0 0 calc(var(--cell) * 0.4) 0 rgb(255 64 64 / 0.65),
-        inset 0 calc(var(--cell) * -0.07) 0 var(--p);
-    }
   }
 
   /* ---------- The panel ---------- */
@@ -512,4 +327,50 @@
       opacity: 1;
     }
   }
+}
+
+/*
+ * The app's board styles (board.css) aren't in a layer, so the TV's sizes for
+ * their fixed bits (rings, the trophy pip, corners) aren't either: everything
+ * scales with the square (--cell) and the digits (--axis) from tvLayout.
+ */
+.tv-jx .jx-axis,
+.tv-jx .jx-corner,
+.tv-jx .jx-axis-strip {
+  border-radius: calc(var(--axis) * 0.22);
+}
+.tv-jx .jx-axis-strip {
+  padding: 0 calc(var(--axis) * 0.4);
+  font-size: max(0.75rem, calc(var(--axis) * 0.36));
+}
+.tv-jx .jx-cell-name {
+  inset-inline: calc(var(--cell) * 0.04);
+  text-overflow: ellipsis;
+}
+.tv-jx .jx-cell[data-state="winner"] {
+  box-shadow: inset 0 0 0 calc(var(--cell) * 0.03) var(--color-gold-line);
+}
+.tv-jx .jx-cell[data-live="true"] {
+  box-shadow:
+    0 0 0 calc(var(--cell) * 0.035) white,
+    0 0 calc(var(--cell) * 0.3) calc(var(--cell) * 0.04) rgb(255 64 64 / 0.75);
+}
+.tv-jx[data-now="projected"] .jx-cell[data-live="true"] {
+  box-shadow:
+    0 0 0 calc(var(--cell) * 0.035) var(--color-ink),
+    0 0 calc(var(--cell) * 0.25) calc(var(--cell) * 0.02) color-mix(in srgb, var(--color-ink) 35%, transparent);
+}
+.tv-jx .jx-cell[data-live-reverse="true"]::after {
+  inset: calc(var(--cell) * -0.04);
+  border-width: calc(var(--cell) * 0.03);
+}
+.tv-jx .jx-pip {
+  top: calc(var(--cell) * -0.08);
+  right: calc(var(--cell) * -0.08);
+  gap: calc(var(--cell) * 0.03);
+  min-width: calc(var(--cell) * 0.22);
+  height: calc(var(--cell) * 0.22);
+  padding: 0 calc(var(--cell) * 0.07);
+  font-size: calc(var(--cell) * 0.14);
+  box-shadow: 0 0 0 calc(var(--cell) * 0.025) var(--color-canvas);
 }
