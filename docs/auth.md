@@ -93,6 +93,7 @@ owner):
 | `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
 | `email_subscriptions` | moved (email notices, `worker/email/store.ts`, docs/email.md); where both have an address on a board, the confirmed one stays (else the account's) and the other is deleted. `email_suppressions` is keyed by the address, so nothing moves |
 | `clubs` | moved (clubs, `worker/clubs/store.ts`, migration 0016): the device's club (name, logo, TV link) becomes the account's, unless the account has a club of its own with a name or a logo, which stays (the device's is deleted); an account's empty club gives way to the device's. Its TV link keeps working. The account's branding cache is dropped in that isolate (`forgetClubBrand`) |
+| `prize_claims` | moved (venue boards' prizes handed over, migration 0019): a collected prize stays collected for the account's player |
 | `client_links` | the device's link |
 
 `purchases` and `cohost_invites` have no client column (an invite is always

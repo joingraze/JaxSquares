@@ -218,6 +218,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | A Club Pass board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Club Pass, or for anyone but the host and co-hosts; 429 |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
 | GET | `/api/games/:id/claims` | C (H for `all`) | – | `ClaimsResponse` `{ enabled, mine, all }` (`no-store`): a board with claim codes (`format.claimCodes`, see "Venue boards"): `mine` lists the caller's own winning awards with their codes; `all` every award's code for the host (its admin token) or a co-host, else null. `{ enabled: false, mine: [], all: null }` when the board doesn't use them; 404 |
+| POST | `/api/games/:id/claims/collect` | C (the winner, or H) | `CollectInput` `{ periodKey, reverse, collected }` | `{ state }`: marks that award's prize handed over to its current winner (`GameState.collected`, broadcast like any change), by the host or a co-host (`by: "host"`) or on the winner's own phone (`by: "winner"`); marking it again is a no-op. `collected: false` takes it back (host only, else 403). 400 bad body, 403 anyone else, 404 nobody has won that award, 409 the board doesn't use claim codes, or the winner's phone after their time to collect (`claimDeadline` + `CLAIM_GRACE_MS`, `CLAIM_EXPIRED_ERROR`; the host still can) |
 | GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
@@ -1389,10 +1390,19 @@ payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
 
 A bar, restaurant or brewery runs a free board for the room and puts up the
 prizes itself (`shared/venue.ts`, pure, tested in `shared/venue.test.ts`).
-Two optional `GameFormat` fields, edited with the rules (Rules & prizes →
-"House rules", `src/features/rules/HouseRules.tsx`) and left out of a stored
-format when off or empty:
+Optional `GameFormat` fields, edited with the rules (Rules & prizes:
+"Venue mode" at the top, "House rules" at the foot,
+`src/features/rules/HouseRules.tsx`) and left out of a stored format when off
+or empty:
 
+- **`venue?: true`** (venue mode): free to play, so never a square price
+  (`VENUE_PRICE_ERROR`, 400; `withRules` drops one). Turning it on
+  (`setVenue` in `rulesModel.ts`) makes the board just for fun (amounts the
+  host already chose stay, as prize values), turns claim codes on with five
+  minutes to collect and adds "Must be present to win" when there are no
+  house rules (`VENUE_DEFAULTS`); the create flow sets one square each, and
+  the host's editor does too on a board still being picked (`rulesPatch`
+  adds `maxPerPlayer: 1`). Turning it off only drops the flag.
 - **`houseRules?: string[]`**: up to `HOUSE_RULES_MAX` (4) single lines of
   `HOUSE_RULE_MAX_LENGTH` (80), with ideas a tap away (`HOUSE_RULE_IDEAS`).
   None may ask anyone to buy anything (`HOUSE_RULE_PURCHASE_ERROR`: boards are
@@ -1407,10 +1417,31 @@ format when off or empty:
   the board, `claim-card`) and the host or a co-host (Host tools → Winners,
   `winner-code`); never in `GameState`, the TV, a push, a link preview or
   share text, so a photo of the TV claims nothing.
+- **`claimMinutes?: number`** (with claim codes; 5, 10 or 15 in the editor,
+  1–120 from the API): how long a winner has to collect, counted from when
+  the award was decided (`decidedAt`: the host's pick, else the score's
+  `updatedAt`, so a correction starts it again; `claimDeadline`).
 
-What a board says about itself (`venueLines`): a club board (a Club Pass
-holder's, named) with no square price shows "Free to play · No purchase
-necessary" and "Prizes from <club>". Where it shows:
+**Collecting a prize.** The winner's `ClaimCard` shows each award's prize,
+code and countdown, and "Show my winning pass" (`WinningPass`,
+`winning-pass`): full screen, fixed gold-on-dark colors, the board, the
+winner, the prize, the code, a clock ticking by the second and a sheen
+sweeping across (`src/features/venue/venue.css`; still under reduced motion,
+where the clock is the proof), so a screenshot of someone else's pass is easy
+to spot. The screen stays awake while it's up (`useWakeLock`). Staff tap
+"Staff: mark collected", then "Prize handed over"; Host tools → Winners has
+"Mark collected" beside each code (with the time left) and "Undo". Either way
+`POST /api/games/:id/claims/collect` stores it (`prize_claims`, migration
+0019: one row per award with the winner's clientId, which joins the sign-in
+merge) and the board's state carries it (`GameState.collected`, public ids
+only, present on boards with claim codes): the phone, Host tools and the TV
+(a "Collected" chip on the winner's row, `tv-collected`) update live. A mark
+counts only while that player still holds the award (`collectedFor`).
+
+What a board says about itself (`venueLines`): a venue board, or a club
+board (a Club Pass holder's, named), with no square price shows "Free to
+play · No purchase necessary", and a club's "Prizes from <club>". Where it
+shows:
 
 - **Rules sheet**: `VenueRules` (`venue-rules`) lists the house rules, then
   `CLAIM_LINE` with claim codes on, then the venue lines.

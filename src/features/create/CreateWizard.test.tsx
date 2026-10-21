@@ -228,6 +228,22 @@ describe("the create flow", () => {
     expect(posted[0].format.rules?.map((r) => r.square?.amount)).toEqual([200, 200, 200, 400]);
   });
 
+  it("venue mode: free to play and just for fun, one square each, claim codes with five minutes, must be present", async () => {
+    renderFlow();
+    await onStep("game");
+    await customTeams();
+    await nextTo("format", "prizes");
+    fireEvent.click(screen.getByRole("switch", { name: /Venue mode/ }));
+    expect(screen.getByRole("switch", { name: /Claim codes/ })).toBeChecked();
+    expect(screen.getByTestId("house-rules")).toHaveTextContent("Must be present to win");
+    expect(screen.queryAllByTestId("price-chip")).toHaveLength(0);
+    await nextTo("details", "review");
+    await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].maxPerPlayer).toBe(1);
+    expect(posted[0].format).toMatchObject({ venue: true, justForFun: true, squarePrice: null, claimCodes: true, claimMinutes: 5, houseRules: ["Must be present to win"] });
+  });
+
   it("fills the suggested amounts in as the setup changes, until the host types one; then Use suggested amounts", async () => {
     renderFlow();
     await onStep("game");

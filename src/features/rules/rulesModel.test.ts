@@ -48,6 +48,7 @@ import {
   ruleLines,
   rulesLock,
   rulesPatch,
+  setVenue,
   SCORING_LOCKED,
   FRESH_LOCKED,
   selectPreset,
@@ -618,3 +619,23 @@ function sortRulesFixed(rules: MomentRule[], side: "square" | "reverse" = "squar
 function fixedRules(rules: MomentRule[]): MomentRule[] {
   return rules.filter((r) => r.moment !== "score");
 }
+
+describe("venue mode in the editor", () => {
+  it("starts a venue's board just for fun, free to play, with claim codes, five minutes and must be present", () => {
+    const d = setVenue(draftOf(fmt({ rules: OWNER, squarePrice: 10 })), true);
+    expect(d).toMatchObject({ venue: true, squarePrice: null, claimCodes: true, claimMinutes: 5, houseRules: ["Must be present to win"] });
+    // Amounts the host already chose stay (as display-only prize values); otherwise just for fun.
+    expect(d.choice).toBe("$");
+    expect(setVenue(draftOf(fmt()), true).choice).toBe("fun");
+    // The host's own house rules stay; turning it off keeps everything else as set.
+    expect(setVenue({ ...draftOf(fmt()), houseRules: ["21+ only"] }, true).houseRules).toEqual(["21+ only"]);
+    expect(setVenue(d, false)).toMatchObject({ venue: false, claimCodes: true, claimMinutes: 5 });
+    expect(formatOf(fmt(), setVenue(draftOf(fmt()), true))).toMatchObject({ venue: true, justForFun: true, claimCodes: true, claimMinutes: 5 });
+  });
+
+  it("caps an open board at one square each when the host turns it on", () => {
+    const game = { format: fmt({ justForFun: true }), prizes: {}, status: "open", maxPerPlayer: 0 } as Pick<Game, "format" | "prizes" | "status" | "maxPerPlayer">;
+    expect(rulesPatch(game, setVenue(draftOf(game.format), true))).toMatchObject({ maxPerPlayer: 1, format: { venue: true } });
+    expect(rulesPatch({ ...game, status: "locked" }, setVenue(draftOf(game.format), true))).not.toHaveProperty("maxPerPlayer");
+  });
+});

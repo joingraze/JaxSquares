@@ -4,7 +4,7 @@
 // calls go without one and the server authorizes them by the clientId.
 // Non-2xx responses throw ApiError.
 
-import type { ClaimsResponse,
+import type { ClaimsResponse, CollectInput,
   AppConfig,
   AuthProvider,
   CellsInput,
@@ -236,6 +236,9 @@ export const api = {
   getGame: (id: string, signal?: AbortSignal) => request<GameState>("GET", g(id), { signal }),
   /** Claim codes (venue boards): mine, and every winner's for the host (admin token) or a co-host. */
   claims: (id: string, adminToken?: string | null) => request<ClaimsResponse>("GET", `${g(id)}/claims`, { adminToken }),
+  /** A prize handed over (or, host only, taken back): from Host tools with the admin token, or the winner's own phone without one. */
+  collect: (id: string, input: CollectInput) => request<StateResponse>("POST", `${g(id)}/claims/collect`, { body: input }),
+  collectAsHost: (id: string, input: CollectInput, adminToken?: string | null) => asHost<StateResponse>("POST", id, "/claims/collect", adminToken, input),
   updateGame: (id: string, input: UpdateGameInput, adminToken?: string | null) =>
     asHost<StateResponse>("PATCH", id, "", adminToken, input),
   /** Deletes the board and forgets it on this device. */

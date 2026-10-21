@@ -17,6 +17,7 @@ import { boardAccountToken } from "./payments/boardToken";
 import { createTestD1, type TestD1 } from "./payments/testD1";
 import { notify } from "./push";
 import { RATE_LIMITS } from "./rateLimit";
+import { CLAIM_EXPIRED_ERROR, VENUE_PRICE_ERROR } from "../shared/venue";
 import { applyLiveUpdate } from "./service";
 
 vi.mock("./push", async (importOriginal) => ({
@@ -46,6 +47,7 @@ const MIGRATIONS = [
   "migrations/0014_cohosts.sql",
   "migrations/0016_club.sql",
   "migrations/0017_season.sql",
+  "migrations/0019_prize_claims.sql",
 ];
 
 let t: TestD1;
@@ -173,6 +175,58 @@ describe("claim codes (venue boards)", () => {
   it("are off unless the host turned them on", async () => {
     const { id, admin } = await wonByAna(false);
     expect((await call<ClaimsResponse>("GET", `/games/${id}/claims`, { admin })).body).toEqual({ enabled: false, mine: [], all: null });
+    expect((await call("POST", `/games/${id}/claims/collect`, { admin, body: { periodKey: "q1", reverse: false, collected: true } })).status).toBe(409);
+  });
+
+  it("let the host or the winner's own phone mark a prize collected, for everyone to see; only the host takes it back", async () => {
+    const { id, admin } = await wonByAna();
+    const collect = (who: { client?: string; admin?: string }, collected = true, periodKey = "q1") =>
+      call<{ state: GameState }>("POST", `/games/${id}/claims/collect`, { ...who, body: { periodKey, reverse: false, collected } });
+
+    expect((await collect({ client: BEN })).status).toBe(403);
+    expect((await collect({ client: ANA }, true, "q2")).status).toBe(404);
+    const byAna = await collect({ client: ANA });
+    expect(byAna.status).toBe(200);
+    expect(byAna.body.state.collected).toEqual([{ periodKey: "q1", reverse: false, playerId: pid(ANA), at: expect.any(Number), by: "winner" }]);
+    expect(byAna.text).not.toContain(ANA);
+    expect((await call<GameState>("GET", `/games/${id}`, { client: null })).body.collected).toHaveLength(1);
+
+    expect((await collect({ client: ANA }, false)).status).toBe(403);
+    expect((await collect({ admin }, false)).body.state.collected).toEqual([]);
+    expect((await collect({ admin })).body.state.collected).toEqual([expect.objectContaining({ playerId: pid(ANA), by: "host" })]);
+  });
+
+  it("stop the winner's phone once their time to collect is up, never the host", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { id, admin } = await openBoard({ format: { periods: "quarters", reverse: false, boardSize: 25, freshNumbers: false, claimCodes: true, claimMinutes: 5 } });
+      await call("POST", `/games/${id}/lock`, { admin });
+      const locked = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+      expect(locked.game.format.claimMinutes).toBe(5);
+      const anaCell = locked.squares.find((s) => s.playerId === pid(ANA))!;
+      const draw = locked.game.numbers!["*"];
+      await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "q1", scoreX: draw.x[anaCell.col][0], scoreY: draw.y[anaCell.row][0] } });
+      vi.setSystemTime(Date.now() + 7 * 60_000);
+      const late = await call<{ error: string }>("POST", `/games/${id}/claims/collect`, { client: ANA, body: { periodKey: "q1", reverse: false, collected: true } });
+      expect(late.status).toBe(409);
+      expect(late.body.error).toBe(CLAIM_EXPIRED_ERROR);
+      expect((await call("POST", `/games/${id}/claims/collect`, { admin, body: { periodKey: "q1", reverse: false, collected: true } })).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("venue boards", () => {
+  it("are free to play: never a square price", async () => {
+    const venue = { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false, venue: true, justForFun: true } as const;
+    const priced = await call<{ error: string }>("POST", "/games", { body: createInput({ format: { ...venue, justForFun: false, unit: "$", squarePrice: 5 } }) });
+    expect(priced.status).toBe(400);
+    expect(priced.body.error).toBe(VENUE_PRICE_ERROR);
+    const created = await call<CreateGameResponse>("POST", "/games", { body: createInput({ format: venue, maxPerPlayer: 1 }) });
+    expect(created.status).toBe(201);
+    expect(created.body.game.format).toMatchObject({ venue: true, justForFun: true, squarePrice: null });
+    expect(created.body.game.maxPerPlayer).toBe(1);
   });
 });
 

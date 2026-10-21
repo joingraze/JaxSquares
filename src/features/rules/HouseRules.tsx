@@ -1,21 +1,41 @@
-// The rules editor's "House rules" (shared/venue.ts): a few short lines the
-// host adds one at a time ("Must be present to win"), with ideas a tap away,
-// and the claim-code switch. Used in the create flow and the host's rules
-// editor (RulesEditor); the board, its TV and the rules sheet show them.
+// The rules editor's venue settings (shared/venue.ts): the "Venue mode"
+// switch at the top, and "House rules" at the foot: a few short lines the host
+// adds one at a time ("Must be present to win"), with ideas a tap away, the
+// claim-code switch and how long a winner has to collect. Used in the create
+// flow and the host's rules editor (RulesEditor); the board, its TV and the
+// rules sheet show them.
 
 import { useState } from "react";
 import { PlusIcon, XIcon } from "../../components/icons";
-import { Chip, IconButton, Switch, TextField } from "../../components/ui";
-import { HOUSE_RULE_IDEAS, HOUSE_RULE_MAX_LENGTH, HOUSE_RULES_MAX, houseRuleProblem } from "../../../shared/venue";
+import { Chip, IconButton, SegmentedControl, Switch, TextField } from "../../components/ui";
+import { CLAIM_MINUTES_CHOICES, HOUSE_RULE_IDEAS, HOUSE_RULE_MAX_LENGTH, HOUSE_RULES_MAX, houseRuleProblem } from "../../../shared/venue";
+
+/** "Venue mode": a bar, restaurant or brewery's free board (setVenue in rulesModel sets it up). */
+export function VenueMode({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <div className="rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line" data-testid="venue-mode-row">
+      <Switch
+        checked={on}
+        onChange={onChange}
+        label="Venue mode"
+        description="For a bar, restaurant or brewery: free to play, one square each, and winners collect their prize from staff."
+        data-testid="venue-mode"
+      />
+    </div>
+  );
+}
 
 export interface HouseRulesProps {
   rules: string[];
   claimCodes: boolean;
+  /** Minutes a winner has to collect (with claim codes); null = no limit. */
+  claimMinutes: number | null;
   onRules: (rules: string[]) => void;
   onClaimCodes: (on: boolean) => void;
+  onClaimMinutes: (minutes: number | null) => void;
 }
 
-export function HouseRules({ rules, claimCodes, onRules, onClaimCodes }: HouseRulesProps) {
+export function HouseRules({ rules, claimCodes, claimMinutes, onRules, onClaimCodes, onClaimMinutes }: HouseRulesProps) {
   const [text, setText] = useState("");
   const [tried, setTried] = useState(false);
   const full = rules.length >= HOUSE_RULES_MAX;
@@ -102,14 +122,27 @@ export function HouseRules({ rules, claimCodes, onRules, onClaimCodes }: HouseRu
         </>
       )}
 
-      <div className="rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
+      <div className="flex flex-col gap-3 rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
         <Switch
           checked={claimCodes}
           onChange={onClaimCodes}
           label="Claim codes"
-          description="Each winner's phone shows a short code. Staff check it against Host tools before handing over the prize."
+          description="Each winner's phone shows a winning pass with a short code. Staff check it, hand over the prize and mark it collected."
           data-testid="claim-codes"
         />
+        {claimCodes && (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-footnote font-semibold text-ink-muted">Time to collect</p>
+            <SegmentedControl<number>
+              size="sm"
+              aria-label="Time to collect"
+              data-testid="claim-minutes"
+              value={claimMinutes ?? 0}
+              onChange={(m) => onClaimMinutes(m || null)}
+              options={[{ value: 0, label: "No limit" }, ...CLAIM_MINUTES_CHOICES.map((m) => ({ value: m, label: `${m} min` }))]}
+            />
+          </div>
+        )}
       </div>
     </section>
   );

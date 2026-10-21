@@ -45,7 +45,7 @@ export function TvCelebrate({ celebration }: { celebration: TvCelebration }) {
         {claim && (
           <p className="tv-text-md flex items-center gap-[calc(var(--u)*0.8)] text-ink-muted" data-testid="tv-celebrate-claim">
             <PhoneIcon className="h-[1em] w-[1em] shrink-0 text-ink-gold" />
-            Your claim code is on your phone. Show it to staff to collect.
+            Your winning pass is on your phone. Show it to staff to collect.
           </p>
         )}
       </div>

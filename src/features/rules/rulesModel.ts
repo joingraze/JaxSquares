@@ -43,9 +43,11 @@ import {
   upgradeFormat,
   validatePrizeNote,
   withRules,
+  withoutRest,
   type FixedPreset,
 } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
+import { VENUE_DEFAULTS } from "../../../shared/venue";
 import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
 
 export type Side = "square" | "reverse";
@@ -65,9 +67,12 @@ export interface RulesDraft {
   /** Kept while "Just for fun" is picked (so switching back restores it); cleared on save. */
   squarePrice: number | null;
   freshNumbers: boolean;
-  /** House rules and claim codes (shared/venue.ts). Absent: the base format's stay as they are. */
+  /** House rules, claim codes, time to collect and venue mode (shared/venue.ts). Absent: the base format's stay as they are. */
   houseRules?: string[];
   claimCodes?: boolean;
+  /** Minutes a winner has to collect; null = no limit. */
+  claimMinutes?: number | null;
+  venue?: boolean;
 }
 
 /** The choice a saved format shows: just for fun, else the unit once any amount is set, else not chosen. */
@@ -89,6 +94,30 @@ export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string
     freshNumbers: format.freshNumbers,
     houseRules: format.houseRules ?? [],
     claimCodes: format.claimCodes === true,
+    claimMinutes: format.claimMinutes ?? null,
+    venue: format.venue === true,
+  };
+}
+
+/**
+ * Venue mode on: just for fun with no square price, claim codes with five
+ * minutes to collect, and "Must be present to win" unless the host wrote
+ * house rules already (VENUE_DEFAULTS; the create flow also caps squares at
+ * one each). Off: only the flag goes; everything else stays as set.
+ */
+export function setVenue(draft: RulesDraft, on: boolean): RulesDraft {
+  if (!on) return { ...draft, venue: false };
+  const houseRules = draft.houseRules?.length ? draft.houseRules : [...VENUE_DEFAULTS.houseRules];
+  const amounts = draft.choice === "$" || draft.choice === "pts";
+  return {
+    ...draft,
+    venue: true,
+    choice: amounts ? draft.choice : "fun",
+    squarePrice: null,
+    rules: withoutRest(draft.rules),
+    houseRules,
+    claimCodes: true,
+    claimMinutes: VENUE_DEFAULTS.claimMinutes,
   };
 }
 
@@ -111,6 +140,8 @@ export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
     freshNumbers: draft.freshNumbers,
     houseRules: draft.houseRules ?? base.houseRules,
     claimCodes: draft.claimCodes ?? base.claimCodes,
+    claimMinutes: draft.claimMinutes === undefined ? base.claimMinutes : (draft.claimMinutes ?? undefined),
+    venue: draft.venue ?? base.venue,
   });
 }
 
@@ -754,10 +785,14 @@ export function lockViolation(game: Pick<Game, "format">, draft: RulesDraft, loc
 }
 
 /** The host's PATCH for a rules edit, or null when nothing changed. */
-export function rulesPatch(game: Pick<Game, "format" | "prizes">, draft: RulesDraft): UpdateGameInput | null {
+export function rulesPatch(game: Pick<Game, "format" | "prizes"> & Partial<Pick<Game, "status" | "maxPerPlayer">>, draft: RulesDraft): UpdateGameInput | null {
   const next = formatOf(game.format, draft);
   const cur = withRules(game.format, game.prizes);
-  return JSON.stringify(next) === JSON.stringify(cur) ? null : { format: next };
+  if (JSON.stringify(next) === JSON.stringify(cur)) return null;
+  // Venue mode turned on while squares are still being picked: one square each from here on (VENUE_DEFAULTS).
+  const picking = game.status === "open" || game.status === "draft";
+  const cap = next.venue && !cur.venue && picking && game.maxPerPlayer !== VENUE_DEFAULTS.maxPerPlayer ? { maxPerPlayer: VENUE_DEFAULTS.maxPerPlayer } : {};
+  return { format: next, ...cap };
 }
 
 // ---- Reading the rules (the sheet everyone sees) ----

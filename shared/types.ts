@@ -123,12 +123,42 @@ export interface GameFormat {
   justForFun?: boolean;
   /**
    * A few short lines on how to play and claim ("Must be present to win"),
-   * shown with the rules, on the TV and the printable (shared/venue.ts).
+   * shown with the rules and on the TV (shared/venue.ts).
    * Absent = none. Editable any time, like the prizes.
    */
   houseRules?: string[];
   /** Winners show the staff a claim code (GET /api/games/:id/claims). Absent = off. */
   claimCodes?: boolean;
+  /**
+   * With claim codes: minutes a winner has to collect, from the moment their
+   * prize is decided (their phone counts down). Absent = no limit; the host
+   * can always mark a prize collected.
+   */
+  claimMinutes?: number;
+  /**
+   * A venue's board (a bar, restaurant or brewery running it for the room):
+   * free to play, so never a square price (400). Absent = an ordinary board.
+   */
+  venue?: boolean;
+}
+
+/** A prize handed over (POST /api/games/:id/claims/collect): public, so the board, the TV and the winner's phone all show it. */
+export interface PrizeCollected {
+  periodKey: string;
+  /** The reverse square's prize. */
+  reverse: boolean;
+  /** The winner it was handed to (public id): a corrected score that moves the prize leaves it uncollected. */
+  playerId: string;
+  at: number;
+  /** Marked by the host (or a co-host) in Host tools, or on the winner's own phone. */
+  by: "host" | "winner";
+}
+
+/** POST /api/games/:id/claims/collect. `collected: false` (host only) takes it back. */
+export interface CollectInput {
+  periodKey: string;
+  reverse: boolean;
+  collected: boolean;
 }
 
 /** One winner's claim code (shared/venue.ts): who won what, and the code the staff check. */
@@ -577,6 +607,8 @@ export interface GameState {
    * board's next state. Public data only: no clientId, no admin token.
    */
   siblings?: SiblingBoard[];
+  /** A board with claim codes: the prizes handed over so far (the winner's public id only). */
+  collected?: PrizeCollected[];
   /** A season board (Game.kind "season"): its schedule and standings, public ids only. */
   season?: SeasonState;
   /** A game of a season board (Game.seasonId): which game of how many, and its neighbors. */

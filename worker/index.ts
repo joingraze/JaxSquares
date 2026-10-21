@@ -48,6 +48,7 @@ import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
 import { claimCodesFor } from "./claims";
+import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor } from "../shared/venue";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -521,6 +522,46 @@ api.get("/games/:id/claims", requireClient, async (c) => {
   const me = c.get("playerId");
   const body: ClaimsResponse = { enabled: true, mine: codes.filter((k) => k.playerId === me), all: runsIt ? codes : null };
   return c.json(body, 200, { "cache-control": "no-store" });
+});
+
+/**
+ * A venue board's prize handed over (docs/ARCHITECTURE.md "Venue boards"):
+ * marked by the host or a co-host in Host tools, or on the winner's own phone
+ * (staff tap it there) until their time to collect runs out. Only the host
+ * takes a mark back. Public, so the board, the TV and the phone all show it.
+ */
+api.post("/games/:id/claims/collect", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const found = await db.getGameStateWithToken(c.env.DB, id, c.get("clientId"));
+  if (!found) fail(404, "Game not found");
+  const { state, adminToken, cohost } = found;
+  if (!state.game.format.claimCodes) fail(409, "This board doesn't use claim codes");
+  const body = await readJson(c);
+  const periodKey = typeof body.periodKey === "string" ? body.periodKey : "";
+  const reverse = body.reverse === true;
+  if (typeof body.collected !== "boolean") fail(400, "collected must be true or false");
+  const result = resolveResults(state).find((r) => r.periodKey === periodKey);
+  const winner = result && (reverse ? (result.awardsReverse ? result.reverseWinnerPlayerId : null) : result.awardsSquare ? result.winnerPlayerId : null);
+  if (!winner) fail(404, "Nobody has won that yet");
+  const host = cohost || tokenMatches(adminToken, c.req.header("x-admin-token") ?? "");
+  const mine = c.get("playerId") === winner;
+  if (!host && !mine) fail(403, "Only the winner or the host can do that");
+  const now = Date.now();
+  let write: D1PreparedStatement;
+  if (!body.collected) {
+    if (!host) fail(403, "Only the host can take that back");
+    write = db.uncollectPrize(c.env.DB, id, periodKey, reverse);
+  } else {
+    if (collectedFor(state, periodKey, reverse, winner)) return c.json({ state });
+    const deadline = claimDeadline(state, periodKey);
+    if (!host && deadline !== null && now > deadline + CLAIM_GRACE_MS) fail(409, CLAIM_EXPIRED_ERROR);
+    const clientId = mine ? c.get("clientId") : (await db.getMembers(c.env.DB, id)).find((m) => m.id === winner)?.clientId;
+    if (!clientId) fail(404, "Nobody has won that yet");
+    write = db.collectPrize(c.env.DB, id, { periodKey, reverse, clientId, by: host ? "host" : "winner" }, now);
+  }
+  const { state: next } = await commitOr404(c, id, [write], now);
+  publish(c, next, [], []);
+  return c.json({ state: next });
 });
 
 api.get("/games/:id", async (c) => {

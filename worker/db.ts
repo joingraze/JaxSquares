@@ -44,6 +44,7 @@ import type {
   NumberDraw,
   Period,
   Player,
+  PrizeCollected,
   Score,
   SeasonEvent,
   SeasonGame,
@@ -240,6 +241,24 @@ const rowToManual = (r: ManualWinnerRow): ManualWinner => ({
   updatedAt: r.updated_at,
 });
 
+interface PrizeClaimRow {
+  period_key: string;
+  side: string;
+  client_id: string;
+  collected_at: number;
+  collected_by: string;
+}
+
+const rowToCollected =
+  (ids: Ids) =>
+  (r: PrizeClaimRow): PrizeCollected => ({
+    periodKey: r.period_key,
+    reverse: r.side === "reverse",
+    playerId: publicId(ids, r.client_id),
+    at: r.collected_at,
+    by: r.collected_by === "winner" ? "winner" : "host",
+  });
+
 const rowToLive = (r: LiveRow): LiveStatus => ({
   state: r.state as LiveStatus["state"],
   period: r.period,
@@ -345,6 +364,8 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
     // Co-hosts (migration 0014), in the order they became co-hosts. A season's
     // game board is run by its season board's co-hosts (migration 0017).
     db.prepare(`SELECT client_id FROM cohosts WHERE game_id = ${RUN_BY} ORDER BY added_at, rowid`).bind(id),
+    // Prizes handed over on a board with claim codes (migration 0019).
+    db.prepare(`SELECT period_key, side, client_id, collected_at, collected_by FROM prize_claims WHERE game_id = ?`).bind(id),
   ];
 }
 
@@ -358,8 +379,9 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
   const playerRows = players.results as PlayerRow[];
   const squareRows = squares.results as SquareRow[];
   const cohosts = cohostRowsOf(results);
+  const claimRows = (results[8]?.results ?? []) as PrizeClaimRow[];
   const [ids, siblings, club, position] = await Promise.all([
-    playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts]),
+    playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts, ...claimRows.map((r) => r.client_id)]),
     // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
     row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
     // The host's club while their Club Pass is active (worker/clubs, cached per isolate): its public branding only.
@@ -380,6 +402,7 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
     version: row.version,
   };
   if (siblings) state.siblings = siblings;
+  if (state.game.format.claimCodes) state.collected = claimRows.map(rowToCollected(ids));
   if (position) state.seasonGame = position;
   // A season board (migration 0017): its games and standings, one more round trip.
   if (row.kind === "season") state.season = await seasonOf(db, row, state.squares);
@@ -621,7 +644,7 @@ export function updateGameFields(db: D1Database, gameId: string, fields: GameFie
 }
 
 export async function deleteGame(db: D1Database, gameId: string): Promise<boolean> {
-  const tables = ["activity", "live_status", "manual_winners", "scores", "squares", "cohost_invites", "cohosts", "players"];
+  const tables = ["activity", "live_status", "manual_winners", "scores", "squares", "cohost_invites", "cohosts", "players", "prize_claims"];
   // A season board's game boards go with it (migration 0017), first.
   const kids = `SELECT id FROM games WHERE season_id = ?1`;
   const results = await db.batch([
@@ -1267,6 +1290,25 @@ export function deleteManualWinner(db: D1Database, gameId: string, periodKey: st
   return db.prepare(`DELETE FROM manual_winners WHERE game_id = ? AND period_key = ?`).bind(gameId, periodKey);
 }
 
+/** Marks an award's prize handed over to the winner `clientId` (replacing an earlier mark: a corrected score's old winner). */
+export function collectPrize(
+  db: D1Database,
+  gameId: string,
+  c: { periodKey: string; reverse: boolean; clientId: string; by: "host" | "winner" },
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO prize_claims (game_id, period_key, side, client_id, collected_at, collected_by) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (game_id, period_key, side) DO UPDATE SET client_id = excluded.client_id, collected_at = excluded.collected_at, collected_by = excluded.collected_by`,
+    )
+    .bind(gameId, c.periodKey, c.reverse ? "reverse" : "square", c.clientId, now, c.by);
+}
+
+export function uncollectPrize(db: D1Database, gameId: string, periodKey: string, reverse: boolean): D1PreparedStatement {
+  return db.prepare(`DELETE FROM prize_claims WHERE game_id = ? AND period_key = ? AND side = ?`).bind(gameId, periodKey, reverse ? "reverse" : "square");
+}
+
 export function upsertLive(db: D1Database, gameId: string, live: LiveStatus): D1PreparedStatement {
   return db
     .prepare(
@@ -1526,6 +1568,8 @@ export function mergeClientStatements(db: D1Database, from: ClientIds, to: Clien
       .bind(from.clientId, to.clientId),
     db.prepare(`DELETE FROM players WHERE client_id = ?`).bind(from.clientId),
     db.prepare(`UPDATE squares SET client_id = ?2 WHERE client_id = ?1`).bind(from.clientId, to.clientId),
+    // Prizes handed over (migration 0019) go with the squares that won them.
+    db.prepare(`UPDATE prize_claims SET client_id = ?2 WHERE client_id = ?1`).bind(from.clientId, to.clientId),
     db.prepare(`UPDATE games SET host_client_id = ?2 WHERE host_client_id = ?1`).bind(from.clientId, to.clientId),
     db
       .prepare(`INSERT OR IGNORE INTO cohosts (game_id, client_id, added_at) SELECT game_id, ?2, added_at FROM cohosts WHERE client_id = ?1`)

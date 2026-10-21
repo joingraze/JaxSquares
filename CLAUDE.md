@@ -117,10 +117,11 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   never offered or linked in the iOS app), which adds the club features. Its
   tables join the sign-in merge, and buying it on the web needs a sign-in.
 - Venue boards (`shared/venue.ts`, docs/ARCHITECTURE.md "Venue boards"):
-  house rules never ask anyone to buy anything or talk money (400), and a
-  claim code (`worker/claims.ts`) is only ever in `GET /api/games/:id/claims`
+  venue mode (`format.venue`) is free to play, so never a square price
+  (400); house rules never ask anyone to buy anything or talk money (400);
+  a claim code (`worker/claims.ts`) is only ever in `GET /api/games/:id/claims`
   for its winner and the host or co-hosts: never in public state, the TV, a
-  push or share text.
+  push or share text. Collected prizes (`prize_claims`) join the sign-in merge.
 - Season boards (`Game.kind` "season", `shared/season.ts`, docs/ARCHITECTURE.md
   "Season boards"): squares are picked once, on the season board, which pays
   one fee (`SEASON_BOARD_PRICE_CENTS`) at its draw and sends one numbers-drawn

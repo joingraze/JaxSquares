@@ -19,7 +19,7 @@ import { isSeasonBoard, isSeasonGame } from "../../shared/season";
 import { siblingCheckOf, siblingProblem } from "../../shared/siblings";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import { sportWords } from "../../shared/sportWords";
-import type { Activity, GameState, Sport } from "../../shared/types";
+import type { Activity, ClaimCode, GameState, Sport } from "../../shared/types";
 import { BellIcon, GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
@@ -400,6 +400,22 @@ export default function GameView() {
       }
     },
     [id, receive, toast],
+  );
+
+  /** A venue board's prize handed over, marked on the winner's own phone (the winning pass): the board shows it at once. */
+  const collectPrize = useCallback(
+    async (code: ClaimCode) => {
+      if (!id) return;
+      try {
+        const res = await api.collect(id, { periodKey: code.periodKey, reverse: code.reverse, collected: true });
+        receive(res.state);
+        void haptic("success");
+      } catch (err) {
+        void haptic("error");
+        throw new Error(errorMessage(err));
+      }
+    },
+    [id, receive],
   );
 
   /** "Become a co-host": joins the board first when this device isn't on it (the join sheet, then accept). */
@@ -1162,7 +1178,7 @@ export default function GameView() {
 
         {welcome && joined && !seasonPage && <JoinedCard state={state} onDismiss={dismissWelcome} />}
 
-        {!seasonPage && <ClaimCard state={state} claims={claims} />}
+        {!seasonPage && <ClaimCard state={state} claims={claims} onCollect={collectPrize} />}
 
         {season && tab === "schedule" && <SeasonSchedule season={season} players={state.players} me={me} now={now} />}
         {season && tab === "standings" && <SeasonStandings state={state} season={season} me={me} />}

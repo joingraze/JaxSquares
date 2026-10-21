@@ -23,7 +23,7 @@ import { AlertIcon, CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusI
 import { Badge, SegmentedControl, Switch, TextField, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { AmountField } from "./AmountField";
-import { HouseRules } from "./HouseRules";
+import { HouseRules, VenueMode } from "./HouseRules";
 import { EveryScoreOptions } from "./EveryScoreOptions";
 import {
   PRICE_CHIPS,
@@ -47,6 +47,7 @@ import {
   setMoment,
   setPrize,
   setSides,
+  setVenue,
   sidesOf,
   splitSharesBoth,
   suggestedPrizes,
@@ -106,6 +107,8 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
 
   return (
     <div data-testid="rules-editor" className="flex flex-col gap-5">
+      <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} />
+
       <section aria-label="Show prizes as" className="flex flex-col gap-2.5">
         <ChoicePicker value={draft.choice} onChange={(choice) => set({ choice })} />
         <p className="flex items-start gap-2 px-1 text-footnote leading-snug text-ink-subtle">
@@ -114,7 +117,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
         </p>
       </section>
 
-      {amounts && (
+      {amounts && !draft.venue && (
         <SquarePrice
           draft={draft}
           unit={unit}
@@ -169,8 +172,10 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
       <HouseRules
         rules={draft.houseRules ?? []}
         claimCodes={draft.claimCodes ?? false}
+        claimMinutes={draft.claimMinutes ?? null}
         onRules={(houseRules) => set({ houseRules })}
         onClaimCodes={(claimCodes) => set({ claimCodes })}
+        onClaimMinutes={(claimMinutes) => set({ claimMinutes })}
       />
     </div>
   );

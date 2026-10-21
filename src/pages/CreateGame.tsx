@@ -49,6 +49,7 @@ import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../share
 import { MAX_SEASON_GAMES, seasonReviewLine } from "../../shared/season";
 import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
 import { ACCOUNT_REQUIRED_CODE, type Game, type GameFormat, type GameState, type ScheduleEvent, type SeasonNumbers, type SeasonScope, type SeasonTeam } from "../../shared/types";
+import { VENUE_DEFAULTS } from "../../shared/venue";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -667,6 +668,8 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     freshNumbers: format.freshNumbers,
     houseRules: format.houseRules ?? [],
     claimCodes: format.claimCodes === true,
+    claimMinutes: format.claimMinutes ?? null,
+    venue: format.venue === true,
   };
   /** Every change to how squares win or to the prizes: the suggested amounts follow it while the host hasn't typed one. */
   const updatePrizes = (next: GameFormat, choice: PrizeChoice = prizeChoice) => {
@@ -675,11 +678,24 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     setPrizeChoice(choice);
     setPrizesAuto(filled.auto);
   };
-  const editRules = (d: RulesDraft) =>
+  const editRules = (d: RulesDraft) => {
+    // Venue mode starts at one square each (VENUE_DEFAULTS), and turning it off lifts that cap again.
+    if (d.venue && !format.venue) setMaxPerPlayer(VENUE_DEFAULTS.maxPerPlayer);
+    else if (!d.venue && format.venue && maxPerPlayer === VENUE_DEFAULTS.maxPerPlayer) setMaxPerPlayer(0);
     updatePrizes(
-      withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers, houseRules: d.houseRules, claimCodes: d.claimCodes }),
+      withRules({
+        ...format,
+        rules: d.rules,
+        squarePrice: d.squarePrice,
+        freshNumbers: d.freshNumbers,
+        houseRules: d.houseRules,
+        claimCodes: d.claimCodes,
+        claimMinutes: d.claimMinutes ?? undefined,
+        venue: d.venue,
+      }),
       d.choice,
     );
+  };
   // A game that can't take the rules picked so far (every score on basketball,
   // the quarters in men's college basketball's two halves): fit them to it.
   useEffect(() => {

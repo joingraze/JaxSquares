@@ -191,7 +191,7 @@ describe("TV mode", () => {
 
     const details = screen.getByTestId("tv-details");
     expect(screen.getAllByTestId("tv-prize").map((r) => r.textContent)).toEqual(["Q1Free appetizer", "FinalTeam jersey · Reverse Pint glass"]);
-    expect(within(details).getByTestId("tv-house-rules")).toHaveTextContent("Must be present to win21+ onlyWinners show their claim code to staff to collect.");
+    expect(within(details).getByTestId("tv-house-rules")).toHaveTextContent("Must be present to win21+ onlyWinners show staff the winning pass on their phone to collect.");
     expect(screen.getByTestId("tv-venue")).toHaveTextContent("Free to play · No purchase necessaryPrizes from The Rusty Anchor");
     unmount();
 
@@ -200,7 +200,7 @@ describe("TV mode", () => {
     renderTv();
     expect(screen.getByTestId("tv-winner-label")).toHaveTextContent("Q1 · Free appetizer");
     expect(screen.getByTestId("tv-upcoming")).toHaveTextContent("Team jersey");
-    expect(screen.getByTestId("tv-house-line")).toHaveTextContent("Must be present to win · 21+ only · Winners show their claim code to staff to collect.");
+    expect(screen.getByTestId("tv-house-line")).toHaveTextContent("Must be present to win · 21+ only · Winners show staff the winning pass on their phone to collect.");
     expect(screen.getByTestId("tv-house-line")).toHaveTextContent("Prizes from The Rusty Anchor");
 
     // The winner's card says the code is on their phone; no code is ever on the TV.
@@ -211,7 +211,7 @@ describe("TV mode", () => {
       ),
     );
     expect(screen.getByTestId("tv-celebrate-prize")).toHaveTextContent("Free appetizer");
-    expect(screen.getByTestId("tv-celebrate-claim")).toHaveTextContent("Your claim code is on your phone");
+    expect(screen.getByTestId("tv-celebrate-claim")).toHaveTextContent("Your winning pass is on your phone");
     expect(screen.queryByTestId("claim-code")).toBeNull();
     expect(screen.queryByTestId("winner-code")).toBeNull();
   });

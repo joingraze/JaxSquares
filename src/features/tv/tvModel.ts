@@ -8,7 +8,7 @@
 import { formatAmount, formatRange, periodPhrase, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward, resolveResults, type PeriodResult } from "../../../shared/squares";
 import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
-import { CLAIM_LINE, venueLines } from "../../../shared/venue";
+import { CLAIM_LINE, collectedFor, venueLines } from "../../../shared/venue";
 import { initialsOf } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 import type { PeriodCard } from "../board/boardModel";
@@ -108,6 +108,8 @@ export interface TvWinner {
   player: TvPlayer | null;
   /** The headline square's prize note ("Free wings"), or null. */
   prize: string | null;
+  /** A venue board's prize handed over to the headline winner (state.collected). */
+  collected: boolean;
   /** The score that decided it, "7–3" (null for a host pick without a score). */
   score: string | null;
   /** Only the reverse square won this moment. */
@@ -129,7 +131,7 @@ export function resultLabel(r: PeriodResult, unit: AmountUnit): string {
 }
 
 /** Every decided moment with its winner, in game order (the strip shows the latest that fit). */
-export function tvWinners(state: Pick<GameState, "game" | "players">, results: readonly PeriodResult[]): TvWinner[] {
+export function tvWinners(state: Pick<GameState, "game" | "players" | "collected">, results: readonly PeriodResult[]): TvWinner[] {
   const unit = unitOf(state.game.format);
   const byId = new Map(state.players.map((p) => [p.id, p]));
   const who = (id: string | null): TvPlayer | null => {
@@ -145,6 +147,7 @@ export function tvWinners(state: Pick<GameState, "game" | "players">, results: r
       label: resultLabel(r, unit),
       player: who(main.playerId),
       prize: (main.reverse ? r.reversePrize : r.prize) || null,
+      collected: !!collectedFor(state, r.periodKey, main.reverse, main.playerId),
       score: r.score ? (main.reverse ? `${r.score.scoreY}–${r.score.scoreX}` : `${r.score.scoreX}–${r.score.scoreY}`) : null,
       reverseOnly: main.reverse,
       reverse: showReverse ? { label: ["Reverse", money(r.reverseAmount, unit)].filter(Boolean).join(" · "), player: who(r.reverseWinnerPlayerId) } : null,

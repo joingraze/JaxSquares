@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { formatError, sanitizeFormat, withRules } from "./formats";
-import type { GameFormat } from "./types";
+import type { GameFormat, GameState } from "./types";
 import {
   CLAIM_CODE_ALPHABET,
   HOUSE_RULE_IDEAS,
   HOUSE_RULE_MONEY_ERROR,
   HOUSE_RULE_PURCHASE_ERROR,
+  VENUE_PRICE_ERROR,
   claimCodeFrom,
+  claimDeadline,
   cleanHouseRules,
+  collectedFor,
+  countdownText,
+  decidedAt,
   houseRuleProblem,
   venueLines,
 } from "./venue";
@@ -61,10 +66,58 @@ describe("venue lines", () => {
     expect(venueLines({ format: format(null), club })).toEqual(["Free to play · No purchase necessary", "Prizes from The Rusty Anchor"]);
   });
 
+  it("say a venue board without a club is free to play", () => {
+    expect(venueLines({ format: { ...format(null), venue: true } })).toEqual(["Free to play · No purchase necessary"]);
+  });
+
   it("say nothing on a board with a square price, an unnamed club or no club", () => {
     expect(venueLines({ format: format(5), club })).toEqual([]);
     expect(venueLines({ format: format(null), club: { ...club, name: " " } })).toEqual([]);
     expect(venueLines({ format: format(null) })).toEqual([]);
+  });
+});
+
+describe("venue mode", () => {
+  it("is free to play: a square price is refused, and never stored", () => {
+    expect(formatError({ ...BASE, venue: true, unit: "$", squarePrice: 5 })).toBe(VENUE_PRICE_ERROR);
+    expect(formatError({ ...BASE, venue: true, justForFun: true })).toBeNull();
+    expect(withRules({ ...BASE, venue: true, unit: "$", squarePrice: 5 } as GameFormat).squarePrice).toBeNull();
+    expect(withRules(sanitizeFormat({ ...BASE, venue: true }))).toMatchObject({ venue: true });
+  });
+
+  it("keeps a time to collect only with claim codes, in whole minutes", () => {
+    expect(withRules(sanitizeFormat({ ...BASE, claimCodes: true, claimMinutes: 5 }))).toMatchObject({ claimCodes: true, claimMinutes: 5 });
+    expect(withRules(sanitizeFormat({ ...BASE, claimMinutes: 5 }))).not.toHaveProperty("claimMinutes");
+    expect(formatError({ ...BASE, claimCodes: true, claimMinutes: 2.5 })).toBe("Time to collect must be 1 to 120 minutes");
+    expect(formatError({ ...BASE, claimCodes: true, claimMinutes: 500 })).toBe("Time to collect must be 1 to 120 minutes");
+  });
+});
+
+describe("collecting a prize", () => {
+  const state = (over: Partial<GameState> & { minutes?: number } = {}) =>
+    ({
+      game: { format: { ...BASE, claimCodes: true, claimMinutes: over.minutes } },
+      scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 1_000 }],
+      manualWinners: [],
+      collected: [],
+      ...over,
+    }) as unknown as GameState;
+
+  it("counts down from when the winner was decided (the host's pick, else the score)", () => {
+    expect(decidedAt(state(), "q1")).toBe(1_000);
+    expect(decidedAt(state({ manualWinners: [{ periodKey: "q1", row: 0, col: 0, updatedAt: 9_000 }] }), "q1")).toBe(9_000);
+    expect(decidedAt(state(), "q2")).toBeNull();
+    expect(claimDeadline(state({ minutes: 5 }), "q1")).toBe(1_000 + 5 * 60_000);
+    expect(claimDeadline(state(), "q1")).toBeNull();
+    expect(countdownText(4 * 60_000 + 5_000)).toBe("4:05");
+    expect(countdownText(-3)).toBe("0:00");
+  });
+
+  it("is collected only for the winner it was handed to", () => {
+    const s = state({ collected: [{ periodKey: "q1", reverse: false, playerId: "ana", at: 5, by: "host" }] });
+    expect(collectedFor(s, "q1", false, "ana")?.by).toBe("host");
+    expect(collectedFor(s, "q1", false, "ben")).toBeNull();
+    expect(collectedFor(s, "q1", true, "ana")).toBeNull();
   });
 });
 

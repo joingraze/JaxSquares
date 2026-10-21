@@ -10,15 +10,16 @@ import { HouseRules } from "./HouseRules";
 function Harness({ initial = [] as string[] }) {
   const [rules, setRules] = useState(initial);
   const [codes, setCodes] = useState(false);
+  const [minutes, setMinutes] = useState<number | null>(null);
   return (
     <>
-      <HouseRules rules={rules} claimCodes={codes} onRules={setRules} onClaimCodes={setCodes} />
-      <output data-testid="value">{JSON.stringify({ rules, codes })}</output>
+      <HouseRules rules={rules} claimCodes={codes} claimMinutes={minutes} onRules={setRules} onClaimCodes={setCodes} onClaimMinutes={setMinutes} />
+      <output data-testid="value">{JSON.stringify({ rules, codes, minutes })}</output>
     </>
   );
 }
 
-const value = () => JSON.parse(screen.getByTestId("value").textContent ?? "{}") as { rules: string[]; codes: boolean };
+const value = () => JSON.parse(screen.getByTestId("value").textContent ?? "{}") as { rules: string[]; codes: boolean; minutes: number | null };
 
 afterEach(cleanup);
 
@@ -57,9 +58,14 @@ describe("HouseRules", () => {
     expect(screen.queryAllByTestId("house-rule-idea")).toHaveLength(0);
   });
 
-  it("turns claim codes on and off", () => {
+  it("turns claim codes on, with how long a winner has to collect", () => {
     render(<Harness />);
+    expect(screen.queryByTestId("claim-minutes")).toBeNull();
     fireEvent.click(screen.getByRole("switch", { name: /Claim codes/ }));
     expect(value().codes).toBe(true);
+    fireEvent.click(screen.getByRole("radio", { name: "5 min" }));
+    expect(value().minutes).toBe(5);
+    fireEvent.click(screen.getByRole("radio", { name: "No limit" }));
+    expect(value().minutes).toBeNull();
   });
 });

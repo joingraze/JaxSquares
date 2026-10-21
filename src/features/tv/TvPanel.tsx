@@ -373,6 +373,12 @@ function WinnerRow({ winner }: { winner: TvWinner }) {
             {winner.player ? winner.player.name : `Nobody had ${winner.score ?? "it"}`}
           </span>
           {winner.reverseOnly && <RefreshIcon className="h-[calc(var(--u)*2)] w-[calc(var(--u)*2)] shrink-0 text-ink-subtle" title="Reverse square" />}
+          {winner.collected && (
+            <span className="tv-chip shrink-0 !py-[calc(var(--u)*0.3)] text-ink-brand" data-testid="tv-collected">
+              <CheckIcon strokeWidth={3} className="h-[0.9em] w-[0.9em]" />
+              Collected
+            </span>
+          )}
         </span>
         {winner.reverse && (
           <span className="tv-text-md flex min-w-0 items-center gap-[calc(var(--u)*0.6)] text-ink-muted">

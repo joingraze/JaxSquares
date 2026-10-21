@@ -782,6 +782,7 @@ export function HostSheet(props: HostSheetProps) {
             <WinnersList
               state={state}
               codes={claims?.all ?? null}
+              onCollect={(k, reverse, collected) => void actions.collect(k, reverse, collected)}
               rows={rows}
               me={me}
               busy={actions.busy !== null}
