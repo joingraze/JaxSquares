@@ -32,6 +32,21 @@ const AUDIO_NOSTALGIC =
   "Has its own retro soundtrack (original music). Post it as is.";
 const COVER = "Upload the matching cover image as the Reel cover so the profile grid stays clean.";
 
+// The profile, exactly as it goes into Instagram (the setup steps copy from here).
+const PROFILE = {
+  name: "JaxSquares · Football Squares",
+  username: "jaxsquares",
+  bio: "Squares for any game 🏈🐶\nFree to set up · no app · no signup\nJax draws the numbers, live scores call winners\nNot affiliated w/ NFL or NCAA 👇",
+  linkUrl: "https://jaxsquares.com/?ref=ig",
+  linkTitle: "Make a board",
+  category: "Sports & Recreation",
+  replies: [
+    { shortcut: "link", text: "Here's the link: https://jaxsquares.com 🏈 Make a board, text it to your crew, and everyone picks from their phone." },
+    { shortcut: "free", text: "Free to set up and invite, and free to draw with up to 5 players. Bigger boards are $4.99 for the host. Players never pay." },
+    { shortcut: "app", text: "No app needed. Friends tap the link and pick their squares from any phone. Same room? They can scan the code." },
+  ],
+};
+
 export const PLAN = {
   title: "JaxSquares Instagram Launch",
   handle: "@jaxsquares",
@@ -81,19 +96,19 @@ export const PLAN = {
       "Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29, and one Reel past 10k views. Benchmarks for brand-new accounts are thin; the boards count matters more than followers.",
     grid: {
       summary:
-        "The first nine posts turn the profile into the JaxSquares mark: a 3×3 board in volt with the winning square in gold. Each square is its own two-slide post (a bold tile, then the real app behind it), so it works alone in the feed too. Instagram fills the grid newest-first from the top left, so the board fills from the bottom: the bottom row Saturday, the middle row Sunday, the top row Monday, finished by the launch Reel.",
+        "Your first nine posts turn the profile into the JaxSquares mark: a 3×3 board in volt with the winning square in gold. Each square is its own two-slide post (a bold tile, then the real app behind it), so it works alone in the feed too. Instagram fills the grid newest-first from the top left, so the board goes up from the bottom, one row a day: Wednesday, Thursday, Friday.",
       preview: "g-grid-preview/01",
       rules: [
-        "Post each row's squares back to back, in the order given (1 → 9). Whole rows keep the logo lined up while it fills, over the seed row (c1, 07, 04).",
-        "Don't pin anything during launch week: pinned posts jump to the top of the grid and break the logo.",
-        "The launch Reel is square 9 (top left). Upload g9-launch-cover as its cover (Edit cover → Add from camera roll) and set the profile-grid crop so the tile fills it.",
+        "Set up the profile first (steps 1–7), then post each row's three squares back to back, in the order given (1 → 9). Whole rows keep the logo lined up while it fills.",
+        "Don't pin anything: pinned posts jump to the top of the grid and break the logo.",
+        "After the grid, the two weekend seed posts and the launch Reel on Monday make exactly one new row, so the logo sits lined up right under it on launch day.",
         "Later posts slide the board down a square at a time. It lines up again whenever the posts since launch reach a multiple of three; in between, every tile is still a whole board square, so it reads as a board.",
       ],
     },
     setup: {
-      name: "JaxSquares · Football Squares",
-      bio: "Squares for any game 🏈🐶\nFree to set up · no app · no signup\nJax draws the numbers, live scores call winners\nNot affiliated w/ NFL or NCAA 👇",
-      link: "https://jaxsquares.com/?ref=ig (the ?ref=ig makes Instagram visits show up in Cloudflare analytics).",
+      name: PROFILE.name,
+      bio: PROFILE.bio,
+      link: `${PROFILE.linkUrl} (title: “${PROFILE.linkTitle}”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).`,
       highlights: ["How it works", "Square stats", "Game days", "Thanksgiving"],
       category:
         "Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.",
@@ -117,14 +132,14 @@ export const PLAN = {
       label: "Prep",
       dates: "Oct 20–25",
       theme: "Set up and seed the grid",
-      goal: "A profile that looks alive before launch: bio, link, 3 seed posts, highlights, and the 3×3 launch grid filling up over the weekend.",
+      goal: "Profile set up step by step, the 3×3 launch grid (one row a day, Wed–Fri), Highlights, then two seed posts on the weekend.",
     },
     {
       key: "w1",
       label: "Week 1",
       dates: "Oct 26–Nov 1",
       theme: "Launch: what it is",
-      goal: "Launch on Cowboys–Eagles MNF: the launch Reel completes the 3×3 grid. Personal push to friends and group chats. First 25 boards.",
+      goal: "Launch on Cowboys–Eagles MNF. Personal push to friends and group chats. First 25 boards.",
     },
     {
       key: "w2",
@@ -158,17 +173,26 @@ export const PLAN = {
 
   items: [
     // ------------------------------------------------------------ PREP
+    // ------------------------------------------------------------ START HERE: the profile, step by step
     {
-      date: "2026-10-20", time: "10:00", kind: "task", week: "prep",
-      title: "Set up the account",
+      date: "2026-10-21", time: "14:30", kind: "task", week: "prep", start: true,
+      title: "Profile 1/7: Switch to a professional account",
       checklist: [
-        "Switch @jaxsquares to a Professional account. Category: Sports & Recreation (not App Page, which contradicts “no app to download”).",
-        "Upload the profile picture: option 1, Jax over the board (p-profile-picture/01).",
-        "Name field: “JaxSquares · Football Squares”. The name field is searchable.",
-        "Paste the bio and link from Setup. Link = jaxsquares.com/?ref=ig.",
-        "Make 4 Highlights: How it works, Square stats, Game days, Thanksgiving. Use story frames as covers.",
-        "Run a real test board with 3 friends and screen-record it (B-roll for the founder Reel).",
-        "Save quick replies for “link?” (jaxsquares.com), “is it free?” (“Free to set up and invite, and free to draw with up to 5 players. Bigger boards are $4.99 for the host. Players never pay.”) and “do I need the app?” (“No. Friends tap the link and pick.”).",
+        "Instagram → your profile → ☰ → Account type and tools → Switch to professional account.",
+        "Choose Business (a brand, not a person): it unlocks insights, contact options and boosting.",
+        "Category: search “Sports & Recreation” and pick it. Leave “Display on profile” on.",
+        "Skip the contact and Facebook steps for now (step 6 has the optional email).",
+      ],
+      copy: [{ label: "Category", text: PROFILE.category }],
+      notes: ["Not App Page: that label sits under your name and contradicts “no app to download”."],
+    },
+    {
+      date: "2026-10-21", time: "14:35", kind: "task", week: "prep", start: true,
+      title: "Profile 2/7: Profile picture",
+      checklist: [
+        "Save the picture to your phone (Save, above).",
+        "Edit profile → Edit picture → Choose from library → pick it.",
+        "It's built for the circle crop: don't zoom or move it. Jax's face sits in the middle, the gold square top right.",
       ],
       extras: [
         { label: "Profile picture (use this): Jax over the board", file: "p-profile-picture/01.png" },
@@ -176,7 +200,62 @@ export const PLAN = {
       ],
     },
     {
-      date: "2026-10-21", time: "12:30", kind: "carousel", week: "prep",
+      date: "2026-10-21", time: "14:40", kind: "task", week: "prep", start: true,
+      title: "Profile 3/7: Name and username",
+      checklist: [
+        "Edit profile → Name: paste the name. The name field is searchable, so “Football Squares” helps people find you.",
+        "Username: make sure it's jaxsquares (the whole plan uses @jaxsquares).",
+        "Instagram allows two name changes every 14 days, so paste it carefully.",
+      ],
+      copy: [
+        { label: "Name", text: PROFILE.name },
+        { label: "Username", text: PROFILE.username },
+      ],
+    },
+    {
+      date: "2026-10-21", time: "14:45", kind: "task", week: "prep", start: true,
+      title: "Profile 4/7: Bio",
+      checklist: [
+        "Edit profile → Bio → paste the bio. Keep the line breaks.",
+        "142 characters, inside Instagram's 150. Leave Pronouns empty.",
+      ],
+      copy: [{ label: "Bio", text: PROFILE.bio }],
+    },
+    {
+      date: "2026-10-21", time: "14:50", kind: "task", week: "prep", start: true,
+      title: "Profile 5/7: Link",
+      checklist: [
+        "Edit profile → Links → Add external link.",
+        "Paste the URL and the title. The ?ref=ig shows Instagram visits in Cloudflare analytics.",
+        "Tap the link on your profile once to check it opens jaxsquares.com.",
+      ],
+      copy: [
+        { label: "URL", text: PROFILE.linkUrl },
+        { label: "Title", text: PROFILE.linkTitle },
+      ],
+    },
+    {
+      date: "2026-10-21", time: "14:55", kind: "task", week: "prep", start: true,
+      title: "Profile 6/7: Privacy, sharing and security",
+      checklist: [
+        "Settings → Account privacy: Private account off (public).",
+        "Settings → Sharing and reuse: allow sharing posts and reels to stories, remixing and downloads. Shares and sends are how new people find you.",
+        "Settings → Notifications: comments, mentions and messages on, so you can reply within the hour.",
+        "Accounts Center → Password and security → Two-factor authentication: on. It's the brand account; keep it locked down.",
+        "Optional: Edit profile → Contact options → add a business email you check.",
+      ],
+    },
+    {
+      date: "2026-10-21", time: "15:00", kind: "task", week: "prep", start: true,
+      title: "Profile 7/7: Saved replies",
+      checklist: [
+        "Settings → Business tools and controls → Saved replies → add the three above (shortcut, then message).",
+        "In a DM or comment reply, type the shortcut and tap the suggestion to send it.",
+      ],
+      copy: PROFILE.replies.map((r) => ({ label: `Shortcut “${r.shortcut}”`, text: r.text })),
+    },
+    {
+      date: "2026-10-24", time: "12:00", kind: "carousel", week: "prep",
       title: "Seed post: how football squares works",
       asset: "c1-how-squares-works", slides: 7,
       caption:
@@ -184,11 +263,11 @@ export const PLAN = {
       hashtags: [...H.core, H.office, H.fantasy, "#gameday"],
       altText:
         "Seven-slide explainer of football squares: a 10 by 10 grid, friends pick squares, digits 0 to 9 are drawn for each row and column, and the last digit of each team's score picks the winning square each quarter.",
-      notes: ["Seed row: this, 07 and 04 sit right under the launch grid. Don't pin it: pinned posts jump to the top and break the grid."],
+      notes: ["Seed row: this, Sunday's Reel and the launch Reel make one row over the grid. Don't pin it: pinned posts jump to the top and break the grid."],
     },
     {
-      date: "2026-10-22", time: "12:30", kind: "reel", week: "prep",
-      title: "Seed post: feature rundown",
+      date: "2026-10-30", time: "12:30", kind: "reel", week: "w1",
+      title: "Feature rundown",
       asset: "07-features",
       caption:
         "Football squares, minus the spreadsheet 🏈\n\nNo app to download. Same room? Scan the code. Can't decide? Let Jax pick. Prize notes, or just for fun. Scores update themselves, and every board lives on one home screen.\n\nNFL, college and NBA games score themselves, or type in any matchup. Free to set up → link in bio.",
@@ -203,7 +282,7 @@ export const PLAN = {
       story: { sticker: "Link → app", text: "TNF: Patriots at Bears, 8:15 on Prime. Board takes 30 seconds 👇" },
     },
     {
-      date: "2026-10-23", time: "13:00", kind: "reel", week: "prep",
+      date: "2026-10-25", time: "12:00", kind: "reel", week: "prep",
       title: "Seed post: best and worst squares",
       asset: "04-best-worst-squares",
       caption:
@@ -241,18 +320,18 @@ export const PLAN = {
 
     // ------------------------------------------------------------ LAUNCH GRID (bottom row Sat, middle row Sun, top row Mon)
     {
-      date: "2026-10-24", time: "12:00", kind: "carousel", week: "prep",
+      date: "2026-10-21", time: "17:00", kind: "carousel", week: "prep", start: true,
       title: "Grid 1/9: Your board starts here",
       asset: "g1-your-board-starts-here", slides: 2,
       caption:
-        "Square 1 of 9 🟩 The board is open.\n\nJaxSquares is squares for any game: pick the game, text one link, and Jax draws the numbers. Live scores call every winner.\n\nWatch this grid fill up this weekend. Your first board → link in bio",
+        "Square 1 of 9 🟩 The board is open.\n\nJaxSquares is squares for any game: pick the game, text one link, and Jax draws the numbers. Live scores call every winner.\n\nWatch this grid fill up this week. Your first board → link in bio",
       hashtags: [...H.core, "#gameday"],
       altText:
         "A bright green board square reading “Your board starts here” with jaxsquares.com: square 1 of 9 in the JaxSquares launch grid. Slide 2 lists three steps: pick the game, text your crew one link, Jax draws the numbers.",
       notes: ["Launch grid, bottom row (bottom right). Post squares 1, 2 and 3 back to back, in order."],
     },
     {
-      date: "2026-10-24", time: "12:05", kind: "carousel", week: "prep",
+      date: "2026-10-21", time: "17:05", kind: "carousel", week: "prep", start: true,
       title: "Grid 2/9: Scores update themselves",
       asset: "g2-scores-update-themselves", slides: 2,
       caption:
@@ -263,7 +342,7 @@ export const PLAN = {
       notes: ["Launch grid, bottom row (middle)."],
     },
     {
-      date: "2026-10-24", time: "12:10", kind: "carousel", week: "prep",
+      date: "2026-10-21", time: "17:10", kind: "carousel", week: "prep", start: true,
       title: "Grid 3/9: Jax draws the numbers",
       asset: "g3-jax-draws-the-numbers", slides: 2,
       caption:
@@ -274,13 +353,13 @@ export const PLAN = {
       notes: ["Launch grid, bottom row (bottom left). The bottom row is done."],
     },
     {
-      date: "2026-10-24", time: "12:20", kind: "story", week: "prep",
+      date: "2026-10-21", time: "17:20", kind: "story", week: "prep", start: true,
       title: "Grid story: the board is open",
       asset: "s-grid-progress/01",
       story: { sticker: "Link → app", text: "Our grid is a squares board 🟩 3 of 9 squares claimed." },
     },
     {
-      date: "2026-10-25", time: "12:00", kind: "carousel", week: "prep",
+      date: "2026-10-22", time: "12:30", kind: "carousel", week: "prep", start: true,
       title: "Grid 4/9: Your square hits (the gold one)",
       asset: "g4-your-square-hits", slides: 2,
       caption:
@@ -291,7 +370,7 @@ export const PLAN = {
       notes: ["Launch grid, middle row (middle right): the gold square. Post squares 4, 5 and 6 back to back, in order."],
     },
     {
-      date: "2026-10-25", time: "12:05", kind: "carousel", week: "prep",
+      date: "2026-10-22", time: "12:35", kind: "carousel", week: "prep", start: true,
       title: "Grid 5/9: Meet Jax",
       asset: "g5-meet-jax", slides: 2,
       caption:
@@ -302,7 +381,7 @@ export const PLAN = {
       notes: ["Launch grid, center square."],
     },
     {
-      date: "2026-10-25", time: "12:10", kind: "carousel", week: "prep",
+      date: "2026-10-22", time: "12:40", kind: "carousel", week: "prep", start: true,
       title: "Grid 6/9: Text one link",
       asset: "g6-text-one-link", slides: 2,
       caption:
@@ -313,38 +392,79 @@ export const PLAN = {
       notes: ["Launch grid, middle row (middle left). The middle row is done."],
     },
     {
-      date: "2026-10-25", time: "12:20", kind: "story", week: "prep",
-      title: "Grid story: 6 of 9, countdown",
+      date: "2026-10-22", time: "12:50", kind: "story", week: "prep", start: true,
+      title: "Grid story: 6 of 9",
       asset: "s-grid-progress/02",
-      story: { sticker: "Countdown: “JaxSquares launch” · Mon Oct 26, 2:00 PM ET", text: "6 of 9 squares claimed 👀 Turn on the reminder." },
+      story: { sticker: "Emoji slider 🟩", text: "6 of 9 squares claimed 👀 The last 3 drop tomorrow." },
     },
     {
-      date: "2026-10-26", time: "13:45", kind: "carousel", week: "w1",
+      date: "2026-10-23", time: "13:00", kind: "carousel", week: "prep", start: true,
       title: "Grid 7/9: Free to set up",
       asset: "g7-free-to-set-up", slides: 2,
       caption:
-        "Square 7 of 9 ✨ Free to set up.\n\nMaking a board, inviting friends and picking squares are free, and players never pay a thing. Boards with up to 5 players draw free; bigger boards are $4.99 for the host at the draw, or covered by a Host Pass. JaxSquares never collects or sends money between players.\n\nTwo squares left. 2 PM ET 👀",
+        "Square 7 of 9 ✨ Free to set up.\n\nMaking a board, inviting friends and picking squares are free, and players never pay a thing. Boards with up to 5 players draw free; bigger boards are $4.99 for the host at the draw, or covered by a Host Pass. JaxSquares never collects or sends money between players.\n\nTwo squares left 👀",
       hashtags: [...H.core, H.office],
       altText:
         "A green board square reading “Free to set up”: square 7 of 9. Slide 2 shows the app's review step with Just for fun selected and the line “Free to set up and invite. Free to draw with up to 5 players, $4.99 for bigger boards.”",
-      notes: ["Launch grid, top row (top right). Then square 8 at 1:52 and the launch Reel at 2:00."],
+      notes: ["Launch grid, top row (top right). Post squares 7, 8 and 9 back to back, in order."],
     },
     {
-      date: "2026-10-26", time: "13:52", kind: "carousel", week: "w1",
+      date: "2026-10-23", time: "13:05", kind: "carousel", week: "prep", start: true,
       title: "Grid 8/9: No app needed",
       asset: "g8-no-app-needed", slides: 2,
       caption:
-        "Square 8 of 9 📲 No app needed.\n\nFriends tap the link and pick: nothing to download, no account to make. Same room? They scan the code on your screen.\n\nOne square left. It drops at 2 PM ET 👀",
-      hashtags: ["#footballsquares", "#gameday", H.mnf],
+        "Square 8 of 9 📲 No app needed.\n\nFriends tap the link and pick: nothing to download, no account to make. Same room? They scan the code on your screen.\n\nOne square left 👀",
+      hashtags: ["#footballsquares", "#gameday", "#squarespool"],
       altText:
         "A green board square reading “No app needed”: square 8 of 9. Slide 2 shows the app's invite sheet with a QR code and a six-letter join code.",
-      notes: ["Launch grid, top row (top middle). The launch Reel takes the last square at 2:00."],
+      notes: ["Launch grid, top row (top middle)."],
     },
     {
-      date: "2026-10-26", time: "14:05", kind: "story", week: "w1",
+      date: "2026-10-23", time: "13:10", kind: "carousel", week: "prep", start: true,
+      title: "Grid 9/9: Squares for any game",
+      asset: "g9-squares-for-any-game", slides: 2,
+      caption:
+        "Square 9 of 9 🏈 The board's full, and that's our logo up there.\n\nJaxSquares is squares for any game: pick an NFL, college or NBA game (or type in any matchup), choose how squares win, and your board is live in about 30 seconds.\n\nMake yours → link in bio",
+      hashtags: [...H.core, H.nfl, H.cfb],
+      altText:
+        "A bright green board square with a football reading “Squares for any game”: square 9 of 9, completing the JaxSquares launch grid. Slide 2 shows the app's game picker with NFL and college games and a custom option.",
+      notes: ["Launch grid, top row (top left): the last square. Open your profile and check the logo lines up."],
+    },
+    {
+      date: "2026-10-23", time: "13:20", kind: "story", week: "prep", start: true,
       title: "Grid story: board's full",
       asset: "s-grid-progress/03",
       story: { sticker: "Link → app", text: "Board's full. That's our logo 🟩 Tap to make yours." },
+    },
+    {
+      date: "2026-10-23", time: "14:00", kind: "task", week: "prep", start: true,
+      title: "Profile: Highlights",
+      checklist: [
+        "Save the 4 covers (above).",
+        "Profile → + → Highlight → pick the 3 grid stories → name it “How it works” → Edit cover → choose the “How it works” cover.",
+        "Make “Game days” from the TNF story (Thu) with its cover.",
+        "Add “Square stats” after the Oct 27–28 poll stories and “Thanksgiving” in November, each with its cover.",
+      ],
+      copy: [
+        { label: "Highlight 1", text: "How it works" },
+        { label: "Highlight 2", text: "Game days" },
+        { label: "Highlight 3", text: "Square stats" },
+        { label: "Highlight 4", text: "Thanksgiving" },
+      ],
+      extras: [
+        { label: "Cover: How it works", file: "p-highlight-covers/01.jpg" },
+        { label: "Cover: Square stats", file: "p-highlight-covers/02.jpg" },
+        { label: "Cover: Game days", file: "p-highlight-covers/03.jpg" },
+        { label: "Cover: Thanksgiving", file: "p-highlight-covers/04.jpg" },
+      ],
+    },
+    {
+      date: "2026-10-22", time: "18:00", kind: "task", week: "prep",
+      title: "Record a real test board (B-roll)",
+      checklist: [
+        "Make a board for tonight's TNF game with 3 friends.",
+        "Screen-record making it and sharing the link: B-roll for the founder Reel (Nov 11).",
+      ],
     },
 
     // ------------------------------------------------------------ WEEK 1
@@ -355,23 +475,17 @@ export const PLAN = {
         "Open the app link from the bio on your phone and make sure it works.",
         "Line up 20 friends who run (or play in) squares and 3 group chats to post in.",
         "Ask 5 friends to share the launch Reel to their stories at 2:05.",
-        "Grid: post squares 7 and 8 at 1:45 and 1:52, then the launch Reel (square 9) at 2:00 with the g9 cover.",
       ],
     },
     {
       date: "2026-10-26", time: "14:00", kind: "reel", week: "w1",
-      title: "LAUNCH (grid 9/9): How it works in 30 seconds",
+      title: "LAUNCH: How it works in 30 seconds",
       asset: "01-how-it-works",
       tieIn: "Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESPN/ABC",
       caption:
-        "Square 9 of 9. The board's full, and JaxSquares is live 🏈🐶\n\nPick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.\n\nFree to set up. No app. No signup. Running a Cowboys–Eagles board tonight? Link in bio.",
+        "Squares, fixed. JaxSquares is live 🏈🐶\n\nPick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.\n\nFree to set up. No app. No signup. Running a Cowboys–Eagles board tonight? Link in bio.",
       hashtags: [...H.core, H.mnf, H.office, H.nfl],
-      extras: [{ label: "Grid cover (square 9): upload as the Reel's cover", file: "g9-launch-cover/01.jpg" }],
-      notes: [
-        AUDIO_EXPLAINER,
-        "This is square 9 of the launch grid: Edit cover → Add from camera roll → g9-launch-cover, then set the profile-grid crop so the tile fills it.",
-        "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
-      ],
+      notes: [AUDIO_EXPLAINER, COVER, "Don't pin it: pinned posts jump to the top of the grid and break the logo."],
     },
     {
       date: "2026-10-26", time: "14:10", kind: "task", week: "w1",

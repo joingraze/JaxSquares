@@ -54,6 +54,12 @@ function markdown() {
     `A 4-week Instagram launch for ${PLAN.handle} (Oct 26 – Nov 22, 2026), plus a prep week and a Thanksgiving-week bonus. All times US Eastern. Every post's asset is rendered from code in \`marketing/studio\`; run \`npm run marketing:render\` to regenerate them into \`marketing/out/\`.`,
   );
   out.push("");
+  out.push("## Start here");
+  out.push("");
+  out.push("Do these in order. Each one is a step in the calendar page's Start here list.");
+  out.push("");
+  items.filter((it) => it.start).forEach((it, i) => out.push(`${i + 1}. **${fmtDay(it.date)}, ${fmtTime(it.time)}** · ${it.title}`));
+  out.push("");
   out.push("## Positioning");
   out.push("");
   out.push(s.positioning);
@@ -102,7 +108,7 @@ function markdown() {
   out.push("| # | When (ET) | Square |");
   out.push("|---|---|---|");
   items
-    .filter((it) => /^(LAUNCH \(grid 9\/9\)|Grid \d\/9)/.test(it.title))
+    .filter((it) => /^Grid \d\/9/.test(it.title))
     .forEach((it, i) => out.push(`| ${i + 1} | ${fmtDay(it.date)} ${fmtTime(it.time)} | ${it.title} |`));
   out.push("");
   out.push("## Outreach templates");
@@ -137,6 +143,9 @@ function markdown() {
       if (it.checklist) {
         for (const l of it.checklist) out.push(`- [ ] ${l}`);
         out.push("");
+      }
+      if (it.copy) {
+        for (const c of it.copy) out.push(`**${c.label}:**`, "", "```text", c.text, "```", "");
       }
       if (it.caption) {
         out.push("**Caption:**", "", "```text", it.caption, "", it.hashtags.join(" "), "```", "");
@@ -228,6 +237,7 @@ function ics() {
     if (it.story) desc.push(`Sticker: ${it.story.sticker}`, `Text: ${it.story.text}`);
     if (it.script) desc.push("Script:", ...it.script.map((l) => `- ${l}`));
     if (it.checklist) desc.push(...it.checklist.map((l) => `☐ ${l}`));
+    if (it.copy) desc.push("", ...it.copy.map((c) => `${c.label.toUpperCase()}:\n${c.text}`));
     if (it.caption) desc.push("", "CAPTION:", it.caption, "", it.hashtags.join(" "));
     if (it.altText) desc.push("", `Alt text: ${it.altText}`);
     if (it.notes) desc.push("", ...it.notes.map((n) => `• ${n}`));

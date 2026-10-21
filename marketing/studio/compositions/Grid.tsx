@@ -2,10 +2,9 @@
 // a 3×3 board in volt with the winning square in gold (src/components/ui/Logo.tsx).
 // Each tile is a whole board square that reads on its own in the feed, and each
 // post is a carousel whose second slide shows the real app behind its claim.
-// Instagram fills the grid newest-first from the top left, so the posts go up
-// bottom-right first and the launch Reel (top left) completes the board.
+// Instagram fills the grid newest-first from the top left, so these are the
+// account's first nine posts, bottom-right first, one row a day.
 
-import type { ReactNode } from "react";
 import type { Composition, CompProps } from "../types";
 import { BRAND, COLORS, PORTRAIT, REEL } from "../brand";
 import { ClipCrop } from "../components/Phone";
@@ -163,15 +162,20 @@ export const GRID: GridTile[] = [
       width: 262,
     },
   },
-  // The launch Reel takes the last square: this is its cover.
   {
-    id: "g9-launch-cover",
+    id: "g9-squares-for-any-game",
     order: 9,
     row: 0,
     col: 0,
     art: { emoji: "🏈" },
     headline: "Squares for any game.",
     sub: "Set up in 30 seconds.",
+    proof: {
+      title: "Pick a game. *Any game.*",
+      crops: [{ scene: "create", at: 10, y0: 118, y1: 560 }],
+      note: "NFL, college and NBA games score themselves. Or type in any matchup.",
+      width: 270,
+    },
   },
 ];
 
@@ -358,22 +362,10 @@ function makeTilePost(tile: GridTile) {
   };
 }
 
-/** The launch Reel's cover: the tile in the middle 3:4 of a 9:16 frame, which is what the grid shows. */
-function LaunchCover() {
-  const tile = GRID.find((t) => t.order === 9)!;
-  return (
-    <div className="absolute inset-0" style={{ background: COLORS.canvas }}>
-      <div className="absolute left-0" style={{ top: 80, width: TILE_W, height: TILE_H }}>
-        <Tile tile={tile} />
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- previews
 
 /** The launch grid as the profile shows it: 3 columns, hairline gutters, newest at the top left. */
-function GridBoard({ width, upTo = 9, below }: { width: number; upTo?: number; below?: ReactNode }) {
+function GridBoard({ width, upTo = 9 }: { width: number; upTo?: number }) {
   const gap = 2;
   const w = (width - 2 * gap) / 3;
   const h = (w * TILE_H) / TILE_W;
@@ -389,7 +381,6 @@ function GridBoard({ width, upTo = 9, below }: { width: number; upTo?: number; b
           );
         })}
       </div>
-      {below}
     </div>
   );
 }
@@ -417,14 +408,8 @@ function OpenSquare({ width, height }: { width: number; height: number }) {
   );
 }
 
-/** Launch day on the profile: the picture, the name, the full grid over the seed row. */
+/** The profile once the grid is up: the picture, the name, the nine squares. */
 function GridPreview() {
-  const seed = [
-    { src: "/04-best-worst-squares-cover.png", reel: true },
-    { src: "/07-features-cover.png", reel: true },
-    { src: "/c1-how-squares-works/01.png", reel: false },
-  ];
-  const w = (352 - 4) / 3;
   return (
     <div className="absolute inset-0" style={{ background: "#000" }}>
       <div className="absolute flex items-center" style={{ left: 18, top: 22, gap: 14 }}>
@@ -442,29 +427,18 @@ function GridPreview() {
         </div>
       </div>
       <div className="absolute" style={{ left: 4, top: 116 }}>
-        <GridBoard
-          width={352}
-          below={
-            <div className="grid" style={{ marginTop: 2, gridTemplateColumns: `repeat(3, ${w}px)`, gap: 2 }}>
-              {seed.map((s) => (
-                <div key={s.src} className="overflow-hidden" style={{ width: w, height: (w * 4) / 3 }}>
-                  <img src={s.src} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                </div>
-              ))}
-            </div>
-          }
-        />
+        <GridBoard width={352} />
       </div>
     </div>
   );
 }
 
-/** Story frames for the weekend the board fills up. */
+/** Story frames for the three days the board fills up. */
 function GridStories({ frame: i }: CompProps) {
   const steps = [
-    { upTo: 3, title: "The board is *open.*", sub: "3 of 9 squares claimed. Watch our grid fill up this weekend 🟩" },
-    { upTo: 6, title: "6 of 9 squares *claimed* 👀", sub: "The last 3 drop Monday at 2 PM ET." },
-    { upTo: 9, title: "Board's *full.* 🟩", sub: "That's our logo, by the way. JaxSquares is live." },
+    { upTo: 3, title: "The board is *open.*", sub: "3 of 9 squares claimed. Watch our grid fill up this week 🟩" },
+    { upTo: 6, title: "6 of 9 squares *claimed* 👀", sub: "The last 3 drop tomorrow." },
+    { upTo: 9, title: "Board's *full.* 🟩", sub: "That's our logo, by the way. Make your board: link in bio." },
   ];
   const s = steps[i];
   return (
@@ -480,13 +454,46 @@ function GridStories({ frame: i }: CompProps) {
   );
 }
 
+/** Highlight covers: Instagram shows the middle as a circle, so the icon sits dead center. */
+const HIGHLIGHTS = [
+  { name: "How it works", mark: true },
+  { name: "Square stats", emoji: "📊" },
+  { name: "Game days", emoji: "🏈" },
+  { name: "Thanksgiving", emoji: "🦃" },
+];
+
+function HighlightCovers({ frame: i }: CompProps) {
+  const h = HIGHLIGHTS[i];
+  return (
+    <div className="absolute inset-0 grid place-items-center" style={{ background: COLORS.canvas }}>
+      <span
+        className="grid place-items-center rounded-full"
+        style={{
+          width: 230,
+          height: 230,
+          background: `linear-gradient(170deg, ${COLORS.volt} 55%, #b5e816)`,
+          boxShadow: "inset 0 -8px 0 rgba(0,0,0,0.12), inset 0 5px 0 rgba(255,255,255,0.35)",
+        }}
+      >
+        {h.mark ? (
+          <span className="grid place-items-center rounded-full" style={{ width: 132, height: 132, background: COLORS.canvas }}>
+            <img src={ASSETS.mark} alt="" style={{ width: 92, height: 92 }} />
+          </span>
+        ) : (
+          <span style={{ fontSize: 110, lineHeight: 1, transform: "translateY(4px)" }}>{h.emoji}</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
 const stills = (c: Omit<Composition, "fps" | "kind">): Composition => ({ fps: 30, kind: "stills", ...c });
 
 export const GRID_POSTS: Composition[] = [
   ...GRID.filter((t) => t.proof).map((t) =>
     stills({ id: t.id, title: `Grid ${t.order}/9: ${t.headline}`, ...PORTRAIT, durationInFrames: 2, component: makeTilePost(t) }),
   ),
-  stills({ id: "g9-launch-cover", title: "Grid 9/9: the launch Reel's cover", ...REEL, durationInFrames: 1, component: LaunchCover }),
   stills({ id: "g-grid-preview", title: "Launch grid: profile preview", ...REEL, durationInFrames: 1, component: GridPreview }),
   stills({ id: "s-grid-progress", title: "Story frames: the grid fills up", ...REEL, durationInFrames: 3, component: GridStories }),
+  stills({ id: "p-highlight-covers", title: "Highlight covers (4)", ...REEL, durationInFrames: 4, component: HighlightCovers }),
 ];

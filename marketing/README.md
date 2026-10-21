@@ -111,10 +111,11 @@ final scores 1999–2025).
 | `m1`–`m7` | "Run a board for this game" matchup template |
 | `otd1`–`otd6` | On this day: a famous final score and the square it landed on |
 | `c1`–`c4` | Carousels: how squares works, every square ranked, host cheat sheet, Thanksgiving playbook |
-| `g1`–`g8`, `g9-launch-cover` | The launch grid: nine posts that make the profile the 3×3 JaxSquares mark (gold winning square). Each is a tile + a real-app proof slide; the launch Reel is square 9 with `g9-launch-cover` as its cover |
-| `g-grid-preview` | The profile on launch day (Jax profile picture, the full grid, the seed row) |
+| `g1`–`g9` | The launch grid: the account's first nine posts, which make the profile the 3×3 JaxSquares mark (gold winning square). Each is a tile + a real-app proof slide |
+| `g-grid-preview` | The profile once the grid is up (Jax profile picture and the nine squares) |
 | `s-grid-progress` | 3 Story frames as the grid fills: 3 of 9, 6 of 9, full |
 | `s-story-frames` | 8 Story backgrounds with room for native poll/quiz/link stickers |
+| `p-highlight-covers` | 4 Highlight covers (How it works, Square stats, Game days, Thanksgiving) |
 | `p-profile-picture` | 2 profile pictures (1080×1080, built for the circle crop): Jax over the board (the app icon), the 3×3 mark |
 
 ## The launch plan
