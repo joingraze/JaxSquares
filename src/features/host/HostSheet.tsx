@@ -11,7 +11,7 @@
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { freshNumbersInfo, isFootball, presetsFor, wordsFor, type GameKind } from "../../../shared/sports";
 import { squareHolders } from "../../../shared/hostFee";
@@ -35,7 +35,6 @@ import {
   PlusIcon,
   ShareIcon,
   ShuffleIcon,
-  SlidersIcon,
   SparklesIcon,
   TrashIcon,
   TrophyIcon,
@@ -48,7 +47,6 @@ import {
   Badge,
   BottomSheet,
   Button,
-  buttonStyles,
   Chip,
   IconButton,
   ListGroup,
@@ -124,7 +122,7 @@ import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } fr
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
-import { SendToTv } from "../tv/SendToTv";
+import { ShowOnTv } from "../tv/SendToTv";
 import { TvDisplaySettings } from "../tv/TvDisplaySettings";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
@@ -226,6 +224,7 @@ function SignInToHostRow({ onSignIn }: { onSignIn: () => void }) {
 
 export function HostSheet(props: HostSheetProps) {
   const theme = useResolvedTheme();
+  const navigate = useNavigate();
   const { state, open, view, onView, onClose, actions, me, role = "host" } = props;
   const { game } = state;
   const isHost = role === "host";
@@ -543,13 +542,13 @@ export function HostSheet(props: HostSheetProps) {
       </Button>
     );
   } else if (view === "tv") {
-    title = <>{back()}On a TV</>;
+    title = <>{back()}Put it on a TV</>;
     description = seasonGame
-      ? "Put this game's board on a smart TV. What it shows is set on the season board."
-      : "Put the board on a smart TV, and choose what it shows. Every TV with this board changes right away.";
+      ? "Two ways, depending on the TV. What it shows is set on the season board."
+      : "Two ways, depending on the TV. Every TV with this board shows what you pick below.";
     body = (
-      <div className="flex flex-col gap-5">
-        <SendToTv gameId={game.id} />
+      <div className="flex flex-col gap-6">
+        <ShowOnTv gameId={game.id} onOpenHere={() => navigate(boardViewPath(game.id, "tv"))} />
         {!seasonGame && (
           <section aria-label="What the TV shows" className="flex flex-col gap-2">
             <p className="eyebrow px-1 text-ink-subtle">What the TV shows</p>
@@ -557,17 +556,6 @@ export function HostSheet(props: HostSheetProps) {
           </section>
         )}
       </div>
-    );
-    footer = (
-      <Link
-        to={boardViewPath(game.id, "tv")}
-        data-testid="host-tv-open"
-        className={buttonStyles({ size: "lg", block: true, variant: "secondary" })}
-        onClick={() => void haptic("selection")}
-      >
-        <TvIcon size={18} />
-        Open TV mode
-      </Link>
     );
   } else if (view === "edit") {
     const errors = editErrors(draft, game);
@@ -836,35 +824,22 @@ export function HostSheet(props: HostSheetProps) {
           </Section>
         )}
 
-        {/* Watch parties: the board on the TV (TV mode, /g/:id/tv). */}
-        <Link
-          to={boardViewPath(game.id, "tv")}
-          data-testid="host-tv"
-          onClick={() => void haptic("selection")}
-          className="pressable flex min-h-14 items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2.5 ring-1 ring-inset ring-line"
-        >
-          <RowIcon>
-            <TvIcon size={18} />
-          </RowIcon>
-          <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
-            <b className="font-bold text-ink">Hosting a watch party?</b> Show the board on your TV.
-          </span>
-          <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
-        </Link>
+        {/* Watch parties and venues: the board on a TV (a smart TV's code, or TV mode mirrored or plugged in). */}
         <button
           type="button"
-          data-testid="host-tv-display"
+          data-testid="host-tv"
           onClick={() => {
             void haptic("selection");
             onView("tv");
           }}
-          className="pressable -mt-1 flex min-h-12 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2 text-left ring-1 ring-inset ring-line"
+          className="pressable flex min-h-14 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2.5 text-left ring-1 ring-inset ring-line"
         >
           <RowIcon>
-            <SlidersIcon size={18} />
+            <TvIcon size={18} />
           </RowIcon>
-          <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
-            <b className="font-bold text-ink">Show on a smart TV</b> {seasonGame ? "Send the board to one" : "Send the board to one, choose what it shows"}
+          <span className="min-w-0 flex-1 leading-snug">
+            <b className="block text-subhead font-bold text-ink">Put the board on a TV</b>
+            <span className="block text-footnote text-ink-muted">Smart TV, AirPlay, Chromecast or a cable</span>
           </span>
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
         </button>

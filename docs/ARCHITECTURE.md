@@ -859,18 +859,21 @@ the phone column or the route slide (`isBoardViewPath`).
   (exported for the club TV, which passes `hideClub`, a `panelFooter` and a
   winner to celebrate on arrival).
 - Entry points: "Show on TV" and "Print board" in the board's invite sheet
-  (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
-  the host sheet's hint "Hosting a watch party? Show the board on your TV."
-  (`host-tv`).
+  (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), a
+  venue's just-made "Put it on your TV" card, and the host sheet's one row "Put
+  the board on a TV" (`host-tv`, Host tools' "tv" view). Each offers the same
+  two ways, named by the TVs they're for (`ShowOnTv`,
+  `src/features/tv/SendToTv.tsx`): "Smart TV with a web browser" (the TV's
+  code, below) and "AirPlay, Chromecast or a cable" ("Open TV mode here",
+  `show-on-tv-here`: this device mirrored, cast or plugged in, sideways on a
+  phone). Host tools adds "What the TV shows" under them.
 - A smart TV gets there without typing a long link. Its browser opening a
   board's link lands in TV mode (the Worker's redirect, see "Non-API routes");
   opening jaxsquares.com lands on `/tv` (`src/main.tsx`, before the app
   renders, `isTvBrowser`). `/tv` (`TvPair`) asks for a code
   (`POST /api/tv/pair`) and shows it in large tiles; anyone with the board's
-  link types it in (`SendToTv`, `POST /api/games/:id/tv`): the share sheet's
-  "Show on TV" (`invite-tv` opens the code box, with "Or open TV mode on this
-  device", `send-to-tv-here`), a venue's just-made "Put it on your TV" card,
-  or Host tools → "Show on a smart TV" (`host-tv-display`). The TV asks every
+  link types it in (`SendToTv`, `POST /api/games/:id/tv`) wherever the two
+  ways show (the entry points above). The TV asks every
   `TV_PAIR_POLL_MS` with its secret (`x-tv-token`, never in a URL), opens
   `/g/:id/tv` once a board is sent (pushed, so Exit comes back to a new code),
   takes a new code when one runs out (15 minutes) or the server forgets it,
@@ -901,7 +904,7 @@ the phone column or the route slide (`isBoardViewPath`).
   square price), `now`, `winners`, `upcoming` and `celebrations`. A part the
   host never touched shows as its default (`tvShows`): all on, except
   `freeToPlay`, which a venue's or named club's board starts with. The host or
-  a co-host changes them in Host tools → "Show on a smart TV" (`host-tv-display`) or
+  a co-host changes them in Host tools → "Put the board on a TV" (`host-tv`) or
   from the TV toolbar's "Display" (`tv-display-open`, their device only):
   `TvDisplaySettings`, each switch saved as it flips (`PATCH` `tv`), every TV
   on the board following at once. A season's game board on the TV follows its

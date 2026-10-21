@@ -8,8 +8,7 @@ import { boardCountLine } from "../../../shared/siblings";
 import type { GameState, Player } from "../../../shared/types";
 import { ArrowRightIcon, CheckIcon, ChevronRightIcon, CopyIcon, GridIcon, PlusIcon, PrinterIcon, TvIcon } from "../../components/icons";
 import { Avatar, AvatarGroup, BottomSheet, Button, celebrate, cx, TeamMark } from "../../components/ui";
-import { PUBLIC_ORIGIN, inviteUrl } from "../../lib/api";
-import { tvPairAddress } from "../../lib/boardViews";
+import { inviteUrl } from "../../lib/api";
 import { readableTeamColor, shortMatchup, shortTeam, teamVars } from "../../lib/format";
 import { getPlayerId, getProfile, isHostOf } from "../../lib/identity";
 import { copyText, haptic, shareLink } from "../../lib/native";
@@ -32,7 +31,7 @@ import {
 import { QrCode } from "./QrCode";
 import { useNewArrival } from "./useNewArrival";
 import { useResolvedTheme } from "../../lib/theme";
-import { SendToTv } from "../tv/SendToTv";
+import { ShowOnTv } from "../tv/SendToTv";
 
 /** A speech bubble: "send it as a text". */
 function ChatGlyph({ size = 22 }: { size?: number }) {
@@ -193,16 +192,10 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-display text-headline font-extrabold leading-tight text-ink">Put it on your TV</span>
-                <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">
-                  On a smart TV, open <b className="font-bold text-ink">{tvPairAddress(PUBLIC_ORIGIN)}</b> and enter the code it shows. Guests scan its QR code to grab a
-                  square.
-                </span>
+                <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">Guests scan its QR code to grab a square.</span>
               </span>
             </div>
-            <SendToTv gameId={game.id} bare />
-            <Button data-testid="invite-venue-tv-open" variant="secondary" size="md" block haptic="medium" leading={<TvIcon size={20} />} onClick={onShowTv}>
-              Open TV mode on this device
-            </Button>
+            {onShowTv && <ShowOnTv gameId={game.id} onOpenHere={onShowTv} />}
           </section>
         )}
         {/* ---- Who's in: the one social signal ---- */}
@@ -287,7 +280,11 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
         )}
 
         {/* Anyone with the link: the code a smart TV shows at jaxsquares.com/tv, or TV mode right here. */}
-        {showTv && onShowTv && !venueLaunch && <SendToTv gameId={game.id} onOpenHere={onShowTv} />}
+        {showTv && onShowTv && !venueLaunch && (
+          <section aria-label="Show on TV" className="rounded-card bg-surface-3/60 p-3.5 ring-1 ring-inset ring-line">
+            <ShowOnTv gameId={game.id} onOpenHere={onShowTv} />
+          </section>
+        )}
 
         {/* Several boards for one game: how many and their names (the prices are on the board). */}
         {boardNames && (

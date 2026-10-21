@@ -257,9 +257,9 @@ describe("InviteSheet", () => {
     render(<InviteSheet state={venue} open justCreated onClose={() => {}} onShowTv={onShowTv} onPrint={() => {}} />);
     const card = await screen.findByTestId("invite-venue-tv");
     expect(card).toHaveTextContent("Put it on your TV");
-    // A smart TV's code right there, or TV mode on this device.
+    // The two ways right there: a smart TV's code, or TV mode on this device.
     expect(within(card).getByTestId("send-to-tv-code")).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId("invite-venue-tv-open"));
+    fireEvent.click(within(card).getByTestId("show-on-tv-here"));
     expect(onShowTv).toHaveBeenCalled();
     // One way to the TV: the small "Show on TV" button steps aside; printing stays.
     expect(screen.queryByTestId("invite-tv")).toBeNull();

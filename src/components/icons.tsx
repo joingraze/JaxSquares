@@ -339,6 +339,15 @@ export const TvIcon = make(
     <path d="M8 21h8M12 17.5V21" />
   </>,
 );
+/** A screen with signal waves: mirroring or casting to a TV (AirPlay, Chromecast). */
+export const CastIcon = make(
+  "Cast",
+  <>
+    <path d="M2.5 8V6.5a2 2 0 0 1 2-2h15a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H14" />
+    <path d="M2.5 12.5a7 7 0 0 1 7 7M2.5 16.5a3 3 0 0 1 3 3" />
+    <path d="M2.5 19.5h.01" />
+  </>,
+);
 export const PrinterIcon = make(
   "Printer",
   <>

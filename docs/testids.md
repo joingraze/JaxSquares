@@ -173,10 +173,11 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
 | `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
-| `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the TV code box, `send-to-tv`) and "Print board" (opens `/g/:id/print`) |
-| `send-to-tv`, `send-to-tv-code`, `send-to-tv-send`, `send-to-tv-sent`, `send-to-tv-here` | "Show on TV": the box for a smart TV's code (jaxsquares.com/tv), its Send, the sent line, and "Or open TV mode on this device" |
+| `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the two ways onto a TV, `show-on-tv`) and "Print board" (opens `/g/:id/print`) |
+| `show-on-tv`, `show-on-tv-smart`, `show-on-tv-cast`, `show-on-tv-here` | the two ways onto a TV (share sheet, venue card, Host tools): "Smart TV with a web browser", "AirPlay, Chromecast or a cable", and its "Open TV mode here" |
+| `send-to-tv`, `send-to-tv-code`, `send-to-tv-send`, `send-to-tv-sent` | the box for a smart TV's code (jaxsquares.com/tv), its Send, and the sent line |
 | `tv-pair`, `tv-pair-code`, `tv-pair-status` | a smart TV's pairing page (`/tv`): the code tiles and the waiting line |
-| `host-tv` | the host sheet's hint "Hosting a watch party? Show the board on your TV." (a link to `/g/:id/tv`) |
+| `host-tv` | the host sheet's "Put the board on a TV" (opens the two ways and "What the TV shows") |
 | `host-add-board` | the host sheet's "Add another board for this game" (Board section; host and co-hosts, until the game starts; "This game has 3 boards" under it on a board in a group): a link to `/new?from=<id>&step=prizes` |
 | `invite-add-board` | the same in the invite sheet (host and co-hosts; the sheet the create flow opens) |
 | `invite-boards` | the invite sheet's "This game has 3 boards: <names>" on a board in a group (names only; the share text adds just the count) |

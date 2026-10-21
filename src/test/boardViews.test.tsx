@@ -97,13 +97,13 @@ describe("entry points", () => {
     const onShowTv = vi.fn();
     const onPrint = vi.fn();
     render(<InviteSheet state={makeState()} open onClose={() => {}} onShowTv={onShowTv} onPrint={onPrint} />);
-    // Show on TV (anyone with the link): a smart TV's code, or TV mode on this device.
-    expect(screen.queryByTestId("send-to-tv")).toBeNull();
+    // Show on TV (anyone with the link): the two ways, a smart TV's code or TV mode here.
+    expect(screen.queryByTestId("show-on-tv")).toBeNull();
     fireEvent.click(screen.getByTestId("invite-tv"));
     expect(screen.getByTestId("invite-tv")).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByTestId("send-to-tv")).toHaveTextContent("/tv");
+    expect(screen.getByTestId("send-to-tv-code")).toBeInTheDocument();
     expect(onShowTv).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("send-to-tv-here"));
+    fireEvent.click(screen.getByTestId("show-on-tv-here"));
     expect(onShowTv).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("invite-tv")).toHaveTextContent("Show on TV");
     fireEvent.click(screen.getByTestId("invite-print"));
@@ -117,7 +117,7 @@ describe("entry points", () => {
     expect(screen.queryByTestId("invite-print")).toBeNull();
   });
 
-  it("gives the host a watch-party hint that opens TV mode", async () => {
+  it("gives the host one way onto a TV: the two ways, then what it shows", async () => {
     identity.saveAdminToken("brd123", "tok");
     render(
       <MemoryRouter initialEntries={["/g/brd123"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -130,10 +130,13 @@ describe("entry points", () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByTestId("host-open"));
-    const hint = await screen.findByTestId("host-tv");
-    expect(hint).toHaveTextContent("Hosting a watch party? Show the board on your TV.");
-    expect(hint).toHaveAttribute("href", "/g/brd123/tv");
-    fireEvent.click(hint);
+    const row = await screen.findByTestId("host-tv");
+    expect(row).toHaveTextContent("Put the board on a TV");
+    expect(screen.queryByTestId("host-tv-display")).toBeNull();
+    fireEvent.click(row);
+    expect(await screen.findByTestId("show-on-tv")).toBeInTheDocument();
+    expect(screen.getByTestId("tv-display")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("show-on-tv-here"));
     expect(await screen.findByText("TV mode")).toBeInTheDocument();
   });
 });

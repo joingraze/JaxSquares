@@ -1,6 +1,7 @@
 // Pairing a TV: jaxsquares.com/tv shows a code and opens the board sent to
 // it (a new code when one runs out), and "Show on TV" (anyone with the board's
-// link) sends the board to the code typed in.
+// link) offers the two ways: the code a smart TV shows, or TV mode here to
+// mirror or plug in.
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -30,7 +31,7 @@ vi.mock("../../lib/native", async (orig) => {
 
 const { ApiError } = await import("../../lib/api");
 const { default: TvPair } = await import("../../pages/TvPair");
-const { SendToTv } = await import("./SendToTv");
+const { SendToTv, ShowOnTv } = await import("./SendToTv");
 
 const pairing = (code: string, token: string) => ({ code, token, expiresAt: Date.now() + 15 * 60_000 });
 
@@ -93,12 +94,23 @@ describe("the TV's pairing page", () => {
   });
 });
 
-describe("Show on a TV", () => {
+describe("Show on TV", () => {
+  it("names the two ways by the TVs they're for, and opens TV mode here for the second", () => {
+    const onOpenHere = vi.fn();
+    render(<ShowOnTv gameId="brd123" onOpenHere={onOpenHere} />);
+    expect(screen.getByTestId("show-on-tv-smart")).toHaveTextContent("Smart TV with a web browser");
+    expect(screen.getByTestId("show-on-tv-smart")).toHaveTextContent("/tv");
+    expect(screen.getByTestId("send-to-tv-code")).toBeInTheDocument();
+    expect(screen.getByTestId("show-on-tv-cast")).toHaveTextContent("AirPlay, Chromecast or a cable");
+    fireEvent.click(screen.getByTestId("show-on-tv-here"));
+    expect(onOpenHere).toHaveBeenCalledTimes(1);
+  });
+
   it("sends the board to the code typed in, any way it's typed", async () => {
     sendToTv.mockResolvedValue({ ok: true });
     render(<SendToTv gameId="brd123" />);
     const input = screen.getByTestId("send-to-tv-code");
-    expect(screen.getByTestId("send-to-tv")).toHaveTextContent("/tv");
+    expect(input).toHaveAccessibleName("TV code");
     expect(screen.getByTestId("send-to-tv-send")).toBeDisabled();
     fireEvent.change(input, { target: { value: "k7 mp" } });
     expect(input).toHaveValue("K7 MP");
@@ -107,18 +119,6 @@ describe("Show on a TV", () => {
     expect(sendToTv).toHaveBeenCalledWith("brd123", "K7MP");
     expect(screen.getByTestId("send-to-tv-sent")).toHaveTextContent("Sent. The board is on the TV showing K7MP.");
     expect(input).toHaveValue("");
-  });
-
-  it("offers TV mode on this device, and a bare box for a card that says what it's for", () => {
-    const onOpenHere = vi.fn();
-    render(<SendToTv gameId="brd123" onOpenHere={onOpenHere} />);
-    fireEvent.click(screen.getByTestId("send-to-tv-here"));
-    expect(onOpenHere).toHaveBeenCalledTimes(1);
-    cleanup();
-    render(<SendToTv gameId="brd123" bare />);
-    expect(screen.getByTestId("send-to-tv-code")).toBeInTheDocument();
-    expect(screen.getByTestId("send-to-tv")).not.toHaveTextContent("/tv");
-    expect(screen.queryByTestId("send-to-tv-here")).toBeNull();
   });
 
   it("says why a code didn't work", async () => {
