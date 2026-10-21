@@ -167,6 +167,7 @@ describe("TV mode", () => {
     expect(screen.getByTestId("tv-link")).toHaveTextContent(link);
     expect(within(screen.getByTestId("tv-qr")).getByRole("img")).toHaveAccessibleName(`QR code: open ${link} to grab a square`);
     expect(screen.getByTestId("tv-open")).toHaveTextContent("42 of 100 squares left");
+    expect(screen.queryByTestId("tv-cap")).toBeNull();
     expect(screen.getByTestId("tv-open")).toHaveTextContent("$10 a square");
     expect(screen.getByTestId("tv-predraw")).toHaveTextContent("Numbers get drawn when the host locks the board");
     // Names (or initials) in the claimed squares; open ones are empty.
@@ -186,11 +187,13 @@ describe("TV mode", () => {
       { moment: "final", square: { amount: null, note: "Team jersey" }, reverse: { amount: null, note: "Pint glass" } },
     ];
     const format: GameFormat = { ...FORMAT, rules, squarePrice: null, houseRules: ["Must be present to win", "21+ only"], claimCodes: true };
-    board.state = makeState({ format, club });
+    board.state = makeState({ format, club, maxPerPlayer: 1 });
     const { unmount } = renderTv();
 
     const details = screen.getByTestId("tv-details");
     expect(screen.getAllByTestId("tv-prize").map((r) => r.textContent)).toEqual(["Q1Free appetizer", "FinalTeam jersey · Reverse Pint glass"]);
+    // The squares-per-person setting, from the board itself.
+    expect(screen.getByTestId("tv-cap")).toHaveTextContent("One square each");
     expect(within(details).getByTestId("tv-house-rules")).toHaveTextContent("Must be present to win21+ onlyWinners show staff the winning pass on their phone to collect.");
     expect(screen.getByTestId("tv-venue")).toHaveTextContent("Free to play · No purchase necessaryPrizes from The Rusty Anchor");
     unmount();

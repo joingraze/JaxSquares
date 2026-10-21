@@ -21,7 +21,7 @@ import { contrastText, countdown, kicksOffLabel, pluralize, shortTeam } from "..
 import { boardPhase, claimedCount, headlineScore, nowSentence, type NowView } from "../board/boardModel";
 import { displayLink } from "../invite/inviteModel";
 import { QrCode } from "../invite/QrCode";
-import { prizeLineup } from "../rules/rulesModel";
+import { capLine, prizeLineup } from "../rules/rulesModel";
 import { TvClubBrand } from "../club/TvClubBrand";
 import { latest, tvDetails, type TvDetails, type TvPlayer, type TvUpcoming, type TvWinner } from "./tvModel";
 
@@ -147,6 +147,8 @@ export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer, show =
             )}
             {" · "}
             {pluralize(players, "player")}
+            {/* The squares-per-person setting, worded the same everywhere (never a house rule). */}
+            {capLine(game.maxPerPlayer) && <span data-testid="tv-cap"> · {capLine(game.maxPerPlayer)}</span>}
           </p>
           {details && details.venue.length > 0 && (
             <p className="tv-text-md flex flex-col font-extrabold text-ink-gold" data-testid="tv-venue">

@@ -228,7 +228,7 @@ describe("format copy", () => {
   it("words the per-player cap as a cap", () => {
     expect(detailsSummary(0)).toBe("No max per player");
     expect(detailsSummary(5)).toBe("Up to 5 squares each");
-    expect(detailsSummary(1)).toBe("Up to 1 square each");
+    expect(detailsSummary(1)).toBe("One square each");
   });
 
   it("flags a prize note that mentions money", () => {

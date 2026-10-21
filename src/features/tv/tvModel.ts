@@ -11,7 +11,7 @@ import { formatAmount, formatRange, periodPhrase, scorePlayLabel, unitOf } from 
 import { primaryAward, resolveResults, type PeriodResult } from "../../../shared/squares";
 import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
 import { tvShowAll, type TvShow } from "../../../shared/tv";
-import { CLAIM_LINE, collectedFor, freeToPlayLines } from "../../../shared/venue";
+import { CLAIM_LINE, collectedFor, freeToPlayLines, shownHouseRules } from "../../../shared/venue";
 import { initialsOf } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 import type { PeriodCard } from "../board/boardModel";
@@ -299,7 +299,7 @@ export function tvDetails(game: Pick<Game, "format"> & Partial<Pick<Game, "club"
         return amount || p.note || reverse ? [{ ...p, amount, reverse }] : [];
       })
     : [];
-  const rules = show.houseRules ? [...(format.houseRules ?? []), ...(format.claimCodes ? [CLAIM_LINE] : [])] : [];
+  const rules = show.houseRules ? [...shownHouseRules(format), ...(format.claimCodes ? [CLAIM_LINE] : [])] : [];
   const venue = show.freeToPlay ? freeToPlayLines(game) : [];
   const notes = prizes.some((p) => p.note || p.reverse?.note);
   if (!notes && rules.length === 0 && venue.length === 0) return null;

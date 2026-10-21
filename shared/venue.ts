@@ -25,7 +25,6 @@ export const HOUSE_RULE_MAX_LENGTH = 80;
 export const HOUSE_RULE_IDEAS: readonly string[] = [
   "Must be present to win",
   "Claim your prize before the next quarter ends",
-  "One square per person",
   "21+ only",
   "Staff decisions are final",
 ] as const;
@@ -34,6 +33,33 @@ export const HOUSE_RULE_IDEAS: readonly string[] = [
 export const HOUSE_RULE_MONEY_ERROR = "House rules can't mention money or payment apps. Keep them about how to play and claim.";
 /** A house rule that asks players to buy something: boards are free to play. */
 export const HOUSE_RULE_PURCHASE_ERROR = "House rules can't ask anyone to buy anything: JaxSquares boards are free to play.";
+
+/**
+ * A house rule about how many squares each person gets: that's the board's
+ * squares-per-person setting (`Game.maxPerPlayer`), which the app enforces and
+ * the rules sheet and TV show from it, so a rule can't say otherwise.
+ */
+export const SQUARE_LIMIT_HINT = "That's the squares-per-person setting (Final touches, or Edit board later): the board and TV show it for you.";
+
+const COUNT = String.raw`(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|single)`;
+const SQUARE_LIMIT = new RegExp(
+  [
+    String.raw`\b${COUNT}\s+squares?\s+(?:per|each|a|max|maximum|limit|only|apiece)\b`,
+    String.raw`\bsquares?\s+(?:per|a)\s+(?:person|player|guest|customer|table|head|entry)\b`,
+    String.raw`\b(?:max|maximum|limit|up to|no more than|at most|only)\s+(?:of\s+)?${COUNT}?\s*squares?\b`,
+  ].join("|"),
+  "i",
+);
+
+/** True for a house rule that sets a squares-per-person limit ("One square per person", "Max 2 squares"). */
+export function isSquareLimitRule(text: string): boolean {
+  return SQUARE_LIMIT.test(text);
+}
+
+/** The house rules a board shows: never one about the squares limit (the setting shows that). */
+export function shownHouseRules(format: Pick<GameFormat, "houseRules">): string[] {
+  return (format.houseRules ?? []).filter((r) => !isSquareLimitRule(r));
+}
 
 const PURCHASE = /\b(buy|buying|purchase|purchases|purchased|purchasing|minimum spend|min spend|spend at least|order (?:a|an|one|two|food|drinks?))\b/i;
 
@@ -55,13 +81,13 @@ function oneLine(v: string): string {
     .trim();
 }
 
-/** The house rules worth keeping from any input: strings, one line each, non-empty, within the limits (problems are formatError's to report). */
+/** The house rules worth keeping from any input: strings, one line each, non-empty, never a squares limit, within the limits (problems are formatError's to report). */
 export function cleanHouseRules(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return input
     .filter((v): v is string => typeof v === "string")
     .map(oneLine)
-    .filter((v) => v.length > 0)
+    .filter((v) => v.length > 0 && !isSquareLimitRule(v))
     .slice(0, HOUSE_RULES_MAX)
     .map((v) => Array.from(v).slice(0, HOUSE_RULE_MAX_LENGTH).join(""));
 }

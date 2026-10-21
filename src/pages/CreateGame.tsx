@@ -49,7 +49,7 @@ import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../share
 import { MAX_SEASON_GAMES, seasonReviewLine } from "../../shared/season";
 import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
 import { ACCOUNT_REQUIRED_CODE, type Game, type GameFormat, type GameState, type ScheduleEvent, type SeasonNumbers, type SeasonScope, type SeasonTeam } from "../../shared/types";
-import { VENUE_DEFAULTS } from "../../shared/venue";
+import { VENUE_DEFAULTS, shownHouseRules } from "../../shared/venue";
 import { ArrowRightIcon, CheckIcon, ChevronLeftIcon, InfoIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import {
@@ -666,7 +666,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     choice: prizeChoice,
     squarePrice: format.squarePrice ?? null,
     freshNumbers: format.freshNumbers,
-    houseRules: format.houseRules ?? [],
+    houseRules: shownHouseRules(format),
     claimCodes: format.claimCodes === true,
     claimMinutes: format.claimMinutes ?? null,
     venue: format.venue === true,

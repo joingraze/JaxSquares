@@ -8,7 +8,18 @@
 import { useState } from "react";
 import { PlusIcon, XIcon } from "../../components/icons";
 import { Chip, IconButton, SegmentedControl, Switch, TextField } from "../../components/ui";
-import { CLAIM_MINUTES_CHOICES, HOUSE_RULE_IDEAS, HOUSE_RULE_MAX_LENGTH, HOUSE_RULES_MAX, houseRuleProblem } from "../../../shared/venue";
+import {
+  CLAIM_MINUTES_CHOICES,
+  HOUSE_RULE_IDEAS,
+  HOUSE_RULE_MAX_LENGTH,
+  HOUSE_RULES_MAX,
+  SQUARE_LIMIT_HINT,
+  houseRuleProblem,
+  isSquareLimitRule,
+} from "../../../shared/venue";
+
+/** Why the editor won't add a line: the API's reasons, and a squares limit (its own setting). */
+const problemOf = (text: string): string | null => houseRuleProblem(text) ?? (isSquareLimitRule(text) ? SQUARE_LIMIT_HINT : null);
 
 /** "Venue mode": a bar, restaurant or brewery's free board (setVenue in rulesModel sets it up). */
 export function VenueMode({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
@@ -39,12 +50,12 @@ export function HouseRules({ rules, claimCodes, claimMinutes, onRules, onClaimCo
   const [text, setText] = useState("");
   const [tried, setTried] = useState(false);
   const full = rules.length >= HOUSE_RULES_MAX;
-  const problem = houseRuleProblem(text);
+  const problem = problemOf(text);
   const ideas = HOUSE_RULE_IDEAS.filter((idea) => !rules.some((r) => r.toLowerCase() === idea.toLowerCase()));
 
   const add = (line: string) => {
     const clean = line.replace(/\s+/g, " ").trim();
-    if (!clean || full || houseRuleProblem(clean)) return;
+    if (!clean || full || problemOf(clean)) return;
     if (!rules.some((r) => r.toLowerCase() === clean.toLowerCase())) onRules([...rules, clean]);
   };
   const addTyped = () => {

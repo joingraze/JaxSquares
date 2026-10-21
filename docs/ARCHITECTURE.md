@@ -1422,6 +1422,12 @@ or empty:
   None may ask anyone to buy anything (`HOUSE_RULE_PURCHASE_ERROR`: boards are
   free to play) or talk money (`HOUSE_RULE_MONEY_ERROR`, `mentionsMoney`);
   `formatError` answers 400 with the editor's words (`venueFormatError`).
+  Never a squares limit ("One square per person"): that's the board's
+  squares-per-person setting (`maxPerPlayer`), which the app enforces and
+  the rules sheet and TV show from it (`capLine`: "One square each"), so the
+  two can't disagree. The editor points one to the setting
+  (`SQUARE_LIMIT_HINT`, `isSquareLimitRule`); one saved before that is
+  hidden (`shownHouseRules`) and dropped on the next save (`cleanHouseRules`).
 - **`claimCodes?: true`**: a winner collects by showing staff a short code.
   `worker/claims.ts` derives it per award: HMAC-SHA256 keyed with the board's
   admin token over `claim:<gameId>:<periodKey>:<square|reverse>:<playerId>`,

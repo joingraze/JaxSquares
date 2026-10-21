@@ -4,11 +4,11 @@
 // board has none of them. On the rules sheet; the TV draws its own.
 
 import type { Game } from "../../../shared/types";
-import { CLAIM_LINE, venueLines } from "../../../shared/venue";
+import { CLAIM_LINE, shownHouseRules, venueLines } from "../../../shared/venue";
 import { CheckIcon, GiftIcon } from "../../components/icons";
 
 export function VenueRules({ game }: { game: Pick<Game, "format"> & Partial<Pick<Game, "club">> }) {
-  const rules = game.format.houseRules ?? [];
+  const rules = shownHouseRules(game.format);
   const lines = venueLines(game);
   const claim = game.format.claimCodes === true;
   if (rules.length === 0 && lines.length === 0 && !claim) return null;

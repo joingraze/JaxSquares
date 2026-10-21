@@ -47,7 +47,7 @@ import {
   type FixedPreset,
 } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
-import { VENUE_DEFAULTS } from "../../../shared/venue";
+import { VENUE_DEFAULTS, shownHouseRules } from "../../../shared/venue";
 import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
 
 export type Side = "square" | "reverse";
@@ -92,7 +92,8 @@ export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string
     choice: choiceOf(format),
     squarePrice: format.squarePrice ?? null,
     freshNumbers: format.freshNumbers,
-    houseRules: format.houseRules ?? [],
+    // A squares limit someone wrote as a house rule goes: the squares-per-person setting says it.
+    houseRules: shownHouseRules(format),
     claimCodes: format.claimCodes === true,
     claimMinutes: format.claimMinutes ?? null,
     venue: format.venue === true,
@@ -957,7 +958,8 @@ export function maxValueText(max: number): string {
 
 /** What players see when there's a cap ("Up to 5 squares each"), else null. */
 export function capLine(max: number): string | null {
-  return max > 0 ? `Up to ${max} ${max === 1 ? "square" : "squares"} each` : null;
+  if (max <= 0) return null;
+  return max === 1 ? "One square each" : `Up to ${max} squares each`;
 }
 
 /** True when these rules are exactly a preset (the editor shows "Custom" otherwise). */

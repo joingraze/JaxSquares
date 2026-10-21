@@ -7,6 +7,8 @@ import {
   HOUSE_RULE_MONEY_ERROR,
   HOUSE_RULE_PURCHASE_ERROR,
   VENUE_PRICE_ERROR,
+  isSquareLimitRule,
+  shownHouseRules,
   claimCodeFrom,
   claimDeadline,
   cleanHouseRules,
@@ -33,6 +35,18 @@ describe("house rules", () => {
     for (const rule of ["Pay $5 at the bar", "Venmo the bartender", "Winner takes the pot"]) {
       expect(houseRuleProblem(rule)).toBe(HOUSE_RULE_MONEY_ERROR);
     }
+  });
+
+  it("never set a squares limit: that's the squares-per-person setting, which the board shows itself", () => {
+    for (const rule of ["One square per person", "1 square each", "Max 2 squares", "Limit one square per guest", "Up to 3 squares per player", "2 squares max"]) {
+      expect(isSquareLimitRule(rule)).toBe(true);
+    }
+    for (const rule of ["Each square wins once", "Claim your square at the bar", "Squares are first come, first served", ...HOUSE_RULE_IDEAS]) {
+      expect(isSquareLimitRule(rule)).toBe(false);
+    }
+    // One saved before this: hidden, and gone the next time the rules are saved.
+    expect(shownHouseRules({ houseRules: ["Must be present to win", "One square per person"] })).toEqual(["Must be present to win"]);
+    expect(cleanHouseRules(["One square per person", "21+ only"])).toEqual(["21+ only"]);
   });
 
   it("clean to at most four single lines", () => {

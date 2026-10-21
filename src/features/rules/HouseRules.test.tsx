@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { HOUSE_RULE_PURCHASE_ERROR, HOUSE_RULES_MAX } from "../../../shared/venue";
+import { HOUSE_RULE_PURCHASE_ERROR, HOUSE_RULES_MAX, SQUARE_LIMIT_HINT } from "../../../shared/venue";
 import { HouseRules } from "./HouseRules";
 
 function Harness({ initial = [] as string[] }) {
@@ -50,6 +50,14 @@ describe("HouseRules", () => {
     expect(screen.getByTestId("house-rule-add")).toBeDisabled();
     fireEvent.keyDown(screen.getByTestId("house-rule-input"), { key: "Enter" });
     expect(value().rules).toEqual([]);
+  });
+
+  it("points a squares limit to its own setting instead of taking it", () => {
+    render(<Harness />);
+    expect(screen.getAllByTestId("house-rule-idea").map((c) => c.textContent)).not.toContain("One square per person");
+    fireEvent.change(screen.getByTestId("house-rule-input"), { target: { value: "One square per person" } });
+    expect(screen.getByText(SQUARE_LIMIT_HINT)).toBeInTheDocument();
+    expect(screen.getByTestId("house-rule-add")).toBeDisabled();
   });
 
   it("stops offering more once the board has the most it shows", () => {
