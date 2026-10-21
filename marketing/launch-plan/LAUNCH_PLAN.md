@@ -66,6 +66,29 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
 - **Category:** Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.
 - **Profile picture:** `out/p-profile-picture/01.png` (Option 1 (recommended): Jax over the board, the app icon. A face reads at every size.); `out/p-profile-picture/02.png` (Option 2: the website's 3×3 mark with the gold winning square)
 
+## Launch grid (3×3)
+
+The first nine posts turn the profile into the JaxSquares mark: a 3×3 board in volt with the winning square in gold. Each square is its own two-slide post (a bold tile, then the real app behind it), so it works alone in the feed too. Instagram fills the grid newest-first from the top left, so the board fills from the bottom: the bottom row Saturday, the middle row Sunday, the top row Monday, finished by the launch Reel.
+
+Preview of the profile on launch day: `out/g-grid-preview/01.png`
+
+- Post each row's squares back to back, in the order given (1 → 9). Whole rows keep the logo lined up while it fills, over the seed row (c1, 07, 04).
+- Don't pin anything during launch week: pinned posts jump to the top of the grid and break the logo.
+- The launch Reel is square 9 (top left). Upload g9-launch-cover as its cover (Edit cover → Add from camera roll) and set the profile-grid crop so the tile fills it.
+- Later posts slide the board down a square at a time. It lines up again whenever the posts since launch reach a multiple of three; in between, every tile is still a whole board square, so it reads as a board.
+
+| # | When (ET) | Square |
+|---|---|---|
+| 1 | Sat, Oct 24 12:00 PM | Grid 1/9: Your board starts here |
+| 2 | Sat, Oct 24 12:05 PM | Grid 2/9: Scores update themselves |
+| 3 | Sat, Oct 24 12:10 PM | Grid 3/9: Jax draws the numbers |
+| 4 | Sun, Oct 25 12:00 PM | Grid 4/9: Your square hits (the gold one) |
+| 5 | Sun, Oct 25 12:05 PM | Grid 5/9: Meet Jax |
+| 6 | Sun, Oct 25 12:10 PM | Grid 6/9: Text one link |
+| 7 | Mon, Oct 26 1:45 PM | Grid 7/9: Free to set up |
+| 8 | Mon, Oct 26 1:52 PM | Grid 8/9: No app needed |
+| 9 | Mon, Oct 26 2:00 PM | LAUNCH (grid 9/9): How it works in 30 seconds |
+
 ## Outreach templates
 
 - **Creators:** Hey [name]! Love your [team] content. We built JaxSquares: squares for any game, no download or signup for players. Want to run a Just for fun followers' board for [game]? We set it up (on us), you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.
@@ -74,7 +97,7 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
 
 ## Prep · Oct 20–25: Set up and seed the grid
 
-**Goal:** A profile that looks alive before launch: bio, link, 3 seed posts, highlights.
+**Goal:** A profile that looks alive before launch: bio, link, 3 seed posts, highlights, and the 3×3 launch grid filling up over the weekend.
 
 | Day | Time (ET) | Type | Post | Asset |
 |---|---|---|---|---|
@@ -84,11 +107,21 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
 | Thu, Oct 22 | 6:45 PM | Story | TNF: Patriots at Bears | `s-story-frames/06` |
 | Fri, Oct 23 | 1:00 PM | Reel | Seed post: best and worst squares | `04-best-worst-squares` |
 | Sat, Oct 24 | 11:00 AM | Story | College Saturday slate | — |
+| Sat, Oct 24 | 12:00 PM | Carousel | Grid 1/9: Your board starts here | `g1-your-board-starts-here` |
+| Sat, Oct 24 | 12:05 PM | Carousel | Grid 2/9: Scores update themselves | `g2-scores-update-themselves` |
+| Sat, Oct 24 | 12:10 PM | Carousel | Grid 3/9: Jax draws the numbers | `g3-jax-draws-the-numbers` |
+| Sat, Oct 24 | 12:20 PM | Story | Grid story: the board is open | `s-grid-progress/01` |
 | Sun, Oct 25 | 9:15 AM | Story | Breakfast football from Paris | — |
 | Sun, Oct 25 | 11:30 AM | Story | Game day checklist | `s-story-frames/06` |
+| Sun, Oct 25 | 12:00 PM | Carousel | Grid 4/9: Your square hits (the gold one) | `g4-your-square-hits` |
+| Sun, Oct 25 | 12:05 PM | Carousel | Grid 5/9: Meet Jax | `g5-meet-jax` |
+| Sun, Oct 25 | 12:10 PM | Carousel | Grid 6/9: Text one link | `g6-text-one-link` |
+| Sun, Oct 25 | 12:20 PM | Story | Grid story: 6 of 9, countdown | `s-grid-progress/02` |
 | Sun, Oct 25 | 7:30 PM | Story | SNF: Chiefs at Seahawks poll | — |
 
 ### Tue, Oct 20, 10:00 AM · Task: Set up the account
+
+**Asset:** `out/p-profile-picture/01.png`, `out/p-profile-picture/02.png`
 
 - [ ] Switch @jaxsquares to a Professional account. Category: Sports & Recreation (not App Page, which contradicts “no app to download”).
 - [ ] Upload the profile picture: option 1, Jax over the board (p-profile-picture/01).
@@ -118,7 +151,7 @@ Set up your own board free → link in bio
 
 **Alt text:** Seven-slide explainer of football squares: a 10 by 10 grid, friends pick squares, digits 0 to 9 are drawn for each row and column, and the last digit of each team's score picks the winning square each quarter.
 
-- Pin this post (pin 3 total by launch).
+- Seed row: this, 07 and 04 sit right under the launch grid. Don't pin it: pinned posts jump to the top and break the grid.
 
 ### Thu, Oct 22, 12:30 PM · Reel: Seed post: feature rundown
 
@@ -158,25 +191,150 @@ Send this to whoever drew 2–2 this week.
 
 - Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
-- Pin it. Top boost candidate (no money on screen).
+- Top boost candidate (no money on screen).
 - Data: nflverse games.csv, NFL finals 1999–2025.
+
+### Sat, Oct 24, 12:00 PM · Carousel: Grid 1/9: Your board starts here
+
+**Asset:** `out/g1-your-board-starts-here/01.png`, `out/g1-your-board-starts-here/02.png`
+
+**Caption:**
+
+```text
+Square 1 of 9 🟩 The board is open.
+
+JaxSquares is squares for any game: pick the game, text one link, and Jax draws the numbers. Live scores call every winner.
+
+Watch this grid fill up this weekend. Your first board → link in bio
+
+#footballsquares #squarespool #gameday
+```
+
+**Alt text:** A bright green board square reading “Your board starts here” with jaxsquares.com: square 1 of 9 in the JaxSquares launch grid. Slide 2 lists three steps: pick the game, text your crew one link, Jax draws the numbers.
+
+- Launch grid, bottom row (bottom right). Post squares 1, 2 and 3 back to back, in order.
+
+### Sat, Oct 24, 12:05 PM · Carousel: Grid 2/9: Scores update themselves
+
+**Asset:** `out/g2-scores-update-themselves/01.png`, `out/g2-scores-update-themselves/02.png`
+
+**Caption:**
+
+```text
+Square 2 of 9 📺 Scores update themselves.
+
+Pick an NFL, college or NBA game and the board follows it live: who's winning right now, and the score that would change it. No refreshing a score app, no math.
+
+Send this to whoever keeps score with a pen.
+
+#footballsquares #nfl #collegefootball
+```
+
+**Alt text:** A green board square reading “Scores update themselves”: square 2 of 9. Slide 2 shows the JaxSquares scoreboard at 16 to 13 with the next winner called out.
+
+- Launch grid, bottom row (middle).
+
+### Sat, Oct 24, 12:10 PM · Carousel: Grid 3/9: Jax draws the numbers
+
+**Asset:** `out/g3-jax-draws-the-numbers/01.png`, `out/g3-jax-draws-the-numbers/02.png`
+
+**Caption:**
+
+```text
+Square 3 of 9 🎲 Jax draws the numbers.
+
+Once the board is full, 0–9 get shuffled live for both teams, right in front of everyone. Nobody can say the host rigged it.
+
+Send this to your board's most suspicious player.
+
+#footballsquares #squarespool #gameday
+```
+
+**Alt text:** A green board square reading “Jax draws the numbers”: square 3 of 9. Slide 2 shows the app's “The numbers are in!” screen with digits across both team axes.
+
+- Launch grid, bottom row (bottom left). The bottom row is done.
+
+### Sun, Oct 25, 12:00 PM · Carousel: Grid 4/9: Your square hits (the gold one)
+
+**Asset:** `out/g4-your-square-hits/01.png`, `out/g4-your-square-hits/02.png`
+
+**Caption:**
+
+```text
+Square 4 of 9 🏆 Every board has a winning square. This is ours.
+
+Live scores light up the winner every quarter, and their phone gets the news. Prizes are whatever your crew says: wings, dish duty, bragging rights.
+
+Who always wins your squares? 👇
+
+#footballsquares #officepool #gameday
+```
+
+**Alt text:** A gold board square with a trophy reading “Your square hits”: square 4 of 9, the winning square of the launch grid. Slide 2 shows the app's “You won!” banner at the end of the third quarter.
+
+- Launch grid, middle row (middle right): the gold square. Post squares 4, 5 and 6 back to back, in order.
+
+### Sun, Oct 25, 12:05 PM · Carousel: Grid 5/9: Meet Jax
+
+**Asset:** `out/g5-meet-jax/01.png`, `out/g5-meet-jax/02.png`
+
+**Caption:**
+
+```text
+Square 5 of 9 🐶 Meet Jax.
+
+JaxSquares is named after him. Can't decide where to go on the board? Tap “Let Jax pick” and he grabs random open squares for you. No favorites (unless you count treats).
+
+Drop a 🐶 if you'd let Jax pick.
+
+#footballsquares #dogsofinstagram #gameday
+```
+
+**Alt text:** A green board square with an illustration of Jax, a tan and white dog in a harness, reading “Meet Jax”: square 5 of 9. Slide 2 shows the app after “Let Jax pick” chose 5 squares.
+
+- Launch grid, center square.
+
+### Sun, Oct 25, 12:10 PM · Carousel: Grid 6/9: Text one link
+
+**Asset:** `out/g6-text-one-link/01.png`, `out/g6-text-one-link/02.png`
+
+**Caption:**
+
+```text
+Square 6 of 9 💬 Text one link.
+
+Drop it in the group chat and everyone picks squares from their own phone. No spreadsheet, no whiteboard photo, no “wait, who has row 4?”
+
+Send this to the person who runs your squares 📲
+
+#footballsquares #groupchat #officepool
+```
+
+**Alt text:** A green board square reading “Text one link”: square 6 of 9. Slide 2 shows the app's invite sheet with the message “Grab a square on my Harbor Hawks vs Ridge Wolves board”.
+
+- Launch grid, middle row (middle left). The middle row is done.
 
 **Stories:**
 
 - **Thu, Oct 22 6:45 PM** · TNF: Patriots at Bears · frame `s-story-frames/06` · sticker: Link → app. “TNF: Patriots at Bears, 8:15 on Prime. Board takes 30 seconds 👇”
 - **Sat, Oct 24 11:00 AM** · College Saturday slate · sticker: Link → app. “College Saturday 🏈 / BYU at UCF · 3:30 FOX / Ole Miss at Texas · 7:30 ABC / Houston at Utah · 10:15 ESPN / Running a board? 👇”
+- **Sat, Oct 24 12:20 PM** · Grid story: the board is open · frame `s-grid-progress/01` · sticker: Link → app. “Our grid is a squares board 🟩 3 of 9 squares claimed.”
 - **Sun, Oct 25 9:15 AM** · Breakfast football from Paris · sticker: Link → app. “Breakfast football from Paris 🇫🇷 Steelers vs Saints at 9:30. Coffee + a squares board?”
 - **Sun, Oct 25 11:30 AM** · Game day checklist · frame `s-story-frames/06` · sticker: Link → app. “(Frame says it all.) Draw before the 1:00 kickoffs.”
+- **Sun, Oct 25 12:20 PM** · Grid story: 6 of 9, countdown · frame `s-grid-progress/02` · sticker: Countdown: “JaxSquares launch” · Mon Oct 26, 2:00 PM ET. “6 of 9 squares claimed 👀 Turn on the reminder.”
 - **Sun, Oct 25 7:30 PM** · SNF: Chiefs at Seahawks poll · sticker: Poll: Yes / No. “SNF: do the Chiefs stay unbeaten?”
 
 ## Week 1 · Oct 26–Nov 1: Launch: what it is
 
-**Goal:** Launch on Cowboys–Eagles MNF. Personal push to friends and group chats. First 25 boards.
+**Goal:** Launch on Cowboys–Eagles MNF: the launch Reel completes the 3×3 grid. Personal push to friends and group chats. First 25 boards.
 
 | Day | Time (ET) | Type | Post | Asset |
 |---|---|---|---|---|
 | Mon, Oct 26 | 1:30 PM | Task | Launch prep | — |
-| Mon, Oct 26 | 2:00 PM | Reel | LAUNCH: How it works in 30 seconds | `01-how-it-works` |
+| Mon, Oct 26 | 1:45 PM | Carousel | Grid 7/9: Free to set up | `g7-free-to-set-up` |
+| Mon, Oct 26 | 1:52 PM | Carousel | Grid 8/9: No app needed | `g8-no-app-needed` |
+| Mon, Oct 26 | 2:00 PM | Reel | LAUNCH (grid 9/9): How it works in 30 seconds | `01-how-it-works` |
+| Mon, Oct 26 | 2:05 PM | Story | Grid story: board's full | `s-grid-progress/03` |
 | Mon, Oct 26 | 2:10 PM | Task | Personal push | — |
 | Mon, Oct 26 | 6:30 PM | Story | MNF board is open | `m1-mnf-cowboys-eagles` |
 | Mon, Oct 26 | 9:30 PM | Story | Q1 poll | — |
@@ -200,17 +358,58 @@ Send this to whoever drew 2–2 this week.
 - [ ] Open the app link from the bio on your phone and make sure it works.
 - [ ] Line up 20 friends who run (or play in) squares and 3 group chats to post in.
 - [ ] Ask 5 friends to share the launch Reel to their stories at 2:05.
+- [ ] Grid: post squares 7 and 8 at 1:45 and 1:52, then the launch Reel (square 9) at 2:00 with the g9 cover.
 
-### Mon, Oct 26, 2:00 PM · Reel: LAUNCH: How it works in 30 seconds
+### Mon, Oct 26, 1:45 PM · Carousel: Grid 7/9: Free to set up
 
-*Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESPN/ABC*
-
-**Asset:** `out/01-how-it-works.mp4`, `out/01-how-it-works-cover.png`
+**Asset:** `out/g7-free-to-set-up/01.png`, `out/g7-free-to-set-up/02.png`
 
 **Caption:**
 
 ```text
-Squares, fixed. JaxSquares is live 🏈🐶
+Square 7 of 9 ✨ Free to set up.
+
+Making a board, inviting friends and picking squares are free, and players never pay a thing. Boards with up to 5 players draw free; bigger boards are $4.99 for the host at the draw, or covered by a Host Pass. JaxSquares never collects or sends money between players.
+
+Two squares left. 2 PM ET 👀
+
+#footballsquares #squarespool #officepool
+```
+
+**Alt text:** A green board square reading “Free to set up”: square 7 of 9. Slide 2 shows the app's review step with Just for fun selected and the line “Free to set up and invite. Free to draw with up to 5 players, $4.99 for bigger boards.”
+
+- Launch grid, top row (top right). Then square 8 at 1:52 and the launch Reel at 2:00.
+
+### Mon, Oct 26, 1:52 PM · Carousel: Grid 8/9: No app needed
+
+**Asset:** `out/g8-no-app-needed/01.png`, `out/g8-no-app-needed/02.png`
+
+**Caption:**
+
+```text
+Square 8 of 9 📲 No app needed.
+
+Friends tap the link and pick: nothing to download, no account to make. Same room? They scan the code on your screen.
+
+One square left. It drops at 2 PM ET 👀
+
+#footballsquares #gameday #mondaynightfootball
+```
+
+**Alt text:** A green board square reading “No app needed”: square 8 of 9. Slide 2 shows the app's invite sheet with a QR code and a six-letter join code.
+
+- Launch grid, top row (top middle). The launch Reel takes the last square at 2:00.
+
+### Mon, Oct 26, 2:00 PM · Reel: LAUNCH (grid 9/9): How it works in 30 seconds
+
+*Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESPN/ABC*
+
+**Asset:** `out/01-how-it-works.mp4`, `out/01-how-it-works-cover.png`, `out/g9-launch-cover/01.png`
+
+**Caption:**
+
+```text
+Square 9 of 9. The board's full, and JaxSquares is live 🏈🐶
 
 Pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
 
@@ -220,8 +419,8 @@ Free to set up. No app. No signup. Running a Cowboys–Eagles board tonight? Lin
 ```
 
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
-- Upload the matching cover image as the Reel cover so the profile grid stays clean.
-- Pin it first (pinned: this, the carousel, best/worst).
+- This is square 9 of the launch grid: Edit cover → Add from camera roll → g9-launch-cover, then set the profile-grid crop so the tile fills it.
+- Don't pin it: pinned posts jump to the top of the grid and break the logo.
 
 ### Mon, Oct 26, 2:10 PM · Task: Personal push
 
@@ -321,6 +520,7 @@ Run the board from anywhere: 30 seconds, one link, free to set up. Gators or Daw
 
 **Stories:**
 
+- **Mon, Oct 26 2:05 PM** · Grid story: board's full · frame `s-grid-progress/03` · sticker: Link → app. “Board's full. That's our logo 🟩 Tap to make yours.”
 - **Mon, Oct 26 6:30 PM** · MNF board is open · frame `m1-mnf-cowboys-eagles` · sticker: Link → app. “Start tonight's board 👇”
 - **Mon, Oct 26 9:30 PM** · Q1 poll · sticker: Poll: 🙋 me / 😭 not me. “Who's got the Q1 square?”
 - **Tue, Oct 27 6:00 PM** · Poll: 0–0 or 7–7? · frame `s-story-frames/01` · sticker: Poll: 0–0 / 7–7. “(Place the poll in the empty middle band.)”

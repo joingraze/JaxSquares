@@ -212,6 +212,14 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
 .pfps figure { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .pfps img { width: 100%; aspect-ratio: 1; border-radius: 50%; background: #060a16; }
 .pfps figcaption { font-size: 12.5px; color: var(--muted); line-height: 1.3; }
+.gridprev { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.gridprev figure { margin: 0; flex: none; width: 240px; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.gridprev img { width: 100%; aspect-ratio: 9 / 16; border-radius: 14px; object-fit: cover; background: #060a16; }
+.gridprev .copy { flex: 1 1 280px; min-width: 0; }
+.extras { display: flex; gap: 10px; flex-wrap: wrap; }
+.extras figure { margin: 0; width: 150px; display: flex; flex-direction: column; gap: 4px; }
+.extras img { width: 100%; border-radius: 10px; background: #060a16; object-fit: cover; }
+.extras figcaption { font-size: 12px; color: var(--muted); line-height: 1.3; }
 
 /* ---- assets ---- */
 .assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
@@ -333,7 +341,7 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
   // ---------- assets ----------
   const assetUrl = (it) => {
     if (!it.asset) return null;
-    if (it.asset.startsWith("s-story-frames/")) return { story: `assets/${it.asset}.jpg` };
+    if (it.asset.startsWith("s-")) return { story: `assets/${it.asset}.jpg` };
     if (it.slides) return { slides: Array.from({ length: it.slides }, (_, i) => `assets/${it.asset}/${String(i + 1).padStart(2, "0")}.jpg`) };
     return { video: `assets/${it.asset}.mp4`, cover: `assets/${it.asset}-cover.jpg` };
   };
@@ -514,6 +522,12 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
       panel("Measure", false,
         ...s.kpis.map((k) => h("div", {}, h("b", { text: k.metric }), k.how.startsWith("npx") ? h("code", { class: "cmd", text: k.how }) : h("p", { text: k.how }))),
         h("p", { class: "note", text: s.targets })),
+      panel("Launch grid (3×3)", true,
+        h("div", { class: "gridprev" },
+          h("figure", {},
+            h("img", { src: `assets/${s.grid.preview}.jpg`, alt: "The profile on launch day: the nine grid posts form the JaxSquares 3 by 3 mark over the seed row", loading: "lazy" }),
+            downloads ? h("button", { class: "btn", onclick: () => saveFile(`assets/${s.grid.preview}.jpg`, "jaxsquares-launch-grid-preview.jpg"), text: "Save preview" }) : null),
+          h("div", { class: "copy" }, h("p", { text: s.grid.summary }), list(s.grid.rules)))),
       panel("Profile setup", false,
         h("div", { class: "block" }, h("h4", { text: "Profile picture" }),
           h("div", { class: "pfps" }, s.setup.profilePictures.map((p) => {
@@ -557,14 +571,23 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
           h("button", { class: "btn", onclick: () => openSheet(it.id), text: "Open slides" })));
       }
     }
-    const storyFrames = [...new Set(items.filter((x) => x.asset && x.asset.startsWith("s-story-frames/")).map((x) => x.asset))].sort();
+    const storyFrames = [...new Set(items.filter((x) => x.asset && x.asset.startsWith("s-")).map((x) => x.asset))].sort();
     for (const a of storyFrames) {
       const url = `assets/${a}.jpg`;
-      const name = `story-${a.split("/")[1]}.jpg`;
+      const label = a.startsWith("s-grid") ? `Grid story ${a.split("/")[1]}` : `Story frame ${a.split("/")[1]}`;
       cards.push(h("div", { class: "asset" },
-        h("img", { src: url, alt: `Story frame ${a.split("/")[1]}`, loading: "lazy" }),
-        h("span", { class: "nm", text: `Story frame ${a.split("/")[1]}` }),
-        downloads ? h("button", { class: "btn", onclick: () => saveFile(url, name), text: "Save image" }) : null));
+        h("img", { src: url, alt: label, loading: "lazy" }),
+        h("span", { class: "nm", text: label }),
+        downloads ? h("button", { class: "btn", onclick: () => saveFile(url, `${a.replace("/", "-")}.jpg`), text: "Save image" }) : null));
+    }
+    const extras = new Map();
+    for (const x of items) for (const e of x.extras ?? []) if (!extras.has(e.file)) extras.set(e.file, e);
+    for (const e of extras.values()) {
+      const url = `assets/${e.file}`;
+      cards.push(h("div", { class: `asset${e.file.startsWith("p-") ? " portrait" : ""}` },
+        h("img", { src: url, alt: e.label, loading: "lazy", style: e.file.startsWith("p-") ? "aspect-ratio:1;border-radius:50%" : "" }),
+        h("span", { class: "nm", text: e.label }),
+        downloads ? h("button", { class: "btn", onclick: () => saveFile(url, e.file.replace("/", "-")), text: "Save image" }) : null));
     }
     $("#assets").replaceChildren(...cards);
   }
@@ -601,7 +624,14 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
     if (u && u.story) {
       body.append(h("div", { class: "block" }, h("h4", { text: "Story frame" }),
         h("div", { class: "media" }, h("img", { class: "storyimg", src: u.story, alt: "Story frame" }),
-          h("button", { class: "btn primary", onclick: () => saveFile(u.story, `story-${it.asset.split("/")[1]}.jpg`), text: "Save image" }))));
+          h("button", { class: "btn primary", onclick: () => saveFile(u.story, `${it.asset.replace("/", "-")}.jpg`), text: "Save image" }))));
+    }
+    if (it.extras) {
+      body.append(h("div", { class: "block" }, h("h4", { text: "Also for this post" }),
+        h("div", { class: "extras" }, it.extras.map((e) => h("figure", {},
+          h("img", { src: `assets/${e.file}`, alt: e.label, loading: "lazy", style: e.file.startsWith("p-") ? "aspect-ratio:1;border-radius:50%" : "aspect-ratio:9/16" }),
+          h("figcaption", { text: e.label }),
+          downloads ? h("button", { class: "btn", onclick: () => saveFile(`assets/${e.file}`, e.file.replace("/", "-")), text: "Save" }) : null)))));
     }
     if (it.script) body.append(h("div", { class: "block" }, h("h4", { text: "Script" }), list(it.script, true)));
     if (it.checklist) body.append(h("div", { class: "block" }, h("h4", { text: "Checklist" }), list(it.checklist)));

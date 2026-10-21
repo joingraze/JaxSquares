@@ -16,9 +16,9 @@ import { Jax } from "../../../src/components/ui";
 
 // Carousels render as stills: frame N = slide N. Animated pieces get a late
 // frame so they sit at rest.
-const REST = 999;
+export const REST = 999;
 
-function Shell({ index, total, tint = "volt", children }: { index: number; total: number; tint?: Tint; children: ReactNode }) {
+export function Shell({ index, total, tint = "volt", children }: { index: number; total: number; tint?: Tint; children: ReactNode }) {
   return (
     <div className="absolute inset-0">
       <Backdrop frame={index * 47} tint={tint} />
@@ -47,7 +47,7 @@ function Shell({ index, total, tint = "volt", children }: { index: number; total
   );
 }
 
-function Title({ text, top = 70, size = 34, highlight }: { text: string; top?: number; size?: number; highlight?: string }) {
+export function Title({ text, top = 70, size = 34, highlight }: { text: string; top?: number; size?: number; highlight?: string }) {
   return (
     <Headline
       frame={REST}
@@ -60,7 +60,7 @@ function Title({ text, top = 70, size = 34, highlight }: { text: string; top?: n
   );
 }
 
-function Body({ children, top }: { children: ReactNode; top: number }) {
+export function Body({ children, top }: { children: ReactNode; top: number }) {
   return (
     <p className="absolute" style={{ top, left: 22, right: 22, fontSize: 14.5, lineHeight: 1.38, color: COLORS.muted }}>
       {children}
@@ -82,7 +82,7 @@ function Step({ n, label, color = COLORS.volt }: { n: number; label: string; col
   );
 }
 
-function Centered({ top, children }: { top: number; children: ReactNode }) {
+export function Centered({ top, children }: { top: number; children: ReactNode }) {
   return (
     <div className="absolute inset-x-0 flex justify-center" style={{ top }}>
       {children}
@@ -90,7 +90,7 @@ function Centered({ top, children }: { top: number; children: ReactNode }) {
   );
 }
 
-function CtaBlock({ top, lines, note }: { top: number; lines: string[]; note?: string }) {
+export function CtaBlock({ top, lines, note }: { top: number; lines: string[]; note?: string }) {
   return (
     <div className="absolute flex flex-col" style={{ top, left: 22, right: 22, gap: 8 }}>
       {lines.map((l) => (
@@ -517,7 +517,7 @@ function ThanksgivingPlaybook({ frame: i }: CompProps) {
 // The middle band (~y 300–470) is left clear for the native poll / quiz / link
 // sticker added in the Instagram app; which sticker goes where is in the plan.
 
-function StoryShell({ children, tint = "volt", foot }: { children: ReactNode; tint?: Tint; foot?: string }) {
+export function StoryShell({ children, tint = "volt", foot }: { children: ReactNode; tint?: Tint; foot?: string }) {
   return (
     <div className="absolute inset-0">
       <Backdrop frame={0} tint={tint} />

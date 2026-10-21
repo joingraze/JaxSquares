@@ -34,12 +34,13 @@ const fmtTime = (t) => {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
-/** Where to find an asset in marketing/out/. */
+/** Where to find an asset (and its extras, like a grid cover) in marketing/out/. */
 function assetFiles(it) {
-  if (!it.asset) return [];
-  if (it.asset.startsWith("s-story-frames/")) return [`${it.asset}.png`];
-  if (it.slides) return Array.from({ length: it.slides }, (_, i) => `${it.asset}/${String(i + 1).padStart(2, "0")}.png`);
-  return [`${it.asset}.mp4`, `${it.asset}-cover.png`];
+  const extras = (it.extras ?? []).map((e) => e.file.replace(/\.jpg$/, ".png"));
+  if (!it.asset) return extras;
+  if (it.asset.startsWith("s-")) return [`${it.asset}.png`, ...extras];
+  if (it.slides) return [...Array.from({ length: it.slides }, (_, i) => `${it.asset}/${String(i + 1).padStart(2, "0")}.png`), ...extras];
+  return [`${it.asset}.mp4`, `${it.asset}-cover.png`, ...extras];
 }
 
 // ----------------------------------------------------------------- markdown
@@ -90,6 +91,20 @@ function markdown() {
   out.push(`- **Category:** ${s.setup.category}`);
   out.push(`- **Profile picture:** ${s.setup.profilePictures.map((p) => `\`out/${p.file}.png\` (${p.label})`).join("; ")}`);
   out.push("");
+  out.push("## Launch grid (3×3)");
+  out.push("");
+  out.push(s.grid.summary);
+  out.push("");
+  out.push(`Preview of the profile on launch day: \`out/${s.grid.preview}.png\``);
+  out.push("");
+  for (const r of s.grid.rules) out.push(`- ${r}`);
+  out.push("");
+  out.push("| # | When (ET) | Square |");
+  out.push("|---|---|---|");
+  items
+    .filter((it) => /^(LAUNCH \(grid 9\/9\)|Grid \d\/9)/.test(it.title))
+    .forEach((it, i) => out.push(`| ${i + 1} | ${fmtDay(it.date)} ${fmtTime(it.time)} | ${it.title} |`));
+  out.push("");
   out.push("## Outreach templates");
   out.push("");
   out.push(`- **Creators:** ${s.outreach.creator}`);
@@ -113,7 +128,7 @@ function markdown() {
       out.push(`### ${fmtDay(it.date)}, ${fmtTime(it.time)} · ${KIND_LABEL[it.kind]}: ${it.title}`);
       out.push("");
       if (it.tieIn) out.push(`*${it.tieIn}*`, "");
-      if (it.asset) out.push(`**Asset:** ${assetFiles(it).map((f) => `\`out/${f}\``).join(", ")}`, "");
+      if (it.asset || it.extras) out.push(`**Asset:** ${assetFiles(it).map((f) => `\`out/${f}\``).join(", ")}`, "");
       if (it.script) {
         out.push("**Script:**", "");
         for (const l of it.script) out.push(`1. ${l}`);
@@ -209,7 +224,7 @@ function ics() {
     const start = `${it.date.replace(/-/g, "")}T${String(h).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
     const desc = [];
     if (it.tieIn) desc.push(it.tieIn);
-    if (it.asset) desc.push(`Asset: ${assetFiles(it).join(", ")}`);
+    if (it.asset || it.extras) desc.push(`Asset: ${assetFiles(it).join(", ")}`);
     if (it.story) desc.push(`Sticker: ${it.story.sticker}`, `Text: ${it.story.text}`);
     if (it.script) desc.push("Script:", ...it.script.map((l) => `- ${l}`));
     if (it.checklist) desc.push(...it.checklist.map((l) => `☐ ${l}`));

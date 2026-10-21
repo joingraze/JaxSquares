@@ -28,18 +28,19 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261020T100000
 DURATION:PT30M
 SUMMARY:[Task] Set up the account
-DESCRIPTION:☐ Switch @jaxsquares to a Professional account. Category: Spo
- rts & Recreation (not App Page\, which contradicts “no app to download
- ”).\n☐ Upload the profile picture: option 1\, Jax over the board (p-pr
- ofile-picture/01).\n☐ Name field: “JaxSquares · Football Squares”. 
- The name field is searchable.\n☐ Paste the bio and link from Setup. Link
-  = jaxsquares.com/?ref=ig.\n☐ Make 4 Highlights: How it works\, Square s
- tats\, Game days\, Thanksgiving. Use story frames as covers.\n☐ Run a re
- al test board with 3 friends and screen-record it (B-roll for the founder 
- Reel).\n☐ Save quick replies for “link?” (jaxsquares.com)\, “is it
-  free?” (“Free to set up and invite\, and free to draw with up to 5 pl
- ayers. Bigger boards are $4.99 for the host. Players never pay.”) and 
- “do I need the app?” (“No. Friends tap the link and pick.”).
+DESCRIPTION:Asset: p-profile-picture/01.png\, p-profile-picture/02.png\n☐
+  Switch @jaxsquares to a Professional account. Category: Sports & Recreati
+ on (not App Page\, which contradicts “no app to download”).\n☐ Uploa
+ d the profile picture: option 1\, Jax over the board (p-profile-picture/01
+ ).\n☐ Name field: “JaxSquares · Football Squares”. The name field i
+ s searchable.\n☐ Paste the bio and link from Setup. Link = jaxsquares.co
+ m/?ref=ig.\n☐ Make 4 Highlights: How it works\, Square stats\, Game days
+ \, Thanksgiving. Use story frames as covers.\n☐ Run a real test board wi
+ th 3 friends and screen-record it (B-roll for the founder Reel).\n☐ Save
+  quick replies for “link?” (jaxsquares.com)\, “is it free?” (“Fr
+ ee to set up and invite\, and free to draw with up to 5 players. Bigger bo
+ ards are $4.99 for the host. Players never pay.”) and “do I need the a
+ pp?” (“No. Friends tap the link and pick.”).
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Set up the account
@@ -62,8 +63,9 @@ DESCRIPTION:Asset: c1-how-squares-works/01.png\, c1-how-squares-works/02.pn
  uares #squarespool #officepool #fantasyfootball #gameday\n\nAlt text: Seve
  n-slide explainer of football squares: a 10 by 10 grid\, friends pick squa
  res\, digits 0 to 9 are drawn for each row and column\, and the last digit
-  of each team's score picks the winning square each quarter.\n\n• Pin th
- is post (pin 3 total by launch).
+  of each team's score picks the winning square each quarter.\n\n• Seed r
+ ow: this\, 07 and 04 sit right under the launch grid. Don't pin it: pinned
+  posts jump to the top and break the grid.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Carousel: Seed post: how football squares works
@@ -122,9 +124,9 @@ DESCRIPTION:Asset: 04-best-worst-squares.mp4\, 04-best-worst-squares-cover.
  own soundtrack\, with the drop on the reveal. To ride a trending sound ins
  tead (the ↗ arrow in the audio browser)\, add it in the Reels editor and
   turn the original audio down to 0–20%.\n• Upload the matching cover i
- mage as the Reel cover so the profile grid stays clean.\n• Pin it. Top b
- oost candidate (no money on screen).\n• Data: nflverse games.csv\, NFL f
- inals 1999–2025.
+ mage as the Reel cover so the profile grid stays clean.\n• Top boost can
+ didate (no money on screen).\n• Data: nflverse games.csv\, NFL finals 19
+ 99–2025.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Seed post: best and worst squares
@@ -144,6 +146,84 @@ DESCRIPTION:Ole Miss at Texas 7:30 PM ABC · Houston at Utah 10:15 PM ESPN
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: College Saturday slate
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-24T1200-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261024T120000
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 1/9: Your board starts here
+DESCRIPTION:Asset: g1-your-board-starts-here/01.png\, g1-your-board-starts-
+ here/02.png\n\nCAPTION:\nSquare 1 of 9 🟩 The board is open.\n\nJaxSquar
+ es is squares for any game: pick the game\, text one link\, and Jax draws 
+ the numbers. Live scores call every winner.\n\nWatch this grid fill up thi
+ s weekend. Your first board → link in bio\n\n#footballsquares #squarespo
+ ol #gameday\n\nAlt text: A bright green board square reading “Your board
+  starts here” with jaxsquares.com: square 1 of 9 in the JaxSquares launc
+ h grid. Slide 2 lists three steps: pick the game\, text your crew one link
+ \, Jax draws the numbers.\n\n• Launch grid\, bottom row (bottom right). 
+ Post squares 1\, 2 and 3 back to back\, in order.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 1/9: Your board starts here
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-24T1205-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261024T120500
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 2/9: Scores update themselves
+DESCRIPTION:Asset: g2-scores-update-themselves/01.png\, g2-scores-update-th
+ emselves/02.png\n\nCAPTION:\nSquare 2 of 9 📺 Scores update themselves.\
+ n\nPick an NFL\, college or NBA game and the board follows it live: who's 
+ winning right now\, and the score that would change it. No refreshing a sc
+ ore app\, no math.\n\nSend this to whoever keeps score with a pen.\n\n#foo
+ tballsquares #nfl #collegefootball\n\nAlt text: A green board square readi
+ ng “Scores update themselves”: square 2 of 9. Slide 2 shows the JaxSqu
+ ares scoreboard at 16 to 13 with the next winner called out.\n\n• Launch
+  grid\, bottom row (middle).
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 2/9: Scores update themselves
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-24T1210-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261024T121000
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 3/9: Jax draws the numbers
+DESCRIPTION:Asset: g3-jax-draws-the-numbers/01.png\, g3-jax-draws-the-numbe
+ rs/02.png\n\nCAPTION:\nSquare 3 of 9 🎲 Jax draws the numbers.\n\nOnce t
+ he board is full\, 0–9 get shuffled live for both teams\, right in front
+  of everyone. Nobody can say the host rigged it.\n\nSend this to your boar
+ d's most suspicious player.\n\n#footballsquares #squarespool #gameday\n\nA
+ lt text: A green board square reading “Jax draws the numbers”: square 
+ 3 of 9. Slide 2 shows the app's “The numbers are in!” screen with digi
+ ts across both team axes.\n\n• Launch grid\, bottom row (bottom left). T
+ he bottom row is done.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 3/9: Jax draws the numbers
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-24T1220-story@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261024T122000
+DURATION:PT10M
+SUMMARY:[Story] Grid story: the board is open
+DESCRIPTION:Asset: s-grid-progress/01.png\nSticker: Link → app\nText: Our
+  grid is a squares board 🟩 3 of 9 squares claimed.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Story: Grid story: the board is open
 TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
@@ -177,6 +257,85 @@ TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
 BEGIN:VEVENT
+UID:2026-10-25T1200-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261025T120000
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 4/9: Your square hits (the gold one)
+DESCRIPTION:Asset: g4-your-square-hits/01.png\, g4-your-square-hits/02.png\
+ n\nCAPTION:\nSquare 4 of 9 🏆 Every board has a winning square. This is 
+ ours.\n\nLive scores light up the winner every quarter\, and their phone g
+ ets the news. Prizes are whatever your crew says: wings\, dish duty\, brag
+ ging rights.\n\nWho always wins your squares? 👇\n\n#footballsquares #of
+ ficepool #gameday\n\nAlt text: A gold board square with a trophy reading 
+ “Your square hits”: square 4 of 9\, the winning square of the launch g
+ rid. Slide 2 shows the app's “You won!” banner at the end of the third
+  quarter.\n\n• Launch grid\, middle row (middle right): the gold square.
+  Post squares 4\, 5 and 6 back to back\, in order.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 4/9: Your square hits (the gold one)
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-25T1205-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261025T120500
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 5/9: Meet Jax
+DESCRIPTION:Asset: g5-meet-jax/01.png\, g5-meet-jax/02.png\n\nCAPTION:\nSqu
+ are 5 of 9 🐶 Meet Jax.\n\nJaxSquares is named after him. Can't decide w
+ here to go on the board? Tap “Let Jax pick” and he grabs random open s
+ quares for you. No favorites (unless you count treats).\n\nDrop a 🐶 if 
+ you'd let Jax pick.\n\n#footballsquares #dogsofinstagram #gameday\n\nAlt t
+ ext: A green board square with an illustration of Jax\, a tan and white do
+ g in a harness\, reading “Meet Jax”: square 5 of 9. Slide 2 shows the 
+ app after “Let Jax pick” chose 5 squares.\n\n• Launch grid\, center 
+ square.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 5/9: Meet Jax
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-25T1210-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261025T121000
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 6/9: Text one link
+DESCRIPTION:Asset: g6-text-one-link/01.png\, g6-text-one-link/02.png\n\nCAP
+ TION:\nSquare 6 of 9 💬 Text one link.\n\nDrop it in the group chat and 
+ everyone picks squares from their own phone. No spreadsheet\, no whiteboar
+ d photo\, no “wait\, who has row 4?”\n\nSend this to the person who ru
+ ns your squares 📲\n\n#footballsquares #groupchat #officepool\n\nAlt tex
+ t: A green board square reading “Text one link”: square 6 of 9. Slide 
+ 2 shows the app's invite sheet with the message “Grab a square on my Har
+ bor Hawks vs Ridge Wolves board”.\n\n• Launch grid\, middle row (middl
+ e left). The middle row is done.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 6/9: Text one link
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-25T1220-story@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261025T122000
+DURATION:PT10M
+SUMMARY:[Story] Grid story: 6 of 9\, countdown
+DESCRIPTION:Asset: s-grid-progress/02.png\nSticker: Countdown: “JaxSquare
+ s launch” · Mon Oct 26\, 2:00 PM ET\nText: 6 of 9 squares claimed 👀 
+ Turn on the reminder.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Story: Grid story: 6 of 9\, countdown
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
 UID:2026-10-25T1930-story@jaxsquares-launch
 DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261025T193000
@@ -199,10 +358,54 @@ SUMMARY:[Task] Launch prep
 DESCRIPTION:☐ Open the app link from the bio on your phone and make sure 
  it works.\n☐ Line up 20 friends who run (or play in) squares and 3 group
   chats to post in.\n☐ Ask 5 friends to share the launch Reel to their st
- ories at 2:05.
+ ories at 2:05.\n☐ Grid: post squares 7 and 8 at 1:45 and 1:52\, then the
+  launch Reel (square 9) at 2:00 with the g9 cover.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Launch prep
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-26T1345-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261026T134500
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 7/9: Free to set up
+DESCRIPTION:Asset: g7-free-to-set-up/01.png\, g7-free-to-set-up/02.png\n\nC
+ APTION:\nSquare 7 of 9 ✨ Free to set up.\n\nMaking a board\, inviting fr
+ iends and picking squares are free\, and players never pay a thing. Boards
+  with up to 5 players draw free\; bigger boards are $4.99 for the host at 
+ the draw\, or covered by a Host Pass. JaxSquares never collects or sends m
+ oney between players.\n\nTwo squares left. 2 PM ET 👀\n\n#footballsquare
+ s #squarespool #officepool\n\nAlt text: A green board square reading “Fr
+ ee to set up”: square 7 of 9. Slide 2 shows the app's review step with J
+ ust for fun selected and the line “Free to set up and invite. Free to dr
+ aw with up to 5 players\, $4.99 for bigger boards.”\n\n• Launch grid\,
+  top row (top right). Then square 8 at 1:52 and the launch Reel at 2:00.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 7/9: Free to set up
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-26T1352-carousel@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261026T135200
+DURATION:PT20M
+SUMMARY:[Carousel] Grid 8/9: No app needed
+DESCRIPTION:Asset: g8-no-app-needed/01.png\, g8-no-app-needed/02.png\n\nCAP
+ TION:\nSquare 8 of 9 📲 No app needed.\n\nFriends tap the link and pick:
+  nothing to download\, no account to make. Same room? They scan the code o
+ n your screen.\n\nOne square left. It drops at 2 PM ET 👀\n\n#footballsq
+ uares #gameday #mondaynightfootball\n\nAlt text: A green board square read
+ ing “No app needed”: square 8 of 9. Slide 2 shows the app's invite she
+ et with a QR code and a six-letter join code.\n\n• Launch grid\, top row
+  (top middle). The launch Reel takes the last square at 2:00.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Carousel: Grid 8/9: No app needed
 TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
@@ -211,22 +414,38 @@ UID:2026-10-26T1400-reel@jaxsquares-launch
 DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261026T140000
 DURATION:PT20M
-SUMMARY:[Reel] LAUNCH: How it works in 30 seconds
+SUMMARY:[Reel] LAUNCH (grid 9/9): How it works in 30 seconds
 DESCRIPTION:Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESP
- N/ABC\nAsset: 01-how-it-works.mp4\, 01-how-it-works-cover.png\n\nCAPTION:\
- nSquares\, fixed. JaxSquares is live 🏈🐶\n\nPick the game\, text one 
- link\, and everyone grabs squares from their phone. Jax draws the numbers 
- live\, scores update themselves\, and the winning square lights up every q
- uarter.\n\nFree to set up. No app. No signup. Running a Cowboys–Eagles b
- oard tonight? Link in bio.\n\n#footballsquares #squarespool #mondaynightfo
- otball #officepool #nfl\n\n• Has its own soundtrack: original JaxSquares
-  music\, cut to the video\, so post it as is (it shows as Original audio\,
-  and it's yours to boost).\n• Upload the matching cover image as the Ree
- l cover so the profile grid stays clean.\n• Pin it first (pinned: this\,
-  the carousel\, best/worst).
+ N/ABC\nAsset: 01-how-it-works.mp4\, 01-how-it-works-cover.png\, g9-launch-
+ cover/01.png\n\nCAPTION:\nSquare 9 of 9. The board's full\, and JaxSquares
+  is live 🏈🐶\n\nPick the game\, text one link\, and everyone grabs sq
+ uares from their phone. Jax draws the numbers live\, scores update themsel
+ ves\, and the winning square lights up every quarter.\n\nFree to set up. N
+ o app. No signup. Running a Cowboys–Eagles board tonight? Link in bio.\n
+ \n#footballsquares #squarespool #mondaynightfootball #officepool #nfl\n\n
+ • Has its own soundtrack: original JaxSquares music\, cut to the video\,
+  so post it as is (it shows as Original audio\, and it's yours to boost).\
+ n• This is square 9 of the launch grid: Edit cover → Add from camera r
+ oll → g9-launch-cover\, then set the profile-grid crop so the tile fills
+  it.\n• Don't pin it: pinned posts jump to the top of the grid and break
+  the logo.
 BEGIN:VALARM
 ACTION:DISPLAY
-DESCRIPTION:Reel: LAUNCH: How it works in 30 seconds
+DESCRIPTION:Reel: LAUNCH (grid 9/9): How it works in 30 seconds
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:2026-10-26T1405-story@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261026T140500
+DURATION:PT10M
+SUMMARY:[Story] Grid story: board's full
+DESCRIPTION:Asset: s-grid-progress/03.png\nSticker: Link → app\nText: Boa
+ rd's full. That's our logo 🟩 Tap to make yours.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Story: Grid story: board's full
 TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
