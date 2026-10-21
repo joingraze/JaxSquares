@@ -236,7 +236,7 @@ function GoldConfetti() {
     <>
       {Array.from({ length: 26 }, (_, i) => {
         const x = 30 + rnd() * 260;
-        const y = 24 + rnd() * 200;
+        const y = 50 + rnd() * 180; // clear of the label
         const w = 5 + rnd() * 6;
         return (
           <span
@@ -278,8 +278,9 @@ export function Tile({ tile }: { tile: GridTile }) {
       >
         {"trophy" in tile.art && <GoldConfetti />}
         <div className="absolute inset-x-0 flex justify-center" style={{ top: 26 }}>
-          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.18em", color: "rgba(6,12,9,0.6)" }}>
-            SQUARE {tile.order} OF 9
+          {/* The brand, not the posting order: on the finished grid the order would read backwards. */}
+          <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.22em", color: "rgba(6,12,9,0.6)" }}>
+            JAXSQUARES
           </span>
         </div>
         <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: "jax" in tile.art ? 58 : 76, padding: "0 22px" }}>
