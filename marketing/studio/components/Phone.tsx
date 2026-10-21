@@ -88,6 +88,11 @@ export interface Cut {
   speed?: number;
 }
 
+/** Composition frame at which cut `cut` reaches clip frame `clipAt`. */
+export function clipMoment(cut: Cut, clipAt: number): number {
+  return Math.round(cut.at + (clipAt - (cut.from ?? 0)) / (cut.speed ?? 1));
+}
+
 /** Clip frame a cut shows at composition frame `frame`. */
 export function cutFrame(cut: Cut, frame: number): number {
   return (cut.from ?? 0) + Math.max(0, frame - cut.at) * (cut.speed ?? 1);

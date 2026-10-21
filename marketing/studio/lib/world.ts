@@ -23,6 +23,8 @@ export const TEAMS = {
   foxes: { name: "Mesa Foxes", abbr: "MSA", color: "#ff8a3d" },
   otters: { name: "Lakeside Otters", abbr: "LAK", color: "#1fd1c1" },
   stags: { name: "Summit Stags", abbr: "SUM", color: "#ff4757" },
+  bison: { name: "Prairie Bison", abbr: "PRA", color: "#ffd23f" },
+  sharks: { name: "Coastal Sharks", abbr: "CST", color: "#5b74ff" },
 } satisfies Record<string, Team>;
 
 export const ME: Person = { name: "Jordan", color: "#ff6b35", emoji: "🏈" };

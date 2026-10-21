@@ -30,11 +30,21 @@ Scenes: `create` (wizard → "You're live!" → invite sheet), `invite` (invite
 sheet → QR code), `claim` (friends fill the board while you pick 3), `jax`
 (Let Jax pick 5), `draw` (Lock & draw → the shuffle → "The numbers are in!"),
 `live` (a Q3 score lands on your square, Jax cheers), `home` (home screen and
-Activity). Each lands in `out/clips/<scene>/` as numbered JPEGs plus
-`clip.json`; `out/clips/manifest.json` lists them. Re-record after any UI
-change, then re-render: compositions pick moments by clip frame number (noted
-in `studio/compositions/Walkthroughs.tsx`), so check those if a flow's timing
-changes.
+Activity). The use-case scenes: `tv-open` and `tv-game` (TV mode on a 1280×720
+screen at a bar: the QR code while the room scans in, then the draw and a
+winner card), `hoops-create` and `hoops-live` (a basketball board made, then
+Q3 landing on your square), `join` (a stranger's phone opens the link, picks a
+square, types a name), `sync` (one board on three phones as Q3 lands:
+`sync-left`, `sync-center`, `sync-right`). Each lands in `out/clips/<scene>/`
+as numbered JPEGs plus `clip.json` (with the scene's scores and names);
+`out/clips/manifest.json` lists them. Re-record after any UI change, then
+re-render: compositions pick moments by clip frame number (noted in
+`studio/compositions/Walkthroughs.tsx` and `UseCases.tsx`), so check those if a
+flow's timing changes.
+
+Headless screencasts come at 1 px per CSS px unless the device scale is forced,
+so each scene records at its own scale: one phone at 2× (sharp, ~26 fps),
+three phones at 1.5×, the TV at 1×. Higher scales drop frames (3× gets ~6 fps).
 
 ## 2. Studio: cut and render
 
@@ -108,6 +118,12 @@ final scores 1999–2025).
 | `06-winners-light-up` | The push, the score landing on your square, home and Activity |
 | `07-features` | Rundown: no app, scan the code, Let Jax pick, prize notes, live scores, home |
 | `08-thanksgiving-slate` | 6 games in 3 days, one board per game |
+| `u1-speedrun` | Squares board speedrun: the create flow on a stopwatch, then the link lands in a group chat |
+| `u2-bar-big-screen` | A bar at night: TV mode on the wall, a guest scans the QR code and joins, numbers drawn on the TV, the room cheers a winner |
+| `u3-basketball-squares` | "Squares aren't just for football": a basketball board in five taps, then Q3 lands on your square |
+| `u4-every-phone` | One score, every phone: three phones on one board as Q3 lands |
+| `u5-office-squares` | The office spreadsheet and reply-all chaos → one link in the team chat → live winners |
+| `u6-join-from-link` | The friend's side: a text with the link → tap a square → type a name → in, no app |
 | `m1`–`m7` | "Run a board for this game" matchup template |
 | `otd1`–`otd6` | On this day: a famous final score and the square it landed on |
 | `c1`–`c4` | Carousels: how squares works, every square ranked, host cheat sheet, Thanksgiving playbook |

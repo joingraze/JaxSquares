@@ -575,6 +575,13 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
     const out = [
       panel("Positioning", true, h("p", { text: s.positioning }),
         h("table", { class: "pillars" }, h("tbody", {}, s.pillars.map((p) => h("tr", {}, h("td", { text: p.name }), h("td", { class: "share tabnum", text: p.share }), h("td", { text: p.what })))))),
+      panel("Who it's for", true,
+        h("table", { class: "pillars" }, h("tbody", {}, s.audiences.map((a) => h("tr", {},
+          h("td", { text: a.who }),
+          h("td", {}, h("div", { text: a.sells }), h("div", { class: "note", text: a.reels.map((r) => {
+            const it = items.find((x) => x.asset === r);
+            return it ? `${it.title} (${dayLabel(it.date)})` : r;
+          }).join(" · ") }))))))),
       panel("Cadence and timing", true, list(s.cadence)),
       panel("Rules that drive reach", false, list(s.rules)),
       panel("Stay out of trouble", false, list(s.compliance)),

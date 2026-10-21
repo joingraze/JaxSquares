@@ -70,6 +70,12 @@ function markdown() {
   out.push("|---|---|---|");
   for (const p of s.pillars) out.push(`| ${p.name} | ${p.share} | ${p.what} |`);
   out.push("");
+  out.push("## Who it's for");
+  out.push("");
+  out.push("| Audience | What sells it | Reels |");
+  out.push("|---|---|---|");
+  for (const a of s.audiences) out.push(`| ${a.who} | ${a.sells} | ${a.reels.map((r) => `\`${r}\``).join(", ")} |`);
+  out.push("");
   out.push("## Cadence");
   out.push("");
   for (const c of s.cadence) out.push(`- ${c}`);

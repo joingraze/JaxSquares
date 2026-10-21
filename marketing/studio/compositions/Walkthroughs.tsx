@@ -5,7 +5,7 @@
 import type { CompProps } from "../types";
 import { interpolate, spring } from "../lib/anim";
 import { Backdrop } from "../components/Backdrop";
-import { Cuts, Phone, type Cut, type PhonePose } from "../components/Phone";
+import { clipMoment, Cuts, Phone, type Cut, type PhonePose } from "../components/Phone";
 import { Headline, Kicker, Rise } from "../components/Text";
 import { Panel, POSE_FULL, POSE_LOW, Sticker, poseTrack } from "../components/Layout";
 import { Confetti, Flash, PushBanner, Tap } from "../components/Effects";
@@ -15,11 +15,6 @@ import { COLORS } from "../brand";
 import type { AudioSpec } from "../audio/types";
 
 const FPS = 30;
-
-/** Composition frame at which cut `cut` reaches clip frame `clipAt`. */
-function clipMoment(cut: Cut, clipAt: number): number {
-  return Math.round(cut.at + (clipAt - (cut.from ?? 0)) / (cut.speed ?? 1));
-}
 
 /** Tap ripple at screen point (x, y) when cut `cut` reaches clip frame `clipAt`. */
 function TapAt({ frame, cut, clipAt, x, y }: { frame: number; cut: Cut; clipAt: number; x: number; y: number }) {

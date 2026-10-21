@@ -10,7 +10,7 @@
       {
         "name": "Show the product",
         "share": "35%",
-        "what": "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up. Every video is screen footage of the real app."
+        "what": "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app."
       },
       {
         "name": "Squares nerdery",
@@ -46,7 +46,7 @@
       "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
       "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
       "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
-      "Paid boosts: only creatives with no amounts on screen (true of every video here; the Just for fun ones are safest). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07.",
+      "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07, u2 (bar TV), u4 (every phone), u6 (join from the link).",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
       "Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio."
@@ -102,6 +102,56 @@
         }
       ]
     },
+    "audiences": [
+      {
+        "who": "Group chats and friend groups",
+        "sells": "One link, everyone picks from their own phone, no app or account.",
+        "reels": [
+          "05-group-chat",
+          "u6-join-from-link",
+          "u4-every-phone"
+        ]
+      },
+      {
+        "who": "The host (whoever runs the board)",
+        "sells": "A board in seconds, Jax draws the numbers, live scores call the winners.",
+        "reels": [
+          "01-how-it-works",
+          "u1-speedrun",
+          "03-the-draw"
+        ]
+      },
+      {
+        "who": "Bars, restaurants and watch parties",
+        "sells": "TV mode with a QR code to join; Just for fun boards, no purchase needed to play.",
+        "reels": [
+          "u2-bar-big-screen"
+        ]
+      },
+      {
+        "who": "Offices",
+        "sells": "No spreadsheet, no reply-all; Just for fun boards with prize notes.",
+        "reels": [
+          "u5-office-squares"
+        ]
+      },
+      {
+        "who": "Families (Thanksgiving)",
+        "sells": "One board for every house, live on every phone.",
+        "reels": [
+          "05b-group-chat-thanksgiving",
+          "08-thanksgiving-slate",
+          "u4-every-phone"
+        ]
+      },
+      {
+        "who": "Basketball fans",
+        "sells": "NBA and college games with live scores, or any matchup.",
+        "reels": [
+          "u3-basketball-squares"
+        ]
+      }
+    ],
     "outreach": {
       "creator": "Hey [name]! Love your [team] content. We built JaxSquares: football and basketball squares, no download or signup for players. Want to run a Just for fun followers' board for [game]? We set it up (on us), you share the link, and we co-post the Reel as a Collab. Costs you and your followers nothing.",
       "bar": "Hi! We make JaxSquares, a squares board your regulars join with a QR code or link. No app, and no purchase needed to play. Want us to set up a Just for fun board for [game] for your crowd (on us)?",
@@ -1250,6 +1300,35 @@
     },
     {
       "date": "2026-11-02",
+      "time": "17:30",
+      "kind": "reel",
+      "week": "w2",
+      "title": "Basketball squares (college hoops opening night)",
+      "asset": "u3-basketball-squares",
+      "tieIn": "College basketball's U.S. opening day · Florida vs. Miami 6:00 PM ET ESPN2 · the NBA season started Oct 20",
+      "caption": "Squares aren't just for football 🏀\n\nJaxSquares runs basketball squares too: pick tonight's NBA or college game, choose how squares win (every quarter, or halftime and final), and live scores call every winner. Or type in any matchup, rec league included.\n\nCollege hoops tips off tonight. Send this to your hoops group chat.",
+      "hashtags": [
+        "#basketballsquares",
+        "#nba",
+        "#collegebasketball",
+        "#squarespool"
+      ],
+      "altText": "Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a board in five taps, then a basketball board where the third quarter ends 75 to 70 on the viewer's square and Jax cheers.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "On screen the league tab reads “Pro”, like the App Store art; the caption names the NBA to describe the games (not affiliated).",
+        "Check the tip time that morning."
+      ],
+      "id": "2026-11-02T1730-reel",
+      "files": [
+        "u3-basketball-squares.mp4",
+        "u3-basketball-squares-cover.png"
+      ],
+      "kindLabel": "Reel"
+    },
+    {
+      "date": "2026-11-02",
       "time": "19:00",
       "kind": "story",
       "week": "w2",
@@ -1671,6 +1750,35 @@
     },
     {
       "date": "2026-11-12",
+      "time": "12:30",
+      "kind": "reel",
+      "week": "w3",
+      "title": "Squares on the bar TV",
+      "asset": "u2-bar-big-screen",
+      "tieIn": "Thursday Night Football · Commanders at Giants · 8:15 PM ET · Prime Video",
+      "caption": "Thursday night at the bar? Put the squares on the TV 📺\n\nOpen the board in TV mode on any screen (AirPlay, Chromecast, HDMI or the TV's browser). The room scans the code to grab a square, no app needed. The numbers get drawn on the big screen and every winner pops up live.\n\nBars and watch parties: run it Just for fun, no purchase needed to play. Send this to the bar you watch at every week.",
+      "hashtags": [
+        "#footballsquares",
+        "#watchparty",
+        "#sportsbar",
+        "#thursdaynightfootball"
+      ],
+      "altText": "A bar at night with a TV showing a JaxSquares board and a big QR code. A guest scans it, types their name and claims a square; the board fills, the numbers are drawn on the TV and a winner card for Rosa pops up with Jax cheering.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "Pair it with the bar outreach DM (Outreach templates → Bars and offices).",
+        "Boost candidate: no amounts on screen, Just for fun."
+      ],
+      "id": "2026-11-12T1230-reel",
+      "files": [
+        "u2-bar-big-screen.mp4",
+        "u2-bar-big-screen-cover.png"
+      ],
+      "kindLabel": "Reel"
+    },
+    {
+      "date": "2026-11-12",
       "time": "18:45",
       "kind": "story",
       "week": "w3",
@@ -1686,6 +1794,33 @@
         "s-story-frames/06.png"
       ],
       "kindLabel": "Story"
+    },
+    {
+      "date": "2026-11-13",
+      "time": "12:30",
+      "kind": "reel",
+      "week": "w3",
+      "title": "Squares board speedrun",
+      "asset": "u1-speedrun",
+      "caption": "Squares board speedrun ⏱\n\nPick the game, how squares win, prizes or just for fun, a name, create. Then one text to the group chat. 10 seconds flat with the defaults; read every step and it's still under a minute.\n\nFootball or basketball, any game this weekend. Free to set up → link in bio. Send this to whoever still makes the board on paper.",
+      "hashtags": [
+        "#footballsquares",
+        "#squarespool",
+        "#officepool",
+        "#gameday"
+      ],
+      "altText": "Screen recording of the JaxSquares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "Not a boost pick: the review step shows the host-fee line."
+      ],
+      "id": "2026-11-13T1230-reel",
+      "files": [
+        "u1-speedrun.mp4",
+        "u1-speedrun-cover.png"
+      ],
+      "kindLabel": "Reel"
     },
     {
       "date": "2026-11-13",
@@ -1836,6 +1971,33 @@
         "s-story-frames/07.png"
       ],
       "kindLabel": "Story"
+    },
+    {
+      "date": "2026-11-17",
+      "time": "13:00",
+      "kind": "reel",
+      "week": "w4",
+      "title": "One score, every phone",
+      "asset": "u4-every-phone",
+      "caption": "One score. Every phone. 📲\n\nWhen the quarter ends, everyone on the board sees it at the same moment: the winner gets the celebration, everyone else gets the news. No refreshing, no group-chat math.\n\nThanksgiving's coming: one board for the whole family, whichever house they're watching from. Send this to the family group chat.",
+      "hashtags": [
+        "#footballsquares",
+        "#squarespool",
+        "#thanksgivingfootball",
+        "#groupchat"
+      ],
+      "altText": "Three phones side by side showing the same JaxSquares board. The third quarter ends 10 to 13; Maya's phone in the middle shows You won with Jax cheering, and the two others show Maya wins Q3.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "Boost candidate: no amounts on screen."
+      ],
+      "id": "2026-11-17T1300-reel",
+      "files": [
+        "u4-every-phone.mp4",
+        "u4-every-phone-cover.png"
+      ],
+      "kindLabel": "Reel"
     },
     {
       "date": "2026-11-17",
@@ -2086,6 +2248,34 @@
       "kindLabel": "Story"
     },
     {
+      "date": "2026-11-24",
+      "time": "13:00",
+      "kind": "reel",
+      "week": "tg",
+      "title": "Office squares, minus the spreadsheet",
+      "asset": "u5-office-squares",
+      "caption": "Running the office squares for Thanksgiving? Ditch the spreadsheet 📊\n\nOne link in the team chat, everyone picks from their desk, Jax draws the numbers and live scores call every winner. No reply-all, no locked file.\n\nMake it Just for fun with prize notes like “winner picks Friday lunch”. Send this to whoever owns the squares spreadsheet.",
+      "hashtags": [
+        "#officepool",
+        "#footballsquares",
+        "#thanksgivingfootball",
+        "#worklife"
+      ],
+      "altText": "A messy office squares spreadsheet with conflicting names and reply-all emails freezes, then the JaxSquares invite sheet for an Office Game Day board, coworkers picking squares and a live score calling a winner.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "Offices: pitch Just for fun boards with no purchase needed.",
+        "Boost candidate: no amounts on screen."
+      ],
+      "id": "2026-11-24T1300-reel",
+      "files": [
+        "u5-office-squares.mp4",
+        "u5-office-squares-cover.png"
+      ],
+      "kindLabel": "Reel"
+    },
+    {
       "date": "2026-11-25",
       "time": "12:00",
       "kind": "reel",
@@ -2226,6 +2416,34 @@
       "id": "2026-11-27T1300-story",
       "files": [],
       "kindLabel": "Story"
+    },
+    {
+      "date": "2026-11-28",
+      "time": "10:30",
+      "kind": "reel",
+      "week": "tg",
+      "title": "Join from the link (the friend's side)",
+      "asset": "u6-join-from-link",
+      "tieIn": "Rivalry Saturday: the college rivalry games, Thanksgiving weekend",
+      "caption": "Got a squares link for today's rivalry games? Here's the whole thing from the friend's side 👇\n\nTap a square, type your name, you're in. No app to download, no account, no password. Seconds, not minutes.\n\nSend this to the friend who always asks “do I have to download something?”",
+      "hashtags": [
+        "#footballsquares",
+        "#squarespool",
+        "#collegefootball",
+        "#gameday"
+      ],
+      "altText": "A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.",
+      "notes": [
+        "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
+        "Upload the matching cover image as the Reel cover so the profile grid stays clean.",
+        "Boost candidate: no amounts on screen."
+      ],
+      "id": "2026-11-28T1030-reel",
+      "files": [
+        "u6-join-from-link.mp4",
+        "u6-join-from-link-cover.png"
+      ],
+      "kindLabel": "Reel"
     },
     {
       "date": "2026-11-28",

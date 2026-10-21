@@ -35,10 +35,21 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 
 | Pillar | Share | What |
 |---|---|---|
-| Show the product | 35% | Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up. Every video is screen footage of the real app. |
+| Show the product | 35% | Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app. |
 | Squares nerdery | 25% | Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent. |
 | This game, this week | 25% | Primetime, Jaguars, Gators and Thanksgiving games. Make the board the plan for the game. |
 | On this day | 15% | Verified history with a squares twist: which square that famous final score landed on. |
+
+## Who it's for
+
+| Audience | What sells it | Reels |
+|---|---|---|
+| Group chats and friend groups | One link, everyone picks from their own phone, no app or account. | `05-group-chat`, `u6-join-from-link`, `u4-every-phone` |
+| The host (whoever runs the board) | A board in seconds, Jax draws the numbers, live scores call the winners. | `01-how-it-works`, `u1-speedrun`, `03-the-draw` |
+| Bars, restaurants and watch parties | TV mode with a QR code to join; Just for fun boards, no purchase needed to play. | `u2-bar-big-screen` |
+| Offices | No spreadsheet, no reply-all; Just for fun boards with prize notes. | `u5-office-squares` |
+| Families (Thanksgiving) | One board for every house, live on every phone. | `05b-group-chat-thanksgiving`, `08-thanksgiving-slate`, `u4-every-phone` |
+| Basketball fans | NBA and college games with live scores, or any matchup. | `u3-basketball-squares` |
 
 ## Cadence
 
@@ -61,7 +72,7 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 - Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.
 - No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.
 - 'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.
-- Paid boosts: only creatives with no amounts on screen (true of every video here; the Just for fun ones are safest). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07.
+- Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07, u2 (bar TV), u4 (every phone), u6 (join from the link).
 - Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.
 - Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.
 - Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.
@@ -722,6 +733,7 @@ Run the board from anywhere: 30 seconds, one link, free to set up. Gators or Daw
 | Day | Time (ET) | Type | Post | Asset |
 |---|---|---|---|---|
 | Mon, Nov 2 | 2:00 PM | Reel | 1 year ago: Cam Little's 68-yarder | `otd2-nov02-cam-little` |
+| Mon, Nov 2 | 5:30 PM | Reel | Basketball squares (college hoops opening night) | `u3-basketball-squares` |
 | Mon, Nov 2 | 7:00 PM | Story | MNF: Bears at Seahawks | — |
 | Tue, Nov 3 | 12:00 PM | Story | Quiz: most common final | `s-story-frames/03` |
 | Tue, Nov 3 | 8:15 PM | Story | First CFP rankings | — |
@@ -758,6 +770,31 @@ Duval, where were you for this one?
 
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
+
+### Mon, Nov 2, 5:30 PM · Reel: Basketball squares (college hoops opening night)
+
+*College basketball's U.S. opening day · Florida vs. Miami 6:00 PM ET ESPN2 · the NBA season started Oct 20*
+
+**Asset:** `out/u3-basketball-squares.mp4`, `out/u3-basketball-squares-cover.png`
+
+**Caption:**
+
+```text
+Squares aren't just for football 🏀
+
+JaxSquares runs basketball squares too: pick tonight's NBA or college game, choose how squares win (every quarter, or halftime and final), and live scores call every winner. Or type in any matchup, rec league included.
+
+College hoops tips off tonight. Send this to your hoops group chat.
+
+#basketballsquares #nba #collegebasketball #squarespool
+```
+
+**Alt text:** Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a board in five taps, then a basketball board where the third quarter ends 75 to 70 on the viewer's square and Jax cheers.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- On screen the league tab reads “Pro”, like the App Store art; the caption names the NBA to describe the games (not affiliated).
+- Check the tip time that morning.
 
 ### Wed, Nov 4, 12:30 PM · Carousel: Host cheat sheet
 
@@ -874,7 +911,9 @@ Got a 9 this week? 👀
 | Wed, Nov 11 | 9:00 AM | Story | Veterans Day | — |
 | Wed, Nov 11 | 12:30 PM | Reel (film it) | Founder Reel: why we built it (and who Jax is) | — |
 | Thu, Nov 12 | 12:00 PM | Task | Lock in Sunday's Collab | — |
+| Thu, Nov 12 | 12:30 PM | Reel | Squares on the bar TV | `u2-bar-big-screen` |
 | Thu, Nov 12 | 6:45 PM | Story | TNF: Commanders at Giants | `s-story-frames/06` |
+| Fri, Nov 13 | 12:30 PM | Reel | Squares board speedrun | `u1-speedrun` |
 | Fri, Nov 13 | 5:00 PM | Story | Friday night: FSU at Pitt | — |
 | Sat, Nov 14 | 12:00 PM | Story | College Saturday | — |
 | Sun, Nov 15 | 9:15 AM | Story | Munich game | — |
@@ -958,6 +997,53 @@ Next up: Pick'em, Bracket Battles or King of the Hill? Vote in the comments 👇
 - [ ] Confirm the creator or friend account for Sunday.
 - [ ] Send them the 02 video and the caption. Post it from @jaxsquares and use Tag people → Invite collaborator.
 
+### Thu, Nov 12, 12:30 PM · Reel: Squares on the bar TV
+
+*Thursday Night Football · Commanders at Giants · 8:15 PM ET · Prime Video*
+
+**Asset:** `out/u2-bar-big-screen.mp4`, `out/u2-bar-big-screen-cover.png`
+
+**Caption:**
+
+```text
+Thursday night at the bar? Put the squares on the TV 📺
+
+Open the board in TV mode on any screen (AirPlay, Chromecast, HDMI or the TV's browser). The room scans the code to grab a square, no app needed. The numbers get drawn on the big screen and every winner pops up live.
+
+Bars and watch parties: run it Just for fun, no purchase needed to play. Send this to the bar you watch at every week.
+
+#footballsquares #watchparty #sportsbar #thursdaynightfootball
+```
+
+**Alt text:** A bar at night with a TV showing a JaxSquares board and a big QR code. A guest scans it, types their name and claims a square; the board fills, the numbers are drawn on the TV and a winner card for Rosa pops up with Jax cheering.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Pair it with the bar outreach DM (Outreach templates → Bars and offices).
+- Boost candidate: no amounts on screen, Just for fun.
+
+### Fri, Nov 13, 12:30 PM · Reel: Squares board speedrun
+
+**Asset:** `out/u1-speedrun.mp4`, `out/u1-speedrun-cover.png`
+
+**Caption:**
+
+```text
+Squares board speedrun ⏱
+
+Pick the game, how squares win, prizes or just for fun, a name, create. Then one text to the group chat. 10 seconds flat with the defaults; read every step and it's still under a minute.
+
+Football or basketball, any game this weekend. Free to set up → link in bio. Send this to whoever still makes the board on paper.
+
+#footballsquares #squarespool #officepool #gameday
+```
+
+**Alt text:** Screen recording of the JaxSquares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Not a boost pick: the review step shows the host-fee line.
+
 ### Sun, Nov 15, 11:00 AM · Reel: COLLAB: Let Jax pick
 
 *Jaguars at Titans · 1:00 PM ET · FOX*
@@ -1003,6 +1089,7 @@ Jags at Titans at 1. Board's open 👇
 | Mon, Nov 16 | 2:00 PM | Reel | Thanksgiving slate: 6 games, 6 boards | `08-thanksgiving-slate` |
 | Mon, Nov 16 | 7:00 PM | Story | MNF: Chargers at Ravens | — |
 | Tue, Nov 17 | 12:00 PM | Story | Thanksgiving boards poll | `s-story-frames/07` |
+| Tue, Nov 17 | 1:00 PM | Reel | One score, every phone | `u4-every-phone` |
 | Tue, Nov 17 | 9:30 PM | Story | CFP rankings reaction | — |
 | Wed, Nov 18 | 12:30 PM | Carousel | Thanksgiving squares playbook | `c4-thanksgiving-playbook` |
 | Thu, Nov 19 | 12:30 PM | Reel | On this day: Rams 54, Chiefs 51 (2018) | `otd4-nov19-rams-chiefs` |
@@ -1036,6 +1123,28 @@ One board per game. Kids' table board? Just for fun. Save this.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Check the Florida–FSU kickoff the week of. ACC and CBS list 3:30; one outlet listed 8:30.
+
+### Tue, Nov 17, 1:00 PM · Reel: One score, every phone
+
+**Asset:** `out/u4-every-phone.mp4`, `out/u4-every-phone-cover.png`
+
+**Caption:**
+
+```text
+One score. Every phone. 📲
+
+When the quarter ends, everyone on the board sees it at the same moment: the winner gets the celebration, everyone else gets the news. No refreshing, no group-chat math.
+
+Thanksgiving's coming: one board for the whole family, whichever house they're watching from. Send this to the family group chat.
+
+#footballsquares #squarespool #thanksgivingfootball #groupchat
+```
+
+**Alt text:** Three phones side by side showing the same JaxSquares board. The third quarter ends 10 to 13; Maya's phone in the middle shows You won with Jax cheering, and the two others show Maya wins Q3.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Boost candidate: no amounts on screen.
 
 ### Wed, Nov 18, 12:30 PM · Carousel: Thanksgiving squares playbook
 
@@ -1140,6 +1249,7 @@ Who's taking the Vikings–49ers board? 👇
 | Mon, Nov 23 | 2:00 PM | Reel | Every Thanksgiving family group chat | `05b-group-chat-thanksgiving` |
 | Mon, Nov 23 | 7:00 PM | Story | MNF: Bengals at Commanders | — |
 | Tue, Nov 24 | 12:00 PM | Story | Hosting Thursday? | `s-story-frames/07` |
+| Tue, Nov 24 | 1:00 PM | Reel | Office squares, minus the spreadsheet | `u5-office-squares` |
 | Wed, Nov 25 | 12:00 PM | Reel | Thanksgiving Eve: Packers at Rams | `m7-thanksgiving-eve` |
 | Wed, Nov 25 | 7:00 PM | Story | Thanksgiving Eve board | — |
 | Thu, Nov 26 | 9:30 AM | Reel | Happy Thanksgiving: Red Grange, 101 years ago | `otd6-nov26-grange` |
@@ -1148,6 +1258,7 @@ Who's taking the Vikings–49ers board? 👇
 | Thu, Nov 26 | 8:00 PM | Story | Board 3: Chiefs at Bills | — |
 | Thu, Nov 26 | 10:30 PM | Story | Show us your boards | — |
 | Fri, Nov 27 | 1:00 PM | Story | Leftovers board | — |
+| Sat, Nov 28 | 10:30 AM | Reel | Join from the link (the friend's side) | `u6-join-from-link` |
 | Sat, Nov 28 | 11:00 AM | Story | Rivalry Saturday | — |
 | Sun, Nov 29 | 3:30 PM | Story | Titans at Jaguars | — |
 | Sun, Nov 29 | 8:00 PM | Task | Launch retro | — |
@@ -1172,6 +1283,29 @@ Send this to the family group chat. You know the one.
 
 - Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
+
+### Tue, Nov 24, 1:00 PM · Reel: Office squares, minus the spreadsheet
+
+**Asset:** `out/u5-office-squares.mp4`, `out/u5-office-squares-cover.png`
+
+**Caption:**
+
+```text
+Running the office squares for Thanksgiving? Ditch the spreadsheet 📊
+
+One link in the team chat, everyone picks from their desk, Jax draws the numbers and live scores call every winner. No reply-all, no locked file.
+
+Make it Just for fun with prize notes like “winner picks Friday lunch”. Send this to whoever owns the squares spreadsheet.
+
+#officepool #footballsquares #thanksgivingfootball #worklife
+```
+
+**Alt text:** A messy office squares spreadsheet with conflicting names and reply-all emails freezes, then the JaxSquares invite sheet for an Office Game Day board, coworkers picking squares and a live score calling a winner.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Offices: pitch Just for fun boards with no purchase needed.
+- Boost candidate: no amounts on screen.
 
 ### Wed, Nov 25, 12:00 PM · Reel: Thanksgiving Eve: Packers at Rams
 
@@ -1212,6 +1346,30 @@ What's your square for Bears–Lions? 👇
 
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
+
+### Sat, Nov 28, 10:30 AM · Reel: Join from the link (the friend's side)
+
+*Rivalry Saturday: the college rivalry games, Thanksgiving weekend*
+
+**Asset:** `out/u6-join-from-link.mp4`, `out/u6-join-from-link-cover.png`
+
+**Caption:**
+
+```text
+Got a squares link for today's rivalry games? Here's the whole thing from the friend's side 👇
+
+Tap a square, type your name, you're in. No app to download, no account, no password. Seconds, not minutes.
+
+Send this to the friend who always asks “do I have to download something?”
+
+#footballsquares #squarespool #collegefootball #gameday
+```
+
+**Alt text:** A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Boost candidate: no amounts on screen.
 
 ### Sun, Nov 29, 8:00 PM · Task: Launch retro
 

@@ -1,7 +1,23 @@
 // Real-app clips recorded by marketing/capture/record.mjs: 30 fps JPEG
 // sequences in marketing/out/clips/<scene>/, served by the studio at /clips.
 
-export type Scene = "create" | "invite" | "claim" | "jax" | "draw" | "live" | "home";
+export type Scene =
+  | "create"
+  | "invite"
+  | "claim"
+  | "jax"
+  | "draw"
+  | "live"
+  | "home"
+  // Use cases: TV mode at a bar (1280×720), basketball, a newcomer joining, one board on three phones.
+  | "tv-open"
+  | "tv-game"
+  | "hoops-create"
+  | "hoops-live"
+  | "join"
+  | "sync-left"
+  | "sync-center"
+  | "sync-right";
 
 export interface ClipInfo {
   scene: Scene;
