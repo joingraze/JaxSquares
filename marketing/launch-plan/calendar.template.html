@@ -233,6 +233,7 @@ details.panel p { margin: 0; }
 table.pillars { width: 100%; border-collapse: collapse; font-size: 14px; }
 table.pillars td { padding: 7px 6px; border-top: 1px solid var(--line); vertical-align: top; }
 table.pillars td:first-child { font-weight: 700; white-space: nowrap; }
+table.pillars.who td:first-child { white-space: normal; width: 36%; }
 table.pillars td.share { font-family: var(--display); font-size: 18px; font-weight: 700; color: var(--brand); }
 code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--surface-2); padding: 8px; border-radius: 8px; }
 
@@ -576,7 +577,7 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
       panel("Positioning", true, h("p", { text: s.positioning }),
         h("table", { class: "pillars" }, h("tbody", {}, s.pillars.map((p) => h("tr", {}, h("td", { text: p.name }), h("td", { class: "share tabnum", text: p.share }), h("td", { text: p.what })))))),
       panel("Who it's for", true,
-        h("table", { class: "pillars" }, h("tbody", {}, s.audiences.map((a) => h("tr", {},
+        h("table", { class: "pillars who" }, h("tbody", {}, s.audiences.map((a) => h("tr", {},
           h("td", { text: a.who }),
           h("td", {}, h("div", { text: a.sells }), h("div", { class: "note", text: a.reels.map((r) => {
             const it = items.find((x) => x.asset === r);
