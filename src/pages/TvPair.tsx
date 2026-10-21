@@ -1,10 +1,11 @@
 // jaxsquares.com/tv: pairing a TV with a board, for a smart TV's browser (a
 // TV opening the home page lands here, src/main.tsx). The TV shows a short
-// code (shared/tvBrowser.ts); the host enters it in Host tools ("Show on a
-// smart TV") and the TV opens that board's TV mode. It asks every few seconds with
-// its own secret (only it can learn what it was sent), takes a new code when
-// this one runs out, and keeps the screen awake while it waits. Exit from the
-// board's TV mode comes back here, to a new code.
+// code (shared/tvBrowser.ts); anyone with the board's link enters it (the
+// share sheet's "Show on TV", or Host tools) and the TV opens that board's TV
+// mode. It asks every few seconds with its own secret (only it can learn what
+// it was sent), takes a new code when this one runs out, and keeps the screen
+// awake while it waits. Exit from the board's TV mode comes back here, to a
+// new code.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
@@ -102,7 +103,7 @@ export default function TvPair() {
         </span>
       </p>
       <h1 className="font-display text-[length:calc(var(--u)*5.4)] font-extrabold leading-tight tracking-[-0.03em] text-ink">Put a board on this TV</h1>
-      <p className="tv-text-lg mt-[calc(var(--u)*1.4)] text-ink-muted">On your phone, open your board, tap Host tools, then Show on a smart TV, and enter:</p>
+      <p className="tv-text-lg mt-[calc(var(--u)*1.4)] text-ink-muted">On your phone, open the board, tap its share button, then Show on TV, and enter:</p>
 
       <p
         className="mt-[calc(var(--u)*4)] flex gap-[calc(var(--u)*1.6)]"

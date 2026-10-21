@@ -556,12 +556,15 @@ api.get("/tv/pair/:code", async (c) => {
   return c.json(found, 200, { "cache-control": "no-store" });
 });
 
-/** The host (or a co-host) sends this board to the TV showing `code`. */
+/**
+ * Sends this board to the TV showing `code`. Anyone with the board's link
+ * may, like opening its TV mode: the code on the TV is the TV's say-so.
+ */
 api.post("/games/:id/tv", requireClient, async (c) => {
   const id = gameIdParam(c);
   const limited = await deviceLimited(c, RATE_LIMITS.tvSend, RATE_LIMITS.tvSendIp);
   if (limited) return limited;
-  await hostState(c, id);
+  if (!(await db.getGameRow(c.env.DB, id))) fail(404, "Game not found");
   const body = await readJson(c);
   const code = cleanTvCode(body.code);
   if (!code) fail(400, "Enter the 4-character code on the TV.");

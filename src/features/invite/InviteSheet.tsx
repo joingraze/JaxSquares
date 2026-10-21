@@ -32,6 +32,7 @@ import {
 import { QrCode } from "./QrCode";
 import { useNewArrival } from "./useNewArrival";
 import { useResolvedTheme } from "../../lib/theme";
+import { SendToTv } from "../tv/SendToTv";
 
 /** A speech bubble: "send it as a text". */
 function ChatGlyph({ size = 22 }: { size?: number }) {
@@ -101,6 +102,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
 
   const [flash, setFlash] = useState<Flash>(null);
   const [showCode, setShowCode] = useState(false);
+  const [showTv, setShowTv] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showFlash = (f: Flash) => {
@@ -115,6 +117,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
   useEffect(() => {
     if (!open) {
       setShowCode(false);
+      setShowTv(false);
       return;
     }
     if (!justCreated || celebrated.current) return;
@@ -191,13 +194,14 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               <span className="min-w-0 flex-1">
                 <span className="block font-display text-headline font-extrabold leading-tight text-ink">Put it on your TV</span>
                 <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">
-                  On a smart TV, open <b className="font-bold text-ink">{tvPairAddress(PUBLIC_ORIGIN)}</b> and send the board from Host tools. Or open TV mode on a laptop
-                  plugged into it. Guests scan its QR code to grab a square.
+                  On a smart TV, open <b className="font-bold text-ink">{tvPairAddress(PUBLIC_ORIGIN)}</b> and enter the code it shows. Guests scan its QR code to grab a
+                  square.
                 </span>
               </span>
             </div>
-            <Button data-testid="invite-venue-tv-open" size="md" block haptic="medium" leading={<TvIcon size={20} />} onClick={onShowTv}>
-              Open TV mode
+            <SendToTv gameId={game.id} bare />
+            <Button data-testid="invite-venue-tv-open" variant="secondary" size="md" block haptic="medium" leading={<TvIcon size={20} />} onClick={onShowTv}>
+              Open TV mode on this device
             </Button>
           </section>
         )}
@@ -262,7 +266,15 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
         {((onShowTv && !venueLaunch) || onPrint) && (
           <div className="grid grid-cols-2 gap-2">
             {onShowTv && !venueLaunch && (
-              <Button data-testid="invite-tv" variant="secondary" size="md" haptic="selection" leading={<TvIcon size={20} />} onClick={onShowTv}>
+              <Button
+                data-testid="invite-tv"
+                variant="secondary"
+                size="md"
+                haptic="selection"
+                aria-expanded={showTv}
+                leading={<TvIcon size={20} />}
+                onClick={() => setShowTv((v) => !v)}
+              >
                 Show on TV
               </Button>
             )}
@@ -273,6 +285,9 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
             )}
           </div>
         )}
+
+        {/* Anyone with the link: the code a smart TV shows at jaxsquares.com/tv, or TV mode right here. */}
+        {showTv && onShowTv && !venueLaunch && <SendToTv gameId={game.id} onOpenHere={onShowTv} />}
 
         {/* Several boards for one game: how many and their names (the prices are on the board). */}
         {boardNames && (

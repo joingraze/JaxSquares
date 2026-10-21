@@ -97,7 +97,13 @@ describe("entry points", () => {
     const onShowTv = vi.fn();
     const onPrint = vi.fn();
     render(<InviteSheet state={makeState()} open onClose={() => {}} onShowTv={onShowTv} onPrint={onPrint} />);
+    // Show on TV (anyone with the link): a smart TV's code, or TV mode on this device.
+    expect(screen.queryByTestId("send-to-tv")).toBeNull();
     fireEvent.click(screen.getByTestId("invite-tv"));
+    expect(screen.getByTestId("invite-tv")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByTestId("send-to-tv")).toHaveTextContent("/tv");
+    expect(onShowTv).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("send-to-tv-here"));
     expect(onShowTv).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("invite-tv")).toHaveTextContent("Show on TV");
     fireEvent.click(screen.getByTestId("invite-print"));

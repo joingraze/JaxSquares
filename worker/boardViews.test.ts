@@ -138,7 +138,7 @@ describe("pairing a TV with a code", () => {
   const json = (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) =>
     fetchWorker(path, { method, headers: { "content-type": "application/json", ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
 
-  it("gives the TV a code; the host sends the board to it, and only that TV learns which", async () => {
+  it("gives the TV a code; anyone with the board's link sends it there, and only that TV learns which", async () => {
     const { id, admin } = await createBoard();
     const start = await json("POST", "/api/tv/pair");
     expect(start.status).toBe(201);
@@ -149,13 +149,23 @@ describe("pairing a TV with a code", () => {
     // Someone else's secret learns nothing.
     expect((await ask("not-the-tv")).status).toBe(404);
 
-    // A player on the board can't send it; the host can, typing the code any way.
-    expect((await json("POST", `/api/games/${id}/tv`, { code }, { "x-client-id": ANA })).status).toBe(403);
-    expect((await json("POST", `/api/games/${id}/tv`, { code: "zz" }, { "x-client-id": HOST, "x-admin-token": admin })).status).toBe(400);
-    expect((await json("POST", `/api/games/${id}/tv`, { code: "KKKK" === code ? "MMMM" : "KKKK" }, { "x-client-id": HOST, "x-admin-token": admin })).status).toBe(404);
-    const sent = await json("POST", `/api/games/${id}/tv`, { code: ` ${code.slice(0, 2).toLowerCase()} ${code.slice(2)} ` }, { "x-client-id": HOST, "x-admin-token": admin });
+    // Any device with the link can send it (the host, a player, someone who never joined), typing the code any way.
+    const VISITOR = "visitor-client-cccc-0003";
+    expect((await json("POST", `/api/games/${id}/tv`, { code })).status).toBe(401);
+    expect((await json("POST", `/api/games/${id}/tv`, { code: "zz" }, { "x-client-id": VISITOR })).status).toBe(400);
+    expect((await json("POST", `/api/games/${id}/tv`, { code: "KKKK" === code ? "MMMM" : "KKKK" }, { "x-client-id": VISITOR })).status).toBe(404);
+    expect((await json("POST", `/api/games/zzzzzz/tv`, { code }, { "x-client-id": VISITOR })).status).toBe(404);
+    const sent = await json("POST", `/api/games/${id}/tv`, { code: ` ${code.slice(0, 2).toLowerCase()} ${code.slice(2)} ` }, { "x-client-id": VISITOR });
     expect(sent.status).toBe(200);
     expect(await (await ask()).json()).toMatchObject({ gameId: id });
+    // Sending again (the host, from Host tools) replaces it.
+    const other = await createBoard();
+    expect((await json("POST", `/api/games/${other.id}/tv`, { code }, { "x-client-id": HOST, "x-admin-token": other.admin })).status).toBe(200);
+    expect(await (await ask()).json()).toMatchObject({ gameId: other.id });
+    expect((await json("POST", `/api/games/${id}/tv`, { code }, { "x-client-id": ANA })).status).toBe(200);
+    // Nothing about anyone rides along.
+    const text = await (await ask()).text();
+    for (const secret of [HOST, ANA, VISITOR, admin]) expect(text).not.toContain(secret);
   });
 });
 

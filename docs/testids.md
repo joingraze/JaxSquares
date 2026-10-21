@@ -173,7 +173,9 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
 | `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
-| `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens `/g/:id/tv`) and "Print board" (opens `/g/:id/print`) |
+| `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the TV code box, `send-to-tv`) and "Print board" (opens `/g/:id/print`) |
+| `send-to-tv`, `send-to-tv-code`, `send-to-tv-send`, `send-to-tv-sent`, `send-to-tv-here` | "Show on TV": the box for a smart TV's code (jaxsquares.com/tv), its Send, the sent line, and "Or open TV mode on this device" |
+| `tv-pair`, `tv-pair-code`, `tv-pair-status` | a smart TV's pairing page (`/tv`): the code tiles and the waiting line |
 | `host-tv` | the host sheet's hint "Hosting a watch party? Show the board on your TV." (a link to `/g/:id/tv`) |
 | `host-add-board` | the host sheet's "Add another board for this game" (Board section; host and co-hosts, until the game starts; "This game has 3 boards" under it on a board in a group): a link to `/new?from=<id>&step=prizes` |
 | `invite-add-board` | the same in the invite sheet (host and co-hosts; the sheet the create flow opens) |

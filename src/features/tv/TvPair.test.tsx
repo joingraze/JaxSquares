@@ -1,6 +1,6 @@
-// Pairing a TV: jaxsquares.com/tv shows a code and opens the board the host
-// sends to it (a new code when one runs out), and Host tools' "Show on a TV"
-// sends the board to the code typed in.
+// Pairing a TV: jaxsquares.com/tv shows a code and opens the board sent to
+// it (a new code when one runs out), and "Show on TV" (anyone with the board's
+// link) sends the board to the code typed in.
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -107,6 +107,18 @@ describe("Show on a TV", () => {
     expect(sendToTv).toHaveBeenCalledWith("brd123", "K7MP");
     expect(screen.getByTestId("send-to-tv-sent")).toHaveTextContent("Sent. The board is on the TV showing K7MP.");
     expect(input).toHaveValue("");
+  });
+
+  it("offers TV mode on this device, and a bare box for a card that says what it's for", () => {
+    const onOpenHere = vi.fn();
+    render(<SendToTv gameId="brd123" onOpenHere={onOpenHere} />);
+    fireEvent.click(screen.getByTestId("send-to-tv-here"));
+    expect(onOpenHere).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(<SendToTv gameId="brd123" bare />);
+    expect(screen.getByTestId("send-to-tv-code")).toBeInTheDocument();
+    expect(screen.getByTestId("send-to-tv")).not.toHaveTextContent("/tv");
+    expect(screen.queryByTestId("send-to-tv-here")).toBeNull();
   });
 
   it("says why a code didn't work", async () => {
