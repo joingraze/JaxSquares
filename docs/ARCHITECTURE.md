@@ -200,7 +200,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 409 `{ error, code: "account_required" }` from a device that isn't signed in wherever web sign-in is set up (`hostsSignIn`, docs/auth.md "Hosts sign in"), checked first; 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push. A season's game board: 409 (`SEASON_ERRORS.childEdit`); a season board's `format` and `name` reach its games' boards (see "Season boards") |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push. A `tv` edit (what TV mode shows, `TvDisplay`, see "TV mode and the printable board"; the host or a co-host, any time) is stored whole in `games.tv` (migration 0020) and broadcast with no activity and no push; 400 on an unknown part or a value that isn't true/false. A season's game board: 409 (`SEASON_ERRORS.childEdit`); a season board's `format` and `name` reach its games' boards (see "Season boards") |
 | DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board. A season board takes its games' boards with it; a season's game board is 409 (`SEASON_ERRORS.childDelete`) |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them, or on a season's game board (`SEASON_ERRORS.childJoin`: players join the season board); 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
@@ -863,9 +863,23 @@ the phone column or the route slide (`isBoardViewPath`).
   fit) and what's still to play (`tvUpcoming`). A winner activity
   (`useGame`'s `onActivity`) shows a 7 s celebration card (`celebrationFor`)
   with Jax cheering and confetti, one at a time; reduced motion keeps it still.
+- What TV mode shows is the host's pick, per board (`Game.tv`, `TvDisplay`,
+  `shared/tv.ts`): `prizes` (the prize list or lineup, each winner's and each
+  upcoming moment's prize), `amounts` (every amount and the square price),
+  `houseRules` (with the claim line), `freeToPlay` ("Free to play · No
+  purchase necessary" and a club's "Prizes from …", only on a board with no
+  square price), `now`, `winners`, `upcoming` and `celebrations`. A part the
+  host never touched shows as its default (`tvShows`): all on, except
+  `freeToPlay`, which a venue's or named club's board starts with. The host or
+  a co-host changes them in Host tools → "TV display" (`host-tv-display`) or
+  from the TV toolbar's "Display" (`tv-display-open`, their device only):
+  `TvDisplaySettings`, each switch saved as it flips (`PATCH` `tv`), every TV
+  on the board following at once. A season's game board on the TV follows its
+  season board's choices (`TvScreen`'s `season` prop), changed on the season
+  board.
 - TV plumbing (`src/features/tv/screen.ts`): the Screen Wake Lock, taken again
   on `visibilitychange`; Full screen where the browser has it; a toolbar (Full
-  screen, Light/Dark, Exit) that hides itself and the cursor after 3.5 s with
+  screen, Light/Dark, Display for a host, Exit) that hides itself and the cursor after 3.5 s with
   no pointer, touch or key (a remote's arrows count). Its own theme, dark by
   default, saved as `jaxsquares.tvTheme` and never touching the device's
   Appearance choice; the pre-paint script in `index.html` paints a `/tv` page

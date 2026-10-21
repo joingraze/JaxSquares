@@ -35,6 +35,7 @@ const MIGRATIONS = [
   "migrations/0014_cohosts.sql",
   "migrations/0017_season.sql",
   "migrations/0019_prize_claims.sql",
+  "migrations/0020_tv_display.sql",
 ];
 
 let t: TestD1;

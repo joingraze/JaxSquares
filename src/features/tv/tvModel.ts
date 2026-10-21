@@ -3,12 +3,15 @@
 // strip and the winner celebration card. No React, no IO (tvModel.test.ts).
 //
 // Amounts show here (TV mode is an in-app view, like the board), read from the
-// results (PeriodResult) only, never from the rules.
+// results (PeriodResult) only, never from the rules. What shows at all is the
+// host's pick (shared/tv.ts, `TvShow`): every helper takes it, defaulting to
+// the board's own.
 
 import { formatAmount, formatRange, periodPhrase, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward, resolveResults, type PeriodResult } from "../../../shared/squares";
 import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
-import { CLAIM_LINE, collectedFor, venueLines } from "../../../shared/venue";
+import { tvShowAll, type TvShow } from "../../../shared/tv";
+import { CLAIM_LINE, collectedFor, freeToPlayLines } from "../../../shared/venue";
 import { initialsOf } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 import type { PeriodCard } from "../board/boardModel";
@@ -123,15 +126,19 @@ function money(amount: number | null | undefined, unit: AmountUnit): string | nu
   return amount ? formatAmount(amount, unit) : null;
 }
 
-/** "Q1 · $200", "Score 3 · TD · $50": the result card's label for this result. */
-export function resultLabel(r: PeriodResult, unit: AmountUnit): string {
+/** "Q1 · $200", "Score 3 · TD · $50": the result card's label for this result ("Q1" with amounts off). */
+export function resultLabel(r: PeriodResult, unit: AmountUnit, amounts = true): string {
   const main = primaryAward(r);
   const kind = r.scoreKind ? scorePlayLabel(r.scoreKind) : null;
-  return [periodPhrase(r.periodKey, r.label).short, kind, money(main.amount, unit)].filter(Boolean).join(" · ");
+  return [periodPhrase(r.periodKey, r.label).short, kind, amounts ? money(main.amount, unit) : null].filter(Boolean).join(" · ");
 }
 
 /** Every decided moment with its winner, in game order (the strip shows the latest that fit). */
-export function tvWinners(state: Pick<GameState, "game" | "players" | "collected">, results: readonly PeriodResult[]): TvWinner[] {
+export function tvWinners(
+  state: Pick<GameState, "game" | "players" | "collected">,
+  results: readonly PeriodResult[],
+  show: TvShow = tvShowAll(state.game),
+): TvWinner[] {
   const unit = unitOf(state.game.format);
   const byId = new Map(state.players.map((p) => [p.id, p]));
   const who = (id: string | null): TvPlayer | null => {
@@ -144,13 +151,15 @@ export function tvWinners(state: Pick<GameState, "game" | "players" | "collected
     const showReverse = !main.reverse && r.awardsReverse && !!r.reverseCell && r.reverseWinnerPlayerId !== r.winnerPlayerId;
     return {
       key: r.periodKey,
-      label: resultLabel(r, unit),
+      label: resultLabel(r, unit, show.amounts),
       player: who(main.playerId),
-      prize: (main.reverse ? r.reversePrize : r.prize) || null,
+      prize: show.prizes ? (main.reverse ? r.reversePrize : r.prize) || null : null,
       collected: !!collectedFor(state, r.periodKey, main.reverse, main.playerId),
       score: r.score ? (main.reverse ? `${r.score.scoreY}–${r.score.scoreX}` : `${r.score.scoreX}–${r.score.scoreY}`) : null,
       reverseOnly: main.reverse,
-      reverse: showReverse ? { label: ["Reverse", money(r.reverseAmount, unit)].filter(Boolean).join(" · "), player: who(r.reverseWinnerPlayerId) } : null,
+      reverse: showReverse
+        ? { label: ["Reverse", show.amounts ? money(r.reverseAmount, unit) : null].filter(Boolean).join(" · "), player: who(r.reverseWinnerPlayerId) }
+        : null,
       source: r.source,
     };
   });
@@ -192,15 +201,21 @@ const abbr = (t: Team) => t.abbr || t.name;
 
 /**
  * The card a winner activity celebrates on the TV, from the board's results
- * (so the amount is the one the board shows). null for anything else, or a
- * moment the results don't have (the score was taken back meanwhile).
+ * (so the amount is the one the board shows). null for anything else, a
+ * moment the results don't have (the score was taken back meanwhile), or a
+ * board whose host turned celebrations off.
  */
-export function celebrationFor(activity: Activity, state: GameState, results: readonly PeriodResult[] = resolveResults(state)): TvCelebration | null {
-  if (activity.type !== "winner") return null;
+export function celebrationFor(
+  activity: Activity,
+  state: GameState,
+  results: readonly PeriodResult[] = resolveResults(state),
+  show: TvShow = tvShowAll(state.game),
+): TvCelebration | null {
+  if (activity.type !== "winner" || !show.celebrations) return null;
   const periodKey = typeof activity.data?.periodKey === "string" ? activity.data.periodKey : null;
   const r = periodKey ? results.find((x) => x.periodKey === periodKey) : undefined;
   if (!r) return null;
-  const [w] = tvWinners(state, [r]);
+  const [w] = tvWinners(state, [r], show);
   const unit = unitOf(state.game.format);
   const main = primaryAward(r);
   if (!w.player && !w.reverse?.player) return null;
@@ -211,10 +226,12 @@ export function celebrationFor(activity: Activity, state: GameState, results: re
     title: TITLES[r.periodKey] ?? `${periodPhrase(r.periodKey, r.label).short} winner`,
     kind: r.scoreKind ? scorePlayLabel(r.scoreKind, true) : null,
     player: w.player,
-    amount: money(main.amount, unit),
+    amount: show.amounts ? money(main.amount, unit) : null,
     prize: w.prize,
     score: r.score ? `${abbr(game.teamX)} ${r.score.scoreX} – ${r.score.scoreY} ${abbr(game.teamY)}` : null,
-    reverse: w.reverse ? { player: w.reverse.player, amount: money(r.reverseAmount, unit), prize: r.reversePrize || null } : null,
+    reverse: w.reverse
+      ? { player: w.reverse.player, amount: show.amounts ? money(r.reverseAmount, unit) : null, prize: show.prizes ? r.reversePrize || null : null }
+      : null,
     claim: game.format.claimCodes === true,
   };
 }
@@ -234,21 +251,22 @@ export interface TvUpcoming {
 }
 
 /** The moments still to come, from the board's period cards (the results strip's "still to come" cards). */
-export function tvUpcoming(cards: readonly PeriodCard[], unit: AmountUnit): TvUpcoming[] {
+export function tvUpcoming(cards: readonly PeriodCard[], unit: AmountUnit, show: Pick<TvShow, "amounts" | "prizes"> = { amounts: true, prizes: true }): TvUpcoming[] {
   return cards
     .filter((c) => c.status !== "done")
     .map((c) => ({
       key: c.key,
       label: periodPhrase(c.key, c.label).short,
-      amount:
-        c.rest && c.awardsSquare
+      amount: !show.amounts
+        ? null
+        : c.rest && c.awardsSquare
           ? "the rest"
           : c.range
             ? formatRange(c.range, unit)
             : c.reverseRange
               ? `${formatRange(c.reverseRange, unit)} reverse`
               : null,
-      note: (c.awardsSquare ? c.prize : c.reversePrize) || null,
+      note: show.prizes ? (c.awardsSquare ? c.prize : c.reversePrize) || null : null,
       live: c.status === "live",
     }));
 }
@@ -267,16 +285,23 @@ export interface TvDetails {
 }
 
 /**
- * What the TV spells out beyond the amounts: each prize with its note, the
- * house rules and the venue lines (shared/venue.ts). null when the board has
- * none of them: the open panel then keeps its one-line amounts (prizeLineup).
+ * What the TV spells out beyond the amounts, as the host lets it (`show`):
+ * each prize with its note, the house rules and the free-to-play lines
+ * (shared/venue.ts). null when there's none of them: the open panel then
+ * keeps its one-line amounts (prizeLineup), if amounts show.
  */
-export function tvDetails(game: Pick<Game, "format"> & Partial<Pick<Game, "club">>): TvDetails | null {
+export function tvDetails(game: Pick<Game, "format"> & Partial<Pick<Game, "club" | "tv">>, show: TvShow = tvShowAll(game)): TvDetails | null {
   const { format } = game;
-  const prizes = momentPrizes(format);
-  const rules = [...(format.houseRules ?? []), ...(format.claimCodes ? [CLAIM_LINE] : [])];
-  const venue = venueLines(game);
+  const prizes = show.prizes
+    ? momentPrizes(format).flatMap((p) => {
+        const amount = show.amounts ? p.amount : null;
+        const reverse = p.reverse && (show.amounts ? p.reverse : p.reverse.note ? { amount: null, note: p.reverse.note } : null);
+        return amount || p.note || reverse ? [{ ...p, amount, reverse }] : [];
+      })
+    : [];
+  const rules = show.houseRules ? [...(format.houseRules ?? []), ...(format.claimCodes ? [CLAIM_LINE] : [])] : [];
+  const venue = show.freeToPlay ? freeToPlayLines(game) : [];
   const notes = prizes.some((p) => p.note || p.reverse?.note);
   if (!notes && rules.length === 0 && venue.length === 0) return null;
-  return { price: priceLine(format), prizes, rules, venue };
+  return { price: show.prizes && show.amounts ? priceLine(format) : null, prizes, rules, venue };
 }

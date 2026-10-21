@@ -37,6 +37,7 @@ const MIGRATIONS = [
   "migrations/0016_club.sql",
   "migrations/0017_season.sql",
   "migrations/0019_prize_claims.sql",
+  "migrations/0020_tv_display.sql",
 ];
 const INDEX_HTML = "<html><head><title>JaxSquares</title></head><body><div id=\"root\"></div></body></html>";
 

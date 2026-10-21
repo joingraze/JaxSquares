@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveResults } from "../../../shared/squares";
 import type { Activity, GameFormat, GameState, MomentRule, NumberDraw, Player, Square } from "../../../shared/types";
 import { periodCards } from "../board/boardModel";
+import { tvShowAll } from "../../../shared/tv";
 import { CLAIM_LINE } from "../../../shared/venue";
 import { celebrationFor, firstName, latest, resultLabel, tvCellName, tvDetails, tvLayout, tvUpcoming, tvWinners } from "./tvModel";
 
@@ -172,6 +173,43 @@ describe("winners so far", () => {
     ];
     const s = makeState({ format: { ...FORMAT, rules, squarePrice: null } });
     expect(tvUpcoming(periodCards(s, resolveResults(s)), "$").map((u) => `${u.label}:${u.note}`)).toEqual(["Q3:Free wings", "Final:Team jersey"]);
+  });
+});
+
+describe("what the host lets the TV show", () => {
+  const decided = makeState({}, { scores: [score("q1", 7, 3), score("q2", 14, 10)] });
+  const results = resolveResults(decided);
+
+  it("leaves amounts off winners, what's still to play and the prizes card when amounts are off", () => {
+    const show = tvShowAll(decided.game, { amounts: false });
+    const winners = tvWinners(decided, results, show);
+    expect(winners.map((w) => w.label)).toEqual(["Q1", "Half"]);
+    expect(winners[0].prize).toBe("Loser buys wings");
+    expect(winners[1].reverse?.label).toBe("Reverse");
+    expect(tvUpcoming(periodCards(decided, results), "$", show).map((u) => u.amount)).toEqual([null, null]);
+    const d = tvDetails({ format: FORMAT }, show);
+    expect(d?.price).toBeNull();
+    expect(d?.prizes.map((p) => [p.label, p.amount, p.note])).toEqual([["Q1", null, "Loser buys wings"]]);
+  });
+
+  it("leaves prizes off when prizes are off, and nothing to spell out leaves no card", () => {
+    const show = tvShowAll(decided.game, { prizes: false });
+    expect(tvWinners(decided, results, show)[0].prize).toBeNull();
+    expect(tvDetails({ format: FORMAT }, show)).toBeNull();
+  });
+
+  it("hides house rules, and shows free to play on any board with no square price, as the host picks", () => {
+    const venueFormat = { ...FORMAT, squarePrice: null, houseRules: ["Must be present to win"] };
+    expect(tvDetails({ format: venueFormat }, tvShowAll({ format: venueFormat }, { houseRules: false, prizes: false }))).toBeNull();
+    expect(tvDetails({ format: venueFormat }, tvShowAll({ format: venueFormat }, { prizes: false, freeToPlay: true }))?.venue).toEqual([
+      "Free to play · No purchase necessary",
+    ]);
+  });
+
+  it("celebrates nobody when celebrations are off", () => {
+    const winner: Activity = { id: "a", type: "winner", actor: null, data: { periodKey: "q1", label: "Q1", playerIds: ["dre"] }, at: 2 };
+    expect(celebrationFor(winner, decided, results, tvShowAll(decided.game, { celebrations: false }))).toBeNull();
+    expect(celebrationFor(winner, decided, results, tvShowAll(decided.game, { amounts: false }))).toMatchObject({ amount: null, prize: "Loser buys wings" });
   });
 });
 

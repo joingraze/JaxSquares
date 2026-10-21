@@ -123,8 +123,14 @@ export function venueFields(f: Partial<Record<keyof GameFormat, unknown>>): Pick
  * to play, and a club's prizes are the club's. Nothing for other boards.
  */
 export function venueLines(game: { format: GameFormat; club?: ClubBrand | null }): string[] {
+  if (!game.club?.name.trim() && !game.format.venue) return [];
+  return freeToPlayLines(game);
+}
+
+/** "Free to play · No purchase necessary" (and a club's "Prizes from …") for any board with no square price; none with one. The TV shows them when its host turns "Free to play" on. */
+export function freeToPlayLines(game: { format: GameFormat; club?: ClubBrand | null }): string[] {
+  if (game.format.squarePrice) return [];
   const club = game.club?.name.trim();
-  if ((!club && !game.format.venue) || game.format.squarePrice) return [];
   return ["Free to play · No purchase necessary", ...(club ? [`Prizes from ${club}`] : [])];
 }
 

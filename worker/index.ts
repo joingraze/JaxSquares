@@ -49,6 +49,7 @@ import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
 import { claimCodesFor } from "./claims";
 import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor } from "../shared/venue";
+import { cleanTvDisplay, tvDisplayError } from "../shared/tv";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -624,6 +625,12 @@ api.patch("/games/:id", requireClient, async (c) => {
     // Display only, so it can change any time; a linked board's comes from its schedule (a season board's, its games').
     if (game.linkedEvent || season) fail(400, KICKOFF_ERRORS.linked);
     fields.startsAt = cleanKickoff(body.startsAt, Date.now());
+  }
+  if (body.tv !== undefined) {
+    // What TV mode shows: any time, and never an activity (every TV on the board follows the new state).
+    const problem = tvDisplayError(body.tv);
+    if (problem) fail(400, problem);
+    fields.tv = cleanTvDisplay(body.tv);
   }
   if (body.maxPerPlayer !== undefined) {
     if (game.status !== "draft" && game.status !== "open") fail(409, "Squares are already locked");

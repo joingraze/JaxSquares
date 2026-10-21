@@ -48,6 +48,7 @@ const MIGRATIONS = [
   "migrations/0016_club.sql",
   "migrations/0017_season.sql",
   "migrations/0019_prize_claims.sql",
+  "migrations/0020_tv_display.sql",
 ];
 
 let t: TestD1;
@@ -214,6 +215,30 @@ describe("claim codes (venue boards)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("TV display (PATCH tv)", () => {
+  it("lets the host pick what TV mode shows, for everyone to follow, with no activity", async () => {
+    const { id, admin } = await openBoard();
+    const before = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    expect(before.game).not.toHaveProperty("tv");
+
+    const res = await call<{ state: GameState }>("PATCH", `/games/${id}`, { admin, body: { tv: { amounts: false, freeToPlay: true } } });
+    expect(res.status).toBe(200);
+    expect(res.body.state.game.tv).toEqual({ amounts: false, freeToPlay: true });
+    expect(res.body.state.activity.length).toBe(before.activity.length);
+    expect((await call<GameState>("GET", `/games/${id}`, { client: null })).body.game.tv).toEqual({ amounts: false, freeToPlay: true });
+  });
+
+  it("is the host's (or a co-host's) to change, with known parts only", async () => {
+    const { id, admin } = await openBoard();
+    expect((await call("PATCH", `/games/${id}`, { client: ANA, body: { tv: { prizes: false } } })).status).toBe(403);
+    const bad = await call<{ error: string }>("PATCH", `/games/${id}`, { admin, body: { tv: { logos: true } } });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("Unknown TV part: logos");
+    expect((await call("PATCH", `/games/${id}`, { admin, body: { tv: { prizes: "no" } } })).status).toBe(400);
+    expect((await call("PATCH", `/games/${id}`, { admin, body: { tv: [] } })).status).toBe(400);
   });
 });
 

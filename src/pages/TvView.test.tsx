@@ -107,7 +107,7 @@ function renderTv(path = "/g/tv1234/tv") {
   );
 }
 
-const fetchSpy = vi.fn(async () => new Response("{}", { status: 503 }));
+const fetchSpy = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response("{}", { status: 503 }));
 
 beforeEach(() => {
   board.state = null;
@@ -214,6 +214,44 @@ describe("TV mode", () => {
     expect(screen.getByTestId("tv-celebrate-claim")).toHaveTextContent("Your winning pass is on your phone");
     expect(screen.queryByTestId("claim-code")).toBeNull();
     expect(screen.queryByTestId("winner-code")).toBeNull();
+  });
+
+  it("shows only what the host picked: no right now, winners or still to play, no amounts", () => {
+    board.state = lockedWithWinner();
+    board.state.game.tv = { now: false, winners: false, upcoming: false, amounts: false };
+    renderTv();
+    expect(screen.getByTestId("tv-game")).toBeInTheDocument();
+    expect(screen.queryByTestId("tv-now")).toBeNull();
+    expect(screen.queryByTestId("tv-winner")).toBeNull();
+    expect(screen.queryByTestId("tv-upcoming")).toBeNull();
+    expect(screen.getByTestId("tv-game")).not.toHaveTextContent("$");
+    // Nobody but the host gets the Display button.
+    expect(screen.queryByTestId("tv-display-open")).toBeNull();
+  });
+
+  it("lets the host pick what shows from the TV's own Display button, for every TV", async () => {
+    board.state = makeState();
+    localStorage.setItem("jaxsquares.admin.tv1234", "admin-tv");
+    const saved: unknown[] = [];
+    fetchSpy.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/api/games/tv1234") && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { tv: Record<string, boolean> };
+        saved.push(body);
+        return new Response(JSON.stringify({ state: { ...board.state!, game: { ...board.state!.game, tv: body.tv } } }), { status: 200 });
+      }
+      return new Response("{}", { status: 503 });
+    });
+    renderTv();
+    expect(screen.getAllByTestId("tv-prize").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("tv-display-open"));
+    const prizes = within(screen.getByTestId("tv-display-prizes").closest("li")!).getByRole("switch");
+    expect(prizes).toBeChecked();
+    await act(async () => void fireEvent.click(prizes));
+    expect(saved).toEqual([{ tv: { prizes: false } }]);
+    const [, init] = fetchSpy.mock.calls.find(([, i]) => i?.method === "PATCH")!;
+    expect(JSON.stringify(init?.headers)).toContain("admin-tv");
+    // Free to play is off by default on a board with a square price, and can't be turned on there.
+    expect(within(screen.getByTestId("tv-display-freeToPlay").closest("li")!).getByRole("switch")).toBeDisabled();
   });
 
   it("celebrates a winner landing (Jax cheers, confetti), then goes back to the board", () => {

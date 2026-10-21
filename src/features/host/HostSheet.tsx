@@ -35,6 +35,7 @@ import {
   PlusIcon,
   ShareIcon,
   ShuffleIcon,
+  SlidersIcon,
   SparklesIcon,
   TrashIcon,
   TrophyIcon,
@@ -47,6 +48,7 @@ import {
   Badge,
   BottomSheet,
   Button,
+  buttonStyles,
   Chip,
   IconButton,
   ListGroup,
@@ -122,6 +124,7 @@ import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } fr
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
+import { TvDisplaySettings } from "../tv/TvDisplaySettings";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
 import { ExportPlayersRow } from "../club/ExportPlayersRow";
@@ -140,7 +143,9 @@ export type HostView =
   /** Confirm removing a co-host (host only). */
   | "cohost-remove"
   /** Confirm stepping down (a co-host). */
-  | "step-down";
+  | "step-down"
+  /** What TV mode shows (shared/tv.ts). */
+  | "tv";
 
 /** The player the host asked to remove, as they were when asked; `from` is where the ask came from. */
 export interface RemoveTarget {
@@ -536,6 +541,21 @@ export function HostSheet(props: HostSheetProps) {
         {patch ? "Save rules & prizes" : "No changes yet"}
       </Button>
     );
+  } else if (view === "tv") {
+    title = <>{back()}TV display</>;
+    description = "What the TV shows. Every TV with this board changes right away.";
+    body = <TvDisplaySettings game={game} onChange={async (tv) => (await actions.update({ tv })) !== null} />;
+    footer = (
+      <Link
+        to={boardViewPath(game.id, "tv")}
+        data-testid="host-tv-open"
+        className={buttonStyles({ size: "lg", block: true, variant: "secondary" })}
+        onClick={() => void haptic("selection")}
+      >
+        <TvIcon size={18} />
+        Open TV mode
+      </Link>
+    );
   } else if (view === "edit") {
     const errors = editErrors(draft, game);
     const invalid = !!errors.name || !!errors.kickoff;
@@ -818,6 +838,25 @@ export function HostSheet(props: HostSheetProps) {
           </span>
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
         </Link>
+        {!seasonGame && (
+          <button
+            type="button"
+            data-testid="host-tv-display"
+            onClick={() => {
+              void haptic("selection");
+              onView("tv");
+            }}
+            className="pressable -mt-1 flex min-h-12 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2 text-left ring-1 ring-inset ring-line"
+          >
+            <RowIcon>
+              <SlidersIcon size={18} />
+            </RowIcon>
+            <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
+              <b className="font-bold text-ink">TV display</b> Choose what the TV shows
+            </span>
+            <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
+          </button>
+        )}
 
         {seasonGame && game.seasonId ? (
           <ListGroup title="Season">

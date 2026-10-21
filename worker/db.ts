@@ -56,6 +56,7 @@ import type {
   Sport,
   Square,
   Team,
+  TvDisplay,
 } from "../shared/types";
 import { playerIdMap, playerIdOf } from "./playerIds";
 
@@ -111,6 +112,8 @@ export interface GameRow {
   season_event?: string | null;
   /** A season board: when its team's schedule was last read for new games. Server-only. */
   season_synced_at?: number | null;
+  /** What TV mode shows (TvDisplay JSON, migration 0020); null = every part at its default. */
+  tv?: string | null;
 }
 
 interface PlayerRow {
@@ -199,6 +202,8 @@ export function rowToGame(r: GameRow, hostPlayerId: string): Game {
     // Season boards (migration 0017): only said where it's so, so every other board reads as before.
     ...(r.kind === "season" ? { kind: "season" as const } : {}),
     ...(r.season_id ? { seasonId: r.season_id } : {}),
+    // The host's TV choices (migration 0020): only on a board whose host changed one.
+    ...(r.tv ? { tv: json<TvDisplay>(r.tv, {}) } : {}),
   };
 }
 
@@ -609,6 +614,8 @@ export interface GameFieldUpdate {
   periods?: Period[];
   /** A custom board's kickoff (null = no set time). Never for a linked board: its event's time stays. */
   startsAt?: number | null;
+  /** What TV mode shows (migration 0020). */
+  tv?: TvDisplay;
 }
 
 export function updateGameFields(db: D1Database, gameId: string, fields: GameFieldUpdate): D1PreparedStatement | null {
@@ -633,6 +640,10 @@ export function updateGameFields(db: D1Database, gameId: string, fields: GameFie
   if (fields.maxPerPlayer !== undefined) {
     sets.push("max_per_player = ?");
     args.push(fields.maxPerPlayer);
+  }
+  if (fields.tv !== undefined) {
+    sets.push("tv = ?");
+    args.push(JSON.stringify(fields.tv));
   }
   if (fields.startsAt !== undefined) {
     // Guarded in SQL too: a linked board's starts_at is its event's.

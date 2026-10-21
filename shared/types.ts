@@ -142,6 +142,12 @@ export interface GameFormat {
   venue?: boolean;
 }
 
+/** A part of TV mode the host can turn off or on (shared/tv.ts `TV_PARTS`). */
+export type TvPart = "prizes" | "amounts" | "houseRules" | "freeToPlay" | "now" | "winners" | "upcoming" | "celebrations";
+
+/** The host's choices for TV mode, by part; a part left out shows as its default (`tvShows`). */
+export type TvDisplay = Partial<Record<TvPart, boolean>>;
+
 /** A prize handed over (POST /api/games/:id/claims/collect): public, so the board, the TV and the winner's phone all show it. */
 export interface PrizeCollected {
   periodKey: string;
@@ -308,6 +314,11 @@ export interface Game {
   kind?: BoardKind;
   /** A game of a season board: the season board's id (absent or null on every other board). */
   seasonId?: string | null;
+  /**
+   * What TV mode shows (shared/tv.ts): the host's choices, each part absent
+   * = its default (`tvShows`). Only on a board whose host changed one.
+   */
+  tv?: TvDisplay;
 }
 
 /** One game's board, or a season board (Game.kind). */
@@ -851,6 +862,8 @@ export interface UpdateGameInput {
    * the numbers are drawn (409 otherwise); the board size never.
    */
   format?: GameFormat;
+  /** What TV mode shows (the whole set; shared/tv.ts). Any time, never an activity: every TV on the board follows at once. */
+  tv?: TvDisplay;
   /**
    * Custom boards only: a new kickoff (epoch ms) or null for no set time,
    * validated like CreateGameInput.startsAt; 400 on a linked board.

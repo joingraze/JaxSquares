@@ -4,13 +4,15 @@
 // (tvDetails). Once the numbers are drawn: the scoreboard (live score, quarter
 // and clock), who the score points at right now, the winners so far (with
 // their prize), what's still to play and the house rules in a line. Big type,
-// high contrast, nothing to hover or tap. Team colors come from the board's
+// high contrast, nothing to hover or tap. Each part shows as the host picked
+// (`show`, shared/tv.ts; the board's own choices by default). Team colors come from the board's
 // --team-x / --team-y, so the panel and the board's bands always match.
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatAmount, formatRange } from "../../../shared/formats";
 import { gameKickoff } from "../../../shared/kickoff";
 import { shownClub } from "../../../shared/clubs";
+import { tvShowAll, type TvShow } from "../../../shared/tv";
 import { sportWords } from "../../../shared/sportWords";
 import type { ClubBrand, GameState, Player, Team } from "../../../shared/types";
 import { CheckIcon, GiftIcon, RefreshIcon, TrophyIcon } from "../../components/icons";
@@ -92,15 +94,17 @@ export interface TvOpenPanelProps {
   /** Lay the QR code beside its caption (a wide panel, or room kept for the prizes card) instead of above it. */
   row: boolean;
   now: number;
+  /** What the host lets the TV show (default: the board's own choices). */
+  show?: TvShow;
 }
 
-export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOpenPanelProps) {
+export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer, show = tvShowAll(state.game) }: TvOpenPanelProps) {
   const { game } = state;
   const { claimed, total } = claimedCount(state);
   const left = total - claimed;
   const kickoff = gameKickoff(game);
-  const details = tvDetails(game);
-  const lineup = details ? null : prizeLineup(game.format);
+  const details = tvDetails(game, show);
+  const lineup = details || !show.prizes || !show.amounts ? null : prizeLineup(game.format);
   const players = state.players.length;
   return (
     <section aria-label="Join this board" className="tv-panel" data-testid="tv-open">
@@ -227,6 +231,8 @@ export interface TvGamePanelProps {
   /** What's still to play, with what each can show. */
   upcoming: TvUpcoming[];
   now: number;
+  /** What the host lets the TV show (default: the board's own choices). */
+  show?: TvShow;
 }
 
 /**
@@ -259,7 +265,7 @@ function useRowsThatFit(count: number) {
   return { ref, fit };
 }
 
-export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, footer }: TvGamePanelProps) {
+export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, footer, show = tvShowAll(state.game) }: TvGamePanelProps) {
   const { game } = state;
   const phase = boardPhase(state);
   const score = headlineScore(state);
@@ -268,8 +274,9 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, 
   const byId = new Map(state.players.map((p) => [p.id, p]));
   const { ref: listRef, fit } = useRowsThatFit(winners.length);
   const { shown, earlier } = latest(winners, fit);
-  const details = tvDetails(game);
+  const details = tvDetails(game, show);
   const houseLine = details ? details.rules.join(" · ") : "";
+  const shownWinners = show.winners ? shown : [];
 
   let status: { text: string; tone: "live" | "final" | "muted" };
   if (phase === "live") status = { text: score?.detail || "Live", tone: "live" };
@@ -312,24 +319,24 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, 
         </p>
       </div>
 
-      {nowView && <TvNow now={nowView} byId={byId} game={game} />}
+      {nowView && show.now && <TvNow now={nowView} byId={byId} game={game} amounts={show.amounts} />}
 
       <div ref={listRef} className="tv-winners flex-1" data-testid="tv-winners">
-        {winners.length > 0 && (
+        {shownWinners.length > 0 && (
           <>
             <p data-tv-head className="tv-eyebrow flex items-center gap-[calc(var(--u)*0.8)] text-ink-gold">
               <TrophyIcon filled className="h-[1.1em] w-[1.1em]" />
               {phase === "final" ? "Winners" : "Winners so far"}
               {earlier > 0 && <span className="normal-case tracking-normal text-ink-subtle">· {earlier} earlier</span>}
             </p>
-            {shown.map((w) => (
+            {shownWinners.map((w) => (
               <WinnerRow key={w.key} winner={w} />
             ))}
           </>
         )}
       </div>
 
-      {upcoming.length > 0 && (
+      {show.upcoming && upcoming.length > 0 && (
         <div className="flex flex-col gap-[calc(var(--u)*0.8)]" data-testid="tv-upcoming">
           <p className="tv-eyebrow text-ink-muted">Still to play</p>
           <p className="flex flex-wrap gap-[calc(var(--u)*0.8)]">
@@ -395,19 +402,21 @@ function WinnerRow({ winner }: { winner: TvWinner }) {
 }
 
 /** Who the score points at right now (or, on every-score boards, where the next score lands). */
-function TvNow({ now, byId, game }: { now: NowView; byId: Map<string, Player>; game: GameState["game"] }) {
+function TvNow({ now, byId, game, amounts }: { now: NowView; byId: Map<string, Player>; game: GameState["game"]; amounts: boolean }) {
   const who = (id: string | null): TvPlayer | null => {
     const p = id ? byId.get(id) : undefined;
     return p ? { id: p.id, name: p.name, color: p.color, emoji: p.emoji } : null;
   };
   const owner = who(now.ownerId);
-  const amount = now.rest
-    ? `the rest${now.amount !== null ? ` (${formatAmount(now.amount, now.unit)} so far)` : ""}`
-    : now.range
-      ? formatRange(now.range, now.unit)
-      : now.amount
-        ? formatAmount(now.amount, now.unit)
-        : null;
+  const amount = !amounts
+    ? null
+    : now.rest
+      ? `the rest${now.amount !== null ? ` (${formatAmount(now.amount, now.unit)} so far)` : ""}`
+      : now.range
+        ? formatRange(now.range, now.unit)
+        : now.amount
+          ? formatAmount(now.amount, now.unit)
+          : null;
   const teamOf = (side: Side) => (side === "x" ? game.teamX : game.teamY);
   return (
     <div
