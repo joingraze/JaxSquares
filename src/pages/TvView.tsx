@@ -23,7 +23,7 @@ import { useNow } from "../features/board/useNow";
 import { TvBoard } from "../features/tv/TvBoard";
 import { TvCelebrate } from "../features/tv/TvCelebrate";
 import { TvGamePanel, TvOpenPanel } from "../features/tv/TvPanel";
-import { celebrationFor, tvLayout, tvUpcoming, tvWinners, type TvCelebration } from "../features/tv/tvModel";
+import { celebrationFor, tvDetails, tvLayout, tvUpcoming, tvWinners, type TvCelebration } from "../features/tv/tvModel";
 import { setTvTheme, useAwake, useFullscreen, useTvTheme, useWakeLock } from "../features/tv/screen";
 import "../features/tv/tv.css";
 import { inviteUrl } from "../lib/api";
@@ -219,10 +219,18 @@ export function TvScreen({ id, onExit, hideClub, panelFooter, celebrate: arrived
   const picking = phase === "open" || phase === "draft";
   const url = inviteUrl(game.id);
   const landscape = layout.orientation === "landscape";
-  // The QR code: as big as the panel lets it be next to its caption.
-  const row = layout.panel.width >= layout.panel.height * 1.1;
+  // The QR code: as big as the panel lets it be next to its caption. With a
+  // prizes and house rules card under it (tvDetails), beside its caption and
+  // smaller, so the card fits: a little smaller again for each line past eight.
+  const details = picking ? tvDetails(game) : null;
+  const lines = details ? details.prizes.length + details.rules.length : 0;
+  const row = !!details || layout.panel.width >= layout.panel.height * 1.1;
   const qr = Math.round(
-    row ? Math.min(layout.panel.height * 0.55, layout.panel.width * 0.45) : Math.min(layout.panel.width * 0.7, layout.panel.height * (landscape ? 0.45 : 0.5)),
+    details
+      ? Math.min(layout.panel.width * 0.42, Math.max(layout.panel.height * 0.2, layout.panel.height * (landscape ? 0.3 : 0.36) - Math.max(0, lines - 8) * layout.unit * 3.4))
+      : row
+        ? Math.min(layout.panel.height * 0.55, layout.panel.width * 0.45)
+        : Math.min(layout.panel.width * 0.7, layout.panel.height * (landscape ? 0.45 : 0.5)),
   );
 
   return (

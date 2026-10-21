@@ -217,6 +217,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
 | GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | A Club Pass board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Club Pass, or for anyone but the host and co-hosts; 429 |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
+| GET | `/api/games/:id/claims` | C (H for `all`) | – | `ClaimsResponse` `{ enabled, mine, all }` (`no-store`): a board with claim codes (`format.claimCodes`, see "Venue boards"): `mine` lists the caller's own winning awards with their codes; `all` every award's code for the host (its admin token) or a co-host, else null. `{ enabled: false, mine: [], all: null }` when the board doesn't use them; 404 |
 | GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
@@ -1383,6 +1384,45 @@ payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
   `ClubCheckoutSheet`. **iOS:** nothing offered, priced or linked to buying or
   managing it; a holder's features all work and Profile says "Club Pass ·
   Active".
+
+## Venue boards
+
+A bar, restaurant or brewery runs a free board for the room and puts up the
+prizes itself (`shared/venue.ts`, pure, tested in `shared/venue.test.ts`).
+Two optional `GameFormat` fields, edited with the rules (Rules & prizes →
+"House rules", `src/features/rules/HouseRules.tsx`) and left out of a stored
+format when off or empty:
+
+- **`houseRules?: string[]`**: up to `HOUSE_RULES_MAX` (4) single lines of
+  `HOUSE_RULE_MAX_LENGTH` (80), with ideas a tap away (`HOUSE_RULE_IDEAS`).
+  None may ask anyone to buy anything (`HOUSE_RULE_PURCHASE_ERROR`: boards are
+  free to play) or talk money (`HOUSE_RULE_MONEY_ERROR`, `mentionsMoney`);
+  `formatError` answers 400 with the editor's words (`venueFormatError`).
+- **`claimCodes?: true`**: a winner collects by showing staff a short code.
+  `worker/claims.ts` derives it per award: HMAC-SHA256 keyed with the board's
+  admin token over `claim:<gameId>:<periodKey>:<square|reverse>:<playerId>`,
+  4 characters from `CLAIM_CODE_ALPHABET` (no 0/O, 1/I/L, 2/Z, 5/S, 8/B).
+  Nothing is stored: a corrected score moves the code with the winner. Only
+  `GET /api/games/:id/claims` returns codes: to the winner (`ClaimCard` on
+  the board, `claim-card`) and the host or a co-host (Host tools → Winners,
+  `winner-code`); never in `GameState`, the TV, a push, a link preview or
+  share text, so a photo of the TV claims nothing.
+
+What a board says about itself (`venueLines`): a club board (a Club Pass
+holder's, named) with no square price shows "Free to play · No purchase
+necessary" and "Prizes from <club>". Where it shows:
+
+- **Rules sheet**: `VenueRules` (`venue-rules`) lists the house rules, then
+  `CLAIM_LINE` with claim codes on, then the venue lines.
+- **TV** (`tvDetails` in `src/features/tv/tvModel.ts`; null for a board with
+  amounts only, which keeps the one-line `prizeLineup`): while squares are
+  open, a card under a smaller QR code with each prize and its note
+  (`momentPrizes`, `tv-prize`; the reverse square's beside it) and the house
+  rules (`tv-house-rules`), the venue lines beside the QR code (`tv-venue`).
+  Once drawn: the prize note on each winner row and each "Still to play"
+  chip, and the house rules in a line at the foot (`tv-house-line`). The
+  celebration names the prize and, with claim codes on, says the code is on
+  the winner's phone (`tv-celebrate-claim`).
 
 ## Email notices
 

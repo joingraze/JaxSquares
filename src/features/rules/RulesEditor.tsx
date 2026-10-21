@@ -23,6 +23,7 @@ import { AlertIcon, CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusI
 import { Badge, SegmentedControl, Switch, TextField, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { AmountField } from "./AmountField";
+import { HouseRules } from "./HouseRules";
 import { EveryScoreOptions } from "./EveryScoreOptions";
 import {
   PRICE_CHIPS,
@@ -164,6 +165,13 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
           ))}
         </ul>
       </section>
+
+      <HouseRules
+        rules={draft.houseRules ?? []}
+        claimCodes={draft.claimCodes ?? false}
+        onRules={(houseRules) => set({ houseRules })}
+        onClaimCodes={(claimCodes) => set({ claimCodes })}
+      />
     </div>
   );
 }

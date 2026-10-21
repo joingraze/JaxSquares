@@ -61,7 +61,8 @@ import { boardViewPath } from "../../lib/boardViews";
 import type { HostRole } from "../../lib/hostRole";
 import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
 import { useAuthSetup } from "../../lib/auth";
-import { hostLinkUrl, useAccount } from "../../lib/identity";
+import { getAdminToken, hostLinkUrl, useAccount } from "../../lib/identity";
+import { useClaims } from "../venue/useClaims";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
 import { siblingCreatePath } from "../create/sibling";
@@ -278,6 +279,8 @@ export function HostSheet(props: HostSheetProps) {
   }, [view]);
 
   const targets = useMemo(() => scoreTargets(state), [state]);
+  // A venue board's claim codes, every winner's (a co-host's come by their sign-in, with no token).
+  const claims = useClaims(state, getAdminToken(game.id), open);
   const target = targets.find((t) => t.key === entry.key) ?? targets[targets.length - 1];
   const label = target?.label ?? "this period";
   // Mid-sentence: "Maya wins at halftime", "see who wins on score 3".
@@ -778,6 +781,7 @@ export function HostSheet(props: HostSheetProps) {
           <Section title="Winners">
             <WinnersList
               state={state}
+              codes={claims?.all ?? null}
               rows={rows}
               me={me}
               busy={actions.busy !== null}

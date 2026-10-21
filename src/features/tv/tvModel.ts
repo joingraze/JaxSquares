@@ -7,10 +7,12 @@
 
 import { formatAmount, formatRange, periodPhrase, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward, resolveResults, type PeriodResult } from "../../../shared/squares";
-import type { Activity, AmountUnit, GameState, Player, Team } from "../../../shared/types";
+import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
+import { CLAIM_LINE, venueLines } from "../../../shared/venue";
 import { initialsOf } from "../../lib/format";
 import { textEm } from "../../lib/textWidth";
 import type { PeriodCard } from "../board/boardModel";
+import { momentPrizes, priceLine, type MomentPrize } from "../rules/rulesModel";
 
 // ---- Layout ----
 
@@ -104,6 +106,8 @@ export interface TvWinner {
   label: string;
   /** The headline winner (the reverse square's on a reverse-only moment), or null when nobody had the square. */
   player: TvPlayer | null;
+  /** The headline square's prize note ("Free wings"), or null. */
+  prize: string | null;
   /** The score that decided it, "7–3" (null for a host pick without a score). */
   score: string | null;
   /** Only the reverse square won this moment. */
@@ -140,6 +144,7 @@ export function tvWinners(state: Pick<GameState, "game" | "players">, results: r
       key: r.periodKey,
       label: resultLabel(r, unit),
       player: who(main.playerId),
+      prize: (main.reverse ? r.reversePrize : r.prize) || null,
       score: r.score ? (main.reverse ? `${r.score.scoreY}–${r.score.scoreX}` : `${r.score.scoreX}–${r.score.scoreY}`) : null,
       reverseOnly: main.reverse,
       reverse: showReverse ? { label: ["Reverse", money(r.reverseAmount, unit)].filter(Boolean).join(" · "), player: who(r.reverseWinnerPlayerId) } : null,
@@ -168,10 +173,14 @@ export interface TvCelebration {
   player: TvPlayer | null;
   /** The headline square's amount ("$200"; the rest of the board total for a final that takes it). */
   amount: string | null;
+  /** The headline square's prize note ("Free wings"). */
+  prize: string | null;
   /** "KC 7 – 3 BUF". */
   score: string | null;
   /** The reverse square's winner, when it's someone else. */
-  reverse: { player: TvPlayer | null; amount: string | null } | null;
+  reverse: { player: TvPlayer | null; amount: string | null; prize: string | null } | null;
+  /** The board uses claim codes: the winner shows staff the code on their phone (never on the TV). */
+  claim: boolean;
 }
 
 const TITLES: Record<string, string> = { q1: "Q1 winner", q2: "Halftime winner", q3: "Q3 winner", final: "Final winner" };
@@ -200,8 +209,10 @@ export function celebrationFor(activity: Activity, state: GameState, results: re
     kind: r.scoreKind ? scorePlayLabel(r.scoreKind, true) : null,
     player: w.player,
     amount: money(main.amount, unit),
+    prize: w.prize,
     score: r.score ? `${abbr(game.teamX)} ${r.score.scoreX} – ${r.score.scoreY} ${abbr(game.teamY)}` : null,
-    reverse: w.reverse ? { player: w.reverse.player, amount: money(r.reverseAmount, unit) } : null,
+    reverse: w.reverse ? { player: w.reverse.player, amount: money(r.reverseAmount, unit), prize: r.reversePrize || null } : null,
+    claim: game.format.claimCodes === true,
   };
 }
 
@@ -213,6 +224,8 @@ export interface TvUpcoming {
   label: string;
   /** What it can show: "$200", "$5–$20" by score type, "the rest"; null without an amount. */
   amount: string | null;
+  /** The prize note ("Free wings"): the square's, or the reverse square's on a reverse-only moment. */
+  note: string | null;
   /** The moment in play right now. */
   live: boolean;
 }
@@ -232,6 +245,35 @@ export function tvUpcoming(cards: readonly PeriodCard[], unit: AmountUnit): TvUp
             : c.reverseRange
               ? `${formatRange(c.reverseRange, unit)} reverse`
               : null,
+      note: (c.awardsSquare ? c.prize : c.reversePrize) || null,
       live: c.status === "live",
     }));
+}
+
+// ---- Prizes and house rules (venue boards) ----
+
+export interface TvDetails {
+  /** "$10 a square", or null. */
+  price: string | null;
+  /** Each moment's prize with its note (rulesModel.momentPrizes). */
+  prizes: MomentPrize[];
+  /** The house rules, then how a winner collects when the board uses claim codes. */
+  rules: string[];
+  /** A club's free board: "Free to play · No purchase necessary", "Prizes from …". */
+  venue: string[];
+}
+
+/**
+ * What the TV spells out beyond the amounts: each prize with its note, the
+ * house rules and the venue lines (shared/venue.ts). null when the board has
+ * none of them: the open panel then keeps its one-line amounts (prizeLineup).
+ */
+export function tvDetails(game: Pick<Game, "format"> & Partial<Pick<Game, "club">>): TvDetails | null {
+  const { format } = game;
+  const prizes = momentPrizes(format);
+  const rules = [...(format.houseRules ?? []), ...(format.claimCodes ? [CLAIM_LINE] : [])];
+  const venue = venueLines(game);
+  const notes = prizes.some((p) => p.note || p.reverse?.note);
+  if (!notes && rules.length === 0 && venue.length === 0) return null;
+  return { price: priceLine(format), prizes, rules, venue };
 }

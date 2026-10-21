@@ -20,6 +20,7 @@ import type {
   Sport,
 } from "./types";
 import { sportWords } from "./sportWords";
+import { venueFields, venueFormatError } from "./venue";
 
 /** A preset a host can pick (every board's rules either match one or are "custom"). */
 export type FixedPreset = Exclude<PeriodsPreset, "custom">;
@@ -795,6 +796,8 @@ export function formatError(input: unknown): string | null {
   const price = checkAmount(f.squarePrice, SQUARE_PRICE_MAX, "The square price");
   if (!price.ok) return price.error;
   if (f.justForFun === true && price.value !== null) return JUST_FOR_FUN_ERROR;
+  const venue = venueFormatError(f);
+  if (venue) return venue;
   if (f.rules !== undefined) {
     const rules = checkRules(f.rules);
     if (!rules.ok) return rules.error;
@@ -835,6 +838,7 @@ export function sanitizeFormat(input: unknown): GameFormat {
       unit,
       squarePrice: fun ? null : squarePrice,
       justForFun: fun,
+      ...venueFields(f),
     };
   }
   const periods = isPreset(f.periods) ? f.periods : base.periods;
@@ -847,7 +851,7 @@ export function sanitizeFormat(input: unknown): GameFormat {
   if (f.unit !== undefined) out.unit = unit;
   if (f.squarePrice !== undefined) out.squarePrice = fun ? null : squarePrice;
   if (f.justForFun !== undefined) out.justForFun = fun;
-  return out;
+  return { ...out, ...venueFields(f) };
 }
 
 /**
@@ -867,6 +871,7 @@ export function withRules(format: GameFormat, legacyPrizes?: Record<string, stri
     unit: unitOf(format),
     squarePrice: fun ? null : (format.squarePrice ?? null),
     justForFun: fun,
+    ...venueFields(format),
   };
 }
 

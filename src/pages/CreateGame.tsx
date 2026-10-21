@@ -660,7 +660,14 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const rules = rulesOf(format);
   // What players will see about prizes, as the host has it now.
   const shownFormat = createFormat(format, prizeChoice);
-  const rulesDraft: RulesDraft = { rules, choice: prizeChoice, squarePrice: format.squarePrice ?? null, freshNumbers: format.freshNumbers };
+  const rulesDraft: RulesDraft = {
+    rules,
+    choice: prizeChoice,
+    squarePrice: format.squarePrice ?? null,
+    freshNumbers: format.freshNumbers,
+    houseRules: format.houseRules ?? [],
+    claimCodes: format.claimCodes === true,
+  };
   /** Every change to how squares win or to the prizes: the suggested amounts follow it while the host hasn't typed one. */
   const updatePrizes = (next: GameFormat, choice: PrizeChoice = prizeChoice) => {
     const filled = autoFill({ format, choice: prizeChoice }, { format: next, choice }, prizesAuto);
@@ -669,7 +676,10 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
     setPrizesAuto(filled.auto);
   };
   const editRules = (d: RulesDraft) =>
-    updatePrizes(withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers }), d.choice);
+    updatePrizes(
+      withRules({ ...format, rules: d.rules, squarePrice: d.squarePrice, freshNumbers: d.freshNumbers, houseRules: d.houseRules, claimCodes: d.claimCodes }),
+      d.choice,
+    );
   // A game that can't take the rules picked so far (every score on basketball,
   // the quarters in men's college basketball's two halves): fit them to it.
   useEffect(() => {

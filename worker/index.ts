@@ -28,7 +28,7 @@ import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
 import { boardSportFor, freshNumbersInfo, isLeague, isLinkedLeague, leagueSportProblem, rulesProblemFor } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
-import { ACCOUNT_REQUIRED_CODE, PAYMENT_REQUIRED_CODE } from "../shared/types";
+import { ACCOUNT_REQUIRED_CODE, PAYMENT_REQUIRED_CODE, type ClaimsResponse } from "../shared/types";
 import type {
   Activity,
   CohostInviteResponse,
@@ -47,6 +47,7 @@ import { clubRoutes, csvFilename, playersCsv } from "./clubs";
 import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
+import { claimCodesFor } from "./claims";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -507,6 +508,19 @@ api.post("/games", requireClient, async (c) => {
     return c.json(res, 201);
   }
   throw new Error("unreachable");
+});
+
+// Claim codes (worker/claims.ts): a winner's own, and every winner's for the host or a co-host. Never in the public state.
+api.get("/games/:id/claims", requireClient, async (c) => {
+  const found = await db.getGameStateWithToken(c.env.DB, c.req.param("id"), c.get("clientId"));
+  if (!found) fail(404, "Game not found");
+  const { state, adminToken, cohost } = found;
+  if (!state.game.format.claimCodes) return c.json({ enabled: false, mine: [], all: null } satisfies ClaimsResponse, 200, { "cache-control": "no-store" });
+  const codes = await claimCodesFor(state, adminToken);
+  const runsIt = cohost || tokenMatches(adminToken, c.req.header("x-admin-token") ?? "");
+  const me = c.get("playerId");
+  const body: ClaimsResponse = { enabled: true, mine: codes.filter((k) => k.playerId === me), all: runsIt ? codes : null };
+  return c.json(body, 200, { "cache-control": "no-store" });
 });
 
 api.get("/games/:id", async (c) => {

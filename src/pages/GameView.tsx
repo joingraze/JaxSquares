@@ -73,6 +73,8 @@ import { useRecapNudge } from "../features/recap/useRecapNudge";
 import { InviteHero } from "../features/invite/InviteHero";
 import { ClubBanner } from "../features/club/ClubMark";
 import { JoinedCard } from "../features/invite/JoinedCard";
+import { ClaimCard } from "../features/venue/ClaimCard";
+import { useClaims } from "../features/venue/useClaims";
 import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
@@ -248,6 +250,8 @@ export default function GameView() {
   );
   const joined = !!state?.players.some((p) => p.id === me);
   const account = useAccount();
+  // A venue board's claim codes: this player's own wins (the host's tools list everyone's).
+  const claims = useClaims(state ?? null, useAdminToken(id), joined);
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
   // How this device runs the board: "host" (the admin token) or "cohost" (by public id), else null.
   const role = useHostRole(state);
@@ -1157,6 +1161,8 @@ export default function GameView() {
         )}
 
         {welcome && joined && !seasonPage && <JoinedCard state={state} onDismiss={dismissWelcome} />}
+
+        {!seasonPage && <ClaimCard state={state} claims={claims} />}
 
         {season && tab === "schedule" && <SeasonSchedule season={season} players={state.players} me={me} now={now} />}
         {season && tab === "standings" && <SeasonStandings state={state} season={season} me={me} />}

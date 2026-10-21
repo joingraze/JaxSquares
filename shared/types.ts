@@ -121,6 +121,37 @@ export interface GameFormat {
    * amounts = the host chose nothing, and players see nothing about prizes.
    */
   justForFun?: boolean;
+  /**
+   * A few short lines on how to play and claim ("Must be present to win"),
+   * shown with the rules, on the TV and the printable (shared/venue.ts).
+   * Absent = none. Editable any time, like the prizes.
+   */
+  houseRules?: string[];
+  /** Winners show the staff a claim code (GET /api/games/:id/claims). Absent = off. */
+  claimCodes?: boolean;
+}
+
+/** One winner's claim code (shared/venue.ts): who won what, and the code the staff check. */
+export interface ClaimCode {
+  periodKey: string;
+  /** The moment's label ("Q1", "Final", "Score 3"). */
+  label: string;
+  /** The reverse winner's (the digits swapped). */
+  reverse: boolean;
+  /** The winner's public player id. */
+  playerId: string;
+  code: string;
+}
+
+/**
+ * GET /api/games/:id/claims: the caller's own codes, and every winner's for
+ * the host or a co-host (`all`, null for anyone else). `enabled` false: the
+ * board doesn't use claim codes.
+ */
+export interface ClaimsResponse {
+  enabled: boolean;
+  mine: ClaimCode[];
+  all: ClaimCode[] | null;
 }
 
 /** A scoring checkpoint that can win a square (e.g. end of each quarter). */

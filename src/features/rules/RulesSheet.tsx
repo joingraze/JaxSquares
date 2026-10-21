@@ -11,11 +11,12 @@ import type { Game } from "../../../shared/types";
 import { InfoIcon, PencilIcon, RefreshIcon, ShuffleIcon, SportIcon, TrophyIcon, UsersIcon } from "../../components/icons";
 import { BottomSheet, Button, cx } from "../../components/ui";
 import { capLine, priceLine, ruleLines, type RuleLine } from "./rulesModel";
+import { VenueRules } from "./VenueRules";
 
 export interface RulesSheetProps {
   open: boolean;
   onClose: () => void;
-  game: Pick<Game, "format" | "prizes" | "maxPerPlayer"> & Partial<Pick<Game, "sport" | "league">>;
+  game: Pick<Game, "format" | "prizes" | "maxPerPlayer"> & Partial<Pick<Game, "sport" | "league" | "club">>;
   /** Host only: open the editor. */
   onEdit?: () => void;
 }
@@ -68,6 +69,8 @@ export function RulesSheet({ open, onClose, game, onEdit }: RulesSheetProps) {
             <RuleRow key={line.moment} line={line} />
           ))}
         </ul>
+
+        <VenueRules game={game} />
 
         <div className="flex flex-col gap-2 px-1 text-footnote leading-snug text-ink-muted">
           <p className="flex items-start gap-2">

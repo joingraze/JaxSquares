@@ -8,13 +8,15 @@
 import type { ReactNode } from "react";
 import { formatAmount, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward } from "../../../shared/squares";
-import type { GameState, Player } from "../../../shared/types";
+import type { ClaimCode, GameState, Player } from "../../../shared/types";
 import { PencilIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, Badge, cx } from "../../components/ui";
 import type { WinnerRow } from "./hostModel";
 
 export interface WinnersListProps {
   state: GameState;
+  /** A venue board's claim codes (every winner's), to check against the code on a winner's phone. */
+  codes?: ClaimCode[] | null;
   rows: WinnerRow[];
   me: string;
   busy: boolean;
@@ -35,7 +37,9 @@ interface RowAction {
   onClick: () => void;
 }
 
-export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit, canPickOpen }: WinnersListProps) {
+export function WinnersList({ state, codes = null, rows, me, busy, onPick, onUndoPick, onEdit, canPickOpen }: WinnersListProps) {
+  const codeOf = (key: string, reverse: boolean, playerId: string | null | undefined) =>
+    playerId ? (codes?.find((c) => c.periodKey === key && c.reverse === reverse && c.playerId === playerId)?.code ?? null) : null;
   const { game } = state;
   const player = (id: string | null): Player | null => (id ? (state.players.find((p) => p.id === id) ?? null) : null);
   const abbrX = game.teamX.abbr || game.teamX.name;
@@ -136,11 +140,21 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
                   {winner && <Avatar name={winner.name} color={winner.color} emoji={winner.emoji} size="xs" decorative />}
                   <span className={cx("truncate text-callout font-bold", decided ? "text-ink" : "text-ink-muted")}>{headline}</span>
                   {row.manual && <Badge tone="gold">Your pick</Badge>}
+                  {winner && codeOf(row.key, !!award?.reverse, winner.id) && (
+                    <span data-testid="winner-code" className="ml-auto shrink-0 rounded-lg bg-gold-400/15 px-2 py-0.5 font-display text-footnote font-extrabold tracking-[0.14em] text-ink-gold ring-1 ring-inset ring-gold-line/40">
+                      {codeOf(row.key, !!award?.reverse, winner.id)}
+                    </span>
+                  )}
                 </span>
                 <span className="mt-0.5 block truncate text-footnote tabular-nums text-ink-subtle">{scoreLine ?? "No score yet"}</span>
                 {reverse && (
                   <span className="block truncate text-footnote text-ink-subtle">
                     Reverse{money(r?.reverseAmount ?? null) ? ` · ${money(r?.reverseAmount ?? null)}` : ""}: {reverse.id === me ? "You" : reverse.name}
+                    {codeOf(row.key, true, reverse.id) && (
+                      <b data-testid="winner-code" className="ml-1.5 font-display font-extrabold tracking-[0.14em] text-ink-gold">
+                        {codeOf(row.key, true, reverse.id)}
+                      </b>
+                    )}
                   </span>
                 )}
               </span>

@@ -65,6 +65,9 @@ export interface RulesDraft {
   /** Kept while "Just for fun" is picked (so switching back restores it); cleared on save. */
   squarePrice: number | null;
   freshNumbers: boolean;
+  /** House rules and claim codes (shared/venue.ts). Absent: the base format's stay as they are. */
+  houseRules?: string[];
+  claimCodes?: boolean;
 }
 
 /** The choice a saved format shows: just for fun, else the unit once any amount is set, else not chosen. */
@@ -84,6 +87,8 @@ export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string
     choice: choiceOf(format),
     squarePrice: format.squarePrice ?? null,
     freshNumbers: format.freshNumbers,
+    houseRules: format.houseRules ?? [],
+    claimCodes: format.claimCodes === true,
   };
 }
 
@@ -104,6 +109,8 @@ export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
     squarePrice: amounts ? draft.squarePrice : null,
     justForFun: draft.choice === "fun",
     freshNumbers: draft.freshNumbers,
+    houseRules: draft.houseRules ?? base.houseRules,
+    claimCodes: draft.claimCodes ?? base.claimCodes,
   });
 }
 
@@ -863,6 +870,39 @@ export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[]
     if (a) parts.push(r.square?.rest ? `${MOMENT_INFO[r.moment].short}: ${a}` : `${MOMENT_INFO[r.moment].short} ${a}`);
   }
   return parts.length > 0 ? { fun: false, parts } : null;
+}
+
+export interface MomentPrize {
+  moment: Moment;
+  /** "Q1", "Half", "Q3", "Final", "Every score". */
+  label: string;
+  /** "$100", "$5–$20" (by score type), "the rest"; null without an amount (always on a just-for-fun board). */
+  amount: string | null;
+  note: string | null;
+  /** The reverse square's, when it shows an amount or a note. */
+  reverse: { amount: string | null; note: string | null } | null;
+}
+
+/**
+ * Each moment's prize in a few words, in game order: its amount and the
+ * host's note ("Q1 · $100 · Free wings"), the reverse square's beside it.
+ * Moments with neither an amount nor a note are left out. The TV's prize
+ * list; in-app only, like prizeLineup.
+ */
+export function momentPrizes(format: GameFormat): MomentPrize[] {
+  const unit = unitOf(format);
+  const side = (p: Prize | null) => {
+    const amount = format.justForFun ? null : prizeText(p, unit);
+    const note = p?.note?.trim() || null;
+    return amount || note ? { amount, note } : null;
+  };
+  return sortRules(rulesOf(upgradeFormat(format))).flatMap((r) => {
+    const square = side(r.square);
+    const reverse = side(r.reverse);
+    if (!square && !reverse) return [];
+    const label = r.moment === "score" ? "Every score" : MOMENT_INFO[r.moment].short;
+    return [{ moment: r.moment, label, amount: square?.amount ?? null, note: square?.note ?? null, reverse }];
+  });
 }
 
 /** The create page's collapsed "Square price & prizes" row: what players will see, or "Square price: not set". */

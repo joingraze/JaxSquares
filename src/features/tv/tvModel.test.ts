@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { resolveResults } from "../../../shared/squares";
 import type { Activity, GameFormat, GameState, MomentRule, NumberDraw, Player, Square } from "../../../shared/types";
 import { periodCards } from "../board/boardModel";
-import { celebrationFor, firstName, latest, resultLabel, tvCellName, tvLayout, tvUpcoming, tvWinners } from "./tvModel";
+import { CLAIM_LINE } from "../../../shared/venue";
+import { celebrationFor, firstName, latest, resultLabel, tvCellName, tvDetails, tvLayout, tvUpcoming, tvWinners } from "./tvModel";
 
 // Column c holds digit c for the Chiefs; row r holds 9 - r for the Bills: 7–3 lands on row 6, column 7.
 const DRAW: NumberDraw = {
@@ -137,7 +138,8 @@ describe("winners so far", () => {
     const winners = tvWinners(decided, results);
     expect(winners.map((w) => w.label)).toEqual(["Q1 · $200", "Half · $200"]);
     // 7–3: row 6, column 7 -> square 67 -> 67 % 3 = 1 -> Dre.
-    expect(winners[0]).toMatchObject({ key: "q1", score: "7–3", player: { name: "Dre" }, reverse: null });
+    expect(winners[0]).toMatchObject({ key: "q1", score: "7–3", player: { name: "Dre" }, prize: "Loser buys wings", reverse: null });
+    expect(winners[1].prize).toBeNull();
     // Halftime 14–10: square 94 -> Dre; its reverse 10–14 (square 50) -> Kim.
     expect(winners[1].player?.name).toBe("Dre");
     expect(winners[1].reverse).toMatchObject({ label: "Reverse · $50", player: { name: "Kim" } });
@@ -160,6 +162,54 @@ describe("winners so far", () => {
   it("lists what's still to play with what each can show (the final takes the rest)", () => {
     const upcoming = tvUpcoming(periodCards(decided, results), "$");
     expect(upcoming.map((u) => `${u.label}:${u.amount}`)).toEqual(["Q3:$200", "Final:the rest"]);
+    expect(upcoming.map((u) => u.note)).toEqual([null, null]);
+  });
+
+  it("puts each prize's note on what's still to play (the reverse square's on a reverse-only moment)", () => {
+    const rules: MomentRule[] = [
+      { moment: "q3", square: { amount: null, note: "Free wings" }, reverse: null },
+      { moment: "final", square: null, reverse: { amount: null, note: "Team jersey" } },
+    ];
+    const s = makeState({ format: { ...FORMAT, rules, squarePrice: null } });
+    expect(tvUpcoming(periodCards(s, resolveResults(s)), "$").map((u) => `${u.label}:${u.note}`)).toEqual(["Q3:Free wings", "Final:Team jersey"]);
+  });
+});
+
+describe("tvDetails (prizes and house rules on the TV)", () => {
+  const club = { id: "c1", name: "The Rusty Anchor", hasLogo: false, logoVersion: null };
+
+  it("is nothing on a board with amounts only: the open panel keeps its one-line amounts", () => {
+    expect(tvDetails({ format: { ...FORMAT, rules: RULES.map((r) => ({ ...r, square: r.square && { ...r.square, note: "" } })) } })).toBeNull();
+  });
+
+  it("spells out each prize with its note, the reverse square's beside it", () => {
+    const d = tvDetails({ format: FORMAT });
+    expect(d?.price).toBe("$10 a square");
+    expect(d?.prizes.map((p) => [p.label, p.amount, p.note, p.reverse])).toEqual([
+      ["Q1", "$200", "Loser buys wings", null],
+      ["Half", "$200", null, { amount: "$50", note: null }],
+      ["Q3", "$200", null, null],
+      ["Final", "the rest", null, null],
+    ]);
+    expect(d?.rules).toEqual([]);
+  });
+
+  it("adds a venue's house rules, how winners collect, and its free-to-play lines", () => {
+    const rules: MomentRule[] = [{ moment: "final", square: { amount: null, note: "Gift card" }, reverse: null }];
+    const d = tvDetails({ format: { ...FORMAT, rules, squarePrice: null, houseRules: ["Must be present to win"], claimCodes: true }, club });
+    expect(d).toEqual({
+      price: null,
+      prizes: [{ moment: "final", label: "Final", amount: null, note: "Gift card", reverse: null }],
+      rules: ["Must be present to win", CLAIM_LINE],
+      venue: ["Free to play · No purchase necessary", "Prizes from The Rusty Anchor"],
+    });
+  });
+
+  it("leaves amounts off a just-for-fun board's prizes", () => {
+    const rules: MomentRule[] = [{ moment: "final", square: { amount: 100, note: "Bragging rights" }, reverse: null }];
+    expect(tvDetails({ format: { ...FORMAT, rules, justForFun: true, squarePrice: null } })?.prizes).toEqual([
+      { moment: "final", label: "Final", amount: null, note: "Bragging rights", reverse: null },
+    ]);
   });
 });
 
@@ -181,11 +231,20 @@ describe("celebrationFor", () => {
       kind: null,
       player: { id: "dre", name: "Dre", color: "#4dabf7", emoji: "" },
       amount: "$200",
+      prize: "Loser buys wings",
       score: "KC 7 – 3 BUF",
       reverse: null,
+      claim: false,
     });
     const half = celebrationFor(winner("q2", "Half"), state);
-    expect(half).toMatchObject({ title: "Halftime winner", amount: "$200", reverse: { player: { name: "Kim" }, amount: "$50" } });
+    expect(half).toMatchObject({ title: "Halftime winner", amount: "$200", prize: null, reverse: { player: { name: "Kim" }, amount: "$50", prize: null } });
+  });
+
+  it("says the winner has a claim code on a board that uses them (never the code)", () => {
+    const venue = makeState({ format: { ...FORMAT, claimCodes: true } }, { scores: [score("q1", 7, 3)] });
+    const c = celebrationFor(winner("q1", "Q1"), venue);
+    expect(c?.claim).toBe(true);
+    expect(JSON.stringify(c)).not.toMatch(/code/i);
   });
 
   it("ignores anything that isn't a winner, or a moment that was taken back", () => {

@@ -9,7 +9,7 @@ import { FREE_PLAYER_LIMIT } from "../shared/hostFee";
 import { KICKOFF_ERRORS } from "../shared/kickoff";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { MAX_PLAYERS, resolveResults } from "../shared/squares";
-import { PAYMENT_REQUIRED_CODE, type CreateGameResponse, type GameState, type GameSummary, type LiveUpdate } from "../shared/types";
+import { PAYMENT_REQUIRED_CODE, type ClaimsResponse, type CreateGameResponse, type GameState, type GameSummary, type LiveUpdate } from "../shared/types";
 import type { Env } from "./env";
 import { ACTIVITY_KEEP, HOUSEKEEPING_MINUTE, housekeeping, isHousekeepingTick } from "./housekeeping";
 import worker from "./index";
@@ -135,6 +135,46 @@ async function openBoard(over: Record<string, unknown> = {}): Promise<{ id: stri
   expect((await call("POST", `/games/${game.id}/claim`, { client: BEN, body: { cells: [{ row: 1, col: 1 }] } })).status).toBe(200);
   return { id: game.id, admin: adminToken };
 }
+
+describe("claim codes (venue boards)", () => {
+  /** A board with claim codes on, drawn, Ana winning Q1. */
+  async function wonByAna(claimCodes = true) {
+    const { id, admin } = await openBoard({ format: { periods: "quarters", reverse: false, boardSize: 25, freshNumbers: false, claimCodes, houseRules: ["Must be present to win"] } });
+    await call("POST", `/games/${id}/lock`, { admin });
+    const locked = (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
+    const anaCell = locked.squares.find((s) => s.playerId === pid(ANA))!;
+    const draw = locked.game.numbers!["*"];
+    await call("POST", `/games/${id}/scores`, { admin, body: { periodKey: "q1", scoreX: draw.x[anaCell.col][0], scoreY: draw.y[anaCell.row][0] } });
+    return { id, admin };
+  }
+
+  it("give the winner their code and the host every code, never the public board or anyone else", async () => {
+    const { id, admin } = await wonByAna();
+    const state = await call<GameState>("GET", `/games/${id}`, { client: null });
+    expect(state.body.game.format).toMatchObject({ claimCodes: true, houseRules: ["Must be present to win"] });
+
+    const ana = await call<ClaimsResponse>("GET", `/games/${id}/claims`, { client: ANA });
+    expect(ana.status).toBe(200);
+    expect(ana.body.all).toBeNull();
+    expect(ana.body.mine).toEqual([{ periodKey: "q1", label: "Q1", reverse: false, playerId: pid(ANA), code: expect.stringMatching(/^[ACDEFHJKMNPRTUVWXY34679]{4}$/) }]);
+    const code = ana.body.mine[0].code;
+    expect(state.text).not.toContain(code);
+
+    const ben = await call<ClaimsResponse>("GET", `/games/${id}/claims`, { client: BEN });
+    expect(ben.body).toEqual({ enabled: true, mine: [], all: null });
+    // The admin token proves the host; without it the host's device is just a player.
+    const host = await call<ClaimsResponse>("GET", `/games/${id}/claims`, { admin });
+    expect(host.body.all).toEqual(ana.body.mine);
+    expect((await call<ClaimsResponse>("GET", `/games/${id}/claims`, {})).body.all).toBeNull();
+    // Stable: the same code every time it's asked.
+    expect((await call<ClaimsResponse>("GET", `/games/${id}/claims`, { client: ANA })).body.mine[0].code).toBe(code);
+  });
+
+  it("are off unless the host turned them on", async () => {
+    const { id, admin } = await wonByAna(false);
+    expect((await call<ClaimsResponse>("GET", `/games/${id}/claims`, { admin })).body).toEqual({ enabled: false, mine: [], all: null });
+  });
+});
 
 describe("public payloads never contain a clientId", () => {
   it("names everyone by public player id in GameState, activity and summaries", async () => {
