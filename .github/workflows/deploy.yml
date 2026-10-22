@@ -61,9 +61,14 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: d1 migrations apply jaxsquares --remote
 
+      # SEO_PREVIOUS_MANIFEST: each page keeps its sitemap date unless it
+      # changed since the live site, and only changed pages get an IndexNow
+      # ping (scripts/seo/build.ts, docs/seo.md).
       - name: Build and deploy
         id: deploy
         uses: cloudflare/wrangler-action@v3
+        env:
+          SEO_PREVIOUS_MANIFEST: https://jaxsquares.com/seo/pages.json
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy
@@ -85,6 +90,12 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/g/abc234")" = 200
           # A landing page is its own static file, not the SPA fallback.
           curl -fsS "$URL/football-squares" | grep -q 'rel="canonical" href="https://jaxsquares.com/football-squares"'
+          # The homepage is home.html (its own canonical), boards stay out of search, and AI crawlers get llms.txt.
+          # (grep reads to the end, so curl never hits a closed pipe.)
+          curl -fsS "$URL/" | grep 'rel="canonical" href="https://jaxsquares.com/"' >/dev/null
+          curl -sS -o /dev/null -D - "$URL/g/abc234" | grep -i '^x-robots-tag: noindex' >/dev/null
+          curl -fsS "$URL/llms.txt" | grep '^# JaxSquares' >/dev/null
+          curl -fsS "$URL/nfl-squares" | grep 'id="week-games"' >/dev/null
           echo "Live: $URL"
 
       # jaxsquares.com: once it's an active zone in this Cloudflare account,
@@ -95,3 +106,10 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: bash scripts/custom-domain.sh
+
+      # Tell IndexNow (Bing, which ChatGPT search reads, plus Yandex and
+      # others) which pages changed in this deploy. Skips itself until
+      # jaxsquares.com serves the key file. Never fails the deploy.
+      - name: Ping IndexNow
+        continue-on-error: true
+        run: node --experimental-strip-types scripts/seo/indexnow.ts

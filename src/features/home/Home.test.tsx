@@ -149,6 +149,16 @@ describe("Home", () => {
     expect(screen.getAllByTestId("new-board")).toHaveLength(1);
   });
 
+  it("says it's for football and basketball, and links the web's rules guide as a full page", async () => {
+    serve([]);
+    renderHome();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Sports squares,\s*live with your\s*crew\.$/);
+    expect(screen.getByText(/^Football and basketball\./)).toBeInTheDocument();
+    // A plain link, not the router's: the guide is a static page, not an app screen.
+    expect(screen.getByTestId("welcome-guide")).toHaveAttribute("href", "/how-to-play-football-squares");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+  });
+
   it("tells someone in the iPhone Home Screen app that the boards they joined in Safari are still there", async () => {
     const ua = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148");
     Object.defineProperty(navigator, "standalone", { configurable: true, value: true });

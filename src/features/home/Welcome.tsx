@@ -1,6 +1,7 @@
 // First open on a new device: what JaxSquares is in one line, a board that's
 // already mid-game, and the two ways in. The tab dock stays out of the way so
-// "Make a board" is the one obvious move.
+// "Make a board" is the one obvious move. The homepage's static version for
+// crawlers (scripts/seo/home.ts) says the same: keep the two in step.
 
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -8,7 +9,7 @@ import { PlusIcon } from "../../components/icons";
 import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
 import { useHideTabBar } from "../../components/shell";
 import { useAuthSetup } from "../../lib/auth";
-import { haptic } from "../../lib/native";
+import { haptic, isNative } from "../../lib/native";
 import { SignInSheet } from "../account";
 import { detectHelpEnv } from "../notifications/platformHelp";
 import { JoinCodeSheet } from "./JoinCodeSheet";
@@ -41,7 +42,7 @@ export function Welcome() {
       <div className="home-enter">
         <div className="relative">
           <h1 className="font-display text-hero font-extrabold text-ink">
-            Football squares,
+            Sports squares,
             <br />
             <span className="text-ink-brand">
               live with your
@@ -53,7 +54,17 @@ export function Welcome() {
           <Jax pose="sit" size={78} className="pointer-events-none absolute -bottom-1 -right-1 max-[359px]:hidden" />
         </div>
         <p className="mt-2.5 max-w-[22rem] text-callout text-ink-muted">
-          Make a board, text the link, and watch the squares fill up. Scores and winners land live.
+          Football and basketball. Make a board, text the link, and watch the squares fill up. Scores and winners
+          land live.
+          {/* New to squares: the rules guide, a page of the website (not in the app's bundle of screens). */}
+          {!isNative() && (
+            <>
+              {" "}
+              <a href="/how-to-play-football-squares" data-testid="welcome-guide" className="font-bold text-ink-brand">
+                How to play
+              </a>
+            </>
+          )}
         </p>
       </div>
 

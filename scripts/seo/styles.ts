@@ -130,6 +130,19 @@ thead th{color:var(--color-ink-subtle);font-size:.75rem;letter-spacing:.08em;tex
 tbody th{color:var(--color-ink);font-weight:800}
 td{color:var(--color-ink-muted)}
 tbody tr:last-child th,tbody tr:last-child td{border-bottom:0}
+.table-wrap.scroll{overflow-x:auto}
+.heat{font-size:.8125rem;font-variant-numeric:tabular-nums}
+.heat th,.heat td{text-align:center;padding:8px 1px}
+@media (min-width:480px){.heat th,.heat td{padding:8px 4px}}
+.heat td{color:var(--color-ink);background:color-mix(in srgb,var(--color-brand-line) calc(var(--h)*60%),transparent)}
+.heat thead th{letter-spacing:0;font-size:.8125rem}
+/* This week's games (filled in by the Worker: worker/weekGames.ts) */
+.week h3{margin:1rem 0 .25rem;font-size:1rem}
+.games{list-style:none;padding:0;margin:.5rem 0 1rem;display:grid;gap:8px}
+.games li{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 12px;padding:12px 14px;border-radius:14px;background:var(--color-surface-2);box-shadow:inset 0 0 0 1px var(--color-line)}
+.games .match{font-weight:800;color:var(--color-ink)}
+.games time{color:var(--color-ink-muted);font-size:.9375rem}
+.games .live{color:var(--color-ink-brand);font-weight:800;font-size:.8125rem}
 .callout{margin:.5rem 0 1.25rem;padding:16px 18px;border-radius:16px;background:var(--brand-wash);box-shadow:inset 0 0 0 1px var(--color-line-strong);color:var(--color-ink-muted)}
 .callout p:last-child{margin:0}
 figure{margin:0}

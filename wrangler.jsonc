@@ -15,8 +15,24 @@
     "not_found_handling": "single-page-application",
     // Let the Worker see /g/* first so it can add per-game link previews,
     // /.well-known/* so it can serve universal-link files, and the big game
-    // page's old address so it can redirect it.
-    "run_worker_first": ["/api/*", "/g/*", "/.well-known/*", "/super-bowl-squares", "/super-bowl-squares/"]
+    // page's old address so it can redirect it. Also: the homepage (home.html
+    // at "/"), the app screens it keeps out of search (noindex), and the
+    // landing pages that list this week's games (worker/weekGames.ts).
+    "run_worker_first": [
+      "/api/*",
+      "/g/*",
+      "/.well-known/*",
+      "/super-bowl-squares",
+      "/super-bowl-squares/",
+      "/",
+      "/home",
+      "/new",
+      "/me",
+      "/club/*",
+      "/nfl-squares",
+      "/college-football-squares",
+      "/basketball-squares"
+    ]
   },
   "d1_databases": [
     {

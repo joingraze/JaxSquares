@@ -4,7 +4,7 @@
 // sitemap.xml. Pure string building; scripts/seo/build.ts does the IO.
 
 import { boardDiagram, ctas, esc } from "./blocks.ts";
-import { APP_PAGES, HUB, LANDING_SLUGS, ORIGIN, SITE_NAME, pageUrl, type LandingSlug } from "./site.ts";
+import { APP_PAGES, HUB, LANDING_SLUGS, ORIGIN, SITE_NAME, SOCIAL, pageUrl, type LandingSlug } from "./site.ts";
 import { CSS } from "./styles.ts";
 
 export type JaxPose = "cheer" | "sit" | "peek";
@@ -36,6 +36,21 @@ export interface HowTo {
   steps: { name: string; text: string }[];
 }
 
+/** A page built on a table of data: its Dataset JSON-LD and the CSV it offers. */
+export interface DatasetInfo {
+  name: string;
+  /** Plain text, 50 characters or more. */
+  description: string;
+  /** ISO 8601 interval, e.g. "1999/2025". */
+  temporalCoverage: string;
+  variableMeasured: string[];
+  keywords: string[];
+  /** Published path of the CSV download. */
+  csv: string;
+  /** Where the source data comes from. */
+  basedOn: string;
+}
+
 export interface LandingPage {
   slug: LandingSlug;
   /** Short name in navs, breadcrumbs and related links. */
@@ -52,6 +67,7 @@ export interface LandingPage {
   sections: Section[];
   faqs: Faq[];
   howTo?: HowTo;
+  dataset?: DatasetInfo;
   /** The "not affiliated with the NFL" line in the footer. */
   nflNotice?: boolean;
   /** The "not affiliated with the NBA or the WNBA" line in the footer. */
@@ -103,26 +119,37 @@ function ldScript(data: object): string {
 
 const plain = (text: string) => text.trim().replace(/\s*\n\s*\n\s*/g, " ").replace(/\s+/g, " ");
 
+const ORGANIZATION_ID = `${ORIGIN}/#organization`;
+
+/** Who runs the site, with its official profiles (the hub and the homepage carry it). */
+export function organizationLd(): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": ORGANIZATION_ID,
+    name: SITE_NAME,
+    url: `${ORIGIN}/`,
+    logo: `${ORIGIN}/icons/icon-512.png`,
+    sameAs: Object.values(SOCIAL),
+  };
+}
+
+export function websiteLd(): object {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${ORIGIN}/#website`,
+    name: SITE_NAME,
+    url: `${ORIGIN}/`,
+    publisher: { "@id": ORGANIZATION_ID },
+  };
+}
+
 export function structuredData(page: LandingPage, all: readonly LandingPage[]): object[] {
   const url = pageUrl(page.slug);
   const out: object[] = [];
   if (page.slug === HUB) {
-    out.push({
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": `${ORIGIN}/#organization`,
-      name: SITE_NAME,
-      url: `${ORIGIN}/`,
-      logo: `${ORIGIN}/icons/icon-512.png`,
-    });
-    out.push({
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "@id": `${ORIGIN}/#website`,
-      name: SITE_NAME,
-      url: `${ORIGIN}/`,
-      publisher: { "@id": `${ORIGIN}/#organization` },
-    });
+    out.push(organizationLd(), websiteLd());
   } else {
     const parent = parentOf(page, all);
     if (parent) {
@@ -150,6 +177,22 @@ export function structuredData(page: LandingPage, all: readonly LandingPage[]): 
         text: s.text,
         url: `${url}#step-${i + 1}`,
       })),
+    });
+  }
+  if (page.dataset) {
+    const d = page.dataset;
+    out.push({
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      name: d.name,
+      description: d.description,
+      url,
+      keywords: d.keywords,
+      temporalCoverage: d.temporalCoverage,
+      variableMeasured: d.variableMeasured,
+      isBasedOn: d.basedOn,
+      creator: { "@type": "Organization", "@id": ORGANIZATION_ID, name: SITE_NAME, url: `${ORIGIN}/` },
+      distribution: [{ "@type": "DataDownload", encodingFormat: "text/csv", contentUrl: `${ORIGIN}${d.csv}` }],
     });
   }
   out.push({
@@ -281,12 +324,13 @@ function footer(page: LandingPage, all: readonly LandingPage[], ctx: RenderConte
     ["/support", "Support"],
     ["/terms", "Terms"],
     ["/privacy", "Privacy"],
+    [SOCIAL.instagram, "Instagram"],
   ]
-    .map(([href, label]) => `<li><a href="${href}">${label}</a></li>`)
+    .map(([href, label]) => `<li><a href="${href}"${href.startsWith("/") ? "" : ` rel="me"`}>${label}</a></li>`)
     .join("");
   return (
     `<footer class="foot"><div class="wrap"><div class="foot-grid">` +
-    `<div>${brand}<p class="foot-note">Football squares, live with your crew. Make a board, text the link, and every score lands on every phone.</p></div>` +
+    `<div>${brand}<p class="foot-note">Football and basketball squares, live with your crew. Make a board, text the link, and every score lands on every phone.</p></div>` +
     `<nav aria-labelledby="f-guides"><h2 id="f-guides">Guides</h2><ul>${guides}</ul></nav>` +
     `<nav aria-labelledby="f-app"><h2 id="f-app">JaxSquares</h2><ul>${app}</ul></nav></div>` +
     `<p class="foot-note">${MONEY_NOTICE}</p>` +
@@ -314,13 +358,21 @@ export function renderPage(page: LandingPage, all: readonly LandingPage[], ctx: 
   );
 }
 
+/** Every crawler, search and AI alike, may read every page; the JSON API is no page. Boards opt out with X-Robots-Tag (worker/index.ts). */
 export function renderRobots(): string {
-  return `User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`;
+  return `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${ORIGIN}/sitemap.xml\n`;
 }
 
-/** Landing pages first (the hub at top priority), then the app's public pages. `lastmod`: the build date (YYYY-MM-DD). */
-export function renderSitemap(lastmod: string): string {
-  const urls = [...LANDING_SLUGS.map((s) => pageUrl(s)), ...APP_PAGES.map((p) => (p === "/" ? `${ORIGIN}/` : `${ORIGIN}${p}`))];
-  const body = urls.map((u) => `  <url><loc>${u}</loc><lastmod>${lastmod}</lastmod></url>`).join("\n");
+/** Every URL in the sitemap: the landing pages first (the hub at top), then the app's public pages. */
+export function sitemapUrls(): string[] {
+  return [...LANDING_SLUGS.map((s) => pageUrl(s)), ...APP_PAGES.map((p) => (p === "/" ? `${ORIGIN}/` : `${ORIGIN}${p}`))];
+}
+
+/** `lastmod` (YYYY-MM-DD): one date for every URL, or each URL's own (when its page last changed: build.ts). */
+export function renderSitemap(lastmod: string | ((url: string) => string)): string {
+  const dateOf = typeof lastmod === "string" ? () => lastmod : lastmod;
+  const body = sitemapUrls()
+    .map((u) => `  <url><loc>${u}</loc><lastmod>${dateOf(u)}</lastmod></url>`)
+    .join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }

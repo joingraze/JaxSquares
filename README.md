@@ -134,16 +134,21 @@ scripts/seo/     Static landing pages (/football-squares, ...) and printable PDF
 
 `/football-squares`, `/big-game-squares`, `/nfl-squares`,
 `/college-football-squares`, `/basketball-squares`, `/march-madness-squares`,
-`/printable-football-squares` and `/how-to-play-football-squares` are static
-HTML written from
+`/printable-football-squares`, `/how-to-play-football-squares` and
+`/best-football-squares-numbers` (how often every square hits, from nflverse's
+NFL final scores) are static HTML written from
 `scripts/seo/content.ts` by `npm run build` (after `vite build`, into
-`dist/client` as `<slug>.html`, with `robots.txt`, `sitemap.xml` and the fonts),
-so a copy change ships with the next deploy. The asset server answers them
-before the SPA fallback; `/<slug>/` and `/<slug>.html` redirect to `/<slug>`.
+`dist/client` as `<slug>.html`, with `robots.txt`, `sitemap.xml`, `llms.txt`,
+the homepage's `home.html` and the fonts), so a copy change ships with the next
+deploy. The asset server answers them before the SPA fallback; `/<slug>/` and
+`/<slug>.html` redirect to `/<slug>`. The NFL, college football and basketball
+pages go through the Worker, which lists this week's games on them.
 Their screenshots and the free PDFs need Chromium, so they're committed:
 `npm run seo:images` (WebP screenshots in `public/seo/shots/`) and
 `npm run seo:printables` (`public/printables/*.pdf` plus previews). The tests
 in `scripts/seo/seo.test.ts` check metadata, JSON-LD and the banned words.
+Search and AI-assistant setup (Search Console, Bing, IndexNow, crawlers) is in
+[docs/seo.md](docs/seo.md).
 
 ## Local development
 

@@ -107,9 +107,10 @@ and "free" always means free to set up (big boards have a host fee at the draw).
 
 Brand constants (handle, URL, taglines, colors) live in `studio/brand.ts`.
 Schedule and history facts for the templated videos live in
-`studio/compositions/data.ts`. The square stats in `studio/lib/stats.ts` are
-generated from nflverse's `games.csv` by `studio/scripts/digit_odds.py` (NFL
-final scores 1999–2025).
+`studio/compositions/data.ts`. The square stats in `studio/lib/stats.ts` come
+from `scripts/seo/data/nflFinals.ts`, which `scripts/seo/stats.ts` generates
+from nflverse's `games.csv` (NFL final scores 1999–2025): the same numbers as
+the website's data page, refreshed yearly (docs/seo.md).
 
 ### Compositions
 

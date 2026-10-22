@@ -182,7 +182,7 @@ function markdown() {
   out.push("## Research behind this plan");
   out.push("");
   out.push(
-    "Summaries of the Oct 19, 2026 research (Instagram ranking and cadence, sports-app case studies, the 2026 NFL and college calendars, verified on-this-day facts) are in `research/`. Square stats come from nflverse `games.csv` (NFL final scores 1999–2025) via `marketing/studio/scripts/digit_odds.py`.",
+    "Summaries of the Oct 19, 2026 research (Instagram ranking and cadence, sports-app case studies, the 2026 NFL and college calendars, verified on-this-day facts) are in `research/`. Square stats come from nflverse `games.csv` (NFL final scores 1999–2025) via `scripts/seo/stats.ts` (the same numbers as jaxsquares.com/best-football-squares-numbers).",
   );
   out.push("");
   return out.join("\n");

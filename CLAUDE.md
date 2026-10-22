@@ -13,6 +13,11 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   framework/IO code. `shared/squares.ts` (number drawing, winners, results) and
   `shared/formats.ts` (presets, prize notes) are pure and unit-tested — add tests
   there when changing game logic.
+- Search and AI crawlers (docs/seo.md): `scripts/seo/` builds the static
+  landing pages, `home.html` (served at `/`: the SPA shell plus a static copy of
+  the welcome screen; keep it in step with `src/features/home/Welcome.tsx`),
+  `sitemap.xml`, `llms.txt` and the data page's numbers. Boards and app screens
+  send `X-Robots-Tag: noindex`.
 - D1 access lives only in `worker/db.ts`, except module-owned tables, which only
   their module's store file touches (`worker/payments/store.ts`,
   `worker/push/store.ts`, `worker/auth/store.ts`, `worker/email/store.ts`). Routes validate input and orchestrate.

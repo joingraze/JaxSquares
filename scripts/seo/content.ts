@@ -6,14 +6,33 @@
 // matching "not affiliated" line. The football championship is "the big game",
 // never its trademarked name (TRADEMARKED_EVENT in site.ts; seo.test.ts checks).
 
-import { boardDiagram, callout, features, link, paras, printableCards, shots, steps, table, terms, ticks } from "./blocks.ts";
+import { weekSlot } from "../../shared/weekGames.ts";
+import { boardDiagram, callout, features, heatTable, link, paras, printableCards, shots, steps, table, terms, ticks } from "./blocks.ts";
+import {
+  DIGIT_SHARE,
+  DIGITS_BY_SHARE,
+  FIRST_SEASON,
+  GAMES,
+  LAST_SEASON,
+  PCT,
+  RANKED,
+  SEASONS,
+  TOP_FINALS,
+  fmtCount,
+  fmtPct,
+  listOf,
+  oneIn,
+  shareOf,
+  squareName,
+} from "./finals.ts";
 import type { LandingPage } from "./render.ts";
-import { PRINT_QR_LABEL } from "./site.ts";
+import { FINALS_CSV, PRINT_QR_LABEL } from "./site.ts";
 
 const HOW_TO = "how-to-play-football-squares";
 const PRINTABLES = "printable-football-squares";
 const BASKETBALL = "basketball-squares";
 const MARCH = "march-madness-squares";
+const BEST = "best-football-squares-numbers";
 
 const hub: LandingPage = {
   slug: "football-squares",
@@ -93,7 +112,9 @@ The big game in February is the biggest squares day of the year, and the ${link(
 
 College fans get a full slate every Saturday, plus rivalry week and bowl season: see ${link("college-football-squares", "college football squares")}. And if you'd like a sheet for the fridge door too, grab a ${link(PRINTABLES, "free printable football squares template")}. Each one has a QR code that turns it into a live board.
 
-Squares isn't just for football, either. ${link(BASKETBALL, "Basketball squares")} works the same way for NBA, WNBA and college games, and the ${link(MARCH, "March Madness squares guide")} covers a board for every tournament game.`),
+Squares isn't just for football, either. ${link(BASKETBALL, "Basketball squares")} works the same way for NBA, WNBA and college games, and the ${link(MARCH, "March Madness squares guide")} covers a board for every tournament game.
+
+Curious which numbers win most? ${link(BEST, "The best numbers in football squares")} counts every NFL final score since ${FIRST_SEASON}, square by square.`),
     },
     {
       id: "prizes",
@@ -276,6 +297,14 @@ When you make a board on JaxSquares, this week's NFL games are right there to pi
 Watching a game that isn't listed? Type in any two teams instead. Entering a score takes two taps, and the host can correct one or pick a winner by hand if something goes sideways.`),
     },
     {
+      id: "this-week",
+      h2: "This week's NFL games",
+      body: weekSlot(
+        paras(`
+During the season, this week's NFL games are listed here with their kickoff times, from Thursday night through Monday night. Every one of them is ready to link when you make a board, with the soonest kickoff already picked.`),
+      ),
+    },
+    {
       id: "great-games",
       h2: "Great games for squares",
       body: ticks([
@@ -302,7 +331,7 @@ Mix it up from week to week: <strong>every quarter</strong> for a classic board,
       body: paras(`
 In squares, only the last digit of each score matters. A team on 24 is a 4 and a team on 10 is a 0. Because touchdowns with the extra point (7) and field goals (3) are the most common scores in the NFL, some digits turn up far more than others: 0, 7, 3 and 4 come up a lot, while 2 and 5 are rare.
 
-That's exactly why the numbers are drawn at random after everyone has picked. Nobody gets to choose a good digit, so everyone starts even. If you want every square to have more chances, play every score: each time a team scores, the square matching the new score wins, so a high-scoring game can produce a dozen winners. The ${link(HOW_TO, "rules guide")} explains every format.`),
+That's exactly why the numbers are drawn at random after everyone has picked. Nobody gets to choose a good digit, so everyone starts even. (For how often every square has hit on an NFL final score, see ${link(BEST, "the best numbers in football squares")}.) If you want every square to have more chances, play every score: each time a team scores, the square matching the new score wins, so a high-scoring game can produce a dozen winners. The ${link(HOW_TO, "rules guide")} explains every format.`),
     },
   ],
   faqs: [
@@ -359,6 +388,14 @@ const college: LandingPage = {
 College football is built for groups: alumni chats, tailgate crews, dorm floors and families split between two schools. Squares fits right in. A board takes a minute to make, the link works in any phone's browser, and nobody needs to know the depth chart to play. Your aunt who went to the other school has exactly the same chance as you do.
 
 On JaxSquares you can pick a college game from this week's schedule so the scores arrive live, or type in any matchup, from the season opener to your old high school's homecoming game.`),
+    },
+    {
+      id: "this-week",
+      h2: "This week's college football games",
+      body: weekSlot(
+        paras(`
+During the season, this week's biggest college games are listed here, ranked matchups first, with their kickoff times. Every game on the schedule is ready to link when you make a board, and any matchup that isn't listed can be typed in.`),
+      ),
     },
     {
       id: "higher-scores",
@@ -493,6 +530,14 @@ Watching a game that isn't listed, like a high school game or a rec league final
           `College hoops: conference rivalries all winter, then the tournament in March. See the ${link(MARCH, "March Madness squares guide")} for planning a board for every tournament game.`,
           "The playoffs: a board for every game of a series, for the group that watches them all.",
         ]),
+    },
+    {
+      id: "this-week",
+      h2: "Basketball games this week",
+      body: weekSlot(
+        paras(`
+The next week of NBA, WNBA and college games is listed here with tip-off times whenever those seasons are on. In the app, pick Basketball and a league to see every game for the next seven days.`),
+      ),
     },
     {
       id: "why-jaxsquares",
@@ -966,4 +1011,152 @@ Squares works great just for fun, for bragging rights or for a prize like the la
   },
 };
 
-export const PAGES: readonly LandingPage[] = [hub, bigGame, nfl, college, basketball, marchMadness, printables, howTo];
+// ---- The data page: how often every square hits on an NFL final score ----
+
+const [TOP_SQUARE] = RANKED;
+const WORST_SQUARE = RANKED[RANKED.length - 1];
+const TOP_DIGITS = DIGITS_BY_SHARE.slice(0, 4).map((d) => d.digit);
+const RARE_DIGITS = DIGITS_BY_SHARE.slice(-2).map((d) => d.digit).sort((a, b) => a - b);
+const TOP_TEN = RANKED.slice(0, 10);
+const CLOSE_FINALS = TOP_FINALS.filter(([w, l]) => w - l === 3 || w - l === 7).length;
+const pctOfDigit = (d: number) => `${DIGIT_SHARE[d].toFixed(1)}%`;
+
+const bestNumbers: LandingPage = {
+  slug: BEST,
+  nav: "Best squares numbers",
+  blurb: "How often every square has hit on an NFL final score, and why some numbers win far more than others.",
+  title: "Best Numbers for Football Squares, by the Data | JaxSquares",
+  description: `The best and worst football squares numbers from ${fmtCount(GAMES)} NFL final scores (${SEASONS}): how often every square hits, and why ${TOP_SQUARE.x} and ${TOP_SQUARE.y} lead.`,
+  eyebrow: "Squares by the numbers",
+  h1: `The best numbers in football squares, <span class="hl">by the data</span>`,
+  lede: `We counted every NFL final score from the ${FIRST_SEASON} season through ${LAST_SEASON}: ${fmtCount(GAMES)} games. Here's how often each square on a board has hit, the numbers you hope to draw, and the ones you don't.`,
+  hero: {
+    jax: "cheer",
+    win: { x: TOP_SQUARE.y, y: TOP_SQUARE.x },
+    art: `An example squares board with the Hawks ${TOP_SQUARE.y}, Wolves ${TOP_SQUARE.x} square lit gold: the most common square on an NFL final score.`,
+  },
+  sections: [
+    {
+      id: "best-squares",
+      h2: "The best squares on the board",
+      body:
+        paras(`
+On a 10×10 board, an average square hits on 1% of final scores. The best ones do far better. The square where ${TOP_SQUARE.x} meets ${TOP_SQUARE.y} (either way round) hit on <strong>${fmtPct(TOP_SQUARE.pct)}</strong> of NFL finals, about 1 game in ${oneIn(TOP_SQUARE.pct)}: ${(TOP_SQUARE.pct).toFixed(1)} times an average square. Next come ${listOf(TOP_TEN.slice(1, 5).map(squareName))}.
+
+There's a pattern: the top of the list is built from ${listOf(TOP_DIGITS)}. Those four digits make up just 16 of the 100 squares, yet ${Math.round(shareOf(TOP_DIGITS))}% of all final scores landed on one of them.`) +
+        table(
+          "The ten best squares on the final score",
+          ["Square", "Hits on the final", "About 1 game in"],
+          TOP_TEN.map((s) => [squareName(s), fmtPct(s.pct), String(oneIn(s.pct))]),
+        ),
+    },
+    {
+      id: "digits",
+      h2: "Which digits come up most",
+      body:
+        paras(`
+Only the last digit of each team's score matters in squares, and football scores aren't spread evenly. A touchdown with the extra point is worth 7 and a field goal is worth 3, so final scores pile up on numbers like 10, 14, 17, 20, 21, 24 and 27. Between them, ${listOf(TOP_DIGITS)} are the last digit of ${DIGITS_BY_SHARE.slice(0, 4).reduce((n, d) => n + d.share, 0).toFixed(0)}% of all team scores.
+
+At the other end, a score ends in ${RARE_DIGITS[0]} only ${pctOfDigit(RARE_DIGITS[0])} of the time and in ${RARE_DIGITS[1]} only ${pctOfDigit(RARE_DIGITS[1])}. Landing there usually takes a missed extra point, a two-point try, a safety or a pile of field goals.`) +
+        table(
+          "How often a team's final score ends in each digit",
+          ["Last digit", "Share of final scores"],
+          DIGIT_SHARE.map((share, d) => [String(d), `${share.toFixed(1)}%`]),
+        ),
+    },
+    {
+      id: "worst-squares",
+      h2: "The worst squares on the board",
+      body: paras(`
+The worst square is <strong>${squareName(WORST_SQUARE)}</strong>: it hit on just ${fmtPct(WORST_SQUARE.pct)} of finals, about 1 game in ${fmtCount(oneIn(WORST_SQUARE.pct))}. ${listOf(RANKED.slice(-4, -1).reverse().map(squareName))} aren't much better. That spread is what squares is built on: the best square on the board hit about ${Math.round(TOP_SQUARE.pct / WORST_SQUARE.pct)} times as often as the worst.
+
+A square made of two rare digits rarely wins on the final, but it isn't hopeless. On a board with a winner every quarter (or every score), it gets several more chances, and a single safety or two-point try can turn a rare digit into the winning one.`),
+    },
+    {
+      id: "every-square",
+      h2: "Every square, by the numbers",
+      body:
+        paras(`
+Here's the whole board. Find one team's last digit down the side and the other team's across the top: the cell where they meet is how often that square hit on an NFL final score. The board reads the same either way round, so it doesn't matter which team goes on top.`) +
+        heatTable("Share of NFL final scores landing on each square (%)", "", PCT, (v) => v.toFixed(1)) +
+        `<p class="fine">Download the whole table: <a href="${FINALS_CSV}" download>every square as a CSV file</a>.</p>`,
+    },
+    {
+      id: "common-finals",
+      h2: "The most common NFL final scores",
+      body:
+        paras(`
+The most common final score is ${TOP_FINALS[0][0]}–${TOP_FINALS[0][1]}, in ${TOP_FINALS[0][2]} games. ${CLOSE_FINALS === TOP_FINALS.length ? "All ten" : `${CLOSE_FINALS} of the ten`} of the most common finals were decided by exactly 3 or 7 points, a field goal or a touchdown, which is why the same few digits keep turning up.`) +
+        table(
+          "The ten most common NFL final scores",
+          ["Final score", "Games", "Square"],
+          TOP_FINALS.map(([w, l, n]) => [`${w}–${l}`, String(n), `${w % 10}–${l % 10}`]),
+        ),
+    },
+    {
+      id: "fair",
+      h2: "Why the draw keeps it fair",
+      body: paras(`
+So should you hope for ${TOP_SQUARE.x} and ${TOP_SQUARE.y}? Yes, but you can't choose them. In squares, everyone picks their squares first and the numbers are drawn afterwards, so nobody knows which squares will get the good digits. On JaxSquares, Jax shuffles the digits 0 to 9 across the top and down the side, live on every phone, once the board is full. Everyone starts even, and a square that draws two rare digits is simply unlucky.
+
+Want to share the luck around? Turn on <strong>new numbers each quarter</strong> so the digits are reshuffled after every quarter, or play <strong>reverse winners</strong> so the square with the digits swapped wins too. The ${link(HOW_TO, "rules guide")} explains every option, and ${link("football-squares", "football squares")} covers the basics.`),
+    },
+    {
+      id: "quarters",
+      h2: "Quarters, college games and basketball",
+      body: paras(`
+These numbers are for final scores. Earlier in a game fewer points are on the board, so quarter and halftime scores lean even harder on 0, 3 and 7, and a 0 is especially common after the first quarter.
+
+College scores run higher and wilder, with more two-point tries and missed kicks, so their digits spread out more: see ${link("college-football-squares", "college football squares")}. In basketball, points arrive in ones, twos and threes dozens of times a game, so all ten digits come up about equally, which makes ${link(BASKETBALL, "basketball squares")} about as fair as squares gets. Running a board every week? ${link("nfl-squares", "NFL squares")} links any game so the scores fill in on their own.`),
+    },
+    {
+      id: "method",
+      h2: "How we counted",
+      body: paras(`
+The numbers come from <a href="https://github.com/nflverse/nfldata">nflverse</a>'s open record of NFL games: every regular-season and playoff game from the ${FIRST_SEASON} season through the ${LAST_SEASON} season, ${fmtCount(GAMES)} games in all, with overtime counted in the final score. For each game we took the last digit of both teams' final scores. A board doesn't care which team is home, so each square's number is averaged over both ways of placing the teams. The table is updated each year after the season ends.`),
+    },
+  ],
+  faqs: [
+    {
+      q: "What are the best numbers in football squares?",
+      a: `${TOP_SQUARE.x} and ${TOP_SQUARE.y}. Across ${fmtCount(GAMES)} NFL final scores (${SEASONS}), the square where ${TOP_SQUARE.x} meets ${TOP_SQUARE.y} hit most often, on ${fmtPct(TOP_SQUARE.pct)} of finals, about 1 game in ${oneIn(TOP_SQUARE.pct)}. Squares built from ${listOf(TOP_DIGITS)} fill the rest of the top of the list.`,
+    },
+    {
+      q: "What are the worst numbers in football squares?",
+      a: `${RARE_DIGITS[0]} and ${RARE_DIGITS[1]}. A team's final score ends in ${RARE_DIGITS[0]} only ${pctOfDigit(RARE_DIGITS[0])} of the time and in ${RARE_DIGITS[1]} only ${pctOfDigit(RARE_DIGITS[1])}, and the ${squareName(WORST_SQUARE)} square hit on just ${fmtPct(WORST_SQUARE.pct)} of NFL finals.`,
+    },
+    {
+      q: "Can I choose my numbers in squares?",
+      a: "Not in a fair game. Everyone picks squares first and the numbers 0 to 9 are drawn at random afterwards, so nobody knows which square will get the good digits. On JaxSquares the draw happens live on every phone once the board is full.",
+    },
+    {
+      q: "Do these numbers apply to every quarter?",
+      a: "They're for final scores. Quarter and halftime scores are lower, so 0, 3 and 7 come up even more often early in a game. New numbers each quarter is a good option if your group wants to spread the luck around.",
+    },
+    {
+      q: "Where does the data come from?",
+      a: `From nflverse's open record of NFL games: every regular-season and playoff game from the ${FIRST_SEASON} season through ${LAST_SEASON}. The table is refreshed after each season, and you can download it as a CSV file from this page.`,
+    },
+    {
+      q: "Is JaxSquares affiliated with the NFL?",
+      a: "No. JaxSquares isn't affiliated with or endorsed by the NFL. We use the name only to describe the games behind these numbers.",
+    },
+  ],
+  dataset: {
+    name: `How often each football squares square hits on an NFL final score, ${SEASONS}`,
+    description: `For each of the 100 squares on a 10x10 football squares board, the share of NFL final scores (regular season and playoffs, ${SEASONS} seasons, ${fmtCount(GAMES)} games) whose last digits land on it, averaged over both orientations, plus how often a team's final score ends in each digit 0 to 9.`,
+    temporalCoverage: `${FIRST_SEASON}-09/${LAST_SEASON + 1}-02`,
+    variableMeasured: ["Last digit of each team's final score", "Share of final scores landing on each square (%)"],
+    keywords: ["football squares", "squares numbers", "best squares numbers", "NFL final scores", "last digit"],
+    csv: FINALS_CSV,
+    basedOn: "https://github.com/nflverse/nfldata",
+  },
+  related: ["football-squares", "nfl-squares", HOW_TO, "college-football-squares"],
+  nflNotice: true,
+  cta: {
+    h2: "Let Jax draw the numbers",
+    text: "Make a board, text the link, and once the squares are picked the digits are drawn live on every phone. Free to set up, and friends join from a link.",
+  },
+};
+
+export const PAGES: readonly LandingPage[] = [hub, bigGame, nfl, college, basketball, marchMadness, printables, howTo, bestNumbers];

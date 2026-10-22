@@ -6,6 +6,16 @@
 export const ORIGIN = "https://jaxsquares.com";
 export const SITE_NAME = "JaxSquares";
 
+/** Official profiles: the Organization's `sameAs` in the JSON-LD, and the footers. */
+export const SOCIAL = { instagram: "https://www.instagram.com/jaxsquares/" } as const;
+
+/**
+ * IndexNow (Bing, Yandex, Seznam, Naver; docs/seo.md): the key published at
+ * /<key>.txt that proves the pings scripts/seo/indexnow.ts sends are ours. Not
+ * a secret: it only lets a ping name pages on this host.
+ */
+export const INDEXNOW_KEY = "acc73a4283b98ee0f1ea69ca96071507";
+
 /** Every landing page, in nav order. The hub comes first. */
 export const LANDING_SLUGS = [
   "football-squares",
@@ -16,6 +26,7 @@ export const LANDING_SLUGS = [
   "march-madness-squares",
   "printable-football-squares",
   "how-to-play-football-squares",
+  "best-football-squares-numbers",
 ] as const;
 export type LandingSlug = (typeof LANDING_SLUGS)[number];
 
@@ -29,6 +40,23 @@ export const SPA_SEGMENTS = ["", "new", "g", "me", "privacy", "terms", "support"
 
 /** App pages listed in the sitemap next to the landing pages. */
 export const APP_PAGES = ["/", "/terms", "/privacy", "/support"] as const;
+
+/**
+ * The homepage: the SPA shell with the homepage's own head and a static
+ * version of the welcome screen in #root, for crawlers that don't run
+ * JavaScript. The Worker serves it at "/" (and sends /home there).
+ */
+export const HOME_FILE = "home.html";
+
+/**
+ * Every sitemap URL's content hash and the day it last changed. build.ts
+ * publishes it; the next deploy's build compares against the live copy, so
+ * an unchanged page keeps its lastmod and only changed pages get an IndexNow ping.
+ */
+export const MANIFEST_PATH = "/seo/pages.json";
+export interface PageManifest {
+  pages: Record<string, { hash: string; lastmod: string }>;
+}
 
 /**
  * Betting vocabulary the product never uses (CLAUDE.md "Product rules"), with
@@ -120,6 +148,9 @@ export const FONTS = [
     href: "/seo/fonts/bricolage-grotesque.woff2",
   },
 ] as const;
+
+/** The data page's table as a download (scripts/seo/build.ts writes it from scripts/seo/data/nflFinals.ts). */
+export const FINALS_CSV = "/seo/data/nfl-final-score-squares.csv";
 
 /** Where a printed sheet's QR code sends people. */
 export const PRINT_QR_URL = `${ORIGIN}/new`;

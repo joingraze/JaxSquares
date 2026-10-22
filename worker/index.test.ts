@@ -1433,6 +1433,41 @@ describe("the big game page's old address", () => {
   });
 });
 
+describe("search engines", () => {
+  const get = (path: string) => worker.fetch(new Request(`https://jaxsquares.test${path}`), env, {} as ExecutionContext);
+
+  it("keeps boards, clubs and the app's own screens out of search results", async () => {
+    for (const path of ["/g/abc234", "/g/abc234/tv", "/club/c1/tv", "/new", "/me"]) {
+      expect({ path, robots: (await get(path)).headers.get("x-robots-tag") }).toEqual({ path, robots: "noindex" });
+    }
+    for (const path of ["/", "/terms", "/football-squares"]) {
+      expect({ path, robots: (await get(path)).headers.get("x-robots-tag") }).toEqual({ path, robots: null });
+    }
+  });
+
+  it("serves the homepage from home.html, falling back to the app shell", async () => {
+    const asked: string[] = [];
+    env.ASSETS = {
+      fetch: async (req: Request) => {
+        const path = new URL(req.url).pathname;
+        asked.push(path);
+        return path === "/home" ? new Response("<html>home</html>") : new Response("<html>shell</html>");
+      },
+    } as unknown as Fetcher;
+    expect(await (await get("/?ref=ig")).text()).toBe("<html>home</html>");
+    expect(asked).toEqual(["/home"]);
+
+    env.ASSETS = { fetch: async (req: Request) => new Response("shell", { status: new URL(req.url).pathname === "/home" ? 404 : 200 }) } as unknown as Fetcher;
+    expect(await (await get("/")).text()).toBe("shell");
+  });
+
+  it("sends home.html's own address to the homepage", async () => {
+    const res = await get("/home?ref=ig");
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("https://jaxsquares.test/?ref=ig");
+  });
+});
+
 describe("well-known files", () => {
   it("serves assetlinks.json from the Android env vars", async () => {
     env.ANDROID_PACKAGE = "com.example.squares";

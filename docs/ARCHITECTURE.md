@@ -310,9 +310,18 @@ Non-API routes:
   · A printable board with a QR code to follow it live"), `og:url` the view's own
   link. Never an amount. A code typed in capitals redirects (301) to the
   lowercase view, like the board.
-- `/club/:clubId/tv` (the club TV, see "The Club Pass") isn't a Worker route:
-  the assets' SPA fallback serves `index.html`, and the page reads its token
-  from the URL's fragment.
+- `/club/:clubId/tv` (the club TV, see "The Club Pass") is the assets' SPA
+  fallback (`index.html`), and the page reads its token from the URL's fragment.
+- Search (docs/seo.md): `/g/*`, `/club/*`, `/new` and `/me` carry
+  `X-Robots-Tag: noindex` (a board page lists its players' names). `GET /`
+  serves the build's `home.html` (the SPA shell with the homepage's own head and
+  a static welcome in `#root` for crawlers without JavaScript; the plain shell
+  when it's missing), and `/home` redirects (301) to `/`. `GET /nfl-squares`,
+  `/college-football-squares` and `/basketball-squares` serve the static page
+  with this week's games from the league's ScoreHub in its slot
+  (`worker/weekGames.ts`, `shared/weekGames.ts`), or the page as is when the
+  schedule isn't back within 2.5 s. Each of these paths is in
+  `run_worker_first` (wrangler.jsonc).
 - `assetlinks.json` reads `ANDROID_PACKAGE` (default `com.jaxsquares.app`) and
   `ANDROID_SHA256_CERT_FINGERPRINTS` (comma-separated); the AASA file reads
   `APPLE_TEAM_ID` and `APPLE_BUNDLE_ID`.
@@ -748,6 +757,10 @@ score, q1, q2, q3, final.
   `worker/housekeeping.ts`, `worker/season.ts` (season boards), `worker/clean.ts`,
   `worker/ids.ts`, `migrations/*` – core API. `shared/season.ts` = season
   boards' pure rules.
+- `worker/weekGames.ts` – this week's games on three landing pages
+  (`serveWeekPage`); `shared/weekGames.ts` – the slot's markers, shared with
+  the SEO build (`scripts/seo/*`, which owns every static page, `home.html`,
+  `robots.txt`, `sitemap.xml` and `llms.txt`).
 - `worker/scores/*` – ESPN schedule + live score provider and the `ScoreHub`
   Durable Object. Exports `scheduleRoutes` (Hono, with `/season/teams` and
   `/season/schedule`), `liveVia(env, event)` (live scores through the hub),
