@@ -91,7 +91,8 @@ export const FAMILY_CHAT: ChatVariant = {
 };
 
 // Chaos messages arrive faster and faster.
-const chaosAt = (i: number, n: number) => 24 + Math.round(150 * Math.pow(i / n, 0.72));
+/** When chaos message `i` of `n` pops in: the first is already there on frame 0, with the hook. */
+const chaosAt = (i: number, n: number) => (i === 0 ? -12 : 14 + Math.round(160 * Math.pow(i / n, 0.72)));
 const FREEZE = 196;
 const LINK = 236;
 const calmAt = (i: number) => LINK + 34 + i * 16;

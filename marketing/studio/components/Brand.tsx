@@ -33,13 +33,14 @@ export function EndCard({
 }) {
   const f = frame - start;
   if (f < 0) return null;
-  const wipe = interpolate(f, [0, 10], [0, 1], { easing: Easing.out });
-  const jax = spring(f - 3, FPS, { stiffness: 190, damping: 13 });
-  const word = spring(f - 9, FPS, { stiffness: 200, damping: 20 });
-  const sub = spring(f - 14, FPS, { stiffness: 200, damping: 22 });
-  const chips = (i: number) => spring(f - 20 - i * 3, FPS, { stiffness: 260, damping: 18 });
-  const cta = spring(f - 30, FPS, { stiffness: 220, damping: 15 });
-  const pulse = 1 + 0.03 * Math.sin(Math.max(0, f - 40) / 4);
+  // Everything, the URL included, is in within half a second: Reels loop fast, so the card has to read at once.
+  const wipe = interpolate(f, [0, 6], [0, 1], { easing: Easing.out });
+  const jax = spring(f + 2, FPS, { stiffness: 220, damping: 14 });
+  const word = spring(f - 2, FPS, { stiffness: 240, damping: 20 });
+  const sub = spring(f - 5, FPS, { stiffness: 240, damping: 22 });
+  const chips = (i: number) => spring(f - 8 - i * 2, FPS, { stiffness: 280, damping: 18 });
+  const cta = spring(f - 6, FPS, { stiffness: 260, damping: 16 });
+  const pulse = 1 + 0.03 * Math.sin(Math.max(0, f - 20) / 4);
   return (
     <div className="absolute inset-0" style={{ opacity: wipe, zIndex: 80 }}>
       <Backdrop frame={frame} tint={tint} glowY={40} />

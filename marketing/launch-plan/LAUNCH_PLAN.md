@@ -20,17 +20,18 @@ Do these in order. Each one is a step in the calendar page's Start here list.
 12. **Fri, Oct 23, 12:30 PM** · Grid 2/9: Scores update themselves (One score, every phone)
 13. **Sat, Oct 24, 11:00 AM** · Grid 3/9: Jax draws the numbers (POV: you hit Draw)
 14. **Sat, Oct 24, 11:20 AM** · Grid story: the board is open
-15. **Sat, Oct 24, 8:00 PM** · Launch check-in: Reels 1–2 at 48 hours
-16. **Sun, Oct 25, 11:00 AM** · Grid 4/9: Your square hits, the gold one (Winners light up)
+15. **Sun, Oct 25, 11:00 AM** · Grid 4/9: Your square hits, the gold one (Winners light up)
+16. **Sun, Oct 25, 1:00 PM** · Launch check-in: Reels 1–2
 17. **Mon, Oct 26, 2:00 PM** · Grid 5/9: Meet Jax (Let Jax pick)
 18. **Tue, Oct 27, 1:00 PM** · Grid 6/9: Text one link (Every squares group chat)
 19. **Tue, Oct 27, 1:20 PM** · Grid story: 6 of 9
 20. **Wed, Oct 28, 12:30 PM** · Grid 7/9: Free to set up (Squares board speedrun)
-21. **Wed, Oct 28, 8:00 PM** · Launch check-in: Reels 3–5 at 48 hours
+21. **Wed, Oct 28, 2:30 PM** · Launch check-in: Reels 3–5
 22. **Thu, Oct 29, 12:30 PM** · Grid 8/9: No app needed (Join from the link)
 23. **Fri, Oct 30, 12:30 PM** · Grid 9/9: Football and basketball squares (Basketball squares)
 24. **Fri, Oct 30, 12:50 PM** · Grid story: board's full
 25. **Fri, Oct 30, 2:00 PM** · Profile: Highlights
+26. **Mon, Nov 2, 1:00 PM** · Launch check-in: Reels 6–9
 
 ## Positioning
 
@@ -78,7 +79,7 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 - Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.
 - No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.
 - 'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.
-- Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02 Let Jax pick, 04 best and worst squares, 07 feature rundown, u2 bar TV, u4 every phone, u6 join from the link. Not 01 or u1: they show the create flow's host-fee line.
+- Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.
 - Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.
 - Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.
 - Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.
@@ -161,10 +162,10 @@ Preview of the profile on launch day: `out/g-grid-preview/01.png`
 | Sat, Oct 24 | 11:00 AM | Story | College Saturday slate | — |
 | Sat, Oct 24 | 11:00 AM | Reel | Grid 3/9: Jax draws the numbers (POV: you hit Draw) | `03-the-draw` |
 | Sat, Oct 24 | 11:20 AM | Story | Grid story: the board is open | `s-grid-progress/01` |
-| Sat, Oct 24 | 8:00 PM | Task | Launch check-in: Reels 1–2 at 48 hours | — |
 | Sun, Oct 25 | 9:15 AM | Story | Breakfast football from Paris | — |
 | Sun, Oct 25 | 11:00 AM | Reel | Grid 4/9: Your square hits, the gold one (Winners light up) | `06-winners-light-up` |
 | Sun, Oct 25 | 11:30 AM | Story | Game day checklist | `s-story-frames/06` |
+| Sun, Oct 25 | 1:00 PM | Task | Launch check-in: Reels 1–2 | — |
 | Sun, Oct 25 | 7:30 PM | Story | SNF: Chiefs at Seahawks poll | — |
 
 ### Wed, Oct 21, 2:30 PM · Task: Profile 1/7: Switch to a professional account
@@ -309,6 +310,7 @@ Send this to whoever runs your squares 📲
 
 **Alt text:** Screen recording of JaxSquares, the football and basketball squares app: a live score lands on a winning square, then picking a game, texting the board link, friends picking squares and Jax drawing the numbers.
 
+- At 48 hours (Sat Oct 24, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -343,6 +345,7 @@ Send this to whoever keeps score with a pen. Your board → link in bio.
 
 **Alt text:** Three phones side by side showing the same JaxSquares board. The third quarter ends 10 to 13; Maya's phone in the middle shows You won with Jax cheering, and the two others show Maya wins Q3.
 
+- At 48 hours (Sun Oct 25, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -363,21 +366,16 @@ Jax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–
 
 Running a board for Ole Miss–Texas tonight? Link in bio. Send this to your board's most suspicious player.
 
-#footballsquares #squarespool #collegefootball #hookem
+#footballsquares #squarespool #collegefootball #texaslonghorns
 ```
 
 **Alt text:** Screen recording of JaxSquares: the host taps Draw on a full board, the digits 0 to 9 shuffle for both teams, and the app shows The numbers are in.
 
+- At 48 hours (Mon Oct 26, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
 - Square 3: bottom left. The bottom row is done: the grid story goes up at 11:20.
-
-### Sat, Oct 24, 8:00 PM · Task: Launch check-in: Reels 1–2 at 48 hours
-
-- [ ] For Grid 1 and 2, open Insights: plays, average watch time, skip rate, shares (sends), saves, profile visits.
-- [ ] Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.
-- [ ] Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour.
 
 ### Sun, Oct 25, 11:00 AM · Reel: Grid 4/9: Your square hits, the gold one (Winners light up)
 
@@ -394,15 +392,22 @@ Live scores are built in, so the winning square lights up at Q1, Half, Q3 and th
 
 Chiefs–Seahawks tonight? Your board is one link away: link in bio. Send this to the friend who always does the math wrong.
 
-#footballsquares #squarespool #officepool #chiefskingdom
+#footballsquares #squarespool #officepool #chiefs
 ```
 
 **Alt text:** Screen recording of JaxSquares on game day: a push notification, the score landing on the viewer's square as it lights up gold, then the home screen and the activity feed.
 
+- At 48 hours (Tue Oct 27, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
 - Square 4: middle row, right. The gold square of the logo.
+
+### Sun, Oct 25, 1:00 PM · Task: Launch check-in: Reels 1–2
+
+- [ ] Compare Grid 1 and 2 at 48 hours each (their notes list the numbers).
+- [ ] Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.
+- [ ] Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour.
 
 **Stories:**
 
@@ -427,8 +432,8 @@ Chiefs–Seahawks tonight? Your board is one link away: link in bio. Send this t
 | Tue, Oct 27 | 4:30 PM | Story | On this day: Emmitt breaks the record (2002) | `otd1-oct27-emmitt` |
 | Tue, Oct 27 | 6:00 PM | Story | Poll: 0–0 or 7–7? | `s-story-frames/01` |
 | Wed, Oct 28 | 12:30 PM | Reel | Grid 7/9: Free to set up (Squares board speedrun) | `u1-speedrun` |
+| Wed, Oct 28 | 2:30 PM | Task | Launch check-in: Reels 3–5 | — |
 | Wed, Oct 28 | 6:00 PM | Story | Poll answer | `s-story-frames/02` |
-| Wed, Oct 28 | 8:00 PM | Task | Launch check-in: Reels 3–5 at 48 hours | — |
 | Thu, Oct 29 | 12:30 PM | Reel | Grid 8/9: No app needed (Join from the link) | `u6-join-from-link` |
 | Thu, Oct 29 | 6:45 PM | Story | TNF: Panthers at Packers | — |
 | Fri, Oct 30 | 12:30 PM | Reel | Grid 9/9: Football and basketball squares (Basketball squares) | `u3-basketball-squares` |
@@ -458,11 +463,12 @@ Can't pick a square? Tap “Let Jax pick”, choose how many, and he grabs rando
 
 Running a Cowboys–Eagles board tonight? Link in bio. Send this to the friend who'd let Jax pick 🐶
 
-#footballsquares #squarespool #dogsofinstagram #flyeaglesfly
+#footballsquares #squarespool #officepool #eagles
 ```
 
 **Alt text:** Jax, an illustrated tan and white dog, then a screen recording of JaxSquares where Let Jax pick claims five random open squares on a board.
 
+- At 48 hours (Wed Oct 28, 14:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -486,6 +492,7 @@ Send this to the person who runs your squares 📲 Your board → link in bio.
 
 **Alt text:** A chaotic group chat about a squares spreadsheet freezes, one JaxSquares invite link drops in, and a phone shows friends picking squares on the board.
 
+- At 48 hours (Thu Oct 29, 13:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -511,13 +518,14 @@ Send this to whoever still makes the board on paper. Link in bio.
 
 **Alt text:** Screen recording of the JaxSquares squares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.
 
+- At 48 hours (Fri Oct 30, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
 - Square 7: top row, right.
 - Not a boost pick: the review step shows the host-fee line.
 
-### Wed, Oct 28, 8:00 PM · Task: Launch check-in: Reels 3–5 at 48 hours
+### Wed, Oct 28, 2:30 PM · Task: Launch check-in: Reels 3–5
 
 - [ ] Same five numbers for Grid 3, 4 and 5; compare with 1 and 2.
 - [ ] Reply to every comment still open, and save the best question for Fri Nov 6's Reply with a Reel.
@@ -538,11 +546,12 @@ Tap a square, type your name, you're in. Nothing to download, no account, no pas
 
 Panthers–Packers tonight? Link in bio. Send this to the friend who always asks “do I have to download something?”
 
-#footballsquares #squarespool #gopackgo
+#footballsquares #squarespool #packers
 ```
 
 **Alt text:** A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.
 
+- At 48 hours (Sat Oct 31, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -568,6 +577,7 @@ Send this to your hoops group chat. Your board → link in bio.
 
 **Alt text:** Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a basketball squares board in five taps, then the third quarter ending 75 to 70 on the viewer's square as Jax cheers.
 
+- At 48 hours (Sun Nov 1, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
@@ -677,6 +687,7 @@ Send this to whoever drew 2–2 this week.
 
 | Day | Time (ET) | Type | Post | Asset |
 |---|---|---|---|---|
+| Mon, Nov 2 | 1:00 PM | Task | Launch check-in: Reels 6–9 | — |
 | Mon, Nov 2 | 2:00 PM | Reel | 1 year ago: Cam Little's 68-yarder | `otd2-nov02-cam-little` |
 | Mon, Nov 2 | 7:00 PM | Story | MNF: Bears at Seahawks | — |
 | Tue, Nov 3 | 12:00 PM | Story | Quiz: most common final | `s-story-frames/03` |
@@ -694,6 +705,12 @@ Send this to whoever drew 2–2 this week.
 | Sun, Nov 8 | 9:15 AM | Story | Madrid game | — |
 | Sun, Nov 8 | 11:00 AM | Reel | On this day: Dempsey's 63-yarder (1970) | `otd3-nov08-dempsey` |
 | Sun, Nov 8 | 8:00 PM | Task | Weekly review + creator outreach | — |
+
+### Mon, Nov 2, 1:00 PM · Task: Launch check-in: Reels 6–9
+
+- [ ] Compare Grid 6–9 at 48 hours each (their notes list the numbers) with Reels 1–5.
+- [ ] Rank all nine by sends per reach: the top two lead the Nov 10 boost decision.
+- [ ] Open your profile: is the logo whole? Reply to any comments still open.
 
 ### Mon, Nov 2, 2:00 PM · Reel: 1 year ago: Cam Little's 68-yarder
 
@@ -868,7 +885,7 @@ Set up your own board free → link in bio
 
 ### Tue, Nov 10, 1:30 PM · Task: Boost decision
 
-- [ ] Compare sends per reach across the boost candidates (no amounts on screen): u2 bar TV, u4 every phone, u6 join from the link, 02 Let Jax pick, 04 best and worst squares.
+- [ ] Compare sends per reach across the boost candidates (no amounts on screen): u4-every-phone, u6-join-from-link, 02-let-jax-pick, u2-bar-big-screen, 04-best-worst-squares.
 - [ ] Boost the winner with $50–150 over 5 days. Audience: US, 21+, football / fantasy football interests. Goal: profile visits.
 - [ ] Judge it on boards created, not likes.
 

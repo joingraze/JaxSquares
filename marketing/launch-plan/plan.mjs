@@ -86,7 +86,7 @@ export const PLAN = {
       "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
       "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
       "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
-      "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02 Let Jax pick, 04 best and worst squares, 07 feature rundown, u2 bar TV, u4 every phone, u6 join from the link. Not 01 or u1: they show the create flow's host-fee line.",
+      "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
       "Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.",
@@ -337,21 +337,30 @@ export const PLAN = {
       notes: ["Archive rather than delete: nothing is lost, and the Reels start on a clean grid."],
     },
     {
-      date: "2026-10-24", time: "20:00", kind: "task", week: "prep", start: true,
-      title: "Launch check-in: Reels 1–2 at 48 hours",
+      date: "2026-10-25", time: "13:00", kind: "task", week: "prep", start: true,
+      title: "Launch check-in: Reels 1–2",
       checklist: [
-        "For Grid 1 and 2, open Insights: plays, average watch time, skip rate, shares (sends), saves, profile visits.",
+        "Compare Grid 1 and 2 at 48 hours each (their notes list the numbers).",
         "Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.",
         "Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour.",
       ],
     },
     {
-      date: "2026-10-28", time: "20:00", kind: "task", week: "w1", start: true,
-      title: "Launch check-in: Reels 3–5 at 48 hours",
+      date: "2026-10-28", time: "14:30", kind: "task", week: "w1", start: true,
+      title: "Launch check-in: Reels 3–5",
       checklist: [
         "Same five numbers for Grid 3, 4 and 5; compare with 1 and 2.",
         "Reply to every comment still open, and save the best question for Fri Nov 6's Reply with a Reel.",
         "Note the Reel with the most sends: it's the first boost candidate.",
+      ],
+    },
+    {
+      date: "2026-11-02", time: "13:00", kind: "task", week: "w2", start: true,
+      title: "Launch check-in: Reels 6–9",
+      checklist: [
+        "Compare Grid 6–9 at 48 hours each (their notes list the numbers) with Reels 1–5.",
+        "Rank all nine by sends per reach: the top two lead the Nov 10 boost decision.",
+        "Open your profile: is the logo whole? Reply to any comments still open.",
       ],
     },
     {
@@ -364,7 +373,7 @@ export const PLAN = {
       hashtags: [...H.core, H.hoops, "#gameday", "#bears"],
       altText:
         "Screen recording of JaxSquares, the football and basketball squares app: a live score lands on a winning square, then picking a game, texting the board link, friends picking squares and Jax drawing the numbers.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 1 sits bottom right of the logo."],
+      notes: ["At 48 hours (Sat Oct 24, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 1 sits bottom right of the logo."],
     },
     {
       date: "2026-10-23", time: "12:30", kind: "reel", week: "prep", start: true,
@@ -375,7 +384,7 @@ export const PLAN = {
       hashtags: [...H.core, H.hoops, "#groupchat"],
       altText:
         "Three phones side by side showing the same JaxSquares board. The third quarter ends 10 to 13; Maya's phone in the middle shows You won with Jax cheering, and the two others show Maya wins Q3.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 2: bottom row, middle."],
+      notes: ["At 48 hours (Sun Oct 25, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 2: bottom row, middle."],
     },
     {
       date: "2026-10-24", time: "11:00", kind: "reel", week: "prep", start: true,
@@ -384,10 +393,10 @@ export const PLAN = {
       tieIn: "College Saturday · BYU at UCF 3:30 PM FOX · Ole Miss at Texas 7:30 PM ABC · Houston at Utah 10:15 PM ESPN",
       caption:
         "POV: your squares board is full and you hit Draw 🔢 Square 3 of 9.\n\nJax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.\n\nRunning a board for Ole Miss–Texas tonight? Link in bio. Send this to your board's most suspicious player.",
-      hashtags: [...H.core, H.cfb, "#hookem"],
+      hashtags: [...H.core, H.cfb, "#texaslonghorns"],
       altText:
         "Screen recording of JaxSquares: the host taps Draw on a full board, the digits 0 to 9 shuffle for both teams, and the app shows The numbers are in.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 3: bottom left. The bottom row is done: the grid story goes up at 11:20."],
+      notes: ["At 48 hours (Mon Oct 26, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 3: bottom left. The bottom row is done: the grid story goes up at 11:20."],
     },
     {
       date: "2026-10-25", time: "11:00", kind: "reel", week: "prep", start: true,
@@ -396,10 +405,10 @@ export const PLAN = {
       tieIn: "NFL Sunday · Steelers vs. Saints in Paris 9:30 AM ET · 1:00 PM kickoffs · SNF Chiefs at Seahawks 8:20 PM",
       caption:
         "Every football squares board has a winning square. This is ours 🏆 Square 4 of 9, the gold one.\n\nLive scores are built in, so the winning square lights up at Q1, Half, Q3 and the Final, and the winner's phone gets the news. No math, no arguing.\n\nChiefs–Seahawks tonight? Your board is one link away: link in bio. Send this to the friend who always does the math wrong.",
-      hashtags: [...H.core, H.office, "#chiefskingdom"],
+      hashtags: [...H.core, H.office, "#chiefs"],
       altText:
         "Screen recording of JaxSquares on game day: a push notification, the score landing on the viewer's square as it lights up gold, then the home screen and the activity feed.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 4: middle row, right. The gold square of the logo."],
+      notes: ["At 48 hours (Tue Oct 27, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 4: middle row, right. The gold square of the logo."],
     },
     {
       date: "2026-10-26", time: "14:00", kind: "reel", week: "w1", start: true,
@@ -408,10 +417,10 @@ export const PLAN = {
       tieIn: "Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESPN/ABC",
       caption:
         "Meet Jax 🐶 the dog behind JaxSquares, football and basketball squares. Square 5 of 9, right in the middle.\n\nCan't pick a square? Tap “Let Jax pick”, choose how many, and he grabs random open squares for you. No favorites (unless you count treats).\n\nRunning a Cowboys–Eagles board tonight? Link in bio. Send this to the friend who'd let Jax pick 🐶",
-      hashtags: ["#footballsquares", "#squarespool", "#dogsofinstagram", "#flyeaglesfly"],
+      hashtags: ["#footballsquares", "#squarespool", H.office, "#eagles"],
       altText:
         "Jax, an illustrated tan and white dog, then a screen recording of JaxSquares where Let Jax pick claims five random open squares on a board.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 5: the center of the logo."],
+      notes: ["At 48 hours (Wed Oct 28, 14:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 5: the center of the logo."],
     },
     {
       date: "2026-10-27", time: "13:00", kind: "reel", week: "w1", start: true,
@@ -422,7 +431,7 @@ export const PLAN = {
       hashtags: [...H.core, "#groupchat", H.office],
       altText:
         "A chaotic group chat about a squares spreadsheet freezes, one JaxSquares invite link drops in, and a phone shows friends picking squares on the board.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 6: middle row, left. The middle row is done: the grid story goes up at 13:20."],
+      notes: ["At 48 hours (Thu Oct 29, 13:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 6: middle row, left. The middle row is done: the grid story goes up at 13:20."],
     },
     {
       date: "2026-10-28", time: "12:30", kind: "reel", week: "w1", start: true,
@@ -433,7 +442,7 @@ export const PLAN = {
       hashtags: [...H.core, H.office, "#gameday"],
       altText:
         "Screen recording of the JaxSquares squares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 7: top row, right.", "Not a boost pick: the review step shows the host-fee line."],
+      notes: ["At 48 hours (Fri Oct 30, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 7: top row, right.", "Not a boost pick: the review step shows the host-fee line."],
     },
     {
       date: "2026-10-29", time: "12:30", kind: "reel", week: "w1", start: true,
@@ -442,10 +451,10 @@ export const PLAN = {
       tieIn: "Thursday Night Football · Panthers at Packers · 8:15 PM ET · Prime Video",
       caption:
         "No app needed 📲 Square 8 of 9. Here's a football squares link from the friend's side:\n\nTap a square, type your name, you're in. Nothing to download, no account, no password. Same room? Scan the code on the host's screen.\n\nPanthers–Packers tonight? Link in bio. Send this to the friend who always asks “do I have to download something?”",
-      hashtags: [...H.core, "#gopackgo"],
+      hashtags: [...H.core, "#packers"],
       altText:
         "A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.",
-      notes: [AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 8: top row, middle."],
+      notes: ["At 48 hours (Sat Oct 31, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", AUDIO_EXPLAINER, GRID_COVER, NO_PIN, "Square 8: top row, middle."],
     },
     {
       date: "2026-10-30", time: "12:30", kind: "reel", week: "w1", start: true,
@@ -457,7 +466,7 @@ export const PLAN = {
       hashtags: [H.hoops, "#footballsquares", "#nba", "#collegebasketball", "#squarespool"],
       altText:
         "Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a basketball squares board in five taps, then the third quarter ending 75 to 70 on the viewer's square as Jax cheers.",
-      notes: [
+      notes: ["At 48 hours (Sun Nov 1, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.", 
         AUDIO_EXPLAINER,
         GRID_COVER,
         NO_PIN,
@@ -775,7 +784,7 @@ export const PLAN = {
       date: "2026-11-10", time: "13:30", kind: "task", week: "w3",
       title: "Boost decision",
       checklist: [
-        "Compare sends per reach across the boost candidates (no amounts on screen): u2 bar TV, u4 every phone, u6 join from the link, 02 Let Jax pick, 04 best and worst squares.",
+        "Compare sends per reach across the boost candidates (no amounts on screen): u4-every-phone, u6-join-from-link, 02-let-jax-pick, u2-bar-big-screen, 04-best-worst-squares.",
         "Boost the winner with $50–150 over 5 days. Audience: US, 21+, football / fantasy football interests. Goal: profile visits.",
         "Judge it on boards created, not likes.",
       ],

@@ -47,7 +47,7 @@
       "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
       "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
       "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
-      "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02 Let Jax pick, 04 best and worst squares, 07 feature rundown, u2 bar TV, u4 every phone, u6 join from the link. Not 01 or u1: they show the create flow's host-fee line.",
+      "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
       "Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio."
@@ -437,6 +437,7 @@
       ],
       "altText": "Screen recording of JaxSquares, the football and basketball squares app: a live score lands on a winning square, then picking a game, texting the board link, friends picking squares and Jax drawing the numbers.",
       "notes": [
+        "At 48 hours (Sat Oct 24, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -515,6 +516,7 @@
       ],
       "altText": "Three phones side by side showing the same JaxSquares board. The third quarter ends 10 to 13; Maya's phone in the middle shows You won with Jax cheering, and the two others show Maya wins Q3.",
       "notes": [
+        "At 48 hours (Sun Oct 25, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -557,10 +559,11 @@
         "#footballsquares",
         "#squarespool",
         "#collegefootball",
-        "#hookem"
+        "#texaslonghorns"
       ],
       "altText": "Screen recording of JaxSquares: the host taps Draw on a full board, the digits 0 to 9 shuffle for both teams, and the app shows The numbers are in.",
       "notes": [
+        "At 48 hours (Mon Oct 26, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -592,22 +595,6 @@
       "kindLabel": "Story"
     },
     {
-      "date": "2026-10-24",
-      "time": "20:00",
-      "kind": "task",
-      "week": "prep",
-      "start": true,
-      "title": "Launch check-in: Reels 1–2 at 48 hours",
-      "checklist": [
-        "For Grid 1 and 2, open Insights: plays, average watch time, skip rate, shares (sends), saves, profile visits.",
-        "Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.",
-        "Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour."
-      ],
-      "id": "2026-10-24T2000-task",
-      "files": [],
-      "kindLabel": "Task"
-    },
-    {
       "date": "2026-10-25",
       "time": "09:15",
       "kind": "story",
@@ -637,10 +624,11 @@
         "#footballsquares",
         "#squarespool",
         "#officepool",
-        "#chiefskingdom"
+        "#chiefs"
       ],
       "altText": "Screen recording of JaxSquares on game day: a push notification, the score landing on the viewer's square as it lights up gold, then the home screen and the activity feed.",
       "notes": [
+        "At 48 hours (Tue Oct 27, 11:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -672,6 +660,22 @@
     },
     {
       "date": "2026-10-25",
+      "time": "13:00",
+      "kind": "task",
+      "week": "prep",
+      "start": true,
+      "title": "Launch check-in: Reels 1–2",
+      "checklist": [
+        "Compare Grid 1 and 2 at 48 hours each (their notes list the numbers).",
+        "Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.",
+        "Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour."
+      ],
+      "id": "2026-10-25T1300-task",
+      "files": [],
+      "kindLabel": "Task"
+    },
+    {
+      "date": "2026-10-25",
       "time": "19:30",
       "kind": "story",
       "week": "prep",
@@ -699,11 +703,12 @@
       "hashtags": [
         "#footballsquares",
         "#squarespool",
-        "#dogsofinstagram",
-        "#flyeaglesfly"
+        "#officepool",
+        "#eagles"
       ],
       "altText": "Jax, an illustrated tan and white dog, then a screen recording of JaxSquares where Let Jax pick claims five random open squares on a board.",
       "notes": [
+        "At 48 hours (Wed Oct 28, 14:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -767,6 +772,7 @@
       ],
       "altText": "A chaotic group chat about a squares spreadsheet freezes, one JaxSquares invite link drops in, and a phone shows friends picking squares on the board.",
       "notes": [
+        "At 48 hours (Thu Oct 29, 13:00): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -854,6 +860,7 @@
       ],
       "altText": "Screen recording of the JaxSquares squares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.",
       "notes": [
+        "At 48 hours (Fri Oct 30, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -866,6 +873,22 @@
         "r-grid-covers/07.png"
       ],
       "kindLabel": "Reel"
+    },
+    {
+      "date": "2026-10-28",
+      "time": "14:30",
+      "kind": "task",
+      "week": "w1",
+      "start": true,
+      "title": "Launch check-in: Reels 3–5",
+      "checklist": [
+        "Same five numbers for Grid 3, 4 and 5; compare with 1 and 2.",
+        "Reply to every comment still open, and save the best question for Fri Nov 6's Reply with a Reel.",
+        "Note the Reel with the most sends: it's the first boost candidate."
+      ],
+      "id": "2026-10-28T1430-task",
+      "files": [],
+      "kindLabel": "Task"
     },
     {
       "date": "2026-10-28",
@@ -885,22 +908,6 @@
       "kindLabel": "Story"
     },
     {
-      "date": "2026-10-28",
-      "time": "20:00",
-      "kind": "task",
-      "week": "w1",
-      "start": true,
-      "title": "Launch check-in: Reels 3–5 at 48 hours",
-      "checklist": [
-        "Same five numbers for Grid 3, 4 and 5; compare with 1 and 2.",
-        "Reply to every comment still open, and save the best question for Fri Nov 6's Reply with a Reel.",
-        "Note the Reel with the most sends: it's the first boost candidate."
-      ],
-      "id": "2026-10-28T2000-task",
-      "files": [],
-      "kindLabel": "Task"
-    },
-    {
       "date": "2026-10-29",
       "time": "12:30",
       "kind": "reel",
@@ -914,10 +921,11 @@
       "hashtags": [
         "#footballsquares",
         "#squarespool",
-        "#gopackgo"
+        "#packers"
       ],
       "altText": "A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.",
       "notes": [
+        "At 48 hours (Sat Oct 31, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -965,6 +973,7 @@
       ],
       "altText": "Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a basketball squares board in five taps, then the third quarter ending 75 to 70 on the viewer's square as Jax cheers.",
       "notes": [
+        "At 48 hours (Sun Nov 1, 12:30): Insights → plays, average watch time, skip rate, sends, saves, profile visits.",
         "Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).",
         "Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.",
         "Don't pin it: pinned posts jump to the top of the grid and break the logo.",
@@ -1206,6 +1215,22 @@
         "Write down the one format to repeat and the one to drop."
       ],
       "id": "2026-11-01T2000-task",
+      "files": [],
+      "kindLabel": "Task"
+    },
+    {
+      "date": "2026-11-02",
+      "time": "13:00",
+      "kind": "task",
+      "week": "w2",
+      "start": true,
+      "title": "Launch check-in: Reels 6–9",
+      "checklist": [
+        "Compare Grid 6–9 at 48 hours each (their notes list the numbers) with Reels 1–5.",
+        "Rank all nine by sends per reach: the top two lead the Nov 10 boost decision.",
+        "Open your profile: is the logo whole? Reply to any comments still open."
+      ],
+      "id": "2026-11-02T1300-task",
       "files": [],
       "kindLabel": "Task"
     },
@@ -1582,7 +1607,7 @@
       "week": "w3",
       "title": "Boost decision",
       "checklist": [
-        "Compare sends per reach across the boost candidates (no amounts on screen): u2 bar TV, u4 every phone, u6 join from the link, 02 Let Jax pick, 04 best and worst squares.",
+        "Compare sends per reach across the boost candidates (no amounts on screen): u4-every-phone, u6-join-from-link, 02-let-jax-pick, u2-bar-big-screen, 04-best-worst-squares.",
         "Boost the winner with $50–150 over 5 days. Audience: US, 21+, football / fantasy football interests. Goal: profile visits.",
         "Judge it on boards created, not likes."
       ],

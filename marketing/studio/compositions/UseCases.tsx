@@ -1057,7 +1057,6 @@ export const JOIN_AUDIO: AudioSpec = {
   end: JOIN_END,
   drops: [0, JOIN.at],
   sfx: [
-    { at: 8, kind: "ding", gain: 0.7 },
     { at: 22, kind: "pop", gain: 0.6 },
     { at: JOIN_LINK_TAP, kind: "tap" },
     { at: JOIN.at, kind: "whoosh", gain: 0.6 },
@@ -1073,7 +1072,7 @@ export const JOIN_AUDIO: AudioSpec = {
 
 /** A text thread on the friend's phone (screen pts): Maya's message and the board link. */
 function Thread({ frame }: { frame: number }) {
-  const msg = spring(frame - 8, FPS, { stiffness: 240, damping: 19 });
+  const msg = spring(frame + 12, FPS, { stiffness: 240, damping: 19 });
   const link = spring(frame - 22, FPS, { stiffness: 240, damping: 19 });
   const press = frame >= JOIN_LINK_TAP && frame < JOIN_LINK_TAP + 8 ? 0.97 : 1;
   return (
