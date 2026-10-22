@@ -6,32 +6,65 @@ A 4-week Instagram launch for @jaxsquares (Oct 26 – Nov 22, 2026), plus a prep
 
 Do these in order. Each one is a step in the calendar page's Start here list.
 
-1. **Wed, Oct 21, 2:30 PM** · Profile 1/7: Switch to a professional account
-2. **Wed, Oct 21, 2:35 PM** · Profile 2/7: Profile picture
-3. **Wed, Oct 21, 2:40 PM** · Profile 3/7: Name and username
-4. **Wed, Oct 21, 2:45 PM** · Profile 4/7: Bio
-5. **Wed, Oct 21, 2:50 PM** · Profile 5/7: Link
-6. **Wed, Oct 21, 2:55 PM** · Profile 6/7: Privacy, sharing and security
-7. **Wed, Oct 21, 3:00 PM** · Profile 7/7: Saved replies
-8. **Thu, Oct 22, 9:00 AM** · Archive the 4 static grid posts
-9. **Thu, Oct 22, 11:30 AM** · Launch prep (before Grid 1)
-10. **Thu, Oct 22, 12:30 PM** · Grid 1/9: JaxSquares is live (How it works)
-11. **Thu, Oct 22, 12:40 PM** · Personal push
-12. **Fri, Oct 23, 12:30 PM** · Grid 2/9: Scores update themselves (One score, every phone)
-13. **Sat, Oct 24, 11:00 AM** · Grid 3/9: Jax draws the numbers (POV: you hit Draw)
-14. **Sat, Oct 24, 11:20 AM** · Grid story: the board is open
-15. **Sun, Oct 25, 11:00 AM** · Grid 4/9: Your square hits, the gold one (Winners light up)
-16. **Sun, Oct 25, 1:00 PM** · Launch check-in: Reels 1–2
-17. **Mon, Oct 26, 2:00 PM** · Grid 5/9: Meet Jax (Let Jax pick)
-18. **Tue, Oct 27, 1:00 PM** · Grid 6/9: Text one link (Every squares group chat)
-19. **Tue, Oct 27, 1:20 PM** · Grid story: 6 of 9
-20. **Wed, Oct 28, 12:30 PM** · Grid 7/9: Free to set up (Squares board speedrun)
-21. **Wed, Oct 28, 2:30 PM** · Launch check-in: Reels 3–5
-22. **Thu, Oct 29, 12:30 PM** · Grid 8/9: No app needed (Join from the link)
-23. **Fri, Oct 30, 12:30 PM** · Grid 9/9: Football and basketball squares (Basketball squares)
-24. **Fri, Oct 30, 12:50 PM** · Grid story: board's full
-25. **Fri, Oct 30, 2:00 PM** · Profile: Highlights
-26. **Mon, Nov 2, 1:00 PM** · Launch check-in: Reels 6–9
+**Wed, Oct 21**
+
+1. 2:30 PM · Profile 1/7: Switch to a professional account
+2. 2:35 PM · Profile 2/7: Profile picture
+3. 2:40 PM · Profile 3/7: Name and username
+4. 2:45 PM · Profile 4/7: Bio
+5. 2:50 PM · Profile 5/7: Link
+6. 2:55 PM · Profile 6/7: Privacy, sharing and security
+7. 3:00 PM · Profile 7/7: Saved replies
+
+**Thu, Oct 22**
+
+8. 9:00 AM · Archive the 4 static grid posts
+9. 11:30 AM · Launch prep (before Grid 1)
+10. 12:30 PM · Grid 1/9: JaxSquares is live (How it works)
+11. 12:40 PM · Personal push
+
+**Fri, Oct 23**
+
+12. 12:30 PM · Grid 2/9: Scores update themselves (One score, every phone)
+
+**Sat, Oct 24**
+
+13. 11:00 AM · Grid 3/9: Jax draws the numbers (POV: you hit Draw)
+14. 11:20 AM · Grid story: the board is open
+
+**Sun, Oct 25**
+
+15. 11:00 AM · Grid 4/9: Your square hits, the gold one (Winners light up)
+16. 1:00 PM · Launch check-in: Reels 1–2
+
+**Mon, Oct 26**
+
+17. 2:00 PM · Grid 5/9: Meet Jax (Let Jax pick)
+
+**Tue, Oct 27**
+
+18. 1:00 PM · Grid 6/9: Text one link (Every squares group chat)
+19. 1:20 PM · Grid story: 6 of 9
+
+**Wed, Oct 28**
+
+20. 12:30 PM · Grid 7/9: Free to set up (Squares board speedrun)
+21. 2:30 PM · Launch check-in: Reels 3–5
+
+**Thu, Oct 29**
+
+22. 12:30 PM · Grid 8/9: No app needed (Join from the link)
+
+**Fri, Oct 30**
+
+23. 12:30 PM · Grid 9/9: Football and basketball squares (Basketball squares)
+24. 12:50 PM · Grid story: board's full
+25. 2:00 PM · Profile: Highlights
+
+**Mon, Nov 2**
+
+26. 1:00 PM · Launch check-in: Reels 6–9
+
 
 ## Positioning
 

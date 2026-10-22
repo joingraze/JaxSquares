@@ -58,7 +58,12 @@ function markdown() {
   out.push("");
   out.push("Do these in order. Each one is a step in the calendar page's Start here list.");
   out.push("");
-  items.filter((it) => it.start).forEach((it, i) => out.push(`${i + 1}. **${fmtDay(it.date)}, ${fmtTime(it.time)}** · ${it.title}`));
+  const start = items.filter((it) => it.start);
+  for (const day of [...new Set(start.map((it) => it.date))]) {
+    out.push(`**${fmtDay(day)}**`, "");
+    for (const it of start.filter((x) => x.date === day)) out.push(`${start.indexOf(it) + 1}. ${fmtTime(it.time)} · ${it.title}`);
+    out.push("");
+  }
   out.push("");
   out.push("## Positioning");
   out.push("");
