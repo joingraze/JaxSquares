@@ -85,7 +85,7 @@
     "setup": {
       "name": "JaxSquares · Sports Squares",
       "bio": "Football & basketball squares 🏈🏀\nFree to set up · no app · no signup\nLive scores call winners. Make a board 👇\nNot affiliated w/ any league or team",
-      "link": "https://jaxsquares.com/?ref=ig (title: “Make a board”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).",
+      "link": "https://jaxsquares.com (title: “Make a board”). Link taps show in Instagram's Insights; the site runs no analytics, so no tracking tag.",
       "highlights": [
         "How it works",
         "Square stats",
@@ -318,13 +318,13 @@
       "title": "Profile 5/7: Link",
       "checklist": [
         "Edit profile → Links → Add external link.",
-        "Paste the URL and the title. The ?ref=ig shows Instagram visits in Cloudflare analytics.",
+        "Paste the URL and the title. Already added jaxsquares.com/?ref=ig? Edit it to the plain address: nothing reads the tag, and link taps show in Insights.",
         "Tap the link on your profile once to check it opens jaxsquares.com."
       ],
       "copy": [
         {
           "label": "URL",
-          "text": "https://jaxsquares.com/?ref=ig"
+          "text": "https://jaxsquares.com"
         },
         {
           "label": "Title",

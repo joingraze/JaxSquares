@@ -104,7 +104,7 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
   Live scores call winners. Make a board 👇
   Not affiliated w/ any league or team
   ```
-- **Link:** https://jaxsquares.com/?ref=ig (title: “Make a board”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).
+- **Link:** https://jaxsquares.com (title: “Make a board”). Link taps show in Instagram's Insights; the site runs no analytics, so no tracking tag.
 - **Highlights:** How it works, Square stats, Game days, Thanksgiving
 - **Category:** Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.
 - **Profile picture:** `out/p-profile-picture/01.png` (Option 1 (recommended): Jax over the board, the app icon. A face reads at every size.); `out/p-profile-picture/02.png` (Option 2: the website's 3×3 mark with the gold winning square)
@@ -228,13 +228,13 @@ Not affiliated w/ any league or team
 ### Wed, Oct 21, 2:50 PM · Task: Profile 5/7: Link
 
 - [ ] Edit profile → Links → Add external link.
-- [ ] Paste the URL and the title. The ?ref=ig shows Instagram visits in Cloudflare analytics.
+- [ ] Paste the URL and the title. Already added jaxsquares.com/?ref=ig? Edit it to the plain address: nothing reads the tag, and link taps show in Insights.
 - [ ] Tap the link on your profile once to check it opens jaxsquares.com.
 
 **URL:**
 
 ```text
-https://jaxsquares.com/?ref=ig
+https://jaxsquares.com
 ```
 
 **Title:**

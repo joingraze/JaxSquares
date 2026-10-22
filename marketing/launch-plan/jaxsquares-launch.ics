@@ -104,9 +104,10 @@ DTSTART;TZID=America/New_York:20261021T145000
 DURATION:PT30M
 SUMMARY:[Task] Profile 5/7: Link
 DESCRIPTION:☐ Edit profile → Links → Add external link.\n☐ Paste th
- e URL and the title. The ?ref=ig shows Instagram visits in Cloudflare anal
- ytics.\n☐ Tap the link on your profile once to check it opens jaxsquares
- .com.\n\nURL:\nhttps://jaxsquares.com/?ref=ig\nTITLE:\nMake a board
+ e URL and the title. Already added jaxsquares.com/?ref=ig? Edit it to the 
+ plain address: nothing reads the tag\, and link taps show in Insights.\n
+ ☐ Tap the link on your profile once to check it opens jaxsquares.com.\n\
+ nURL:\nhttps://jaxsquares.com\nTITLE:\nMake a board
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Profile 5/7: Link

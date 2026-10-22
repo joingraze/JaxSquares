@@ -41,7 +41,7 @@ const PROFILE = {
   name: "JaxSquares · Sports Squares",
   username: "jaxsquares",
   bio: "Football & basketball squares 🏈🏀\nFree to set up · no app · no signup\nLive scores call winners. Make a board 👇\nNot affiliated w/ any league or team",
-  linkUrl: "https://jaxsquares.com/?ref=ig",
+  linkUrl: "https://jaxsquares.com",
   linkTitle: "Make a board",
   category: "Sports & Recreation",
   replies: [
@@ -114,7 +114,7 @@ export const PLAN = {
     setup: {
       name: PROFILE.name,
       bio: PROFILE.bio,
-      link: `${PROFILE.linkUrl} (title: “${PROFILE.linkTitle}”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).`,
+      link: `${PROFILE.linkUrl} (title: “${PROFILE.linkTitle}”). Link taps show in Instagram's Insights; the site runs no analytics, so no tracking tag.`,
       highlights: ["How it works", "Square stats", "Game days", "Thanksgiving"],
       category:
         "Sports & Recreation. It tells visitors this is a sports account. Avoid App Page: the label sits under your name and contradicts “no app to download”. Website is the most literal fallback. You can also hide the label in Edit profile.",
@@ -242,7 +242,7 @@ export const PLAN = {
       title: "Profile 5/7: Link",
       checklist: [
         "Edit profile → Links → Add external link.",
-        "Paste the URL and the title. The ?ref=ig shows Instagram visits in Cloudflare analytics.",
+        "Paste the URL and the title. Already added jaxsquares.com/?ref=ig? Edit it to the plain address: nothing reads the tag, and link taps show in Insights.",
         "Tap the link on your profile once to check it opens jaxsquares.com.",
       ],
       copy: [
