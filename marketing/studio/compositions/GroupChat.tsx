@@ -97,7 +97,7 @@ const LINK = 236;
 const calmAt = (i: number) => LINK + 34 + i * 16;
 const PHONE = 344;
 const END = 430;
-export const CHAT_FRAMES = 510;
+export const CHAT_FRAMES = END + 45;
 
 const CLAIM: Cut = { at: PHONE, scene: "claim", from: 10, speed: 1.4 };
 
@@ -106,10 +106,9 @@ export function chatAudio(v: ChatVariant): AudioSpec {
   return {
     style: "bounce",
     end: END,
-    intro: 0.85,
     builds: [[110, FREEZE]],
     breaks: [{ from: FREEZE, to: LINK, level: 0 }],
-    drops: [LINK],
+    drops: [0, LINK],
     sfx: [
       ...v.chaos.map((_, i) => ({ at: chaosAt(i, v.chaos.length), kind: "pop" as const, gain: 0.8 })),
       { at: FREEZE, kind: "stop" },
@@ -205,6 +204,7 @@ export function makeGroupChat(v: ChatVariant) {
         {frame < FREEZE && (
           <Headline
             frame={frame}
+            landed
             text={v.hook}
             size={34}
             exit={FREEZE - 10}

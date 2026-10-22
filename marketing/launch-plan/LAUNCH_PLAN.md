@@ -20,15 +20,17 @@ Do these in order. Each one is a step in the calendar page's Start here list.
 12. **Fri, Oct 23, 12:30 PM** · Grid 2/9: Scores update themselves (One score, every phone)
 13. **Sat, Oct 24, 11:00 AM** · Grid 3/9: Jax draws the numbers (POV: you hit Draw)
 14. **Sat, Oct 24, 11:20 AM** · Grid story: the board is open
-15. **Sun, Oct 25, 11:00 AM** · Grid 4/9: Your square hits, the gold one (Winners light up)
-16. **Mon, Oct 26, 2:00 PM** · Grid 5/9: Meet Jax (Let Jax pick)
-17. **Tue, Oct 27, 1:00 PM** · Grid 6/9: Text one link (Every squares group chat)
-18. **Tue, Oct 27, 1:20 PM** · Grid story: 6 of 9
-19. **Wed, Oct 28, 12:30 PM** · Grid 7/9: Free to set up (Squares board speedrun)
-20. **Thu, Oct 29, 12:30 PM** · Grid 8/9: No app needed (Join from the link)
-21. **Fri, Oct 30, 12:30 PM** · Grid 9/9: Football and basketball squares (Basketball squares)
-22. **Fri, Oct 30, 12:50 PM** · Grid story: board's full
-23. **Fri, Oct 30, 2:00 PM** · Profile: Highlights
+15. **Sat, Oct 24, 8:00 PM** · Launch check-in: Reels 1–2 at 48 hours
+16. **Sun, Oct 25, 11:00 AM** · Grid 4/9: Your square hits, the gold one (Winners light up)
+17. **Mon, Oct 26, 2:00 PM** · Grid 5/9: Meet Jax (Let Jax pick)
+18. **Tue, Oct 27, 1:00 PM** · Grid 6/9: Text one link (Every squares group chat)
+19. **Tue, Oct 27, 1:20 PM** · Grid story: 6 of 9
+20. **Wed, Oct 28, 12:30 PM** · Grid 7/9: Free to set up (Squares board speedrun)
+21. **Wed, Oct 28, 8:00 PM** · Launch check-in: Reels 3–5 at 48 hours
+22. **Thu, Oct 29, 12:30 PM** · Grid 8/9: No app needed (Join from the link)
+23. **Fri, Oct 30, 12:30 PM** · Grid 9/9: Football and basketball squares (Basketball squares)
+24. **Fri, Oct 30, 12:50 PM** · Grid story: board's full
+25. **Fri, Oct 30, 2:00 PM** · Profile: Highlights
 
 ## Positioning
 
@@ -76,7 +78,7 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 - Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.
 - No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.
 - 'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.
-- Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02, 04, 07, u2 (bar TV), u4 (every phone), u6 (join from the link).
+- Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates: 02 Let Jax pick, 04 best and worst squares, 07 feature rundown, u2 bar TV, u4 every phone, u6 join from the link. Not 01 or u1: they show the create flow's host-fee line.
 - Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.
 - Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.
 - Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.
@@ -98,8 +100,8 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
   ```
   Football & basketball squares 🏈🏀
   Free to set up · no app · no signup
-  Jax draws numbers, live scores call winners
-  Not affiliated w/ NFL, NBA or NCAA 👇
+  Live scores call winners. Make a board 👇
+  Not affiliated w/ NFL, NBA or NCAA
   ```
 - **Link:** https://jaxsquares.com/?ref=ig (title: “Make a board”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).
 - **Highlights:** How it works, Square stats, Game days, Thanksgiving
@@ -159,6 +161,7 @@ Preview of the profile on launch day: `out/g-grid-preview/01.png`
 | Sat, Oct 24 | 11:00 AM | Story | College Saturday slate | — |
 | Sat, Oct 24 | 11:00 AM | Reel | Grid 3/9: Jax draws the numbers (POV: you hit Draw) | `03-the-draw` |
 | Sat, Oct 24 | 11:20 AM | Story | Grid story: the board is open | `s-grid-progress/01` |
+| Sat, Oct 24 | 8:00 PM | Task | Launch check-in: Reels 1–2 at 48 hours | — |
 | Sun, Oct 25 | 9:15 AM | Story | Breakfast football from Paris | — |
 | Sun, Oct 25 | 11:00 AM | Reel | Grid 4/9: Your square hits, the gold one (Winners light up) | `06-winners-light-up` |
 | Sun, Oct 25 | 11:30 AM | Story | Game day checklist | `s-story-frames/06` |
@@ -208,17 +211,17 @@ jaxsquares
 
 ### Wed, Oct 21, 2:45 PM · Task: Profile 4/7: Bio
 
-- [ ] Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀 and names the NBA in the last line.
+- [ ] Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀, ends its third line with “Make a board 👇” (the link sits right under the bio) and names the NBA in the last line.
 - [ ] Edit profile → Bio → paste the bio. Keep the line breaks.
-- [ ] 149 characters, inside Instagram's 150. Leave Pronouns empty.
+- [ ] 147 characters, inside Instagram's 150. Leave Pronouns empty.
 
 **Bio:**
 
 ```text
 Football & basketball squares 🏈🏀
 Free to set up · no app · no signup
-Jax draws numbers, live scores call winners
-Not affiliated w/ NFL, NBA or NCAA 👇
+Live scores call winners. Make a board 👇
+Not affiliated w/ NFL, NBA or NCAA
 ```
 
 ### Wed, Oct 21, 2:50 PM · Task: Profile 5/7: Link
@@ -295,14 +298,16 @@ No app needed. Friends tap the link and pick their squares from any phone. Same 
 ```text
 JaxSquares is live 🏈🏀🐶 Square 1 of 9.
 
-Squares for football and basketball: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
+Football and basketball squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
 
 Free to set up. No app. No signup. Running a Patriots–Bears board tonight? Link in bio.
 
-#footballsquares #squarespool #basketballsquares #thursdaynightfootball #gameday
+Send this to whoever runs your squares 📲
+
+#footballsquares #squarespool #basketballsquares #gameday #bears
 ```
 
-**Alt text:** Screen recording of JaxSquares: picking a game and making a board, texting the link, friends picking squares, Jax drawing the numbers, and a live score lighting up the winning square.
+**Alt text:** Screen recording of JaxSquares, the football and basketball squares app: a live score lands on a winning square, then picking a game, texting the board link, friends picking squares and Jax drawing the numbers.
 
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
@@ -327,11 +332,11 @@ Free to set up. No app. No signup. Running a Patriots–Bears board tonight? Lin
 **Caption:**
 
 ```text
-One score. Every phone. 📲 Square 2 of 9.
+Football squares, live on every phone 📲 Square 2 of 9.
 
 Pick an NFL, college or NBA game and the board follows it live. When the quarter ends, everyone sees it at the same moment: the winner gets the celebration, everyone else gets the news. No refreshing, no group-chat math.
 
-Send this to whoever keeps score with a pen.
+Send this to whoever keeps score with a pen. Your board → link in bio.
 
 #footballsquares #squarespool #basketballsquares #groupchat
 ```
@@ -352,13 +357,13 @@ Send this to whoever keeps score with a pen.
 **Caption:**
 
 ```text
-POV: the board is full and you hit Draw 🔢 Square 3 of 9.
+POV: your squares board is full and you hit Draw 🔢 Square 3 of 9.
 
 Jax shuffles 0–9 for each team, live, in front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged it.
 
-Send this to your board's most suspicious player.
+Running a board for Ole Miss–Texas tonight? Link in bio. Send this to your board's most suspicious player.
 
-#footballsquares #squarespool #collegefootball #gameday
+#footballsquares #squarespool #collegefootball #hookem
 ```
 
 **Alt text:** Screen recording of JaxSquares: the host taps Draw on a full board, the digits 0 to 9 shuffle for both teams, and the app shows The numbers are in.
@@ -367,6 +372,12 @@ Send this to your board's most suspicious player.
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
 - Square 3: bottom left. The bottom row is done: the grid story goes up at 11:20.
+
+### Sat, Oct 24, 8:00 PM · Task: Launch check-in: Reels 1–2 at 48 hours
+
+- [ ] For Grid 1 and 2, open Insights: plays, average watch time, skip rate, shares (sends), saves, profile visits.
+- [ ] Which hook held people past 2 seconds? If one fell flat, rewrite the next caption's first line to lead with the payoff.
+- [ ] Note Insights → Most active times. If your followers peak well away from 12:30, move the next grid Reels to that hour.
 
 ### Sun, Oct 25, 11:00 AM · Reel: Grid 4/9: Your square hits, the gold one (Winners light up)
 
@@ -377,13 +388,13 @@ Send this to your board's most suspicious player.
 **Caption:**
 
 ```text
-Every board has a winning square. This is ours 🏆 Square 4 of 9, the gold one.
+Every football squares board has a winning square. This is ours 🏆 Square 4 of 9, the gold one.
 
 Live scores are built in, so the winning square lights up at Q1, Half, Q3 and the Final, and the winner's phone gets the news. No math, no arguing.
 
-Send this to the friend who always does the math wrong.
+Chiefs–Seahawks tonight? Your board is one link away: link in bio. Send this to the friend who always does the math wrong.
 
-#footballsquares #squarespool #officepool #nfl #gameday
+#footballsquares #squarespool #officepool #chiefskingdom
 ```
 
 **Alt text:** Screen recording of JaxSquares on game day: a push notification, the score landing on the viewer's square as it lights up gold, then the home screen and the activity feed.
@@ -417,6 +428,7 @@ Send this to the friend who always does the math wrong.
 | Tue, Oct 27 | 6:00 PM | Story | Poll: 0–0 or 7–7? | `s-story-frames/01` |
 | Wed, Oct 28 | 12:30 PM | Reel | Grid 7/9: Free to set up (Squares board speedrun) | `u1-speedrun` |
 | Wed, Oct 28 | 6:00 PM | Story | Poll answer | `s-story-frames/02` |
+| Wed, Oct 28 | 8:00 PM | Task | Launch check-in: Reels 3–5 at 48 hours | — |
 | Thu, Oct 29 | 12:30 PM | Reel | Grid 8/9: No app needed (Join from the link) | `u6-join-from-link` |
 | Thu, Oct 29 | 6:45 PM | Story | TNF: Panthers at Packers | — |
 | Fri, Oct 30 | 12:30 PM | Reel | Grid 9/9: Football and basketball squares (Basketball squares) | `u3-basketball-squares` |
@@ -440,13 +452,13 @@ Send this to the friend who always does the math wrong.
 **Caption:**
 
 ```text
-Meet Jax 🐶 Square 5 of 9, right in the middle.
+Meet Jax 🐶 the dog behind JaxSquares, football and basketball squares. Square 5 of 9, right in the middle.
 
-JaxSquares is named after him. Can't pick a square? Tap “Let Jax pick”, choose how many, and he grabs random open squares for you. No favorites (unless you count treats).
+Can't pick a square? Tap “Let Jax pick”, choose how many, and he grabs random open squares for you. No favorites (unless you count treats).
 
-Running a Cowboys–Eagles board tonight? Link in bio. Drop a 🐶 if you'd let Jax pick.
+Running a Cowboys–Eagles board tonight? Link in bio. Send this to the friend who'd let Jax pick 🐶
 
-#footballsquares #dogsofinstagram #mondaynightfootball #squarespool
+#footballsquares #squarespool #dogsofinstagram #flyeaglesfly
 ```
 
 **Alt text:** Jax, an illustrated tan and white dog, then a screen recording of JaxSquares where Let Jax pick claims five random open squares on a board.
@@ -463,11 +475,11 @@ Running a Cowboys–Eagles board tonight? Link in bio. Drop a 🐶 if you'd let 
 **Caption:**
 
 ```text
-Every squares group chat: “who has the 7–3??” “resend the spreadsheet” “MIKE.” 😭 Square 6 of 9.
+Every football squares group chat: “who has the 7–3??” “resend the spreadsheet” “MIKE.” 😭 Square 6 of 9.
 
 Or… one link. Everyone picks from their own phone, Jax draws the numbers, and the board shows who won.
 
-Send this to the person who runs your squares 📲
+Send this to the person who runs your squares 📲 Your board → link in bio.
 
 #footballsquares #squarespool #groupchat #officepool
 ```
@@ -486,21 +498,30 @@ Send this to the person who runs your squares 📲
 **Caption:**
 
 ```text
-Squares board speedrun ⏱ Square 7 of 9.
+Make a squares board in 10 seconds ⏱ Square 7 of 9.
 
 Pick the game, how squares win, prizes or just for fun, a name, create. Then one text to the group chat. 10 seconds flat with the defaults; read every step and it's still under a minute.
 
-Free to set up and invite, and players never pay. Boards with up to 5 players draw free; bigger boards are $4.99 for the host at the draw. Send this to whoever still makes the board on paper.
+Free to set up and invite, and players never pay. Boards with up to 5 players draw free; bigger boards are $4.99 for the host at the draw.
+
+Send this to whoever still makes the board on paper. Link in bio.
 
 #footballsquares #squarespool #officepool #gameday
 ```
 
-**Alt text:** Screen recording of the JaxSquares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.
+**Alt text:** Screen recording of the JaxSquares squares app with a running stopwatch: picking a game, choosing how squares win, Just for fun, naming the board and creating it, then sending the invite to a group chat. The stopwatch stops at 10 seconds.
 
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
 - Don't pin it: pinned posts jump to the top of the grid and break the logo.
 - Square 7: top row, right.
+- Not a boost pick: the review step shows the host-fee line.
+
+### Wed, Oct 28, 8:00 PM · Task: Launch check-in: Reels 3–5 at 48 hours
+
+- [ ] Same five numbers for Grid 3, 4 and 5; compare with 1 and 2.
+- [ ] Reply to every comment still open, and save the best question for Fri Nov 6's Reply with a Reel.
+- [ ] Note the Reel with the most sends: it's the first boost candidate.
 
 ### Thu, Oct 29, 12:30 PM · Reel: Grid 8/9: No app needed (Join from the link)
 
@@ -511,13 +532,13 @@ Free to set up and invite, and players never pay. Boards with up to 5 players dr
 **Caption:**
 
 ```text
-No app needed 📲 Square 8 of 9. Here's a squares link from the friend's side:
+No app needed 📲 Square 8 of 9. Here's a football squares link from the friend's side:
 
 Tap a square, type your name, you're in. Nothing to download, no account, no password. Same room? Scan the code on the host's screen.
 
-Send this to the friend who always asks “do I have to download something?”
+Panthers–Packers tonight? Link in bio. Send this to the friend who always asks “do I have to download something?”
 
-#footballsquares #squarespool #thursdaynightfootball #gameday
+#footballsquares #squarespool #gopackgo
 ```
 
 **Alt text:** A text from Maya with a JaxSquares link. The board opens on a phone with no app; the friend taps a square, types Sam and joins, then grabs a second square. A timer reads 3.6 seconds.
@@ -538,14 +559,14 @@ Send this to the friend who always asks “do I have to download something?”
 ```text
 Square 9 of 9 🏈🏀 The board's full, and that's our logo up there.
 
-Squares aren't just for football: JaxSquares runs basketball squares too. Pick tonight's NBA or college game (or type in any matchup), choose how squares win, and live scores call every winner.
+Squares aren't just for football: JaxSquares runs basketball squares too. Pick tonight's NBA game or type in any matchup, choose how squares win, and live scores call every winner. College hoops tips off next week.
 
-NBA Cup games start tonight and college hoops tips off next week. Send this to your hoops group chat.
+Send this to your hoops group chat. Your board → link in bio.
 
 #basketballsquares #footballsquares #nba #collegebasketball #squarespool
 ```
 
-**Alt text:** Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a board in five taps, then a basketball board where the third quarter ends 75 to 70 on the viewer's square and Jax cheers.
+**Alt text:** Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a basketball squares board in five taps, then the third quarter ending 75 to 70 on the viewer's square as Jax cheers.
 
 - Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
 - Cover: save the grid cover above. On the share screen tap Edit cover → Add from camera roll → pick it, then open the Profile grid tab: the whole square shows, board map included.
@@ -638,7 +659,7 @@ Send this to whoever drew 2–2 this week.
 
 - **Mon, Oct 26 6:30 PM** · MNF board is open · frame `m1-mnf-cowboys-eagles` · sticker: Link → app. “Start tonight's board 👇”
 - **Mon, Oct 26 9:30 PM** · Q1 poll · sticker: Poll: 🙋 me / 😭 not me. “Who's got the Q1 square?”
-- **Tue, Oct 27 1:20 PM** · Grid story: 6 of 9 · frame `s-grid-progress/02` · sticker: Emoji slider 🟩. “6 of 9 squares claimed 👀 Three to go.”
+- **Tue, Oct 27 1:20 PM** · Grid story: 6 of 9 · frame `s-grid-progress/02` · sticker: Question: “Who runs your squares?”. “6 of 9 squares claimed 👀 Three to go. Who runs your squares? Tell us 👇”
 - **Tue, Oct 27 4:30 PM** · On this day: Emmitt breaks the record (2002) · frame `otd1-oct27-emmitt` · sticker: Link → app. “On this day in 2002: former Gator Emmitt Smith passes Walter Payton 🐊 The final (17–14) landed on the 7–4 square. Make your board 👇” (Post the video as a Story (it's 9:16). Feed posts wait until the grid is done. Has its own retro soundtrack (original music). Post it as is.)
 - **Tue, Oct 27 6:00 PM** · Poll: 0–0 or 7–7? · frame `s-story-frames/01` · sticker: Poll: 0–0 / 7–7. “(Place the poll in the empty middle band.)”
 - **Wed, Oct 28 6:00 PM** · Poll answer · frame `s-story-frames/02` · sticker: None (or a link to the carousel). “Answer frame. Basically a coin flip.”

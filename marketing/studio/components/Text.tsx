@@ -18,11 +18,14 @@ export function Headline({
   color = COLORS.ink,
   highlight = COLORS.volt,
   align = "center",
+  landed = false,
   style,
 }: {
   text: string;
   frame: number;
   start?: number;
+  /** Every word already in place on the first frame: a Reel's hook, which frame 0 has to carry. */
+  landed?: boolean;
   /** Frame at which the headline starts leaving. */
   exit?: number;
   size?: number;
@@ -61,7 +64,7 @@ export function Headline({
           }}
         >
           {words.map((runs, wi) => {
-            const s = spring(frame - start - wordIndex++ * stagger, FPS, { stiffness: 220, damping: 20 });
+            const s = landed ? 1 : spring(frame - start - wordIndex++ * stagger, FPS, { stiffness: 220, damping: 20 });
             return (
               <span
                 key={wi}

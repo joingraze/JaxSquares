@@ -256,15 +256,15 @@ function BarRoom({ frame, children }: { frame: number; children?: ReactNode }) {
 // u1 Speedrun: a board made and shared, on the clock
 // ---------------------------------------------------------------------------
 
-const RUN: Cut = { at: 40, scene: "create", from: 0, speed: 1.6 };
+const RUN: Cut = { at: 54, scene: "create", from: 0, speed: 1.6 };
 /** Clip frame of the tap on "Text your crew" (the create clip ends on the invite sheet). */
 const RUN_SEND = 300;
 const RUN_STOP = clipMoment(RUN, RUN_SEND);
-const RUN_END = 330;
-export const RUN_FRAMES = 410;
+const RUN_END = RUN_STOP + 102;
+export const RUN_FRAMES = RUN_END + 45;
 
 const RUN_STEPS: { at: number; to: number; text: string }[] = [
-  { at: 40, to: clipMoment(RUN, 54), text: "Pick the game" },
+  { at: RUN.at, to: clipMoment(RUN, 54), text: "Pick the game" },
   { at: clipMoment(RUN, 56), to: clipMoment(RUN, 82), text: "How squares win" },
   { at: clipMoment(RUN, 84), to: clipMoment(RUN, 122), text: "Prizes, or just for fun" },
   { at: clipMoment(RUN, 126), to: clipMoment(RUN, 156), text: "Name it" },
@@ -290,8 +290,7 @@ const RUN_REPLIES = [
 export const RUN_AUDIO: AudioSpec = {
   style: "hype",
   end: RUN_END,
-  builds: [[8, RUN.at]],
-  drops: [RUN.at, RUN_STOP],
+  drops: [0, RUN.at, RUN_STOP],
   sfx: [
     ...RUN_TAPS.map((t) => ({ at: clipMoment(RUN, t.clip), kind: "tap" as const })),
     ...RUN_STEPS.slice(1).map((s) => ({ at: s.at, kind: "tick" as const, gain: 0.8 })),
@@ -305,8 +304,8 @@ export const RUN_AUDIO: AudioSpec = {
 export function Speedrun({ frame }: CompProps) {
   const sent = frame >= RUN_STOP;
   const pose = poseTrack(frame, [
-    [0, POSE_LOW],
-    [4, { cx: 180, top: 176, scale: 0.6 }],
+    [-16, POSE_LOW],
+    [-14, { cx: 180, top: 176, scale: 0.6 }],
     [RUN_STOP + 6, { cx: 180, top: 372, scale: 0.6 }],
   ]);
   const card = spring(frame - RUN_STOP - 10, FPS, { stiffness: 170, damping: 19 });
@@ -322,16 +321,17 @@ export function Speedrun({ frame }: CompProps) {
         <Cuts frame={frame} cuts={[RUN]} />
       </Phone>
 
-      {frame < 40 && (
+      {frame < RUN.at && (
         <Headline
           frame={frame}
-          text="Squares board|*speedrun*"
-          size={42}
-          exit={32}
+          landed
+          text="Make a squares board|in *10 seconds*"
+          size={31}
+          exit={RUN.at - 8}
           style={{ position: "absolute", top: 84, left: 0, right: 0, zIndex: 30 }}
         />
       )}
-      {frame >= 38 && (
+      {frame >= RUN.at - 2 && (
         <Stopwatch
           frame={frame}
           start={RUN.at}
@@ -344,7 +344,7 @@ export function Speedrun({ frame }: CompProps) {
             left: 0,
             right: 0,
             zIndex: 35,
-            opacity: spring(frame - 38, FPS, { stiffness: 220, damping: 18 }),
+            opacity: spring(frame - RUN.at + 2, FPS, { stiffness: 220, damping: 18 }),
           }}
         />
       )}
@@ -599,13 +599,13 @@ export function BarBigScreen({ frame }: CompProps) {
 // ---------------------------------------------------------------------------
 
 const HOOPS = {
-  create: { at: 40, scene: "hoops-create", from: 0, speed: 1.4 },
+  create: { at: 50, scene: "hoops-create", from: 0, speed: 1.4 },
   // Q3 ends on my square on hoops-live clip frame 60.
-  live: { at: 236, scene: "hoops-live", from: 20, speed: 1 },
-  end: 390,
+  live: { at: 246, scene: "hoops-live", from: 20, speed: 1 },
+  end: 400,
 } satisfies Record<string, Cut | number>;
 const HOOPS_WIN = clipMoment(HOOPS.live, 60);
-export const HOOPS_FRAMES = 470;
+export const HOOPS_FRAMES = HOOPS.end + 45;
 
 const HOOPS_TAPS = [
   { clip: 28, x: 300, y: 255 },
@@ -622,7 +622,7 @@ export const HOOPS_AUDIO: AudioSpec = {
   style: "hype",
   end: HOOPS.end,
   builds: [[HOOPS.live.at + 10, HOOPS_WIN]],
-  drops: [HOOPS.create.at, HOOPS_WIN],
+  drops: [0, HOOPS.create.at, HOOPS_WIN],
   sfx: [
     ...[6, 16, 24].map((at) => ({ at, kind: "pop" as const, gain: 0.6 })),
     ...HOOPS_TAPS.map((t) => ({ at: clipMoment(HOOPS.create, t.clip), kind: "tap" as const })),
@@ -667,6 +667,7 @@ export function HoopsSquares({ frame }: CompProps) {
         <>
           <Headline
             frame={frame}
+            landed
             text="Squares aren't just|for *football.*"
             size={36}
             exit={HOOPS.create.at - 8}
@@ -702,11 +703,11 @@ export function HoopsSquares({ frame }: CompProps) {
 // u4 One score, every phone
 // ---------------------------------------------------------------------------
 
-const SYNC_AT = 50;
+const SYNC_AT = 60;
 /** The Q3 score lands on all three phones around clip frame 65. */
 const SYNC_LAND = SYNC_AT + 65;
-const SYNC_END = 260;
-export const SYNC_FRAMES = 340;
+const SYNC_END = SYNC_LAND + 145;
+export const SYNC_FRAMES = SYNC_END + 45;
 
 const SYNC_PHONES: { scene: Scene; pose: PhonePose & { rotate: number }; who: string; z: number; delay: number }[] = [
   { scene: "sync-left", pose: { cx: 88, top: 214, scale: 0.36, rotate: -7 }, who: "Dre · host", z: 1, delay: 4 },
@@ -718,7 +719,7 @@ export const SYNC_AUDIO: AudioSpec = {
   style: "hype",
   end: SYNC_END,
   builds: [[SYNC_AT + 12, SYNC_LAND]],
-  drops: [SYNC_AT, SYNC_LAND],
+  drops: [0, SYNC_AT, SYNC_LAND],
   sfx: [
     { at: 2, kind: "whoosh", gain: 0.6 },
     ...SYNC_PHONES.map((p) => ({ at: SYNC_AT + 6 + p.delay, kind: "pop" as const, gain: 0.6 })),
@@ -737,7 +738,7 @@ export function EveryPhone({ frame }: CompProps) {
     <div className="absolute inset-0">
       <Backdrop frame={frame} tint={landed ? "gold" : "sky"} />
       {SYNC_PHONES.map((p) => {
-        const s = spring(frame - 4 - p.delay, FPS, { stiffness: 120, damping: 18 });
+        const s = spring(frame + 16 - p.delay, FPS, { stiffness: 120, damping: 18 });
         return (
           <div key={p.scene} className="absolute inset-0" style={{ zIndex: p.z }}>
             <Phone cx={p.pose.cx} top={p.pose.top + (1 - s) * 520} scale={p.pose.scale} rotate={p.pose.rotate}>
@@ -776,7 +777,8 @@ export function EveryPhone({ frame }: CompProps) {
       {frame < SYNC_AT + 4 && (
         <Headline
           frame={frame}
-          text="One score.|*Every phone.*"
+          landed
+          text="Squares: one score,|*every phone.*"
           size={40}
           exit={SYNC_AT - 6}
           style={{ position: "absolute", top: 84, left: 0, right: 0, zIndex: 30 }}
@@ -1046,14 +1048,14 @@ const JOIN_LINK_TAP = 58;
 /** "You're in, Sam!" lands on join clip frame 140. */
 const JOIN_IN = clipMoment(JOIN, 140);
 const JOIN_END = 300;
-export const JOIN_FRAMES = 380;
+export const JOIN_FRAMES = JOIN_END + 45;
 /** Keystrokes: S, a, m (join clip). */
 const JOIN_KEYS = [86, 91, 96];
 
 export const JOIN_AUDIO: AudioSpec = {
   style: "bounce",
   end: JOIN_END,
-  drops: [JOIN.at],
+  drops: [0, JOIN.at],
   sfx: [
     { at: 8, kind: "ding", gain: 0.7 },
     { at: 22, kind: "pop", gain: 0.6 },
@@ -1108,8 +1110,8 @@ function Thread({ frame }: { frame: number }) {
 export function JoinFromLink({ frame }: CompProps) {
   const sheet = clipMoment(JOIN, 58);
   const pose = poseTrack(frame, [
-    [0, POSE_LOW],
-    [2, { cx: 180, top: 160, scale: 0.6 }],
+    [-16, POSE_LOW],
+    [-14, { cx: 180, top: 160, scale: 0.6 }],
     [sheet, { cx: 180, top: -128, scale: 0.72 }],
     [JOIN_IN - 4, { cx: 180, top: 140, scale: 0.62 }],
   ]);
@@ -1133,6 +1135,7 @@ export function JoinFromLink({ frame }: CompProps) {
       {frame < JOIN.at && (
         <Headline
           frame={frame}
+          landed
           text="Your friend sent|a *squares link.*"
           size={36}
           exit={JOIN.at - 8}

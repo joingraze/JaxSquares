@@ -89,8 +89,9 @@ chord with the JaxSquares sting. Six styles live in `audio/styles.ts`:
 `bounce` (124 BPM, playful: Jax, the group chats, office, join), `pulse`
 (124 BPM data), `anthem` (120 BPM game-day pop, spare), `retro` (On this day,
 90 BPM boom-bap) and `harvest` (Thanksgiving). Every track opens at full groove
-(`intro` 0.92): the hook plays over the beat, and the lead line waits for the
-first drop. The mix
+(`intro` 0.92), and the launch Reels drop on frame 0, where their hook
+headline already sits (`Headline landed`): Instagram tests a Reel on its first
+second. The mix
 is EQ'd for phone speakers, then render.mjs normalizes it (two-pass loudnorm)
 and muxes it in.
 
@@ -114,7 +115,7 @@ final scores 1999–2025).
 
 | id | What |
 |---|---|
-| `01-how-it-works` | 23s real-app walkthrough: create → text the link → friends pick → Jax draws → live score lands |
+| `01-how-it-works` | 12s real-app walkthrough: opens on a live score landing, then pick the game → text the link → friends pick → Jax draws |
 | `02-let-jax-pick` | Meet Jax: "Let Jax pick" picks 5 random squares |
 | `03-the-draw` | POV: the board is full and you hit Draw |
 | `04-best-worst-squares` | Heat map of every square from 7,276 NFL finals; 0–7 vs 2–2 |

@@ -25,59 +25,61 @@ function TapAt({ frame, cut, clipAt, x, y }: { frame: number; cut: Cut; clipAt: 
 const POSE_BOARD: PhonePose = { cx: 180, top: 124, scale: 0.66 };
 
 // ---------------------------------------------------------------------------
-// 01 How it works: create → invite → claim → draw → live
+// 01 How it works: the payoff first (a live score lands), then pick → link → friends → draw
 // ---------------------------------------------------------------------------
 
 const HOW = {
-  create: { at: 0, scene: "create", from: 0, speed: 1.5 },
-  // Skips the board's loading skeleton (clip 222–228) straight to the invite sheet.
-  invite: { at: 146, scene: "create", from: 229, speed: 1.2 },
-  claim: { at: 215, scene: "claim", from: 20, speed: 1.25 },
-  draw: { at: 340, scene: "draw", from: 30, speed: 1.5 },
-  live: { at: 490, scene: "live", from: 40, speed: 1 },
-  end: 600,
+  // Cold open on the payoff: the Q3 score lands on live clip frame 67.
+  open: { at: 0, scene: "live", from: 52, speed: 1 },
+  pick: { at: 50, scene: "create", from: 10, speed: 1.6 },
+  // Straight from the game to "Setting up your board…" and the invite sheet: no rules or prize screens.
+  invite: { at: 78, scene: "create", from: 190, speed: 1.3 },
+  claim: { at: 140, scene: "claim", from: 20, speed: 1.5 },
+  draw: { at: 215, scene: "draw", from: 70, speed: 1.6 },
+  end: 320,
 } satisfies Record<string, Cut | number>;
+const HOW_HIT = clipMoment(HOW.open, 67);
+const HOW_NUMBERS = clipMoment(HOW.draw, 195);
 
-export const HOW_FRAMES = 690;
+export const HOW_FRAMES = HOW.end + 45;
 
 export const HOW_AUDIO: AudioSpec = {
   style: "hype",
   end: HOW.end,
-  // The shuffle (draw clip 90) builds into "The numbers are in!" (195); the Q3 score lands 27 frames into the live cut.
-  builds: [[clipMoment(HOW.draw, 90), clipMoment(HOW.draw, 195)]],
-  drops: [clipMoment(HOW.draw, 195), HOW.live.at + 27],
+  // The shuffle (draw clip 90) builds into "The numbers are in!" (195).
+  builds: [[clipMoment(HOW.draw, 90), HOW_NUMBERS]],
+  drops: [0, HOW_NUMBERS],
   sfx: [
-    { at: 2, kind: "whoosh", gain: 0.7 },
-    { at: clipMoment(HOW.create, 186), kind: "tap" },
-    { at: clipMoment(HOW.create, 198), kind: "sparkle" },
+    { at: HOW_HIT, kind: "cheer" },
+    { at: HOW_HIT + 1, kind: "sparkle" },
+    { at: HOW.pick.at, kind: "whoosh", gain: 0.7 },
+    { at: clipMoment(HOW.pick, 27), kind: "tap" },
+    { at: HOW.invite.at, kind: "whoosh", gain: 0.6 },
+    { at: clipMoment(HOW.invite, 228), kind: "sparkle" },
     { at: HOW.claim.at, kind: "whoosh", gain: 0.7 },
     ...[52, 67, 82].map((c) => ({ at: clipMoment(HOW.claim, c), kind: "tap" as const })),
     { at: HOW.draw.at, kind: "whoosh", gain: 0.7 },
     { at: clipMoment(HOW.draw, 84), kind: "tap" },
-    { at: clipMoment(HOW.draw, 195), kind: "sparkle" },
-    { at: HOW.live.at, kind: "whoosh", gain: 0.7 },
-    { at: HOW.live.at + 27, kind: "cheer" },
-    { at: HOW.live.at + 28, kind: "sparkle" },
+    { at: HOW_NUMBERS, kind: "sparkle" },
   ],
 };
 
 export function HowItWorks({ frame }: CompProps) {
   const pose = poseTrack(frame, [
-    [0, POSE_LOW],
-    [4, POSE_FULL],
+    [0, { cx: 180, top: 168, scale: 0.6 }],
+    [HOW.pick.at, POSE_FULL],
     [HOW.claim.at, POSE_BOARD],
     [HOW.draw.at, POSE_FULL],
-    [HOW.draw.at + 26, { cx: 180, top: 112, scale: 0.68 }],
-    [HOW.live.at, POSE_BOARD],
+    [HOW.draw.at + 20, { cx: 180, top: 112, scale: 0.68 }],
   ]);
   return (
     <div className="absolute inset-0">
-      <Backdrop frame={frame} tint={frame >= HOW.live.at ? "gold" : "volt"} />
+      <Backdrop frame={frame} tint={frame < HOW.pick.at ? "gold" : "volt"} />
       <Phone
         {...pose}
         overlay={
           <>
-            <TapAt frame={frame} cut={HOW.create} clipAt={186} x={281} y={853} />
+            <TapAt frame={frame} cut={HOW.pick} clipAt={27} x={200} y={573} />
             <TapAt frame={frame} cut={HOW.claim} clipAt={52} x={330} y={452} />
             <TapAt frame={frame} cut={HOW.claim} clipAt={67} x={147} y={489} />
             <TapAt frame={frame} cut={HOW.claim} clipAt={82} x={257} y={562} />
@@ -85,34 +87,32 @@ export function HowItWorks({ frame }: CompProps) {
           </>
         }
       >
-        <Cuts frame={frame} cuts={[HOW.create, HOW.invite, HOW.claim, HOW.draw, HOW.live]} />
+        <Cuts frame={frame} cuts={[HOW.open, HOW.pick, HOW.invite, HOW.claim, HOW.draw]} />
       </Phone>
 
-      {frame < 52 && (
+      {frame < HOW.pick.at && (
         <Headline
           frame={frame}
+          landed
           text="Football & basketball|squares in *30 seconds.*"
           size={31}
-          exit={42}
+          exit={HOW.pick.at - 8}
           style={{ position: "absolute", top: 84, left: 0, right: 0, zIndex: 30 }}
         />
       )}
-      <Sticker frame={frame} start={50} end={HOW.invite.at + 8} step={1}>
-        Pick the game & rules
+      <Flash frame={frame} at={HOW_HIT} />
+      <Sticker frame={frame} start={HOW.pick.at + 2} end={HOW.invite.at - 4} step={1}>
+        Pick the game
       </Sticker>
-      <Sticker frame={frame} start={HOW.invite.at + 12} end={HOW.claim.at - 6} step={2}>
+      <Sticker frame={frame} start={HOW.invite.at + 2} end={HOW.claim.at - 6} step={2}>
         Text your crew one link
       </Sticker>
       <Sticker frame={frame} start={HOW.claim.at + 4} end={HOW.draw.at - 6} step={3}>
         Friends pick from any phone
       </Sticker>
-      <Sticker frame={frame} start={HOW.draw.at + 4} end={HOW.live.at - 6} step={4}>
-        Jax draws the numbers
+      <Sticker frame={frame} start={HOW.draw.at + 4} end={HOW.end - 4} step={4} tone="gold">
+        Jax draws. Scores do the rest.
       </Sticker>
-      <Sticker frame={frame} start={HOW.live.at + 4} end={HOW.end - 4} step={5} tone="gold">
-        Live scores. Winners light up.
-      </Sticker>
-      <Flash frame={frame} at={HOW.live.at + 27} />
       <EndCard frame={frame} start={HOW.end} />
     </div>
   );
@@ -125,13 +125,13 @@ export function HowItWorks({ frame }: CompProps) {
 const JAX_CUT: Cut = { at: 60, scene: "jax", from: 0, speed: 1 };
 const JAX_STORY = 250;
 const JAX_END = 318;
-export const JAX_FRAMES = 400;
+export const JAX_FRAMES = JAX_END + 45;
 
 export const JAX_AUDIO: AudioSpec = {
   style: "bounce",
   end: JAX_END,
   // Jax's 5 squares land on clip frame 102; "Meet Jax" sits on a softer groove.
-  drops: [clipMoment(JAX_CUT, 102)],
+  drops: [0, clipMoment(JAX_CUT, 102)],
   breaks: [{ from: JAX_STORY, to: JAX_END, level: 0.4 }],
   sfx: [
     { at: 6, kind: "pop" },
@@ -151,7 +151,7 @@ export function LetJaxPick({ frame }: CompProps) {
     [JAX_CUT.at + 100, { cx: 180, top: 120, scale: 0.63 }],
     [JAX_STORY, { cx: 180, top: 300, scale: 0.6 }],
   ]);
-  const jaxIn = spring(frame - 6, FPS, { stiffness: 200, damping: 12 });
+  const jaxIn = spring(frame + 20, FPS, { stiffness: 200, damping: 12 });
   const jaxOut = interpolate(frame, [JAX_CUT.at - 12, JAX_CUT.at], [1, 0]);
   const phoneOut = interpolate(frame, [JAX_STORY, JAX_STORY + 10], [1, 0]);
   return (
@@ -172,6 +172,7 @@ export function LetJaxPick({ frame }: CompProps) {
       {frame < JAX_CUT.at && (
         <Headline
           frame={frame}
+          landed
           text="Can't pick a square?|*Let Jax pick.* 🐶"
           size={33}
           exit={JAX_CUT.at - 10}
@@ -237,15 +238,14 @@ export function LetJaxPick({ frame }: CompProps) {
 
 const DRAW_CUT: Cut = { at: 10, scene: "draw", from: 0, speed: 1 };
 const DRAW_END = 330;
-export const DRAW_FRAMES = 410;
+export const DRAW_FRAMES = DRAW_END + 45;
 
 export const DRAW_AUDIO: AudioSpec = {
   style: "hype",
   end: DRAW_END,
-  intro: 0.7,
   // Tap "Draw the numbers" (clip 84), the shuffle (90) builds into "The numbers are in!" (195).
   builds: [[clipMoment(DRAW_CUT, 90), clipMoment(DRAW_CUT, 195)]],
-  drops: [clipMoment(DRAW_CUT, 195)],
+  drops: [0, clipMoment(DRAW_CUT, 195)],
   sfx: [
     { at: clipMoment(DRAW_CUT, 40), kind: "whoosh", gain: 0.6 },
     { at: clipMoment(DRAW_CUT, 84), kind: "tap" },
@@ -256,8 +256,8 @@ export const DRAW_AUDIO: AudioSpec = {
 
 export function TheDraw({ frame }: CompProps) {
   const pose = poseTrack(frame, [
-    [0, POSE_LOW],
-    [2, POSE_FULL],
+    [-14, POSE_LOW],
+    [-12, POSE_FULL],
     [98, { cx: 180, top: 118, scale: 0.7 }],
   ]);
   const inAt = DRAW_CUT.at + 195;
@@ -270,8 +270,9 @@ export function TheDraw({ frame }: CompProps) {
       {frame < 96 && (
         <Headline
           frame={frame}
-          text="POV: the board is full|and you hit *Draw*"
-          size={30}
+          landed
+          text="POV: your squares board|is full and you hit *Draw*"
+          size={28}
           exit={88}
           style={{ position: "absolute", top: 84, left: 0, right: 0, zIndex: 30 }}
         />
@@ -297,17 +298,16 @@ const WIN = {
   home: { at: 190, scene: "home", from: 0, speed: 1.25 },
   end: 380,
 } satisfies Record<string, Cut | number>;
-export const WINNERS_FRAMES = 460;
+export const WINNERS_FRAMES = WIN.end + 45;
 
 const WIN_HIT = clipMoment(WIN.live, 67);
 export const WINNERS_AUDIO: AudioSpec = {
   style: "hype",
   end: WIN.end,
-  intro: 0.75,
   builds: [[WIN.live.at + 4, WIN_HIT]],
-  drops: [WIN_HIT],
+  drops: [0, WIN_HIT],
   sfx: [
-    { at: 16, kind: "ding" },
+    { at: 2, kind: "ding" },
     { at: WIN.live.at - 8, kind: "whoosh", gain: 0.7 },
     { at: WIN_HIT, kind: "cheer" },
     { at: WIN_HIT + 1, kind: "sparkle" },
@@ -330,6 +330,7 @@ export function WinnersLightUp({ frame }: CompProps) {
       {frame < WIN.live.at && (
         <Headline
           frame={frame}
+          landed
           text="That feeling when|*your square hits* 🎉"
           size={31}
           exit={WIN.live.at - 10}
@@ -339,7 +340,7 @@ export function WinnersLightUp({ frame }: CompProps) {
       )}
       <PushBanner
         frame={frame}
-        start={14}
+        start={-8}
         end={WIN.live.at - 8}
         top={250}
         width={318}
@@ -400,7 +401,7 @@ const BEATS: Beat[] = [
   {
     kicker: "Prizes",
     text: "Prize notes, or *just for fun.*",
-    cut: { scene: "create", from: 80, speed: 1 },
+    cut: { scene: "create", from: 70, speed: 1 },
     pose: { cx: 180, top: 120, scale: 0.7 },
   },
   {
