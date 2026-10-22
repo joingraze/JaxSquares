@@ -84,9 +84,13 @@ seeded, so a re-render sounds identical). A composition lists its cues in an
 full groove), `builds` (riser, snare roll, filter sweep), `breaks` (thinner or
 silent), `sfx` (tap, pop, whoosh, ding, sparkle, tick, womp, stop, cheer) and
 `end`. The bar grid is anchored on the end card, so it lands on the home
-chord with the JaxSquares sting. Five styles live in `audio/styles.ts`:
-`anthem` (game-day pop), `bounce` (Jax, the group chat), `pulse` (data),
-`retro` (On this day, 90 BPM boom-bap) and `harvest` (Thanksgiving). The mix
+chord with the JaxSquares sting. Six styles live in `audio/styles.ts`:
+`hype` (128 BPM launch pop: the walkthroughs, use cases and matchups),
+`bounce` (124 BPM, playful: Jax, the group chats, office, join), `pulse`
+(124 BPM data), `anthem` (120 BPM game-day pop, spare), `retro` (On this day,
+90 BPM boom-bap) and `harvest` (Thanksgiving). Every track opens at full groove
+(`intro` 0.92): the hook plays over the beat, and the lead line waits for the
+first drop. The mix
 is EQ'd for phone speakers, then render.mjs normalizes it (two-pass loudnorm)
 and muxes it in.
 
@@ -127,8 +131,9 @@ final scores 1999–2025).
 | `m1`–`m7` | "Run a board for this game" matchup template |
 | `otd1`–`otd6` | On this day: a famous final score and the square it landed on |
 | `c1`–`c4` | Carousels: how squares works, every square ranked, host cheat sheet, Thanksgiving playbook |
-| `g1`–`g9` | The launch grid: the account's first nine posts, which make the profile the 3×3 JaxSquares mark (gold winning square). Each is a tile + a real-app proof slide |
+| `g1`–`g9` | The launch grid tiles: the 3×3 JaxSquares mark (gold winning square), each a tile + a real-app proof slide. The launch posts them as Reel covers (`r-grid-covers`) |
 | `g-grid-preview` | The profile once the grid is up (Jax profile picture and the nine squares) |
+| `r-grid-covers` | The launch grid as Reel covers (1080×1920): each tile sits in the middle 3:4 the profile grid shows, so nine Reels make the logo |
 | `s-grid-progress` | 3 Story frames as the grid fills: 3 of 9, 6 of 9, full |
 | `s-story-frames` | 8 Story backgrounds with room for native poll/quiz/link stickers |
 | `p-highlight-covers` | 4 Highlight covers (How it works, Square stats, Game days, Thanksgiving) |

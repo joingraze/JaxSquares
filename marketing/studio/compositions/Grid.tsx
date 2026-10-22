@@ -14,6 +14,7 @@ import { seeded } from "../lib/anim";
 import type { Scene } from "../lib/clips";
 import { Centered, REST, Shell, StoryShell, Title } from "./Slides";
 import { Headline } from "../components/Text";
+import { Lockup } from "../components/Brand";
 import { Jax } from "../../../src/components/ui";
 
 const TILE_W = 360;
@@ -39,6 +40,8 @@ export interface GridTile {
   art: Art;
   headline: string;
   sub: string;
+  /** The launch Reel this tile is the cover of (r-grid-covers): what the strip under the tile says. */
+  watch: string;
   proof?: { title: string; crops: Crop[]; note: string; width?: number } | { title: string; steps: string[] };
 }
 
@@ -51,6 +54,7 @@ export const GRID: GridTile[] = [
     art: { url: true },
     headline: "JaxSquares is live.",
     sub: "The squares app for football and basketball games.",
+    watch: "How it works in 30 seconds",
     proof: {
       title: "What's *JaxSquares?*",
       steps: [
@@ -68,6 +72,7 @@ export const GRID: GridTile[] = [
     art: { emoji: "📺" },
     headline: "Scores update themselves.",
     sub: "NFL, NBA and college games score on their own.",
+    watch: "One score, every phone",
     proof: {
       title: "Live scores, *built in*",
       crops: [{ scene: "live", at: 30, y0: 100, y1: 372 }],
@@ -82,6 +87,7 @@ export const GRID: GridTile[] = [
     art: { digits: true },
     headline: "Jax draws the numbers.",
     sub: "Shuffled live, in front of everyone.",
+    watch: "POV: you hit Draw",
     proof: {
       title: "Shuffled live. *No hat.*",
       crops: [{ scene: "draw", at: 250, y0: 120, y1: 620 }],
@@ -97,6 +103,7 @@ export const GRID: GridTile[] = [
     art: { trophy: true },
     headline: "Your square hits.",
     sub: "Winners light up as the game goes.",
+    watch: "Winners light up",
     proof: {
       title: "Winners called *for you*",
       crops: [{ scene: "live", at: 100, y0: 100, y1: 560 }],
@@ -112,6 +119,7 @@ export const GRID: GridTile[] = [
     art: { jax: true },
     headline: "Meet Jax.",
     sub: "JaxSquares is named after him.",
+    watch: "Let Jax pick",
     proof: {
       title: "Can't decide? *Let Jax pick.*",
       crops: [{ scene: "jax", at: 150, y0: 262, y1: 760 }],
@@ -127,6 +135,7 @@ export const GRID: GridTile[] = [
     art: { emoji: "💬" },
     headline: "Text one link.",
     sub: "Everyone picks from their own phone.",
+    watch: "Every squares group chat",
     proof: {
       title: "One link in the *group chat*",
       crops: [{ scene: "create", at: 300, y0: 172, y1: 652 }],
@@ -142,6 +151,7 @@ export const GRID: GridTile[] = [
     art: { emoji: "✨" },
     headline: "Free to set up.",
     sub: "Players never pay a thing.",
+    watch: "Squares board speedrun",
     proof: {
       title: "Free to set up *and invite*",
       crops: [
@@ -159,6 +169,7 @@ export const GRID: GridTile[] = [
     art: { emoji: "📲" },
     headline: "No app needed.",
     sub: "Tap the link or scan the code.",
+    watch: "Join from the link",
     proof: {
       title: "No download. *No account.*",
       crops: [{ scene: "invite", at: 180, y0: 160, y1: 690 }],
@@ -174,6 +185,7 @@ export const GRID: GridTile[] = [
     art: { emoji: "🏈🏀" },
     headline: "Football and basketball squares.",
     sub: "Set up in 30 seconds. Live now.",
+    watch: "Basketball squares",
     proof: {
       title: "Football or basketball. *Your pick.*",
       crops: [{ scene: "create", at: 10, y0: 118, y1: 560 }],
@@ -462,7 +474,7 @@ function GridPreview() {
         </span>
         <div>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{BRAND.handle.slice(1)}</div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>JaxSquares · Football &amp; Basketball Squares</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>JaxSquares · Sports Squares</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)" }}>Sports & Recreation</div>
         </div>
       </div>
@@ -473,11 +485,11 @@ function GridPreview() {
   );
 }
 
-/** Story frames for the three days the board fills up. */
+/** Story frames as the board fills up: after squares 3, 6 and 9. */
 function GridStories({ frame: i }: CompProps) {
   const steps = [
-    { upTo: 3, title: "The board is *open.*", sub: "3 of 9 squares claimed. Watch our grid fill up this week 🟩" },
-    { upTo: 6, title: "6 of 9 squares *claimed* 👀", sub: "The last 3 drop tomorrow." },
+    { upTo: 3, title: "The board is *open.*", sub: "3 of 9 squares claimed. A new one every day: watch our grid fill up 🟩" },
+    { upTo: 6, title: "6 of 9 squares *claimed* 👀", sub: "Three to go. Next one drops tomorrow." },
     { upTo: 9, title: "Board's *full.* 🟩", sub: "That's our logo, by the way. Make your board: link in bio." },
   ];
   const s = steps[i];
@@ -527,6 +539,38 @@ function HighlightCovers({ frame: i }: CompProps) {
   );
 }
 
+/**
+ * The launch grid as Reel covers (1080×1920): each tile sits in the middle 3:4, the part the
+ * profile grid shows, so nine Reels make the logo. Above and below only show in full-screen views.
+ */
+function GridCovers({ frame: i }: CompProps) {
+  const tile = GRID.find((t) => t.order === i + 1)!;
+  const gold = "trophy" in tile.art;
+  return (
+    <div className="absolute inset-0" style={{ background: COLORS.canvas }}>
+      <div
+        className="absolute inset-0"
+        style={{ background: `radial-gradient(260px 200px at 50% 50%, ${gold ? "rgba(255,194,51,.16)" : "rgba(214,255,120,.12)"}, transparent 70%)` }}
+      />
+      <div className="absolute inset-x-0 flex justify-center" style={{ top: 30 }}>
+        <Lockup size={20} />
+      </div>
+      <div className="absolute left-0" style={{ top: 80, width: TILE_W, height: TILE_H }}>
+        <Tile tile={tile} />
+      </div>
+      <div className="absolute inset-x-0 flex justify-center" style={{ top: 576 }}>
+        <span
+          className="inline-flex items-center rounded-full"
+          style={{ gap: 7, padding: "7px 14px", fontSize: 14, fontWeight: 700, background: "rgba(255,255,255,0.08)", color: COLORS.ink, border: `1px solid ${COLORS.lineStrong}` }}
+        >
+          <span style={{ color: gold ? COLORS.gold : COLORS.volt }}>▶</span>
+          {tile.watch}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 const stills = (c: Omit<Composition, "fps" | "kind">): Composition => ({ fps: 30, kind: "stills", ...c });
 
 export const GRID_POSTS: Composition[] = [
@@ -534,6 +578,7 @@ export const GRID_POSTS: Composition[] = [
     stills({ id: t.id, title: `Grid ${t.order}/9: ${t.headline}`, ...PORTRAIT, durationInFrames: 2, component: makeTilePost(t) }),
   ),
   stills({ id: "g-grid-preview", title: "Launch grid: profile preview", ...REEL, durationInFrames: 1, component: GridPreview }),
+  stills({ id: "r-grid-covers", title: "Launch grid: Reel covers (9)", ...REEL, durationInFrames: 9, component: GridCovers }),
   stills({ id: "s-grid-progress", title: "Story frames: the grid fills up", ...REEL, durationInFrames: 3, component: GridStories }),
   stills({ id: "p-highlight-covers", title: "Highlight covers (4)", ...REEL, durationInFrames: 4, component: HighlightCovers }),
 ];

@@ -382,7 +382,8 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
     if (!it.asset) return null;
     if (it.asset.startsWith("s-")) return { story: `assets/${it.asset}.jpg` };
     if (it.slides) return { slides: Array.from({ length: it.slides }, (_, i) => `assets/${it.asset}/${String(i + 1).padStart(2, "0")}.jpg`) };
-    return { video: `assets/${it.asset}.mp4`, cover: `assets/${it.asset}-cover.jpg` };
+    // A grid Reel carries its own cover: a square of the logo (r-grid-covers).
+    return { video: `assets/${it.asset}.mp4`, cover: `assets/${it.cover ?? `${it.asset}-cover`}.jpg`, gridCover: Boolean(it.cover) };
   };
 
   // ---------- state ----------
@@ -679,7 +680,7 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
           h("video", { src: u.video, poster: u.cover, controls: true, playsinline: true, muted: true, preload: "metadata" }),
           h("div", { class: "row", style: "flex-direction:column;align-items:flex-start" },
             h("button", { class: "btn primary", onclick: () => saveFile(u.video, `${it.asset}.mp4`), text: "Save video" }),
-            h("button", { class: "btn", onclick: () => saveFile(u.cover, `${it.asset}-cover.jpg`), text: "Save cover" }),
+            h("button", { class: u.gridCover ? "btn primary" : "btn", onclick: () => saveFile(u.cover, u.gridCover ? `${it.cover.replace("/", "-")}.jpg` : `${it.asset}-cover.jpg`), text: u.gridCover ? "Save grid cover" : "Save cover" }),
             h("span", { class: "note", text: it.kind === "story" ? "Post as a Story; add the sticker below." : "1080×1920 · with its own soundtrack (original audio)." })))));
     }
     if (u && u.slides) {

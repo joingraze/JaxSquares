@@ -62,7 +62,7 @@ export async function renderSoundtrack(
     drops: (spec.drops ?? []).map(T),
     builds: (spec.builds ?? []).map(([a, b]) => [T(a), T(b)]),
     breaks: (spec.breaks ?? []).map((b) => ({ from: T(b.from), to: T(b.to), level: b.level ?? 0.35 })),
-    intro: spec.intro ?? 0.8,
+    intro: spec.intro ?? 0.92,
   };
   const ctx = new OfflineAudioContext(2, Math.round(tl.dur * SAMPLE_RATE), SAMPLE_RATE);
   const rnd = seeded(hash(id));

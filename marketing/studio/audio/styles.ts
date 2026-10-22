@@ -1,4 +1,4 @@
-// The five soundtracks. Each is a four-chord loop whose last chord leads home:
+// The six soundtracks. Each is a four-chord loop whose last chord leads home:
 // bars are counted back from the end card, so the bar before it always plays
 // the last chord and the end card lands on `home` with the sting.
 // Notes are MIDI numbers; patterns are 16 steps per bar (1 = full velocity).
@@ -39,6 +39,34 @@ export interface Style {
 const ch = (notes: number[], bass: number): Chord => ({ notes, bass });
 
 export const STYLES: Record<StyleId, Style> = {
+  // Launch energy: 128 BPM, the uplifting I–V–vi–IV, four on the floor, 16th hats with open
+  // off-beats, a driving octave bass, supersaw stabs, a plucked 16th arp and a bell hook.
+  hype: {
+    bpm: 128,
+    swing: 0,
+    progression: [ch([60, 64, 67], 48), ch([59, 62, 67], 43), ch([57, 60, 64], 45), ch([57, 60, 65], 41)], // C G Am F
+    home: ch([60, 64, 67], 48),
+    kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+    snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.35],
+    clap: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+    hat: [0.35, 0.22, 0.6, 0.22, 0.35, 0.22, 0.6, 0.22, 0.35, 0.22, 0.6, 0.22, 0.35, 0.22, 0.6, 0.3],
+    openHat: [2, 6, 10, 14],
+    shaker: [],
+    kickKind: "punch",
+    bass: { steps: [0, 2, 3, 6, 8, 10, 11, 14], kind: "saw", intervals: [0, 12, 12, 12, 0, 12, 12, 12] },
+    chords: { kind: "stab", steps: [0, 3, 6, 10, 12], length: 0.18, pad: true },
+    arp: { kind: "pluck", steps: [0, 2, 4, 6, 8, 10, 12, 14], order: [0, 1, 2, 3, 2, 1, 2, 4], octave: 12 },
+    lead: {
+      kind: "bell",
+      bars: [
+        [[0, 79], [3, 79], [6, 76], [8, 74], [10, 76]], // C: G G E D E
+        [[0, 74], [3, 74], [6, 71], [8, 74], [10, 79]], // G: D D B D G
+        [[0, 76], [3, 72], [6, 76], [8, 79], [10, 81]], // Am: E C E G A
+        [[0, 77], [3, 76], [6, 74], [8, 72], [12, 74]], // F: F E D C D
+      ],
+    },
+    sting: [79, 84, 88, 91],
+  },
   // Game-day pop: four on the floor, off-beat bass, supersaw stabs, a bell hook.
   anthem: {
     bpm: 120,
@@ -67,7 +95,7 @@ export const STYLES: Record<StyleId, Style> = {
   },
   // Playful: bouncy kick, shaker, staccato chord plucks, a marimba line.
   bounce: {
-    bpm: 120,
+    bpm: 124,
     swing: 0.14,
     progression: [ch([55, 59, 62], 43), ch([54, 57, 62], 50), ch([55, 59, 64], 52), ch([55, 60, 64], 48)], // G D Em C
     home: ch([55, 59, 62], 43),
@@ -85,7 +113,7 @@ export const STYLES: Record<StyleId, Style> = {
   },
   // Data reveal: half-time drums, a driving eighth-note bass, a ticking arp.
   pulse: {
-    bpm: 120,
+    bpm: 124,
     swing: 0,
     progression: [ch([57, 62, 65], 38), ch([58, 62, 65], 46), ch([57, 60, 65], 41), ch([55, 60, 64], 36)], // Dm Bb F C
     home: ch([57, 60, 65], 41),

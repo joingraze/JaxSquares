@@ -41,7 +41,7 @@ const HOW = {
 export const HOW_FRAMES = 690;
 
 export const HOW_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: HOW.end,
   // The shuffle (draw clip 90) builds into "The numbers are in!" (195); the Q3 score lands 27 frames into the live cut.
   builds: [[clipMoment(HOW.draw, 90), clipMoment(HOW.draw, 195)]],
@@ -240,7 +240,7 @@ const DRAW_END = 330;
 export const DRAW_FRAMES = 410;
 
 export const DRAW_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: DRAW_END,
   intro: 0.7,
   // Tap "Draw the numbers" (clip 84), the shuffle (90) builds into "The numbers are in!" (195).
@@ -301,7 +301,7 @@ export const WINNERS_FRAMES = 460;
 
 const WIN_HIT = clipMoment(WIN.live, 67);
 export const WINNERS_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: WIN.end,
   intro: 0.75,
   builds: [[WIN.live.at + 4, WIN_HIT]],
@@ -421,7 +421,7 @@ const FEATURES_END = BEATS.length * BEAT;
 export const FEATURES_FRAMES = FEATURES_END + 80;
 
 export const FEATURES_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: FEATURES_END,
   drops: [BEAT],
   sfx: BEATS.slice(1).map((_, k) => ({ at: (k + 1) * BEAT, kind: "whoosh" as const, gain: 0.6 })),

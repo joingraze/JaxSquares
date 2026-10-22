@@ -288,7 +288,7 @@ const RUN_REPLIES = [
 ];
 
 export const RUN_AUDIO: AudioSpec = {
-  style: "pulse",
+  style: "hype",
   end: RUN_END,
   builds: [[8, RUN.at]],
   drops: [RUN.at, RUN_STOP],
@@ -434,7 +434,7 @@ const BAR_JOINED = clipMoment(BAR_JOIN, 140);
 const BAR_PHONE_OUT = 214;
 
 export const BAR_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: BAR.end,
   intro: 0.7,
   builds: [[BAR.draw.at - 12, BAR_NUMBERS]],
@@ -619,7 +619,7 @@ const HOOPS_TAPS = [
 ];
 
 export const HOOPS_AUDIO: AudioSpec = {
-  style: "bounce",
+  style: "hype",
   end: HOOPS.end,
   builds: [[HOOPS.live.at + 10, HOOPS_WIN]],
   drops: [HOOPS.create.at, HOOPS_WIN],
@@ -715,7 +715,7 @@ const SYNC_PHONES: { scene: Scene; pose: PhonePose & { rotate: number }; who: st
 ];
 
 export const SYNC_AUDIO: AudioSpec = {
-  style: "pulse",
+  style: "hype",
   end: SYNC_END,
   builds: [[SYNC_AT + 12, SYNC_LAND]],
   drops: [SYNC_AT, SYNC_LAND],

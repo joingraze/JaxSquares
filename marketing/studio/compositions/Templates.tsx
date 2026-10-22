@@ -44,7 +44,7 @@ export interface MatchupProps {
 export const MATCHUP_FRAMES = 300;
 
 export const MATCHUP_AUDIO: AudioSpec = {
-  style: "anthem",
+  style: "hype",
   end: MATCHUP_FRAMES - 44,
   intro: 0.75,
   // The draw rolls from 150; every digit lands with a tick; the hook sticker drops at 198.

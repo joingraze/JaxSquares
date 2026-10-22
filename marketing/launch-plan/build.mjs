@@ -40,7 +40,7 @@ function assetFiles(it) {
   if (!it.asset) return extras;
   if (it.asset.startsWith("s-")) return [`${it.asset}.png`, ...extras];
   if (it.slides) return [...Array.from({ length: it.slides }, (_, i) => `${it.asset}/${String(i + 1).padStart(2, "0")}.png`), ...extras];
-  return [`${it.asset}.mp4`, `${it.asset}-cover.png`, ...extras];
+  return [`${it.asset}.mp4`, it.cover ? `${it.cover}.png` : `${it.asset}-cover.png`, ...extras];
 }
 
 // ----------------------------------------------------------------- markdown

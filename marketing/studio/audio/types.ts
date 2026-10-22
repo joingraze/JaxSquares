@@ -1,7 +1,7 @@
 // What a composition asks of its soundtrack. Times are composition frames, so
 // cues come from the same constants that drive the visuals.
 
-export type StyleId = "anthem" | "bounce" | "pulse" | "retro" | "harvest";
+export type StyleId = "hype" | "anthem" | "bounce" | "pulse" | "retro" | "harvest";
 
 export type SfxKind =
   | "tap" // a finger on a button
@@ -26,6 +26,6 @@ export interface AudioSpec {
   /** Stretches where the groove thins out (level 0: the music stops). */
   breaks?: { from: number; to: number; level?: number }[];
   sfx?: { at: number; kind: SfxKind; gain?: number }[];
-  /** Energy before the first drop, 0–1 (default 0.8: no lead line yet). */
+  /** Energy before the first drop, 0–1 (default 0.92: the full groove and arp from the first frame, the lead hook saved for the drop). */
   intro?: number;
 }
