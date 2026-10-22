@@ -40,7 +40,7 @@ const NO_PIN = "Don't pin it: pinned posts jump to the top of the grid and break
 const PROFILE = {
   name: "JaxSquares · Sports Squares",
   username: "jaxsquares",
-  bio: "Football & basketball squares 🏈🏀\nFree to set up · no app · no signup\nLive scores call winners. Make a board 👇\nNot affiliated w/ NFL, NBA or NCAA",
+  bio: "Football & basketball squares 🏈🏀\nFree to set up · no app · no signup\nLive scores call winners. Make a board 👇\nNot affiliated w/ any league or team",
   linkUrl: "https://jaxsquares.com/?ref=ig",
   linkTitle: "Make a board",
   category: "Sports & Recreation",
@@ -89,7 +89,7 @@ export const PLAN = {
       "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",
-      "Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.",
+      "Keep 'Not affiliated w/ any league or team' in the bio. The Terms and landing-page footers name the leagues.",
     ],
     kpis: [
       { metric: "Boards created (north star)", how: "npx wrangler d1 execute jaxsquares --remote --command \"SELECT date(created_at/1000,'unixepoch') AS day, COUNT(*) AS boards FROM games GROUP BY day ORDER BY day DESC LIMIT 14\"" },
@@ -231,9 +231,9 @@ export const PLAN = {
       date: "2026-10-21", time: "14:45", kind: "task", week: "prep", start: true,
       title: "Profile 4/7: Bio",
       checklist: [
-        "Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀, ends its third line with “Make a board 👇” (the link sits right under the bio) and names the NBA in the last line.",
+        "Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀, ends its third line with “Make a board 👇” (the link sits right under the bio), and the last line disclaims any league or team.",
         "Edit profile → Bio → paste the bio. Keep the line breaks.",
-        "147 characters, inside Instagram's 150. Leave Pronouns empty.",
+        "149 characters, inside Instagram's 150. Leave Pronouns empty.",
       ],
       copy: [{ label: "Bio", text: PROFILE.bio }],
     },

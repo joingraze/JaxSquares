@@ -82,7 +82,7 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 - Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.
 - Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.
 - Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.
-- Keep 'Not affiliated w/ NFL, NBA or NCAA' in the bio.
+- Keep 'Not affiliated w/ any league or team' in the bio. The Terms and landing-page footers name the leagues.
 
 ## Measure
 
@@ -102,7 +102,7 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
   Football & basketball squares 🏈🏀
   Free to set up · no app · no signup
   Live scores call winners. Make a board 👇
-  Not affiliated w/ NFL, NBA or NCAA
+  Not affiliated w/ any league or team
   ```
 - **Link:** https://jaxsquares.com/?ref=ig (title: “Make a board”; the ?ref=ig makes Instagram visits show up in Cloudflare analytics).
 - **Highlights:** How it works, Square stats, Game days, Thanksgiving
@@ -212,9 +212,9 @@ jaxsquares
 
 ### Wed, Oct 21, 2:45 PM · Task: Profile 4/7: Bio
 
-- [ ] Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀, ends its third line with “Make a board 👇” (the link sits right under the bio) and names the NBA in the last line.
+- [ ] Set it Wednesday? Replace it: it now leads with football & basketball 🏈🏀, ends its third line with “Make a board 👇” (the link sits right under the bio), and the last line disclaims any league or team.
 - [ ] Edit profile → Bio → paste the bio. Keep the line breaks.
-- [ ] 147 characters, inside Instagram's 150. Leave Pronouns empty.
+- [ ] 149 characters, inside Instagram's 150. Leave Pronouns empty.
 
 **Bio:**
 
@@ -222,7 +222,7 @@ jaxsquares
 Football & basketball squares 🏈🏀
 Free to set up · no app · no signup
 Live scores call winners. Make a board 👇
-Not affiliated w/ NFL, NBA or NCAA
+Not affiliated w/ any league or team
 ```
 
 ### Wed, Oct 21, 2:50 PM · Task: Profile 5/7: Link
