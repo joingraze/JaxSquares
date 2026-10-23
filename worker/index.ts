@@ -29,7 +29,7 @@ import { siblingProblem } from "../shared/siblings";
 import { WEEK_PAGES, type WeekPage } from "../shared/weekGames";
 import { boardSportFor, freshNumbersInfo, isLeague, isLinkedLeague, leagueSportProblem, rulesProblemFor } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
-import { PAYMENT_REQUIRED_CODE } from "../shared/types";
+import { ACCOUNT_REQUIRED_CODE, PAYMENT_REQUIRED_CODE, type ClaimsResponse } from "../shared/types";
 import type {
   Activity,
   CohostInviteResponse,
@@ -42,12 +42,17 @@ import type {
   Period,
   Sport,
 } from "../shared/types";
-import { authConfig, authRoutes, canonicalClientId, SIGNED_IN_HEADER, signedInHint } from "./auth";
+import { authConfig, authRoutes, canonicalClientId, freshLink, hostsSignIn, SIGNED_IN_HEADER, signedInHint } from "./auth";
 import { cleanColor, cleanTeam, cleanText } from "./clean";
 import { clubRoutes, csvFilename, playersCsv } from "./clubs";
 import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
+import { claimCodesFor } from "./claims";
+import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor } from "../shared/venue";
+import { cleanTvDisplay, tvDisplayError } from "../shared/tv";
+import { TV_CODE_TTL_MS, cleanTvCode, isTvBrowser } from "../shared/tvBrowser";
+import { drawTvCode, newTvToken, tvTokenHash } from "./tvPair";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
@@ -407,7 +412,21 @@ api.route("/", authRoutes);
 api.route("/", emailRoutes);
 api.route("/", clubRoutes);
 
+/** POST /api/games from a device that isn't signed in, where hosts sign in (hostsSignIn). */
+export const SIGN_IN_TO_CREATE = "Sign in with Apple or Google to make a board. Players never need an account.";
+
 api.post("/games", requireClient, async (c) => {
+  // Hosts sign in first, so the board and its host controls stay with their account on every device.
+  if (hostsSignIn(c.env)) {
+    let link: Awaited<ReturnType<typeof freshLink>>;
+    try {
+      link = await freshLink(c.env.DB, c.req.header("x-client-id") ?? "");
+    } catch (err) {
+      console.error("account link lookup failed", err);
+      return c.json({ error: "Couldn't check your sign-in. Try again in a moment." }, 503);
+    }
+    if (!link) return c.json({ error: SIGN_IN_TO_CREATE, code: ACCOUNT_REQUIRED_CODE }, 409);
+  }
   const clientId = c.get("clientId");
   const me = c.get("playerId");
   const body = await readJson(c);
@@ -497,6 +516,104 @@ api.post("/games", requireClient, async (c) => {
   throw new Error("unreachable");
 });
 
+// Claim codes (worker/claims.ts): a winner's own, and every winner's for the host or a co-host. Never in the public state.
+api.get("/games/:id/claims", requireClient, async (c) => {
+  const found = await db.getGameStateWithToken(c.env.DB, c.req.param("id"), c.get("clientId"));
+  if (!found) fail(404, "Game not found");
+  const { state, adminToken, cohost } = found;
+  if (!state.game.format.claimCodes) return c.json({ enabled: false, mine: [], all: null } satisfies ClaimsResponse, 200, { "cache-control": "no-store" });
+  const codes = await claimCodesFor(state, adminToken);
+  const runsIt = cohost || tokenMatches(adminToken, c.req.header("x-admin-token") ?? "");
+  const me = c.get("playerId");
+  const body: ClaimsResponse = { enabled: true, mine: codes.filter((k) => k.playerId === me), all: runsIt ? codes : null };
+  return c.json(body, 200, { "cache-control": "no-store" });
+});
+
+// ---- Pairing a TV (docs/ARCHITECTURE.md "TV mode and the printable board") ----
+
+/** A TV on jaxsquares.com/tv asks for a code to show; its secret comes back once, for asking what it was sent. */
+api.post("/tv/pair", async (c) => {
+  const ip = c.req.header("cf-connecting-ip")?.trim();
+  const limited = ip ? await rateLimited(c, RATE_LIMITS.tvCodeIp, await addressSubject(ip)) : null;
+  if (limited) return limited;
+  const token = newTvToken();
+  const tokenHash = await tvTokenHash(token);
+  const now = Date.now();
+  const expiresAt = now + TV_CODE_TTL_MS;
+  for (let tries = 0; tries < 6; tries++) {
+    const code = drawTvCode();
+    if (await db.insertTvPairing(c.env.DB, { code, tokenHash, now, expiresAt })) {
+      return c.json({ code, token, expiresAt }, 201, { "cache-control": "no-store" });
+    }
+  }
+  return c.json({ error: "Couldn't make a TV code just now. Try again in a moment." }, 503);
+});
+
+/** The TV asks (every few seconds, with its secret) whether a board was sent to its code. */
+api.get("/tv/pair/:code", async (c) => {
+  const code = cleanTvCode(c.req.param("code"));
+  const token = c.req.header("x-tv-token") ?? "";
+  const found = code && token ? await db.tvPairing(c.env.DB, code, await tvTokenHash(token), Date.now()) : null;
+  if (!found) fail(404, "This TV's code expired. A new one is on its way.");
+  return c.json(found, 200, { "cache-control": "no-store" });
+});
+
+/**
+ * Sends this board to the TV showing `code`. Anyone with the board's link
+ * may, like opening its TV mode: the code on the TV is the TV's say-so.
+ */
+api.post("/games/:id/tv", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const limited = await deviceLimited(c, RATE_LIMITS.tvSend, RATE_LIMITS.tvSendIp);
+  if (limited) return limited;
+  if (!(await db.getGameRow(c.env.DB, id))) fail(404, "Game not found");
+  const body = await readJson(c);
+  const code = cleanTvCode(body.code);
+  if (!code) fail(400, "Enter the 4-character code on the TV.");
+  if (!(await db.sendToTv(c.env.DB, code, id, Date.now()))) fail(404, "No TV is showing that code. Check the TV: its code changes every 15 minutes.");
+  return c.json({ ok: true });
+});
+
+/**
+ * A venue board's prize handed over (docs/ARCHITECTURE.md "Venue boards"):
+ * marked by the host or a co-host in Host tools, or on the winner's own phone
+ * (staff tap it there) until their time to collect runs out. Only the host
+ * takes a mark back. Public, so the board, the TV and the phone all show it.
+ */
+api.post("/games/:id/claims/collect", requireClient, async (c) => {
+  const id = gameIdParam(c);
+  const found = await db.getGameStateWithToken(c.env.DB, id, c.get("clientId"));
+  if (!found) fail(404, "Game not found");
+  const { state, adminToken, cohost } = found;
+  if (!state.game.format.claimCodes) fail(409, "This board doesn't use claim codes");
+  const body = await readJson(c);
+  const periodKey = typeof body.periodKey === "string" ? body.periodKey : "";
+  const reverse = body.reverse === true;
+  if (typeof body.collected !== "boolean") fail(400, "collected must be true or false");
+  const result = resolveResults(state).find((r) => r.periodKey === periodKey);
+  const winner = result && (reverse ? (result.awardsReverse ? result.reverseWinnerPlayerId : null) : result.awardsSquare ? result.winnerPlayerId : null);
+  if (!winner) fail(404, "Nobody has won that yet");
+  const host = cohost || tokenMatches(adminToken, c.req.header("x-admin-token") ?? "");
+  const mine = c.get("playerId") === winner;
+  if (!host && !mine) fail(403, "Only the winner or the host can do that");
+  const now = Date.now();
+  let write: D1PreparedStatement;
+  if (!body.collected) {
+    if (!host) fail(403, "Only the host can take that back");
+    write = db.uncollectPrize(c.env.DB, id, periodKey, reverse);
+  } else {
+    if (collectedFor(state, periodKey, reverse, winner)) return c.json({ state });
+    const deadline = claimDeadline(state, periodKey);
+    if (!host && deadline !== null && now > deadline + CLAIM_GRACE_MS) fail(409, CLAIM_EXPIRED_ERROR);
+    const clientId = mine ? c.get("clientId") : (await db.getMembers(c.env.DB, id)).find((m) => m.id === winner)?.clientId;
+    if (!clientId) fail(404, "Nobody has won that yet");
+    write = db.collectPrize(c.env.DB, id, { periodKey, reverse, clientId, by: host ? "host" : "winner" }, now);
+  }
+  const { state: next } = await commitOr404(c, id, [write], now);
+  publish(c, next, [], []);
+  return c.json({ state: next });
+});
+
 api.get("/games/:id", async (c) => {
   const state = await stateOr404(c, gameIdParam(c));
   return c.json(state, 200, { "cache-control": "no-store" });
@@ -557,6 +674,12 @@ api.patch("/games/:id", requireClient, async (c) => {
     // Display only, so it can change any time; a linked board's comes from its schedule (a season board's, its games').
     if (game.linkedEvent || season) fail(400, KICKOFF_ERRORS.linked);
     fields.startsAt = cleanKickoff(body.startsAt, Date.now());
+  }
+  if (body.tv !== undefined) {
+    // What TV mode shows: any time, and never an activity (every TV on the board follows the new state).
+    const problem = tvDisplayError(body.tv);
+    if (problem) fail(400, problem);
+    fields.tv = cleanTvDisplay(body.tv);
   }
   if (body.maxPerPlayer !== undefined) {
     if (game.status !== "draft" && game.status !== "open") fail(409, "Squares are already locked");
@@ -1147,7 +1270,7 @@ const noindex: MiddlewareHandler<AppEnv> = async (c, next) => {
   res.headers.set("x-robots-tag", "noindex");
   c.res = res;
 };
-for (const path of ["/g/*", "/club/*", "/new", "/me"]) app.use(path, noindex);
+for (const path of ["/g/*", "/club/*", "/new", "/me", "/tv"]) app.use(path, noindex);
 
 app.get("/.well-known/apple-app-site-association", (c) => {
   const env = c.env;
@@ -1202,6 +1325,11 @@ async function invitePage(c: Ctx): Promise<Response> {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.replace(`/g/${id}`, `/g/${lower}`);
     return c.redirect(url.toString(), 301);
+  }
+  // A smart TV's browser opening a board's link gets its TV mode, not the phone page (?board=1 keeps the board).
+  const url0 = new URL(c.req.url);
+  if (GAME_ID_RE.test(id) && /^\/g\/[^/]+\/?$/.test(url0.pathname) && !url0.searchParams.has("board") && isTvBrowser(c.req.header("user-agent"))) {
+    return c.redirect(`${url0.origin}/g/${id}/tv`, 302);
   }
   const indexReq = new Request(new URL("/", c.req.url), { headers: { accept: "text/html" } });
   const [html, state] = await Promise.all([

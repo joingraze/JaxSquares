@@ -21,6 +21,7 @@ export type HostBusy =
   | "remove-player"
   | "cohost-invite"
   | "cohost-remove"
+  | "collect"
   | null;
 
 /** What `lock` resolves to when the board's host fee isn't paid yet (the server's 402): open the checkout, then draw. */
@@ -45,6 +46,8 @@ export interface HostActions {
   removeCohost: (playerId: string) => Promise<GameState | null>;
   /** A co-host steps down (stays on the board as a player). */
   stepDown: () => Promise<GameState | null>;
+  /** A venue board's prize handed over to its winner (or, `collected` false, taken back). */
+  collect: (periodKey: string, reverse: boolean, collected: boolean) => Promise<GameState | null>;
 }
 
 /** The API's refusals for removing a player, said for the host. */
@@ -119,6 +122,10 @@ export function useHostActions(gameId: string, apply: (state: GameState) => void
     ),
     clearWinner: useCallback((key: string) => withState("clear-winner", () => api.deleteWinner(gameId, key)), [withState, gameId]),
     finish: useCallback(() => withState("finish", () => api.finish(gameId)), [withState, gameId]),
+    collect: useCallback(
+      (periodKey: string, reverse: boolean, collected: boolean) => withState("collect", () => api.collectAsHost(gameId, { periodKey, reverse, collected })),
+      [withState, gameId],
+    ),
     update: useCallback((patch: UpdateGameInput) => withState("edit", () => api.updateGame(gameId, patch)), [withState, gameId]),
     remove: useCallback(async () => (await run("delete", () => api.deleteGame(gameId))) !== null, [run, gameId]),
     removePlayer: useCallback(

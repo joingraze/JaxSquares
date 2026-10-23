@@ -1,25 +1,29 @@
 // The panel beside the TV board. While squares are open: the matchup, a big
-// QR code ("Scan to grab a square") and the short link. Once the numbers are
-// drawn: the scoreboard (live score, quarter and clock), who the score points
-// at right now, the winners so far and what's still to play. Big type, high
-// contrast, nothing to hover or tap. Team colors come from the board's
+// QR code ("Scan to grab a square") and the short link, and on a board with
+// prize notes, house rules or a venue's lines, a card that spells them out
+// (tvDetails). Once the numbers are drawn: the scoreboard (live score, quarter
+// and clock), who the score points at right now, the winners so far (with
+// their prize), what's still to play and the house rules in a line. Big type,
+// high contrast, nothing to hover or tap. Each part shows as the host picked
+// (`show`, shared/tv.ts; the board's own choices by default). Team colors come from the board's
 // --team-x / --team-y, so the panel and the board's bands always match.
 
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatAmount, formatRange } from "../../../shared/formats";
 import { gameKickoff } from "../../../shared/kickoff";
 import { shownClub } from "../../../shared/clubs";
+import { tvShowAll, type TvShow } from "../../../shared/tv";
 import { sportWords } from "../../../shared/sportWords";
 import type { ClubBrand, GameState, Player, Team } from "../../../shared/types";
-import { GiftIcon, RefreshIcon, TrophyIcon } from "../../components/icons";
+import { CheckIcon, GiftIcon, RefreshIcon, TrophyIcon } from "../../components/icons";
 import { LogoMark, cx } from "../../components/ui";
 import { contrastText, countdown, kicksOffLabel, pluralize, shortTeam } from "../../lib/format";
 import { boardPhase, claimedCount, headlineScore, nowSentence, type NowView } from "../board/boardModel";
 import { displayLink } from "../invite/inviteModel";
 import { QrCode } from "../invite/QrCode";
-import { prizeLineup } from "../rules/rulesModel";
+import { capLine, prizeLineup } from "../rules/rulesModel";
 import { TvClubBrand } from "../club/TvClubBrand";
-import { latest, type TvPlayer, type TvUpcoming, type TvWinner } from "./tvModel";
+import { latest, tvDetails, type TvDetails, type TvPlayer, type TvUpcoming, type TvWinner } from "./tvModel";
 
 type Side = "x" | "y";
 
@@ -87,17 +91,20 @@ export interface TvOpenPanelProps {
   url: string;
   /** The QR code's side, px. */
   qr: number;
-  /** Lay the QR code beside its caption (a wide panel) instead of above it. */
+  /** Lay the QR code beside its caption (a wide panel, or room kept for the prizes card) instead of above it. */
   row: boolean;
   now: number;
+  /** What the host lets the TV show (default: the board's own choices). */
+  show?: TvShow;
 }
 
-export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOpenPanelProps) {
+export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer, show = tvShowAll(state.game) }: TvOpenPanelProps) {
   const { game } = state;
   const { claimed, total } = claimedCount(state);
   const left = total - claimed;
   const kickoff = gameKickoff(game);
-  const lineup = prizeLineup(game.format);
+  const details = tvDetails(game, show);
+  const lineup = details || !show.prizes || !show.amounts ? null : prizeLineup(game.format);
   const players = state.players.length;
   return (
     <section aria-label="Join this board" className="tv-panel" data-testid="tv-open">
@@ -119,7 +126,12 @@ export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOp
           <QrCode value={url} size={qr} quiet={1} label={`QR code: open ${displayLink(url)} to grab a square`} />
         </div>
         <div className={cx("flex min-w-0 flex-col gap-[calc(var(--u)*1.2)]", !row && "items-center")}>
-          <p className="font-display text-[length:calc(var(--u)*5.4)] font-extrabold leading-[1.02] tracking-[-0.03em] text-ink">
+          <p
+            className={cx(
+              "font-display font-extrabold leading-[1.02] tracking-[-0.03em] text-ink",
+              details ? "text-[length:calc(var(--u)*4.4)]" : "text-[length:calc(var(--u)*5.4)]",
+            )}
+          >
             {left > 0 ? "Scan to grab a square" : "Scan to follow along"}
           </p>
           <p data-testid="tv-link" className="font-display text-[length:calc(var(--u)*3.4)] font-extrabold tracking-[-0.01em] text-ink-brand">
@@ -135,7 +147,16 @@ export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOp
             )}
             {" · "}
             {pluralize(players, "player")}
+            {/* The squares-per-person setting, worded the same everywhere (never a house rule). */}
+            {capLine(game.maxPerPlayer) && <span data-testid="tv-cap"> · {capLine(game.maxPerPlayer)}</span>}
           </p>
+          {details && details.venue.length > 0 && (
+            <p className="tv-text-md flex flex-col font-extrabold text-ink-gold" data-testid="tv-venue">
+              {details.venue.map((line) => (
+                <span key={line}>{line}</span>
+              ))}
+            </p>
+          )}
           {lineup && !lineup.fun && lineup.parts.length > 0 && (
             <p className="tv-text-md flex items-start gap-[calc(var(--u)*0.8)] text-ink-gold">
               <GiftIcon className="mt-[0.15em] h-[1em] w-[1em] shrink-0" />
@@ -144,8 +165,59 @@ export function TvOpenPanel({ state, url, qr, row, now, hideClub, footer }: TvOp
           )}
         </div>
       </div>
+      {details && (details.prizes.length > 0 || details.price || details.rules.length > 0) && <TvDetailsCard details={details} />}
       {footer}
     </section>
+  );
+}
+
+/** Each prize with its note and the house rules, for a room deciding whether to scan (the venue's lines sit by the QR code). */
+function TvDetailsCard({ details }: { details: TvDetails }) {
+  const { price, prizes, rules } = details;
+  return (
+    <div className="tv-card flex min-h-0 shrink flex-col gap-[calc(var(--u)*1.6)] overflow-hidden" data-testid="tv-details">
+      {(prizes.length > 0 || price) && (
+        <div className="flex flex-col gap-[calc(var(--u)*0.8)]">
+          <p className="tv-eyebrow flex items-center gap-[calc(var(--u)*0.8)] text-ink-gold">
+            <GiftIcon className="h-[1.1em] w-[1.1em] shrink-0" />
+            Prizes
+            {price && <span className="text-ink-muted">· {price}</span>}
+          </p>
+          {prizes.length > 0 && (
+            <ul className="tv-text-md grid grid-cols-[auto_minmax(0,1fr)] gap-x-[calc(var(--u)*1.6)] gap-y-[calc(var(--u)*0.5)]">
+              {prizes.map((p) => (
+                <li key={p.moment} className="contents" data-testid="tv-prize">
+                  <span className="text-ink-muted">{p.label}</span>
+                  <span className="min-w-0 truncate">
+                    {p.amount && <b className="tabular-nums text-ink-gold">{p.amount}</b>}
+                    {p.amount && p.note && <span className="text-ink-subtle"> · </span>}
+                    {p.note && <span className="text-ink">{p.note}</span>}
+                    {p.reverse && (
+                      <span className="text-ink-muted">
+                        {p.amount || p.note ? " · " : ""}Reverse {[p.reverse.amount, p.reverse.note].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {rules.length > 0 && (
+        <div className="flex flex-col gap-[calc(var(--u)*0.8)]" data-testid="tv-house-rules">
+          <p className="tv-eyebrow text-ink-muted">House rules</p>
+          <ul className="tv-text-md flex flex-col gap-[calc(var(--u)*0.5)] text-ink">
+            {rules.map((rule) => (
+              <li key={rule} className="flex min-w-0 items-start gap-[calc(var(--u)*0.8)]">
+                <CheckIcon strokeWidth={3} className="mt-[0.2em] h-[0.9em] w-[0.9em] shrink-0 text-ink-brand" />
+                <span className="min-w-0">{rule}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -161,6 +233,8 @@ export interface TvGamePanelProps {
   /** What's still to play, with what each can show. */
   upcoming: TvUpcoming[];
   now: number;
+  /** What the host lets the TV show (default: the board's own choices). */
+  show?: TvShow;
 }
 
 /**
@@ -193,7 +267,7 @@ function useRowsThatFit(count: number) {
   return { ref, fit };
 }
 
-export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, footer }: TvGamePanelProps) {
+export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, footer, show = tvShowAll(state.game) }: TvGamePanelProps) {
   const { game } = state;
   const phase = boardPhase(state);
   const score = headlineScore(state);
@@ -202,6 +276,9 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, 
   const byId = new Map(state.players.map((p) => [p.id, p]));
   const { ref: listRef, fit } = useRowsThatFit(winners.length);
   const { shown, earlier } = latest(winners, fit);
+  const details = tvDetails(game, show);
+  const houseLine = details ? details.rules.join(" · ") : "";
+  const shownWinners = show.winners ? shown : [];
 
   let status: { text: string; tone: "live" | "final" | "muted" };
   if (phase === "live") status = { text: score?.detail || "Live", tone: "live" };
@@ -244,34 +321,46 @@ export function TvGamePanel({ state, nowView, winners, upcoming, now, hideClub, 
         </p>
       </div>
 
-      {nowView && <TvNow now={nowView} byId={byId} game={game} />}
+      {nowView && show.now && <TvNow now={nowView} byId={byId} game={game} amounts={show.amounts} />}
 
       <div ref={listRef} className="tv-winners flex-1" data-testid="tv-winners">
-        {winners.length > 0 && (
+        {shownWinners.length > 0 && (
           <>
             <p data-tv-head className="tv-eyebrow flex items-center gap-[calc(var(--u)*0.8)] text-ink-gold">
               <TrophyIcon filled className="h-[1.1em] w-[1.1em]" />
               {phase === "final" ? "Winners" : "Winners so far"}
               {earlier > 0 && <span className="normal-case tracking-normal text-ink-subtle">· {earlier} earlier</span>}
             </p>
-            {shown.map((w) => (
+            {shownWinners.map((w) => (
               <WinnerRow key={w.key} winner={w} />
             ))}
           </>
         )}
       </div>
 
-      {upcoming.length > 0 && (
+      {show.upcoming && upcoming.length > 0 && (
         <div className="flex flex-col gap-[calc(var(--u)*0.8)]" data-testid="tv-upcoming">
           <p className="tv-eyebrow text-ink-muted">Still to play</p>
           <p className="flex flex-wrap gap-[calc(var(--u)*0.8)]">
             {upcoming.map((u) => (
-              <span key={u.key} className={cx("tv-chip", u.live ? "text-ink-live" : "text-ink")}>
+              <span key={u.key} className={cx("tv-chip max-w-full", u.live ? "text-ink-live" : "text-ink")}>
                 {u.label}
                 {u.amount && <span className="tabular-nums text-ink-gold">{u.amount}</span>}
+                {u.note && <span className="min-w-0 max-w-[calc(var(--u)*26)] truncate font-bold text-ink-muted">{u.note}</span>}
               </span>
             ))}
           </p>
+        </div>
+      )}
+      {details && (houseLine || details.venue.length > 0) && (
+        <div className="flex flex-col gap-[calc(var(--u)*0.4)] border-t border-line pt-[calc(var(--u)*1.2)]" data-testid="tv-house-line">
+          {houseLine && (
+            <p className="tv-text-md line-clamp-2 text-ink-muted">
+              <CheckIcon strokeWidth={3} className="mr-[calc(var(--u)*0.6)] inline h-[0.9em] w-[0.9em] align-[-0.1em] text-ink-brand" />
+              {houseLine}
+            </p>
+          )}
+          {details.venue.length > 0 && <p className="tv-text-md truncate font-extrabold text-ink-gold">{details.venue.join(" · ")}</p>}
         </div>
       )}
       {footer}
@@ -285,6 +374,7 @@ function WinnerRow({ winner }: { winner: TvWinner }) {
       <div className="flex min-w-0 flex-col gap-[calc(var(--u)*0.3)]">
         <span className="tv-eyebrow truncate text-ink-gold" data-testid="tv-winner-label">
           {winner.label}
+          {winner.prize && <span className="normal-case tracking-normal text-ink"> · {winner.prize}</span>}
         </span>
         <span className="flex min-w-0 items-center gap-[calc(var(--u)*1)]">
           <TvAvatar player={winner.player} size={3.4} />
@@ -292,6 +382,12 @@ function WinnerRow({ winner }: { winner: TvWinner }) {
             {winner.player ? winner.player.name : `Nobody had ${winner.score ?? "it"}`}
           </span>
           {winner.reverseOnly && <RefreshIcon className="h-[calc(var(--u)*2)] w-[calc(var(--u)*2)] shrink-0 text-ink-subtle" title="Reverse square" />}
+          {winner.collected && (
+            <span className="tv-chip shrink-0 !py-[calc(var(--u)*0.3)] text-ink-brand" data-testid="tv-collected">
+              <CheckIcon strokeWidth={3} className="h-[0.9em] w-[0.9em]" />
+              Collected
+            </span>
+          )}
         </span>
         {winner.reverse && (
           <span className="tv-text-md flex min-w-0 items-center gap-[calc(var(--u)*0.6)] text-ink-muted">
@@ -308,19 +404,21 @@ function WinnerRow({ winner }: { winner: TvWinner }) {
 }
 
 /** Who the score points at right now (or, on every-score boards, where the next score lands). */
-function TvNow({ now, byId, game }: { now: NowView; byId: Map<string, Player>; game: GameState["game"] }) {
+function TvNow({ now, byId, game, amounts }: { now: NowView; byId: Map<string, Player>; game: GameState["game"]; amounts: boolean }) {
   const who = (id: string | null): TvPlayer | null => {
     const p = id ? byId.get(id) : undefined;
     return p ? { id: p.id, name: p.name, color: p.color, emoji: p.emoji } : null;
   };
   const owner = who(now.ownerId);
-  const amount = now.rest
-    ? `the rest${now.amount !== null ? ` (${formatAmount(now.amount, now.unit)} so far)` : ""}`
-    : now.range
-      ? formatRange(now.range, now.unit)
-      : now.amount
-        ? formatAmount(now.amount, now.unit)
-        : null;
+  const amount = !amounts
+    ? null
+    : now.rest
+      ? `the rest${now.amount !== null ? ` (${formatAmount(now.amount, now.unit)} so far)` : ""}`
+      : now.range
+        ? formatRange(now.range, now.unit)
+        : now.amount
+          ? formatAmount(now.amount, now.unit)
+          : null;
   const teamOf = (side: Side) => (side === "x" ? game.teamX : game.teamY);
   return (
     <div

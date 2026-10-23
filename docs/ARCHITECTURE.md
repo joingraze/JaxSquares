@@ -170,7 +170,8 @@ Model, merge rules and setup: docs/auth.md. In short:
   17) it runs housekeeping (`worker/housekeeping.ts`): settles boards left from
   the pay-to-open flow (`settleLegacyBoards`: a board its payment opened counts
   as paid, a draft opens and its new state is pushed), prunes activity beyond
-  the newest 200 per game, drops expired rate-limit windows, and deletes
+  the newest 200 per game, drops expired rate-limit windows and TV codes
+  (`tv_pairings`, see "TV mode and the printable board"), and deletes
   email-notice addresses past their keep (a week after the board's final, an
   unconfirmed one when its link expires; docs/email.md). An App Store
   purchase for a board deleted before it was confirmed isn't lost: `/pay/iap`
@@ -188,18 +189,19 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | Method | Path | Who | Body | Returns |
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden. `emailEnabled`: email notices are set up (the app shows the opt-in only then) |
-| POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
+| POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it, and a new one whose verified email (not an Apple private relay address) an account has joins that account the same way (docs/auth.md "One account per email"). `MeResponse.account.providers` lists every way the account signs in. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
 | GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Club Pass, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
+| POST | `/api/auth/apple/link`, `/api/auth/google/link` | C | `SignInInput` (+ `combine?`) | `MeResponse`: adds that sign-in to the account this device is signed in to. 409 "Sign in first" (this device isn't); 409 `{ error, code: "account_exists" }` when that sign-in has its own account, until resent with `combine: true`, which moves that account's boards, devices and sign-ins into this one and deletes it; otherwise as sign-in |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
 | GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
 | GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color; never a logo: team logos are the leagues' trademarks, so teams show as their abbreviation on their color), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
 | GET | `/api/season/schedule?league=<linked league>&team=<id>[&year=2026]` | – | – | `TeamScheduleResponse` `{ team, year, events }`: one team's season (regular season, then the postseason games scheduled so far; the NBA's play-in too), every game in order, a finished one with its `result`; `homeId`/`awayId`, `label` ("Week 7", "Wild Card"), `playoff`. 200 `unavailable` when ESPN is down; 400 bad league, team or year |
-| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
+| POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 409 `{ error, code: "account_required" }` from a device that isn't signed in wherever web sign-in is set up (`hostsSignIn`, docs/auth.md "Hosts sign in"), checked first; 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
 | GET | `/api/games/:id` | – | – | `GameState` |
 | GET | `/api/games/:id/host-check` | C H! | – | `{ ok: true }`; 403 when `x-admin-token` isn't this board's, 404 for no board. A device checks a host link's token here before trusting it |
-| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push. A season's game board: 409 (`SEASON_ERRORS.childEdit`); a season board's `format` and `name` reach its games' boards (see "Season boards") |
+| PATCH | `/api/games/:id` | C H | `UpdateGameInput` | `{ state }`; 400 on money in a note or the name, bad rules, a `startsAt` out of range or on a linked board; 409 when `format` changes something locked (see "Rules and prizes"). A `format` edit writes the canonical format + fixed `periods`, clears legacy `prizes`, logs a `rules` activity and broadcasts (never pushed). `prizes` from an older client land in the rules' notes on a board that has rules. A `startsAt` edit (custom boards, any time) is broadcast with no activity and no push. A `tv` edit (what TV mode shows, `TvDisplay`, see "TV mode and the printable board"; the host or a co-host, any time) is stored whole in `games.tv` (migration 0020) and broadcast with no activity and no push; 400 on an unknown part or a value that isn't true/false. A season's game board: 409 (`SEASON_ERRORS.childEdit`); a season board's `format` and `name` reach its games' boards (see "Season boards") |
 | DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board. A season board takes its games' boards with it; a season's game board is 409 (`SEASON_ERRORS.childDelete`) |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them, or on a season's game board (`SEASON_ERRORS.childJoin`: players join the season board); 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
@@ -216,6 +218,11 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
 | GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | A Club Pass board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Club Pass, or for anyone but the host and co-hosts; 429 |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
+| GET | `/api/games/:id/claims` | C (H for `all`) | – | `ClaimsResponse` `{ enabled, mine, all }` (`no-store`): a board with claim codes (`format.claimCodes`, see "Venue boards"): `mine` lists the caller's own winning awards with their codes; `all` every award's code for the host (its admin token) or a co-host, else null. `{ enabled: false, mine: [], all: null }` when the board doesn't use them; 404 |
+| POST | `/api/games/:id/claims/collect` | C (the winner, or H) | `CollectInput` `{ periodKey, reverse, collected }` | `{ state }`: marks that award's prize handed over to its current winner (`GameState.collected`, broadcast like any change), by the host or a co-host (`by: "host"`) or on the winner's own phone (`by: "winner"`); marking it again is a no-op. `collected: false` takes it back (host only, else 403). 400 bad body, 403 anyone else, 404 nobody has won that award, 409 the board doesn't use claim codes, or the winner's phone after their time to collect (`claimDeadline` + `CLAIM_GRACE_MS`, `CLAIM_EXPIRED_ERROR`; the host still can) |
+| POST | `/api/tv/pair` | – | – | `{ code, token, expiresAt }` (201, `no-store`): a smart TV's pairing code (`TV_CODE_LENGTH` characters from `TV_CODE_ALPHABET`, `shared/tvBrowser.ts`, good for `TV_CODE_TTL_MS`) and the secret only that TV holds; only the secret's hash is kept (`tv_pairings`, migration 0021). 503 when no free code turned up in 6 tries; 429 per address |
+| GET | `/api/tv/pair/:code` | – (`x-tv-token`) | – | `{ gameId, expiresAt }` (`no-store`): the board sent to that code, null until one is. 404 for a wrong secret, an unknown code or one past its time (the TV takes a new code) |
+| POST | `/api/games/:id/tv` | C | `{ code }` | `{ ok: true }`: sends this board to the TV showing `code` (typed any way: case, spaces and dashes don't matter; `cleanTvCode`). Anyone with the board's link may, like opening its TV mode (no membership, no admin token): the code on the TV is the TV's say-so. Sending again replaces it. 400 not a code, 404 no such board, or no TV is showing that code (or it ran out); 429 |
 | GET | `/api/me/games[?seen=<id>,<id>]` | C | – | `{ games: GameSummary[] }` (hosted ∪ co-hosted ∪ joined ∪ the `seen` boards that exist; see "Dashboard summaries") |
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
@@ -280,6 +287,9 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `club-tv-view-ip` | 120 per address per minute | `GET /api/clubs/:id/tv`, counted before the token is checked |
 | `club-export` | 30 per device per hour | players CSV downloads |
 | `club-export-ip` | 120 per address per hour | what `club-export` counts, for every device behind one address |
+| `tv-code-ip` | 60 per address per hour | TV pairing codes (`POST /api/tv/pair`) |
+| `tv-send` | 20 per device per hour | boards sent to a TV's code, counted before the code is looked up (codes can't be guessed at speed) |
+| `tv-send-ip` | 60 per address per hour | what `tv-send` counts, for every device behind one address |
 | `email` | 20 per device per hour | adding, resending or removing an email-notice address |
 | `email-ip` | 60 per address per hour | what `email` counts, for every device behind one address |
 | `email-send` | 5 per email address per hour | confirmation emails to one address, whoever asks (keyed by the address's keyed hash, never the address) |
@@ -310,9 +320,13 @@ Non-API routes:
   · A printable board with a QR code to follow it live"), `og:url` the view's own
   link. Never an amount. A code typed in capitals redirects (301) to the
   lowercase view, like the board.
+- A smart TV's browser opening `GET /g/:id` (`isTvBrowser` on its user agent,
+  `shared/tvBrowser.ts`: Tizen, webOS, Android TV, Fire TV, consoles and the
+  like) is sent (302) to `/g/:id/tv`; `?board=1` keeps the board. A phone,
+  tablet or computer never is.
 - `/club/:clubId/tv` (the club TV, see "The Club Pass") is the assets' SPA
   fallback (`index.html`), and the page reads its token from the URL's fragment.
-- Search (docs/seo.md): `/g/*`, `/club/*`, `/new` and `/me` carry
+- Search (docs/seo.md): `/g/*`, `/club/*`, `/new`, `/me` and `/tv` carry
   `X-Robots-Tag: noindex` (a board page lists its players' names). `GET /`
   serves the build's `home.html` (the SPA shell with the homepage's own head and
   a static welcome in `#root` for crawlers without JavaScript; the plain shell
@@ -843,6 +857,7 @@ the phone column or the route slide (`isBoardViewPath`).
 | Route | Screen | For |
 |---|---|---|
 | `/g/:id/tv` | `src/pages/TvView.tsx` (`src/features/tv`) | a TV or laptop at a watch party or bar (AirPlay, Chromecast, HDMI, a smart TV's browser), landscape 1280×720 to 4K; a portrait screen stacks |
+| `/tv` | `src/pages/TvPair.tsx` | a smart TV's browser with no board yet: shows a code the host sends a board to (see below) |
 | `/g/:id/print` | `src/pages/PrintView.tsx` (`src/features/print`) | an office wall: US Letter or A4, landscape for 10×10, portrait for 5×5 |
 
 - Who can open them: anyone with the board link. Both read the public board
@@ -857,15 +872,36 @@ the phone column or the route slide (`isBoardViewPath`).
   (exported for the club TV, which passes `hideClub`, a `panelFooter` and a
   winner to celebrate on arrival).
 - Entry points: "Show on TV" and "Print board" in the board's invite sheet
-  (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), and
-  the host sheet's hint "Hosting a watch party? Show the board on your TV."
-  (`host-tv`).
-- TV mode shows the board as large as the screen allows (`tvLayout`: the full
+  (the top bar's share button; `InviteSheet` props `onShowTv` / `onPrint`), a
+  venue's just-made "Put it on your TV" card, and the host sheet's one row "Put
+  the board on a TV" (`host-tv`, Host tools' "tv" view). Each offers the same
+  two ways, named by the TVs they're for (`ShowOnTv`,
+  `src/features/tv/SendToTv.tsx`): "Smart TV with a web browser" (the TV's
+  code, below) and "AirPlay, Chromecast or a cable" ("Open TV mode here",
+  `show-on-tv-here`: this device mirrored, cast or plugged in, sideways on a
+  phone). Host tools adds "What the TV shows" under them.
+- A smart TV gets there without typing a long link. Its browser opening a
+  board's link lands in TV mode (the Worker's redirect, see "Non-API routes");
+  opening jaxsquares.com lands on `/tv` (`src/main.tsx`, before the app
+  renders, `isTvBrowser`). `/tv` (`TvPair`) asks for a code
+  (`POST /api/tv/pair`) and shows it in large tiles; anyone with the board's
+  link types it in (`SendToTv`, `POST /api/games/:id/tv`) wherever the two
+  ways show (the entry points above). The TV asks every
+  `TV_PAIR_POLL_MS` with its secret (`x-tv-token`, never in a URL), opens
+  `/g/:id/tv` once a board is sent (pushed, so Exit comes back to a new code),
+  takes a new code when one runs out (15 minutes) or the server forgets it,
+  and keeps the screen awake while it waits. A code only says which board to
+  open: the TV still reads the public board like any other.
+- TV mode shows the app's own board (`TvBoard` draws `board.css`'s markup:
+  the team labels, the team-tinted digits, each owner's sticker with their
+  first name, the winners' gold, the square the score points at right now
+  glowing, red when live) as large as the screen allows (`tvLayout`: the full
   height on 16:9, the panel keeps the rest; type scales with `--u`, 1% of the
-  short side), first names or initials in the squares (`tvCellName`), the
-  drawn digits, team colors (the panel's chips use the board's `--team-x/y`),
-  and the square the score points at right now (`rightNow`, glowing; red when
-  live). While squares are open the panel is a big QR code to the invite link
+  short side; tv.css scales the board's fixed rings, corners and trophy pip
+  with `--cell`, unlayered like board.css). Only what a room needs differs:
+  nothing to tap, nothing "mine", and a square's name as large as it reads
+  from across the room (`tvCellName`: the board's size, smaller for a long
+  name, never below 17% of the square; longer still clips like the board's). While squares are open the panel is a big QR code to the invite link
   ("Scan to grab a square", the short link, squares left, the prize lineup);
   once the numbers are drawn it's the score with the quarter and clock, "Right
   now", the winners so far (`tvWinners`: each moment's label as the result
@@ -873,9 +909,23 @@ the phone column or the route slide (`isBoardViewPath`).
   fit) and what's still to play (`tvUpcoming`). A winner activity
   (`useGame`'s `onActivity`) shows a 7 s celebration card (`celebrationFor`)
   with Jax cheering and confetti, one at a time; reduced motion keeps it still.
+- What TV mode shows is the host's pick, per board (`Game.tv`, `TvDisplay`,
+  `shared/tv.ts`): `prizes` (the prize list or lineup, each winner's and each
+  upcoming moment's prize), `amounts` (every amount and the square price),
+  `houseRules` (with the claim line), `freeToPlay` ("Free to play · No
+  purchase necessary" and a club's "Prizes from …", only on a board with no
+  square price), `now`, `winners`, `upcoming` and `celebrations`. A part the
+  host never touched shows as its default (`tvShows`): all on, except
+  `freeToPlay`, which a venue's or named club's board starts with. The host or
+  a co-host changes them in Host tools → "Put the board on a TV" (`host-tv`) or
+  from the TV toolbar's "Display" (`tv-display-open`, their device only):
+  `TvDisplaySettings`, each switch saved as it flips (`PATCH` `tv`), every TV
+  on the board following at once. A season's game board on the TV follows its
+  season board's choices (`TvScreen`'s `season` prop), changed on the season
+  board.
 - TV plumbing (`src/features/tv/screen.ts`): the Screen Wake Lock, taken again
   on `visibilitychange`; Full screen where the browser has it; a toolbar (Full
-  screen, Light/Dark, Exit) that hides itself and the cursor after 3.5 s with
+  screen, Light/Dark, Display for a host, Exit) that hides itself and the cursor after 3.5 s with
   no pointer, touch or key (a remote's arrows count). Its own theme, dark by
   default, saved as `jaxsquares.tvTheme` and never touching the device's
   Appearance choice; the pre-paint script in `index.html` paints a `/tv` page
@@ -937,6 +987,26 @@ rules & prizes editor; skippable, Review then flags "Square price: not set"),
 one) and `review` (a card per step, then Create). Every step starts filled
 in: the default path is pick the game (a tapped game moves on by itself),
 Next x3, Create.
+
+**Who's playing?** The `game` step opens with it (`AudiencePicker`,
+`audience`; never on another board for a game): "Friends & family" or "A bar
+or restaurant". The second is venue mode (`setVenue`, see "Venue boards"),
+and every step after it speaks to a venue: the prizes step is "What do
+winners get?" (labelled "Prizes", `stepLabel`), leading with a "Prize" field
+per moment (venue ideas like "Free appetizer"), prize values an optional
+switch in dollars (`venue-prize-values`, no square price) and house rules,
+claim codes and time to collect under "At your venue" (its own "Venue mode"
+switch only shows where there's no first step: another board for a game, and
+Host tools). Final touches asks for the venue's name (`venue-name`, needed;
+the host's name on this board only: the device's profile name stays, and the
+next venue board starts with it, `jaxsquares.venueName`), names the board
+"The Rusty Anchor · Chiefs vs Bills" (`venueBoardName`) and says why it's one
+square each (`venue-cap-note`). Review leads with a venue summary
+(`review-venue`, `venueSummary`: "Free to play · One square each · Winners
+collect from staff within 5 minutes") and lists the prizes. The board opens
+with the invite sheet led by "Put it on your TV" (`invite-venue-tv`: a smart
+TV's code box, or Open TV mode on this device), venue copy ("Your venue board is live", "Share the link", "our"
+board) and no "Claim yours first".
 
 "Add another board for this game" runs the same flow from a board this device
 runs (host or co-host): `/new?from=<id>&step=prizes` (`parseFrom`; every
@@ -1396,6 +1466,81 @@ payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
   managing it; a holder's features all work and Profile says "Club Pass ·
   Active".
 
+## Venue boards
+
+A bar, restaurant or brewery runs a free board for the room and puts up the
+prizes itself (`shared/venue.ts`, pure, tested in `shared/venue.test.ts`).
+Optional `GameFormat` fields, edited with the rules (Rules & prizes:
+"Venue mode" at the top, "House rules" at the foot,
+`src/features/rules/HouseRules.tsx`) and left out of a stored format when off
+or empty:
+
+- **`venue?: true`** (venue mode): free to play, so never a square price
+  (`VENUE_PRICE_ERROR`, 400; `withRules` drops one). Turning it on
+  (`setVenue` in `rulesModel.ts`) makes the board just for fun (amounts the
+  host already chose stay, as prize values), turns claim codes on with five
+  minutes to collect and adds "Must be present to win" when there are no
+  house rules (`VENUE_DEFAULTS`); the create flow sets one square each, and
+  the host's editor does too on a board still being picked (`rulesPatch`
+  adds `maxPerPlayer: 1`). Turning it off only drops the flag.
+- **`houseRules?: string[]`**: up to `HOUSE_RULES_MAX` (4) single lines of
+  `HOUSE_RULE_MAX_LENGTH` (80), with ideas a tap away (`HOUSE_RULE_IDEAS`).
+  None may ask anyone to buy anything (`HOUSE_RULE_PURCHASE_ERROR`: boards are
+  free to play) or talk money (`HOUSE_RULE_MONEY_ERROR`, `mentionsMoney`);
+  `formatError` answers 400 with the editor's words (`venueFormatError`).
+  Never a squares limit ("One square per person"): that's the board's
+  squares-per-person setting (`maxPerPlayer`), which the app enforces and
+  the rules sheet and TV show from it (`capLine`: "One square each"), so the
+  two can't disagree. The editor points one to the setting
+  (`SQUARE_LIMIT_HINT`, `isSquareLimitRule`); one saved before that is
+  hidden (`shownHouseRules`) and dropped on the next save (`cleanHouseRules`).
+- **`claimCodes?: true`**: a winner collects by showing staff a short code.
+  `worker/claims.ts` derives it per award: HMAC-SHA256 keyed with the board's
+  admin token over `claim:<gameId>:<periodKey>:<square|reverse>:<playerId>`,
+  4 characters from `CLAIM_CODE_ALPHABET` (no 0/O, 1/I/L, 2/Z, 5/S, 8/B).
+  Nothing is stored: a corrected score moves the code with the winner. Only
+  `GET /api/games/:id/claims` returns codes: to the winner (`ClaimCard` on
+  the board, `claim-card`) and the host or a co-host (Host tools → Winners,
+  `winner-code`); never in `GameState`, the TV, a push, a link preview or
+  share text, so a photo of the TV claims nothing.
+- **`claimMinutes?: number`** (with claim codes; 5, 10 or 15 in the editor,
+  1–120 from the API): how long a winner has to collect, counted from when
+  the award was decided (`decidedAt`: the host's pick, else the score's
+  `updatedAt`, so a correction starts it again; `claimDeadline`).
+
+**Collecting a prize.** The winner's `ClaimCard` shows each award's prize,
+code and countdown, and "Show my winning pass" (`WinningPass`,
+`winning-pass`): full screen, fixed gold-on-dark colors, the board, the
+winner, the prize, the code, a clock ticking by the second and a sheen
+sweeping across (`src/features/venue/venue.css`; still under reduced motion,
+where the clock is the proof), so a screenshot of someone else's pass is easy
+to spot. The screen stays awake while it's up (`useWakeLock`). Staff tap
+"Staff: mark collected", then "Prize handed over"; Host tools → Winners has
+"Mark collected" beside each code (with the time left) and "Undo". Either way
+`POST /api/games/:id/claims/collect` stores it (`prize_claims`, migration
+0019: one row per award with the winner's clientId, which joins the sign-in
+merge) and the board's state carries it (`GameState.collected`, public ids
+only, present on boards with claim codes): the phone, Host tools and the TV
+(a "Collected" chip on the winner's row, `tv-collected`) update live. A mark
+counts only while that player still holds the award (`collectedFor`).
+
+What a board says about itself (`venueLines`): a venue board, or a club
+board (a Club Pass holder's, named), with no square price shows "Free to
+play · No purchase necessary", and a club's "Prizes from <club>". Where it
+shows:
+
+- **Rules sheet**: `VenueRules` (`venue-rules`) lists the house rules, then
+  `CLAIM_LINE` with claim codes on, then the venue lines.
+- **TV** (`tvDetails` in `src/features/tv/tvModel.ts`; null for a board with
+  amounts only, which keeps the one-line `prizeLineup`): while squares are
+  open, a card under a smaller QR code with each prize and its note
+  (`momentPrizes`, `tv-prize`; the reverse square's beside it) and the house
+  rules (`tv-house-rules`), the venue lines beside the QR code (`tv-venue`).
+  Once drawn: the prize note on each winner row and each "Still to play"
+  chip, and the house rules in a line at the foot (`tv-house-line`). The
+  celebration names the prize and, with claim codes on, says the code is on
+  the winner's phone (`tv-celebrate-claim`).
+
 ## Email notices
 
 Optional, per board, never required; for players push can't reach (docs/email.md).
@@ -1516,7 +1661,9 @@ game") and `0014_cohosts.sql` (`cohosts`, `cohost_invites`), payments
 `0016_club.sql` (payments' `host_passes.plan` and clubs' `clubs`; 0015 is
 left to a parallel change), and `0017_season.sql` (core: `games.kind`,
 `season`, `season_id`, `season_event`, `season_synced_at`; see "Season
-boards").
+boards"), and `0021_tv_pairings.sql` (core: `tv_pairings`, a TV's pairing
+code, its secret's hash and the board sent to it; see "TV mode and the
+printable board").
 
 `worker/email/index.ts` (email notices, docs/email.md):
 ```ts
@@ -1533,7 +1680,7 @@ after a request, in the room's alarm for live scores). It reads the board with
 
 `worker/auth/index.ts` (auth):
 ```ts
-authRoutes: Hono<{ Bindings: Env }>              // /auth/apple, /auth/google, /auth/sign-out, /me, /account
+authRoutes: Hono<{ Bindings: Env }>              // /auth/apple, /auth/google, /auth/:provider/link, /auth/sign-out, /me, /account
 authConfig(env: Env): AuthConfig                 // for GET /api/config
 /** x-client-id -> the clientId the request acts as (the account's canonical one when signed in). */
 canonicalClientId(db: D1Database, clientId: string, opts?: { signedIn?: boolean }): Promise<string>

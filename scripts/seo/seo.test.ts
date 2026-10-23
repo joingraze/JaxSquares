@@ -199,9 +199,11 @@ describe("landing pages", () => {
       expect(doc.querySelectorAll("script[src], link[rel=stylesheet]")).toHaveLength(0);
       expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
       for (const el of doc.querySelectorAll("[src]")) expect(el.getAttribute("src")).toMatch(/^\//);
+      // Two tiny inline scripts: the workers.dev redirect (first, so it runs before anything) and the theme.
       const inline = [...doc.querySelectorAll("script:not([type])")].map((s) => s.textContent ?? "");
-      expect(inline).toHaveLength(1);
-      expect(inline[0].length).toBeLessThan(200);
+      expect(inline).toHaveLength(2);
+      expect(inline[0]).toContain("workers");
+      for (const script of inline) expect(script.length).toBeLessThan(200);
     }
   });
 

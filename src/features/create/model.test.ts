@@ -26,6 +26,8 @@ import {
   startsIn,
   teamColorsFrom,
   upcomingEvents,
+  venueBoardName,
+  venueSummary,
   winnersTag,
   type CreateDraft,
 } from "./model";
@@ -228,7 +230,7 @@ describe("format copy", () => {
   it("words the per-player cap as a cap", () => {
     expect(detailsSummary(0)).toBe("No max per player");
     expect(detailsSummary(5)).toBe("Up to 5 squares each");
-    expect(detailsSummary(1)).toBe("Up to 1 square each");
+    expect(detailsSummary(1)).toBe("One square each");
   });
 
   it("flags a prize note that mentions money", () => {
@@ -303,6 +305,27 @@ describe("buildCreateInput", () => {
     expect(createFormat(owner, "fun").rules?.every((r) => !r.square?.amount && !r.reverse?.amount)).toBe(true);
   });
 
+});
+
+describe("venue boards in the create flow", () => {
+  it("are named for the venue, within the board name's limit", () => {
+    expect(venueBoardName("The Rusty Anchor", "Chiefs vs Eagles")).toBe("The Rusty Anchor · Chiefs vs Eagles");
+    expect(venueBoardName("  ", "Chiefs vs Eagles")).toBe("Chiefs vs Eagles");
+    expect(venueBoardName("The Rusty Anchor", "")).toBe("The Rusty Anchor Squares");
+    expect([...venueBoardName("A Very Long Neighborhood Bar Name", "Philadelphia Eagles vs San Francisco 49ers")].length).toBeLessThanOrEqual(60);
+  });
+
+  it("sum up for Review", () => {
+    expect(venueSummary({ claimCodes: true, claimMinutes: 5 }, 1)).toBe("Free to play · One square each · Winners collect from staff within 5 minutes");
+    expect(venueSummary({ claimCodes: true }, 0)).toBe("Free to play · Winners collect from staff");
+    expect(venueSummary({}, 2)).toBe("Free to play · Up to 2 squares each");
+  });
+
+  it("ask for the venue's name instead of the host's", () => {
+    const base = { matchup: { kind: "custom" as const, x: "Chiefs", y: "Eagles" }, format: withRules(defaultFormat()) };
+    expect(firstBlocker({ ...base, hostName: null, venueName: " " })?.label).toBe("Add your venue's name to continue");
+    expect(firstBlocker({ ...base, hostName: null, venueName: "The Rusty Anchor" })).toBeNull();
+  });
 });
 
 describe("createFeeLine (Review's line under Create)", () => {

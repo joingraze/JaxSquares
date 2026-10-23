@@ -123,11 +123,16 @@ export function BottomSheet({
     };
   }, [mounted]);
 
+  // Focus moves in once, as the sheet opens. A caller may pass a different
+  // initialFocusRef while it's open (the look sheet focuses the name only while
+  // it's empty): that must never pull focus out of a field being typed in.
+  const initialFocus = useRef(initialFocusRef);
+  initialFocus.current = initialFocusRef;
   useEffect(() => {
     if (!shown) return;
-    const target = initialFocusRef?.current ?? panelRef.current;
+    const target = initialFocus.current?.current ?? panelRef.current;
     target?.focus({ preventScroll: true });
-  }, [shown, initialFocusRef]);
+  }, [shown]);
 
   // Clear any inline drag styles whenever the visibility state changes.
   useEffect(() => {

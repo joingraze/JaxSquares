@@ -28,6 +28,7 @@
       "/home",
       "/new",
       "/me",
+      "/tv",
       "/club/*",
       "/nfl-squares",
       "/college-football-squares",
@@ -83,9 +84,9 @@
     // Optional sign-in (docs/auth.md). Public OAuth client ids, not secrets;
     // empty = that provider is hidden in the app. Native Sign in with Apple
     // uses APPLE_BUNDLE_ID (default com.jaxsquares.app, the Capacitor appId).
-    "GOOGLE_WEB_CLIENT_ID": "",
+    "GOOGLE_WEB_CLIENT_ID": "643193678078-07e1nlo54pklf2f785t1gnc2m80mdc96.apps.googleusercontent.com",
     "GOOGLE_IOS_CLIENT_ID": "",
-    "APPLE_SERVICES_ID": "",
+    "APPLE_SERVICES_ID": "com.jaxsquares.web",
     // Email notices (docs/email.md): the sender, e.g. "JaxSquares
     // <notices@jaxsquares.com>", once the domain is verified with Resend.
     // Empty = off (with the RESEND_API_KEY and EMAIL_TOKEN_SECRET secrets).

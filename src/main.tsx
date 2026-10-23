@@ -11,6 +11,7 @@ import { captureHostLink, getAdminToken, hydrateIdentity, isCohostGame } from ".
 import { isNative } from "./lib/native";
 import { initPush } from "./lib/push";
 import { initTheme } from "./lib/theme";
+import { isTvBrowser } from "../shared/tvBrowser";
 
 /** Never hold the first paint hostage to the native store. */
 const HYDRATE_TIMEOUT_MS = 1500;
@@ -41,6 +42,9 @@ function startPush(): void {
 async function start(): Promise<void> {
   // index.html already painted the saved theme; this keeps it in step (OS changes, the native store).
   initTheme();
+
+  // A smart TV opening the home page gets the pairing page: a code to send a board to it (src/pages/TvPair.tsx).
+  if (location.pathname === "/" && isTvBrowser(navigator.userAgent)) history.replaceState(history.state, "", "/tv");
 
   // The opened screen's chunk (index.html already started downloading it): ready before the router
   // is created, so the first render shows the screen instead of waiting a round for a lazy route.

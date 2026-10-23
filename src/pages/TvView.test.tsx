@@ -107,7 +107,7 @@ function renderTv(path = "/g/tv1234/tv") {
   );
 }
 
-const fetchSpy = vi.fn(async () => new Response("{}", { status: 503 }));
+const fetchSpy = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async () => new Response("{}", { status: 503 }));
 
 beforeEach(() => {
   board.state = null;
@@ -140,6 +140,7 @@ describe("TV mode", () => {
     expect(within(row).getByTestId("tv-winner-label")).toHaveTextContent("Q1 · $200");
     expect(row).toHaveTextContent("Dre");
     expect(row).toHaveTextContent("7–3");
+    expect(row).toHaveTextContent("Loser buys wings");
 
     // The board: every square named, the Q1 square gold, and the square in play (Half, if it stays 7–3) lit.
     const cells = screen.getAllByTestId("tv-cell");
@@ -166,6 +167,7 @@ describe("TV mode", () => {
     expect(screen.getByTestId("tv-link")).toHaveTextContent(link);
     expect(within(screen.getByTestId("tv-qr")).getByRole("img")).toHaveAccessibleName(`QR code: open ${link} to grab a square`);
     expect(screen.getByTestId("tv-open")).toHaveTextContent("42 of 100 squares left");
+    expect(screen.queryByTestId("tv-cap")).toBeNull();
     expect(screen.getByTestId("tv-open")).toHaveTextContent("$10 a square");
     expect(screen.getByTestId("tv-predraw")).toHaveTextContent("Numbers get drawn when the host locks the board");
     // Names (or initials) in the claimed squares; open ones are empty.
@@ -175,6 +177,84 @@ describe("TV mode", () => {
     for (const [, init] of fetchSpy.mock.calls as unknown as [string, RequestInit | undefined][]) {
       expect(JSON.stringify(init?.headers ?? {})).not.toContain("x-admin-token");
     }
+  });
+
+  it("spells out a venue board's prizes and house rules for the room, and keeps them up once the game's on", () => {
+    const club = { id: "club1", name: "The Rusty Anchor", hasLogo: false, logoVersion: null };
+    const rules: MomentRule[] = [
+      { moment: "q1", square: { amount: null, note: "Free appetizer" }, reverse: null },
+      { moment: "q2", square: { amount: null, note: "" }, reverse: null },
+      { moment: "final", square: { amount: null, note: "Team jersey" }, reverse: { amount: null, note: "Pint glass" } },
+    ];
+    const format: GameFormat = { ...FORMAT, rules, squarePrice: null, houseRules: ["Must be present to win", "21+ only"], claimCodes: true };
+    board.state = makeState({ format, club, maxPerPlayer: 1 });
+    const { unmount } = renderTv();
+
+    const details = screen.getByTestId("tv-details");
+    expect(screen.getAllByTestId("tv-prize").map((r) => r.textContent)).toEqual(["Q1Free appetizer", "FinalTeam jersey · Reverse Pint glass"]);
+    // The squares-per-person setting, from the board itself.
+    expect(screen.getByTestId("tv-cap")).toHaveTextContent("One square each");
+    expect(within(details).getByTestId("tv-house-rules")).toHaveTextContent("Must be present to win21+ onlyWinners show staff the winning pass on their phone to collect.");
+    expect(screen.getByTestId("tv-venue")).toHaveTextContent("Free to play · No purchase necessaryPrizes from The Rusty Anchor");
+    unmount();
+
+    // Q1 in: the winner's row says what they won, the next moments their prizes, and the house rules stay in a line.
+    board.state = makeState({ format, club, status: "locked", numbers: { "*": DRAW }, lockedAt: 1 }, { squares: squares(100), scores: [{ periodKey: "q1", scoreX: 7, scoreY: 3, source: "host", updatedAt: 2 }] });
+    renderTv();
+    expect(screen.getByTestId("tv-winner-label")).toHaveTextContent("Q1 · Free appetizer");
+    expect(screen.getByTestId("tv-upcoming")).toHaveTextContent("Team jersey");
+    expect(screen.getByTestId("tv-house-line")).toHaveTextContent("Must be present to win · 21+ only · Winners show staff the winning pass on their phone to collect.");
+    expect(screen.getByTestId("tv-house-line")).toHaveTextContent("Prizes from The Rusty Anchor");
+
+    // The winner's card says the code is on their phone; no code is ever on the TV.
+    act(() =>
+      board.onActivity?.(
+        { id: "act-q1", type: "winner", actor: null, data: { periodKey: "q1", label: "Q1", playerIds: [PLAYERS[1].id], cell: { row: 6, col: 7 }, prize: "Free appetizer" }, at: 3 },
+        board.state!,
+      ),
+    );
+    expect(screen.getByTestId("tv-celebrate-prize")).toHaveTextContent("Free appetizer");
+    expect(screen.getByTestId("tv-celebrate-claim")).toHaveTextContent("Your winning pass is on your phone");
+    expect(screen.queryByTestId("claim-code")).toBeNull();
+    expect(screen.queryByTestId("winner-code")).toBeNull();
+  });
+
+  it("shows only what the host picked: no right now, winners or still to play, no amounts", () => {
+    board.state = lockedWithWinner();
+    board.state.game.tv = { now: false, winners: false, upcoming: false, amounts: false };
+    renderTv();
+    expect(screen.getByTestId("tv-game")).toBeInTheDocument();
+    expect(screen.queryByTestId("tv-now")).toBeNull();
+    expect(screen.queryByTestId("tv-winner")).toBeNull();
+    expect(screen.queryByTestId("tv-upcoming")).toBeNull();
+    expect(screen.getByTestId("tv-game")).not.toHaveTextContent("$");
+    // Nobody but the host gets the Display button.
+    expect(screen.queryByTestId("tv-display-open")).toBeNull();
+  });
+
+  it("lets the host pick what shows from the TV's own Display button, for every TV", async () => {
+    board.state = makeState();
+    localStorage.setItem("jaxsquares.admin.tv1234", "admin-tv");
+    const saved: unknown[] = [];
+    fetchSpy.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/api/games/tv1234") && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { tv: Record<string, boolean> };
+        saved.push(body);
+        return new Response(JSON.stringify({ state: { ...board.state!, game: { ...board.state!.game, tv: body.tv } } }), { status: 200 });
+      }
+      return new Response("{}", { status: 503 });
+    });
+    renderTv();
+    expect(screen.getAllByTestId("tv-prize").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("tv-display-open"));
+    const prizes = within(screen.getByTestId("tv-display-prizes").closest("li")!).getByRole("switch");
+    expect(prizes).toBeChecked();
+    await act(async () => void fireEvent.click(prizes));
+    expect(saved).toEqual([{ tv: { prizes: false } }]);
+    const [, init] = fetchSpy.mock.calls.find(([, i]) => i?.method === "PATCH")!;
+    expect(JSON.stringify(init?.headers)).toContain("admin-tv");
+    // Free to play is off by default on a board with a square price, and can't be turned on there.
+    expect(within(screen.getByTestId("tv-display-freeToPlay").closest("li")!).getByRole("switch")).toBeDisabled();
   });
 
   it("celebrates a winner landing (Jax cheers, confetti), then goes back to the board", () => {
@@ -196,6 +276,8 @@ describe("TV mode", () => {
     expect(card).toHaveTextContent("Dre");
     expect(card).toHaveTextContent("$200");
     expect(card).toHaveTextContent("KC 7 – 3 BUF");
+    expect(screen.getByTestId("tv-celebrate-prize")).toHaveTextContent("Loser buys wings");
+    expect(screen.queryByTestId("tv-celebrate-claim")).toBeNull();
     expect(celebrate).toHaveBeenCalledWith("win");
     expect(document.querySelector('[data-testid="jax-cheer"]')).not.toBeNull();
 

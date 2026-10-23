@@ -9,7 +9,7 @@ import { LANDING_SLUGS, ORIGIN, SITE_NAME, SOCIAL, pageUrl } from "./site.ts";
 
 const FACTS = [
   "Squares for football (NFL, college) and basketball (NBA, WNBA, men's and women's college), or any two teams typed in.",
-  "The host makes a board and texts one link; friends open it in any phone browser and tap their squares. No app download or account needed.",
+  "The host signs in with Google or Apple, makes a board and texts one link; friends open it in any phone browser and tap their squares. Players never need an app or an account.",
   "Once the board is full, the digits 0 to 9 are drawn at random across the top and down the side, live on every phone.",
   "Boards linked to a real game get live scores automatically; the winning square lights up at each quarter, halftime, the final, or every score.",
   "Free to set up and invite, and players never pay to join or pick squares.",

@@ -49,6 +49,29 @@ public player id: `GameState`, activity and the live socket's `?player=` all
 show the account's id. The socket's `player` is still only a hint for the
 watcher count (unchanged trust): two devices of one account count once.
 
+### One account per email, and adding a sign-in
+
+- **Email matching.** A sign-in whose Apple ID or Google account isn't known
+  yet joins the account that already has its email (lowercased; the oldest
+  if several) instead of making a second one, merging the device in as below.
+  Only an email the provider says it verified (`email_verified` true), and
+  never an Apple private relay address (`@privaterelay.appleid.com`: each app
+  gets its own, so it never matches). `matchEmailOf` in `routes.ts`; the
+  lookup uses `idx_accounts_email` (migration 0018). The account's email is
+  never replaced by a relay address once it has a real one.
+- **Adding one** (Profile → Account → "Another way to sign in", for the
+  providers the account doesn't have): `POST /api/auth/:provider/link` adds
+  the identity to the account this device is signed in to. Someone who hid
+  their email from Apple adds Google (or the other way) here.
+- **Combining.** When the sign-in being added already has its own account,
+  the server answers 409 `account_exists`; the app asks ("Combine your
+  accounts?") and resends the same token with `combine: true`. That account's
+  canonical clientId's rows move into this one with the same merge statements
+  as a device sign-in, then its devices (`client_links`) and sign-ins
+  (`account_identities`) move over and it's deleted (`combineAccountStatements`).
+  The person proved both: this device is signed in to one, and the token is a
+  fresh sign-in to the other.
+
 ### Signing in on another device (the merge)
 
 When a device that isn't the canonical one signs in to an existing account,
@@ -70,6 +93,7 @@ owner):
 | `stripe_customers` | moved with `UPDATE OR IGNORE`, then the device's leftover deleted: the account keeps its own Customer if it has one for the same Stripe keys (it can't really have two: the web only sells the pass to a signed-in device, which already acts as the canonical clientId) |
 | `email_subscriptions` | moved (email notices, `worker/email/store.ts`, docs/email.md); where both have an address on a board, the confirmed one stays (else the account's) and the other is deleted. `email_suppressions` is keyed by the address, so nothing moves |
 | `clubs` | moved (clubs, `worker/clubs/store.ts`, migration 0016): the device's club (name, logo, TV link) becomes the account's, unless the account has a club of its own with a name or a logo, which stays (the device's is deleted); an account's empty club gives way to the device's. Its TV link keeps working. The account's branding cache is dropped in that isolate (`forgetClubBrand`) |
+| `prize_claims` | moved (venue boards' prizes handed over, migration 0019): a collected prize stays collected for the account's player |
 | `client_links` | the device's link |
 
 `purchases` and `cohost_invites` have no client column (an invite is always
@@ -196,6 +220,29 @@ client secret (iss = team id, sub = the token's audience: the bundle id for the
 iOS app, the Services ID for the web) and stores the refresh token. Accounts
 created while the key isn't set have nothing to revoke later, so **set the key
 up before the iOS app with sign-in ships** (App Store guideline 5.1.1(v)).
+
+### Hosts sign in
+
+Making a board needs a sign-in wherever web sign-in is set up
+(`hostsSignIn` in `worker/auth/config.ts`: a Google web client id or an Apple
+Services ID). `POST /api/games` checks the device's account link first
+(`freshLink`) and answers 409 `account_required` without one; boards made
+before the rule, and their hosts, keep working as they are. Without either id
+(local dev, most tests) anyone can make a board. Players never need an account.
+
+In the app:
+- **Create** (`src/pages/CreateGame.tsx`): Review says "You'll sign in with
+  Google or Apple to create it"; Create opens `SignInSheet` and makes the board
+  right after the sign-in. An `account_required` answer opens the same sheet.
+- **Hosts from before the rule**: the host sheet's "Run it from any device"
+  (`SignInToHostRow` in `HostSheet.tsx`) signs them in, which puts the board's
+  host controls on their account.
+- **Players**: never asked before picking. After joining, the "You're in" card
+  has "Only on this device for now. Save it to your account"
+  (`JoinedCard.tsx`), and the board shows `SignInCard place="board"` under the
+  grid to someone holding squares or hosting it, as Home shows it to a device
+  with boards. "Remind me in 3 days" snoozes both
+  (`jaxsquares.signinCard.snoozedUntil`).
 
 ### Rate limits
 

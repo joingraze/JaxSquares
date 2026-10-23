@@ -57,7 +57,7 @@ skips itself until jaxsquares.com serves the key file and never fails a deploy.
 The Worker adds two things at request time:
 
 - **`X-Robots-Tag: noindex`** on `/g/*` (boards list their players' names),
-  `/club/*`, `/new` and `/me`. Link previews in iMessage, WhatsApp and Slack
+  `/club/*`, `/new`, `/me` and `/tv` (pairing a TV). Link previews in iMessage, WhatsApp and Slack
   don't read it, so invites still unfurl. Crawlers can still fetch those pages
   (robots.txt doesn't block them), which is what lets them see the noindex.
 - **This week's games** on `/nfl-squares`, `/college-football-squares` and

@@ -35,6 +35,11 @@ export const STEP_INFO: Record<WizardStep, { label: string; title: string; subti
   review: { label: "Review", title: "Ready to go?", subtitle: "Tap anything to change it." },
 };
 
+/** A step's short label ("Square price & prizes"); a venue's board has no square price, so its prizes step is "Prizes". */
+export function stepLabel(step: WizardStep, venue = false): string {
+  return venue && step === "prizes" ? "Prizes" : STEP_INFO[step].label;
+}
+
 const isStep = (v: unknown): v is WizardStep => typeof v === "string" && (STEPS as readonly string[]).includes(v);
 
 /** The step a URL's search asks for; the flow's first step when it names none (or one the flow doesn't have). */
@@ -90,8 +95,10 @@ export interface WizardCheck {
   matchup: Matchup | null;
   /** Custom boards only (null = no set time). */
   kickoff: number | null;
-  /** Null when this device already has a name (the field isn't shown). */
+  /** Null when this device already has a name (the field isn't shown), or on a venue's board. */
   hostName: string | null;
+  /** A venue's board: the venue's name (null otherwise). */
+  venueName?: string | null;
   format: GameFormat;
   /** The board name as typed ("" = the matchup's). */
   name: string;
@@ -168,6 +175,8 @@ export interface WizardDraft {
   nameTouched: boolean;
   maxPerPlayer: number;
   hostName: string;
+  /** A venue's board (`format.venue`): the venue's name, the host's name on this board only. */
+  venueName?: string;
   /** One game's board or a season board (absent in older drafts: one game). */
   boardScope?: "game" | "season";
   /** A season board: a team's season or picked games, and how numbers work. */
@@ -326,6 +335,7 @@ export function loadDraft(now = Date.now(), store: Store | null = session()): Wi
     nameTouched: d.nameTouched === true,
     maxPerPlayer: max,
     hostName: str(d.hostName, 24),
+    ...(typeof d.venueName === "string" ? { venueName: str(d.venueName, 24) } : {}),
     // Another board for a game is never a season.
     ...(typeof d.from === "string" ? {} : seasonDraft(d, now)),
     ...(typeof d.from === "string" && parseFrom(`?from=${encodeURIComponent(d.from)}`) ? { from: d.from } : {}),

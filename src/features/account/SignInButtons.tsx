@@ -17,11 +17,20 @@ export interface SignInButtonsProps {
   onSignedIn?: (me: MeResponse) => void;
   /** The setup the parent already loaded (else this loads it). */
   setup?: ReturnType<typeof useAuthSetup>;
+  /** Only these providers (Profile's "Add Google": the ones the account doesn't have yet). */
+  only?: AuthProvider[];
+  /** What to do with the provider's answer (default: sign in, completeSignIn). */
+  submit?: (provider: AuthProvider, input: SignInInput) => Promise<MeResponse>;
+  /** The success toast (default: "You're signed in"). */
+  success?: { title: string; description: string };
+  /** A failure the parent handles itself (true: no error toast). */
+  onFailure?: (err: unknown, provider: AuthProvider, input: SignInInput) => boolean;
 }
 
-export function SignInButtons({ onSignedIn, setup }: SignInButtonsProps) {
+export function SignInButtons({ onSignedIn, setup, only, submit = completeSignIn, success, onFailure }: SignInButtonsProps) {
   const own = useAuthSetup();
-  const { config, providers, ready } = setup ?? own;
+  const { config, ready } = setup ?? own;
+  const providers = only ? (setup ?? own).providers.filter((p) => only.includes(p)) : (setup ?? own).providers;
   const toast = useToast();
   const [busy, setBusy] = useState<AuthProvider | null>(null);
   const [googleProblem, setGoogleProblem] = useState<string | null>(null);
@@ -36,11 +45,11 @@ export function SignInButtons({ onSignedIn, setup }: SignInButtonsProps) {
   const finish = async (provider: AuthProvider, input: SignInInput) => {
     setBusy(provider);
     try {
-      const me = await completeSignIn(provider, input);
-      toast.success("You're signed in", "Your boards are on this device now.");
+      const me = await submit(provider, input);
+      toast.success(success?.title ?? "You're signed in", success?.description ?? "Your boards follow you to every device you sign in on.");
       onSignedIn?.(me);
     } catch (err) {
-      toast.error("Couldn't sign in", errorMessage(err));
+      if (!onFailure?.(err, provider, input)) toast.error("Couldn't sign in", errorMessage(err));
     } finally {
       setBusy(null);
     }

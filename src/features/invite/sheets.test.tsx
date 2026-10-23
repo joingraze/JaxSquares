@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, Player } from "../../../shared/types";
 
@@ -248,6 +248,27 @@ describe("InviteSheet", () => {
     expect(onAddBoard).toHaveBeenCalled();
     // A board on its own has no boards line.
     expect(screen.queryByTestId("invite-boards")).toBeNull();
+  });
+
+  it("leads a venue's just-made board with Put it on your TV", async () => {
+    const onShowTv = vi.fn();
+    const venue = makeState();
+    venue.game.format = { ...venue.game.format, venue: true, justForFun: true, squarePrice: null };
+    render(<InviteSheet state={venue} open justCreated onClose={() => {}} onShowTv={onShowTv} onPrint={() => {}} />);
+    const card = await screen.findByTestId("invite-venue-tv");
+    expect(card).toHaveTextContent("Put it on your TV");
+    // The two ways right there: a smart TV's code, or TV mode on this device.
+    expect(within(card).getByTestId("send-to-tv-code")).toBeInTheDocument();
+    fireEvent.click(within(card).getByTestId("show-on-tv-here"));
+    expect(onShowTv).toHaveBeenCalled();
+    // One way to the TV: the small "Show on TV" button steps aside; printing stays.
+    expect(screen.queryByTestId("invite-tv")).toBeNull();
+    expect(screen.getByTestId("invite-print")).toBeInTheDocument();
+    cleanup();
+    // Later, or on a friends' board: the usual buttons.
+    render(<InviteSheet state={venue} open onClose={() => {}} onShowTv={onShowTv} />);
+    expect(await screen.findByTestId("invite-tv")).toBeInTheDocument();
+    expect(screen.queryByTestId("invite-venue-tv")).toBeNull();
   });
 
   it("keeps the code behind one toggle and never shows the host link", async () => {

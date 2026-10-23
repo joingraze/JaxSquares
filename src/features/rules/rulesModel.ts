@@ -43,9 +43,11 @@ import {
   upgradeFormat,
   validatePrizeNote,
   withRules,
+  withoutRest,
   type FixedPreset,
 } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
+import { VENUE_DEFAULTS, shownHouseRules } from "../../../shared/venue";
 import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
 
 export type Side = "square" | "reverse";
@@ -65,6 +67,12 @@ export interface RulesDraft {
   /** Kept while "Just for fun" is picked (so switching back restores it); cleared on save. */
   squarePrice: number | null;
   freshNumbers: boolean;
+  /** House rules, claim codes, time to collect and venue mode (shared/venue.ts). Absent: the base format's stay as they are. */
+  houseRules?: string[];
+  claimCodes?: boolean;
+  /** Minutes a winner has to collect; null = no limit. */
+  claimMinutes?: number | null;
+  venue?: boolean;
 }
 
 /** The choice a saved format shows: just for fun, else the unit once any amount is set, else not chosen. */
@@ -84,6 +92,33 @@ export function draftOf(format: GameFormat, legacyPrizes?: Record<string, string
     choice: choiceOf(format),
     squarePrice: format.squarePrice ?? null,
     freshNumbers: format.freshNumbers,
+    // A squares limit someone wrote as a house rule goes: the squares-per-person setting says it.
+    houseRules: shownHouseRules(format),
+    claimCodes: format.claimCodes === true,
+    claimMinutes: format.claimMinutes ?? null,
+    venue: format.venue === true,
+  };
+}
+
+/**
+ * Venue mode on: just for fun with no square price, claim codes with five
+ * minutes to collect, and "Must be present to win" unless the host wrote
+ * house rules already (VENUE_DEFAULTS; the create flow also caps squares at
+ * one each). Off: only the flag goes; everything else stays as set.
+ */
+export function setVenue(draft: RulesDraft, on: boolean): RulesDraft {
+  if (!on) return { ...draft, venue: false };
+  const houseRules = draft.houseRules?.length ? draft.houseRules : [...VENUE_DEFAULTS.houseRules];
+  const amounts = draft.choice === "$" || draft.choice === "pts";
+  return {
+    ...draft,
+    venue: true,
+    choice: amounts ? draft.choice : "fun",
+    squarePrice: null,
+    rules: withoutRest(draft.rules),
+    houseRules,
+    claimCodes: true,
+    claimMinutes: VENUE_DEFAULTS.claimMinutes,
   };
 }
 
@@ -104,6 +139,10 @@ export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
     squarePrice: amounts ? draft.squarePrice : null,
     justForFun: draft.choice === "fun",
     freshNumbers: draft.freshNumbers,
+    houseRules: draft.houseRules ?? base.houseRules,
+    claimCodes: draft.claimCodes ?? base.claimCodes,
+    claimMinutes: draft.claimMinutes === undefined ? base.claimMinutes : (draft.claimMinutes ?? undefined),
+    venue: draft.venue ?? base.venue,
   });
 }
 
@@ -747,10 +786,14 @@ export function lockViolation(game: Pick<Game, "format">, draft: RulesDraft, loc
 }
 
 /** The host's PATCH for a rules edit, or null when nothing changed. */
-export function rulesPatch(game: Pick<Game, "format" | "prizes">, draft: RulesDraft): UpdateGameInput | null {
+export function rulesPatch(game: Pick<Game, "format" | "prizes"> & Partial<Pick<Game, "status" | "maxPerPlayer">>, draft: RulesDraft): UpdateGameInput | null {
   const next = formatOf(game.format, draft);
   const cur = withRules(game.format, game.prizes);
-  return JSON.stringify(next) === JSON.stringify(cur) ? null : { format: next };
+  if (JSON.stringify(next) === JSON.stringify(cur)) return null;
+  // Venue mode turned on while squares are still being picked: one square each from here on (VENUE_DEFAULTS).
+  const picking = game.status === "open" || game.status === "draft";
+  const cap = next.venue && !cur.venue && picking && game.maxPerPlayer !== VENUE_DEFAULTS.maxPerPlayer ? { maxPerPlayer: VENUE_DEFAULTS.maxPerPlayer } : {};
+  return { format: next, ...cap };
 }
 
 // ---- Reading the rules (the sheet everyone sees) ----
@@ -865,6 +908,39 @@ export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[]
   return parts.length > 0 ? { fun: false, parts } : null;
 }
 
+export interface MomentPrize {
+  moment: Moment;
+  /** "Q1", "Half", "Q3", "Final", "Every score". */
+  label: string;
+  /** "$100", "$5–$20" (by score type), "the rest"; null without an amount (always on a just-for-fun board). */
+  amount: string | null;
+  note: string | null;
+  /** The reverse square's, when it shows an amount or a note. */
+  reverse: { amount: string | null; note: string | null } | null;
+}
+
+/**
+ * Each moment's prize in a few words, in game order: its amount and the
+ * host's note ("Q1 · $100 · Free wings"), the reverse square's beside it.
+ * Moments with neither an amount nor a note are left out. The TV's prize
+ * list; in-app only, like prizeLineup.
+ */
+export function momentPrizes(format: GameFormat): MomentPrize[] {
+  const unit = unitOf(format);
+  const side = (p: Prize | null) => {
+    const amount = format.justForFun ? null : prizeText(p, unit);
+    const note = p?.note?.trim() || null;
+    return amount || note ? { amount, note } : null;
+  };
+  return sortRules(rulesOf(upgradeFormat(format))).flatMap((r) => {
+    const square = side(r.square);
+    const reverse = side(r.reverse);
+    if (!square && !reverse) return [];
+    const label = r.moment === "score" ? "Every score" : MOMENT_INFO[r.moment].short;
+    return [{ moment: r.moment, label, amount: square?.amount ?? null, note: square?.note ?? null, reverse }];
+  });
+}
+
 /** The create page's collapsed "Square price & prizes" row: what players will see, or "Square price: not set". */
 export function prizesSummary(format: GameFormat): string {
   const lineup = prizeLineup(format);
@@ -882,7 +958,8 @@ export function maxValueText(max: number): string {
 
 /** What players see when there's a cap ("Up to 5 squares each"), else null. */
 export function capLine(max: number): string | null {
-  return max > 0 ? `Up to ${max} ${max === 1 ? "square" : "squares"} each` : null;
+  if (max <= 0) return null;
+  return max === 1 ? "One square each" : `Up to ${max} squares each`;
 }
 
 /** True when these rules are exactly a preset (the editor shows "Custom" otherwise). */

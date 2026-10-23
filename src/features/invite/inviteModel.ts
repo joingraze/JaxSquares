@@ -105,7 +105,8 @@ export function inviteMessage(state: Pick<GameState, "game" | "squares" | "playe
 function baseInviteMessage(state: Pick<GameState, "game" | "squares" | "players">, viewerId: string | null): string {
   const { game } = state;
   const matchup = shortMatchup(game);
-  const whose = viewerId && viewerId === game.hostPlayerId ? "my" : "our";
+  // A venue's board is the house's: "our", whoever sends it.
+  const whose = viewerId && viewerId === game.hostPlayerId && !game.format.venue ? "my" : "our";
   const { left, total } = boardStats(state);
   switch (game.status) {
     case "locked":
@@ -163,7 +164,17 @@ export interface InvitePitch {
 /** Header, helper line and button copy for the invite sheet, per board state. */
 export function invitePitch(state: Pick<GameState, "game" | "squares" | "players">, viewerIsHost: boolean): InvitePitch {
   const { left } = boardStats(state);
-  switch (inviteStage(state)) {
+  const stage = inviteStage(state);
+  // A venue's board fills from the room: the TV's QR code first, the link for anyone else.
+  if (state.game.format.venue && (stage === "fresh" || stage === "filling")) {
+    return {
+      title: stage === "fresh" ? (viewerIsHost ? "Your venue board is live" : "Who's first?") : squaresLeftLabel(left),
+      subtitle: "Guests scan the QR code on your TV, or tap the link. No app needed.",
+      cta: "Share the link",
+      tone: "brand",
+    };
+  }
+  switch (stage) {
     case "fresh":
       return {
         title: viewerIsHost ? "Your board's live. Who's first?" : "Who's first?",

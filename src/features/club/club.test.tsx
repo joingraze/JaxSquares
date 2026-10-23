@@ -150,6 +150,8 @@ describe("Profile → Club Pass, for a holder", () => {
     holder();
     profile();
     const input = await screen.findByTestId("club-name");
+    // The club loads into the field: type once it's there (a load landing after would put its name back).
+    await waitFor(() => expect(input).toHaveValue(CLUB.name));
     fireEvent.change(input, { target: { value: "Cash Bar $5" } });
     expect(await screen.findByText(CLUB_NAME_MONEY_ERROR)).toBeInTheDocument();
     expect(screen.getByTestId("club-name-save")).toBeDisabled();

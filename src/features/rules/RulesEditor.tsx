@@ -23,6 +23,7 @@ import { AlertIcon, CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusI
 import { Badge, SegmentedControl, Switch, TextField, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { AmountField } from "./AmountField";
+import { HouseRules, VenueMode } from "./HouseRules";
 import { EveryScoreOptions } from "./EveryScoreOptions";
 import {
   PRICE_CHIPS,
@@ -46,6 +47,7 @@ import {
   setMoment,
   setPrize,
   setSides,
+  setVenue,
   sidesOf,
   splitSharesBoth,
   suggestedPrizes,
@@ -71,6 +73,8 @@ export interface RulesEditorProps {
   locked?: string | null;
   /** The board's sport and league: only the moments its game has (no every score for basketball, halftime and the final in a game of halves). Football by default. */
   kind?: GameKind;
+  /** The "Venue mode" switch at the top (the create flow asks who's playing on its first step instead). */
+  venueSwitch?: boolean;
 }
 
 /** Fun ideas for notes, one per moment; none of them are money. */
@@ -80,6 +84,15 @@ const NOTE_IDEAS: Record<Moment, string> = {
   q2: "Winner picks the music",
   q3: "Loser does the dishes",
   final: "Bragging rights till next season",
+};
+
+/** A venue's prizes, one per moment (venue mode leads with these). */
+const VENUE_PRIZE_IDEAS: Record<Moment, string> = {
+  score: "Free appetizer",
+  q1: "Free appetizer",
+  q2: "Free wings",
+  q3: "Free dessert",
+  final: "Team jersey",
 };
 
 /** When each moment is decided, short enough for one line under its name. */
@@ -93,7 +106,7 @@ const WHEN: Record<Moment, string> = {
 
 const SIDE_LABEL: Record<Side, string> = { square: "Square", reverse: "Reverse" };
 
-export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind }: RulesEditorProps) {
+export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind, venueSwitch = true }: RulesEditorProps) {
   const set = (patch: Partial<RulesDraft>) => onChange({ ...draft, ...patch });
   const setRules = (rules: MomentRule[]) => set({ rules });
   const amounts = draft.choice === "$" || draft.choice === "pts";
@@ -104,16 +117,31 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
   const total = draft.squarePrice ? Math.round(draft.squarePrice * squares * 100) / 100 : null;
 
   return (
-    <div data-testid="rules-editor" className="flex flex-col gap-5">
-      <section aria-label="Show prizes as" className="flex flex-col gap-2.5">
-        <ChoicePicker value={draft.choice} onChange={(choice) => set({ choice })} />
-        <p className="flex items-start gap-2 px-1 text-footnote leading-snug text-ink-subtle">
-          <InfoIcon size={15} className="mt-px shrink-0" />
-          {AMOUNTS_DISCLAIMER}
-        </p>
-      </section>
+    <div data-testid="rules-editor" data-venue={draft.venue ? "true" : undefined} className="flex flex-col gap-5">
+      {venueSwitch && <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} />}
 
-      {amounts && (
+      {draft.venue ? (
+        // A venue leads with its prizes; what each is worth is optional, in dollars.
+        <section aria-label="Prize values" className="rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line">
+          <Switch
+            checked={amounts}
+            onChange={(on) => set({ choice: on ? "$" : "fun" })}
+            label="Prize values"
+            description={`Optional: show what each prize is worth, like $25. ${AMOUNTS_DISCLAIMER}`}
+            data-testid="venue-prize-values"
+          />
+        </section>
+      ) : (
+        <section aria-label="Show prizes as" className="flex flex-col gap-2.5">
+          <ChoicePicker value={draft.choice} onChange={(choice) => set({ choice })} />
+          <p className="flex items-start gap-2 px-1 text-footnote leading-snug text-ink-subtle">
+            <InfoIcon size={15} className="mt-px shrink-0" />
+            {AMOUNTS_DISCLAIMER}
+          </p>
+        </section>
+      )}
+
+      {amounts && !draft.venue && (
         <SquarePrice
           draft={draft}
           unit={unit}
@@ -125,7 +153,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
         />
       )}
 
-      {draft.choice === "fun" && (
+      {draft.choice === "fun" && !draft.venue && (
         <p className="flex items-center gap-2.5 rounded-2xl bg-accent-500/10 px-3.5 py-3 text-subhead text-ink-muted ring-1 ring-inset ring-accent-500/30">
           <span aria-hidden className="text-[1.15rem] leading-none">🎉</span>
           <span>
@@ -136,7 +164,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
 
       <section aria-label="Who wins what" className="flex flex-col gap-2">
         <div className="flex min-h-6 items-center justify-between gap-2 px-1">
-          <p className="eyebrow text-ink-subtle">Who wins what</p>
+          <p className="eyebrow text-ink-subtle">{draft.venue ? "What winners get" : "Who wins what"}</p>
           {custom && <Badge tone="brand">Custom</Badge>}
         </div>
         {locked && (
@@ -160,10 +188,21 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
               fun={draft.choice === "fun"}
               onNeedAmounts={(rules) => set({ choice: "$", rules })}
               total={amounts ? total : null}
+              venue={!!draft.venue}
             />
           ))}
         </ul>
       </section>
+
+      <HouseRules
+        rules={draft.houseRules ?? []}
+        claimCodes={draft.claimCodes ?? false}
+        claimMinutes={draft.claimMinutes ?? null}
+        venue={!!draft.venue}
+        onRules={(houseRules) => set({ houseRules })}
+        onClaimCodes={(claimCodes) => set({ claimCodes })}
+        onClaimMinutes={(claimMinutes) => set({ claimMinutes })}
+      />
     </div>
   );
 }
@@ -482,6 +521,7 @@ function MomentRow({
   fun,
   onNeedAmounts,
   total,
+  venue,
 }: {
   moment: Moment;
   rule: MomentRule | null;
@@ -495,11 +535,14 @@ function MomentRow({
   onNeedAmounts: (rules: MomentRule[]) => void;
   /** The board's total while amounts are on and there's a square price (the final can take the rest of it), else null. */
   total: number | null;
+  /** A venue's board: the prize itself leads, always open ("Prize", venue ideas). */
+  venue: boolean;
 }) {
   const on = !!rule;
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNote = !!(rule?.square?.note || rule?.reverse?.note);
-  const showNotes = on && (notesOpen || hasNote || SIDES.some((s) => problems[`${moment}:${s}`]));
+  const showNotes = on && (venue || notesOpen || hasNote || SIDES.some((s) => problems[`${moment}:${s}`]));
+  const noteWord = venue ? "prize" : "note";
   const onlyRule = on && rules.length === 1;
   const sides = rule ? sidesOf(rule) : "square";
   const onSides = SIDES.filter((s) => !!rule?.[s]);
@@ -633,9 +676,9 @@ function MomentRow({
                 data-testid="rule-note"
                 data-moment={moment}
                 data-side={side}
-                label={onSides.length > 1 ? `${SIDE_LABEL[side]} note` : "Note"}
+                label={onSides.length > 1 ? `${SIDE_LABEL[side]} ${noteWord}` : noteWord === "prize" ? "Prize" : "Note"}
                 value={rule[side]?.note ?? ""}
-                placeholder={NOTE_IDEAS[moment]}
+                placeholder={venue ? VENUE_PRIZE_IDEAS[moment] : NOTE_IDEAS[moment]}
                 maxLength={PRIZE_MAX_LENGTH}
                 autoComplete="off"
                 enterKeyHint="done"

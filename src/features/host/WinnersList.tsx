@@ -3,18 +3,26 @@
 // score", "Pick winner", "Undo pick"). A score that lands on an empty square
 // says so in a plain sentence with the fix one tap away. Amounts (display-only)
 // ride along: "KC 7 – 3 BUF · $200", "Reverse · $50: Maya". Where only the
-// reverse square wins a moment, the row is about the reverse square.
+// reverse square wins a moment, the row is about the reverse square. On a
+// venue board with claim codes: each winner's code to check against their
+// winning pass, and whether the prize was handed over ("Mark collected").
 
 import type { ReactNode } from "react";
 import { formatAmount, scorePlayLabel, unitOf } from "../../../shared/formats";
 import { primaryAward } from "../../../shared/squares";
-import type { GameState, Player } from "../../../shared/types";
-import { PencilIcon, TrophyIcon } from "../../components/icons";
+import type { ClaimCode, GameState, Player } from "../../../shared/types";
+import { claimDeadline, collectedFor, countdownText } from "../../../shared/venue";
+import { CheckIcon, PencilIcon, TrophyIcon } from "../../components/icons";
+import { useNow } from "../board/useNow";
 import { Avatar, Badge, cx } from "../../components/ui";
 import type { WinnerRow } from "./hostModel";
 
 export interface WinnersListProps {
   state: GameState;
+  /** A venue board's claim codes (every winner's), to check against the code on a winner's phone. */
+  codes?: ClaimCode[] | null;
+  /** Marks a winner's prize handed over (or takes it back): shown beside each code. */
+  onCollect?: (key: string, reverse: boolean, collected: boolean) => void;
   rows: WinnerRow[];
   me: string;
   busy: boolean;
@@ -35,7 +43,52 @@ interface RowAction {
   onClick: () => void;
 }
 
-export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit, canPickOpen }: WinnersListProps) {
+export function WinnersList({ state, codes = null, onCollect, rows, me, busy, onPick, onUndoPick, onEdit, canPickOpen }: WinnersListProps) {
+  const codeOf = (key: string, reverse: boolean, playerId: string | null | undefined) =>
+    playerId ? (codes?.find((c) => c.periodKey === key && c.reverse === reverse && c.playerId === playerId)?.code ?? null) : null;
+  const now = useNow(codes && state.game.format.claimMinutes ? 1000 : 60_000);
+  /** Whether a winner's prize was handed over, and the button that says so (with the time left to collect). */
+  const collectLine = (key: string, reverse: boolean, playerId: string) => {
+    if (!onCollect || !codeOf(key, reverse, playerId)) return null;
+    const done = collectedFor(state, key, reverse, playerId);
+    const deadline = claimDeadline(state, key);
+    if (done) {
+      return (
+        <span className="mt-1 flex flex-wrap items-center gap-x-2 text-footnote font-bold text-ink-brand" data-testid="winner-collected">
+          <CheckIcon size={14} strokeWidth={3} />
+          <span className="whitespace-nowrap">Collected {new Date(done.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onCollect(key, reverse, false)}
+            className="font-semibold text-ink-subtle underline underline-offset-2 disabled:opacity-50"
+            data-testid="winner-uncollect"
+          >
+            Undo
+          </button>
+        </span>
+      );
+    }
+    const left = deadline !== null ? deadline - now : null;
+    return (
+      <span className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onCollect(key, reverse, true)}
+          className="min-h-9 rounded-full bg-gold-400 px-3.5 text-footnote font-extrabold text-ink-inverse disabled:opacity-50"
+          data-testid="winner-collect"
+        >
+          {reverse ? "Mark reverse collected" : "Mark collected"}
+        </button>
+        {left !== null && (
+          <span className={cx("text-footnote tabular-nums", left > 0 ? "font-bold text-ink-gold" : "text-ink-subtle")}>
+            {left > 0 ? `${countdownText(left)} left` : "Time's up"}
+          </span>
+        )}
+      </span>
+    );
+  };
   const { game } = state;
   const player = (id: string | null): Player | null => (id ? (state.players.find((p) => p.id === id) ?? null) : null);
   const abbrX = game.teamX.abbr || game.teamX.name;
@@ -136,13 +189,25 @@ export function WinnersList({ state, rows, me, busy, onPick, onUndoPick, onEdit,
                   {winner && <Avatar name={winner.name} color={winner.color} emoji={winner.emoji} size="xs" decorative />}
                   <span className={cx("truncate text-callout font-bold", decided ? "text-ink" : "text-ink-muted")}>{headline}</span>
                   {row.manual && <Badge tone="gold">Your pick</Badge>}
+                  {winner && codeOf(row.key, !!award?.reverse, winner.id) && (
+                    <span data-testid="winner-code" className="ml-auto shrink-0 rounded-lg bg-gold-400/15 px-2 py-0.5 font-display text-footnote font-extrabold tracking-[0.14em] text-ink-gold ring-1 ring-inset ring-gold-line/40">
+                      {codeOf(row.key, !!award?.reverse, winner.id)}
+                    </span>
+                  )}
                 </span>
                 <span className="mt-0.5 block truncate text-footnote tabular-nums text-ink-subtle">{scoreLine ?? "No score yet"}</span>
+                {winner && collectLine(row.key, !!award?.reverse, winner.id)}
                 {reverse && (
                   <span className="block truncate text-footnote text-ink-subtle">
                     Reverse{money(r?.reverseAmount ?? null) ? ` · ${money(r?.reverseAmount ?? null)}` : ""}: {reverse.id === me ? "You" : reverse.name}
+                    {codeOf(row.key, true, reverse.id) && (
+                      <b data-testid="winner-code" className="ml-1.5 font-display font-extrabold tracking-[0.14em] text-ink-gold">
+                        {codeOf(row.key, true, reverse.id)}
+                      </b>
+                    )}
                   </span>
                 )}
+                {reverse && collectLine(row.key, true, reverse.id)}
               </span>
               {!ownLine && actions[0] && <ActionButton action={actions[0]} busy={busy} />}
             </div>

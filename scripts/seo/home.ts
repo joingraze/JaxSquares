@@ -65,10 +65,10 @@ export function homeContent(pages: readonly LandingPage[]): string {
     `<h1>Sports squares, live with your crew.</h1>` +
     `<p>Football and basketball. Make a board, text the link, and watch the squares fill up. Scores and winners land live.</p>` +
     `<p><a href="/new">Make a board</a> · <a href="/how-to-play-football-squares">How to play squares</a></p>` +
-    `<p class="fine">No account needed. Friends join from a link. Free to set up and invite.</p>` +
+    `<p class="fine">Friends join from a link, no account needed. Free to set up and invite.</p>` +
     `<h2>How it works</h2><ol>` +
-    `<li><strong>Make a board.</strong> Pick an NFL, college football, NBA, WNBA or college basketball game, or type in any two teams, and choose when squares win: every quarter, halftime, the final or every score.</li>` +
-    `<li><strong>Text one link.</strong> Friends open it in their phone's browser and tap their squares. No app to download and no account.</li>` +
+    `<li><strong>Make a board.</strong> Sign in with Google or Apple, pick an NFL, college football, NBA, WNBA or college basketball game (or type in any two teams), and choose when squares win: every quarter, halftime, the final or every score.</li>` +
+    `<li><strong>Text one link.</strong> Friends open it in their phone's browser and tap their squares. Players never need an app or an account.</li>` +
     `<li><strong>Draw the numbers.</strong> Once the board is full, Jax shuffles the digits 0 to 9 across the top and down the side, live on every phone.</li>` +
     `<li><strong>Watch it live.</strong> Scores fill in on their own, and the winning square lights up for everyone the moment each quarter ends.</li>` +
     `</ol>` +

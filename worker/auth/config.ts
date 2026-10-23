@@ -15,6 +15,17 @@ export function appleBundleId(env: Env): string {
   return clean(env.APPLE_BUNDLE_ID) ?? DEFAULT_APPLE_BUNDLE_ID;
 }
 
+/**
+ * Hosts sign in to make a board (docs/auth.md "Hosts sign in"), wherever web
+ * sign-in is set up (a Google web client or an Apple Services ID): the board,
+ * its host controls and any Host Pass then stay with their account on every
+ * device. Without either (local dev, most tests) anyone can make one. Players
+ * never need an account.
+ */
+export function hostsSignIn(env: Env): boolean {
+  return !!(clean(env.GOOGLE_WEB_CLIENT_ID) || clean(env.APPLE_SERVICES_ID));
+}
+
 /** For GET /api/config: what the app may offer on each platform. */
 export function authConfig(env: Env): AuthConfig {
   return {

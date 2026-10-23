@@ -121,6 +121,73 @@ export interface GameFormat {
    * amounts = the host chose nothing, and players see nothing about prizes.
    */
   justForFun?: boolean;
+  /**
+   * A few short lines on how to play and claim ("Must be present to win"),
+   * shown with the rules and on the TV (shared/venue.ts).
+   * Absent = none. Editable any time, like the prizes.
+   */
+  houseRules?: string[];
+  /** Winners show the staff a claim code (GET /api/games/:id/claims). Absent = off. */
+  claimCodes?: boolean;
+  /**
+   * With claim codes: minutes a winner has to collect, from the moment their
+   * prize is decided (their phone counts down). Absent = no limit; the host
+   * can always mark a prize collected.
+   */
+  claimMinutes?: number;
+  /**
+   * A venue's board (a bar, restaurant or brewery running it for the room):
+   * free to play, so never a square price (400). Absent = an ordinary board.
+   */
+  venue?: boolean;
+}
+
+/** A part of TV mode the host can turn off or on (shared/tv.ts `TV_PARTS`). */
+export type TvPart = "prizes" | "amounts" | "houseRules" | "freeToPlay" | "now" | "winners" | "upcoming" | "celebrations";
+
+/** The host's choices for TV mode, by part; a part left out shows as its default (`tvShows`). */
+export type TvDisplay = Partial<Record<TvPart, boolean>>;
+
+/** A prize handed over (POST /api/games/:id/claims/collect): public, so the board, the TV and the winner's phone all show it. */
+export interface PrizeCollected {
+  periodKey: string;
+  /** The reverse square's prize. */
+  reverse: boolean;
+  /** The winner it was handed to (public id): a corrected score that moves the prize leaves it uncollected. */
+  playerId: string;
+  at: number;
+  /** Marked by the host (or a co-host) in Host tools, or on the winner's own phone. */
+  by: "host" | "winner";
+}
+
+/** POST /api/games/:id/claims/collect. `collected: false` (host only) takes it back. */
+export interface CollectInput {
+  periodKey: string;
+  reverse: boolean;
+  collected: boolean;
+}
+
+/** One winner's claim code (shared/venue.ts): who won what, and the code the staff check. */
+export interface ClaimCode {
+  periodKey: string;
+  /** The moment's label ("Q1", "Final", "Score 3"). */
+  label: string;
+  /** The reverse winner's (the digits swapped). */
+  reverse: boolean;
+  /** The winner's public player id. */
+  playerId: string;
+  code: string;
+}
+
+/**
+ * GET /api/games/:id/claims: the caller's own codes, and every winner's for
+ * the host or a co-host (`all`, null for anyone else). `enabled` false: the
+ * board doesn't use claim codes.
+ */
+export interface ClaimsResponse {
+  enabled: boolean;
+  mine: ClaimCode[];
+  all: ClaimCode[] | null;
 }
 
 /** A scoring checkpoint that can win a square (e.g. end of each quarter). */
@@ -247,6 +314,11 @@ export interface Game {
   kind?: BoardKind;
   /** A game of a season board: the season board's id (absent or null on every other board). */
   seasonId?: string | null;
+  /**
+   * What TV mode shows (shared/tv.ts): the host's choices, each part absent
+   * = its default (`tvShows`). Only on a board whose host changed one.
+   */
+  tv?: TvDisplay;
 }
 
 /** One game's board, or a season board (Game.kind). */
@@ -546,6 +618,8 @@ export interface GameState {
    * board's next state. Public data only: no clientId, no admin token.
    */
   siblings?: SiblingBoard[];
+  /** A board with claim codes: the prizes handed over so far (the winner's public id only). */
+  collected?: PrizeCollected[];
   /** A season board (Game.kind "season"): its schedule and standings, public ids only. */
   season?: SeasonState;
   /** A game of a season board (Game.seasonId): which game of how many, and its neighbors. */
@@ -788,6 +862,8 @@ export interface UpdateGameInput {
    * the numbers are drawn (409 otherwise); the board size never.
    */
   format?: GameFormat;
+  /** What TV mode shows (the whole set; shared/tv.ts). Any time, never an activity: every TV on the board follows at once. */
+  tv?: TvDisplay;
   /**
    * Custom boards only: a new kickoff (epoch ms) or null for no set time,
    * validated like CreateGameInput.startsAt; 400 on a linked board.
@@ -1101,7 +1177,19 @@ export interface SignInInput {
   name?: string;
   /** Sign in with Apple JS only: the redirect URI the authorization code was issued for. */
   redirectUri?: string;
+  /**
+   * POST /api/auth/:provider/link only: the person confirmed combining the
+   * account that sign-in already has (409 ACCOUNT_EXISTS_CODE) into this one.
+   */
+  combine?: boolean;
 }
+
+/**
+ * 409 `code` from POST /api/auth/:provider/link: that Apple ID or Google
+ * account already has its own JaxSquares account. Resend with `combine: true`
+ * (after the person confirms) to move it into this one.
+ */
+export const ACCOUNT_EXISTS_CODE = "account_exists";
 
 /** POST /api/auth/sign-out: this device's push registration, so the account's pushes stop reaching it. */
 export interface SignOutInput {
@@ -1111,7 +1199,10 @@ export interface SignOutInput {
 
 /** Shown only to the account's owner ("Signed in with Apple · maya@example.com"). */
 export interface AccountInfo {
+  /** The first way the account signed in. */
   provider: AuthProvider;
+  /** Every way it signs in, first one first ("Add Google" in Profile adds one). Absent from an older server. */
+  providers?: AuthProvider[];
   email: string | null;
   name: string | null;
   /** When the account was created, epoch ms. */

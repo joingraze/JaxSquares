@@ -31,6 +31,7 @@ import {
 import { QrCode } from "./QrCode";
 import { useNewArrival } from "./useNewArrival";
 import { useResolvedTheme } from "../../lib/theme";
+import { ShowOnTv } from "../tv/SendToTv";
 
 /** A speech bubble: "send it as a text". */
 function ChatGlyph({ size = 22 }: { size?: number }) {
@@ -94,10 +95,13 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
   const boardNames = groupBoardNames(state);
   const people = peopleInOrder(state);
   const myCount = state.squares.filter((s) => s.playerId === myId).length;
+  // A venue's board the host just made: "Put it on your TV" leads the sheet.
+  const venueLaunch = justCreated && game.format.venue === true && !!onShowTv;
   const arrival = useNewArrival(state.players, open);
 
   const [flash, setFlash] = useState<Flash>(null);
   const [showCode, setShowCode] = useState(false);
+  const [showTv, setShowTv] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showFlash = (f: Flash) => {
@@ -112,6 +116,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
   useEffect(() => {
     if (!open) {
       setShowCode(false);
+      setShowTv(false);
       return;
     }
     if (!justCreated || celebrated.current) return;
@@ -178,6 +183,21 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
       }
     >
       <div style={teamVars(game.teamX, game.teamY, theme)} className="flex flex-col gap-3.5">
+        {/* A venue's board, just made: the TV comes first (guests join from its QR code). */}
+        {venueLaunch && (
+          <section data-testid="invite-venue-tv" aria-label="Put it on your TV" className="flex flex-col gap-3 rounded-card bg-brand-400/10 p-3.5 ring-1 ring-inset ring-brand-line/35">
+            <div className="flex items-start gap-3">
+              <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-400/15 text-ink-brand">
+                <TvIcon size={20} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-display text-headline font-extrabold leading-tight text-ink">Put it on your TV</span>
+                <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">Guests scan its QR code to grab a square.</span>
+              </span>
+            </div>
+            {onShowTv && <ShowOnTv gameId={game.id} onOpenHere={onShowTv} />}
+          </section>
+        )}
         {/* ---- Who's in: the one social signal ---- */}
         <div className="flex min-h-11 items-center gap-2.5">
           {arrival ? (
@@ -192,7 +212,7 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               <p className="min-w-0 flex-1 truncate text-subhead font-bold text-ink">{crewLine(state, myId)}</p>
             </>
           )}
-          {stage === "fresh" && viewerIsHost && myCount === 0 && !arrival && (
+          {stage === "fresh" && viewerIsHost && myCount === 0 && !arrival && !game.format.venue && (
             <button
               type="button"
               onClick={() => {
@@ -236,10 +256,18 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
         </Button>
 
         {/* Watch party or office: the board on a TV, or on paper. */}
-        {(onShowTv || onPrint) && (
+        {((onShowTv && !venueLaunch) || onPrint) && (
           <div className="grid grid-cols-2 gap-2">
-            {onShowTv && (
-              <Button data-testid="invite-tv" variant="secondary" size="md" haptic="selection" leading={<TvIcon size={20} />} onClick={onShowTv}>
+            {onShowTv && !venueLaunch && (
+              <Button
+                data-testid="invite-tv"
+                variant="secondary"
+                size="md"
+                haptic="selection"
+                aria-expanded={showTv}
+                leading={<TvIcon size={20} />}
+                onClick={() => setShowTv((v) => !v)}
+              >
                 Show on TV
               </Button>
             )}
@@ -249,6 +277,13 @@ export function InviteSheet({ state, open, onClose, justCreated = false, onShowT
               </Button>
             )}
           </div>
+        )}
+
+        {/* Anyone with the link: the code a smart TV shows at jaxsquares.com/tv, or TV mode right here. */}
+        {showTv && onShowTv && !venueLaunch && (
+          <section aria-label="Show on TV" className="rounded-card bg-surface-3/60 p-3.5 ring-1 ring-inset ring-line">
+            <ShowOnTv gameId={game.id} onOpenHere={onShowTv} />
+          </section>
         )}
 
         {/* Several boards for one game: how many and their names (the prices are on the board). */}
@@ -304,7 +339,7 @@ function TextPreview({ state, sender, message, url, copied, onCopy }: TextPrevie
   const status = previewStatus(state);
   return (
     <figure className="m-0 flex animate-fade-in flex-col gap-2">
-      <figcaption className="eyebrow px-0.5 text-ink-subtle">What your crew gets</figcaption>
+      <figcaption className="eyebrow px-0.5 text-ink-subtle">{game.format.venue ? "What guests get" : "What your crew gets"}</figcaption>
       <div className="flex items-end gap-2">
         <Avatar name={sender.name} color={sender.color} emoji={sender.emoji} size="sm" decorative className="mb-0.5" />
         <div className="flex min-w-0 flex-1 flex-col items-start gap-1">

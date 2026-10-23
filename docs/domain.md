@@ -62,5 +62,11 @@ DS record it gives you at Squarespace.
 - Resend: its DNS records go in Cloudflare now (docs/email.md).
 - Google / Apple sign-in: the web origins and return URLs use
   `https://jaxsquares.com` (docs/auth.md).
-- The `jaxsquares.turnoverapp.workers.dev` address keeps working; the deploy
-  smoke test uses it.
+- The `jaxsquares.turnoverapp.workers.dev` address is the same Worker (same
+  database, same boards), not a test site. Its API keeps answering, because the
+  deploy smoke test reads it there. Its pages move to the same path on
+  `https://jaxsquares.com` before anything loads (a script at the top of
+  `index.html` and of each landing page, `scripts/seo/render.ts`;
+  `src/test/workersDev.test.ts`): sign-in, Apple Pay and a device's saved
+  identity only work on jaxsquares.com. It's a script rather than a Worker
+  redirect because most pages are static files the Worker never sees.

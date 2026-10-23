@@ -16,7 +16,7 @@ vi.mock("../../lib/native", async (orig) => {
 vi.mock("../../components/ui/confetti", () => ({ celebrate: vi.fn(), CELEBRATION_COLORS: [], prefersReducedMotion: () => true }));
 
 const { ToastProvider } = await import("../../components/ui");
-const { setProfile } = await import("../../lib/identity");
+const { getProfile, setProfile } = await import("../../lib/identity");
 const { default: CreateGame } = await import("../../pages/CreateGame");
 const { DRAFT_KEY } = await import("./wizard");
 const { defaultKickoff } = await import("./kickoff");
@@ -226,6 +226,69 @@ describe("the create flow", () => {
     await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0].format.rules?.map((r) => r.square?.amount)).toEqual([200, 200, 200, 400]);
+  });
+
+  it("a bar or restaurant: asked first, then prizes first, the venue's name, one square each, and a venue summary", async () => {
+    localStorage.removeItem("jaxsquares.venueName");
+    renderFlow();
+    await onStep("game");
+    // Who's playing comes first; a venue's board is free to play, one square each, claim codes with five minutes.
+    fireEvent.click(screen.getAllByTestId("audience-option").find((el) => el.getAttribute("data-audience") === "venue")!);
+    await customTeams();
+    await nextTo("format", "prizes");
+    expect(screen.getByRole("heading", { name: "What do winners get?" })).toBeInTheDocument();
+    // No venue switch here (it's the first step's), no prize choice or square price: prizes lead.
+    expect(screen.queryByTestId("venue-mode")).toBeNull();
+    expect(screen.queryByTestId("rules-choice")).toBeNull();
+    expect(screen.queryAllByTestId("price-chip")).toHaveLength(0);
+    expect(screen.getByRole("switch", { name: /Prize values/ })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: /Claim codes/ })).toBeChecked();
+    expect(screen.getByTestId("house-rules")).toHaveTextContent("At your venue");
+    expect(screen.getByTestId("house-rules")).toHaveTextContent("Must be present to win");
+    const q1 = screen.getAllByTestId("rule-note").find((el) => el.getAttribute("data-moment") === "q1")!;
+    expect(q1).toHaveAttribute("placeholder", "Free appetizer");
+    fireEvent.change(q1, { target: { value: "Free appetizer" } });
+
+    // Final touches: the venue's name (needed), the board named for it, one square each and why.
+    await nextTo("details");
+    expect(screen.queryByTestId("host-name")).toBeNull();
+    expect(screen.getByTestId("venue-cap-note")).toBeInTheDocument();
+    next();
+    expect(screen.getByTestId("wizard-step")).toHaveAttribute("data-step", "details");
+    expect(screen.getByRole("status")).toHaveTextContent("Add your venue's name to continue");
+    fireEvent.change(screen.getByTestId("venue-name"), { target: { value: "The Rusty Anchor" } });
+    expect(screen.getByTestId("board-name")).toHaveAttribute("placeholder", "The Rusty Anchor · Chiefs vs Eagles");
+
+    await nextTo("review");
+    expect(screen.getByTestId("review-venue")).toHaveTextContent("Free to play · One square each · Winners collect from staff within 5 minutes");
+    expect(screen.getByTestId("review-prizes")).toHaveTextContent("Q1 · Free appetizer");
+    expect(reviewCard("details")).toHaveTextContent("Hosted by The Rusty Anchor");
+    await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].maxPerPlayer).toBe(1);
+    expect(posted[0].host.name).toBe("The Rusty Anchor");
+    expect(posted[0].name).toBe("The Rusty Anchor · Chiefs vs Eagles");
+    expect(posted[0].format).toMatchObject({ venue: true, justForFun: true, squarePrice: null, claimCodes: true, claimMinutes: 5, houseRules: ["Must be present to win"] });
+    // The venue's name is this board's only: the device's own name stays.
+    expect(getProfile().name).toBe("Jordan");
+    expect(localStorage.getItem("jaxsquares.venueName")).toBe("The Rusty Anchor");
+  });
+
+  it("friends again: switching back lifts the one-square cap and keeps the device's name as host", async () => {
+    renderFlow();
+    await onStep("game");
+    const option = (a: string) => screen.getAllByTestId("audience-option").find((el) => el.getAttribute("data-audience") === a)!;
+    expect(option("friends")).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(option("venue"));
+    fireEvent.click(option("friends"));
+    await customTeams();
+    await nextTo("format", "prizes", "details", "review");
+    expect(screen.queryByTestId("review-venue")).toBeNull();
+    await act(async () => void fireEvent.click(screen.getByTestId("create-submit")));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0].maxPerPlayer).toBe(0);
+    expect(posted[0].host.name).toBe("Jordan");
+    expect(posted[0].format).not.toHaveProperty("venue");
   });
 
   it("fills the suggested amounts in as the setup changes, until the host types one; then Use suggested amounts", async () => {

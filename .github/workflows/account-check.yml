@@ -1,0 +1,46 @@
+name: Account check
+
+# Read-only look at sign-in data, to debug "signed back in but my boards are
+# gone": per account, its sign-ins, devices and hosted boards; per recent
+# board, whether its host is signed in. Counts and times only: never a
+# clientId, an email or a name. Starts when this file changes, or by hand.
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/account-check.yml
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Accounts
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx -y wrangler@4 d1 execute jaxsquares --remote --json --command "
+            SELECT substr(a.id, 1, 6) AS account,
+              datetime(a.created_at / 1000, 'unixepoch') AS created,
+              (SELECT group_concat(provider || ' used ' || datetime(last_used_at / 1000, 'unixepoch'), '; ') FROM account_identities i WHERE i.account_id = a.id) AS sign_ins,
+              (SELECT group_concat(datetime(created_at / 1000, 'unixepoch'), '; ') FROM client_links l WHERE l.account_id = a.id) AS devices_linked_at,
+              EXISTS (SELECT 1 FROM client_links l WHERE l.client_id = a.canonical_client_id) AS first_device_still_signed_in,
+              (SELECT count(*) FROM games g WHERE g.host_client_id = a.canonical_client_id) AS boards_hosted,
+              (SELECT count(*) FROM players p WHERE p.client_id = a.canonical_client_id) AS boards_joined
+            FROM accounts a ORDER BY a.created_at" | jq -c '.[0].results[]'
+      - name: Recent boards
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx -y wrangler@4 d1 execute jaxsquares --remote --json --command "
+            SELECT g.id AS board, datetime(g.created_at / 1000, 'unixepoch') AS created, g.status,
+              EXISTS (SELECT 1 FROM accounts a WHERE a.canonical_client_id = g.host_client_id) AS host_is_an_account,
+              (SELECT substr(a.id, 1, 6) FROM accounts a WHERE a.canonical_client_id = g.host_client_id) AS account,
+              EXISTS (SELECT 1 FROM client_links l WHERE l.client_id = g.host_client_id) AS host_device_signed_in
+            FROM games g ORDER BY g.created_at DESC LIMIT 15" | jq -c '.[0].results[]'

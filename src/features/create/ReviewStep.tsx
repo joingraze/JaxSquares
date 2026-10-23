@@ -4,20 +4,22 @@
 // set" when the host skipped it. Amounts stay in the app (this is the app).
 // A season board's game card is its season ("Jaguars 2026 season · 17 games
 // so far"), its next game and how numbers work; its prizes are every game's.
+// A venue's board leads with what makes it one (free to play, one square
+// each, how winners collect) and lists its prizes.
 
 import type { ReactNode } from "react";
 import { rulesOf } from "../../../shared/formats";
 import { SEASON_NUMBERS_INFO } from "../../../shared/season";
 import { playsHalves, regulationPeriods, wordsFor, type GameKind } from "../../../shared/sports";
 import type { GameFormat, LinkedEvent, SeasonEvent, SeasonNumbers, SeasonTeam, Team } from "../../../shared/types";
-import { CalendarIcon, ChevronRightIcon, ClockIcon, GridIcon, LiveIcon, PencilIcon, TrophyIcon } from "../../components/icons";
+import { CalendarIcon, ChevronRightIcon, ClockIcon, GridIcon, LiveIcon, PencilIcon, TrophyIcon, TvIcon } from "../../components/icons";
 import { Avatar, cx, TeamMark } from "../../components/ui";
 import { haptic } from "../../lib/native";
-import { capLine, prizeLineup } from "../rules/rulesModel";
+import { capLine, momentPrizes, prizeLineup } from "../rules/rulesModel";
 import { FormatGlyph } from "./FormatPicker";
 import { kickoffLine } from "./kickoff";
 import { boardHeadline, rulesTitle, seasonEventMatchup } from "./model";
-import { STEP_INFO, STEPS, stepNumber, type Steps, type WizardStep } from "./wizard";
+import { STEPS, stepLabel, stepNumber, type Steps, type WizardStep } from "./wizard";
 
 export interface ReviewStepProps {
   teams: { teamX: Team; teamY: Team } | null;
@@ -46,6 +48,8 @@ export interface ReviewStepProps {
   kind?: GameKind;
   /** A season board: its line, team, next game and numbers (absent for one game's board). */
   season?: ReviewSeason | null;
+  /** A venue's board: "Free to play · One square each · Winners collect from staff within 5 minutes" (venueSummary). */
+  venue?: string | null;
 }
 
 export interface ReviewSeason {
@@ -71,14 +75,29 @@ export function ReviewStep({
   steps = STEPS,
   kind,
   season = null,
+  venue = null,
 }: ReviewStepProps) {
   const words = wordsFor(kind);
   const rules = rulesOf(format);
   const lineup = prizeLineup(format);
+  // A venue's prizes, one line each ("Q1 · Free appetizer"); none yet is flagged like an unset price.
+  const venuePrizes = venue ? momentPrizes(format) : [];
+  const prizeLines = venuePrizes.map((p) => [p.label, p.amount, p.note, p.reverse && `Reverse ${[p.reverse.amount, p.reverse.note].filter(Boolean).join(" ")}`].filter(Boolean).join(" · "));
   const modifiers = [format.reverse && "Reverse", format.freshNumbers && (playsHalves(kind) ? "New numbers each half" : "New numbers each Q")].filter(Boolean) as string[];
   const when = linked ? kickoffLine(linked.startsAt, now) : kickoffLine(kickoff, now);
   return (
     <div className="flex flex-col gap-3">
+      {venue && (
+        <section data-testid="review-venue" aria-label={`Venue board: ${venue}`} className="flex items-start gap-3 rounded-card bg-brand-400/10 p-3.5 ring-1 ring-inset ring-brand-line/35">
+          <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-400/15 text-ink-brand">
+            <TvIcon size={20} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-headline font-extrabold leading-tight text-ink">Venue board</span>
+            <span className="mt-0.5 block text-footnote leading-snug text-ink-muted">{venue}</span>
+          </span>
+        </section>
+      )}
       {sibling ? (
         <section
           data-testid="review-same-game"
@@ -159,11 +178,38 @@ export function ReviewStep({
       <ReviewCard
         step="prizes"
         steps={steps}
-        summary={lineup ? (lineup.fun ? "Just for fun" : lineup.parts.join(", ")) : "Square price: not set"}
-        flagged={!lineup}
+        summary={venue ? prizeLines.join(", ") || "Prizes: not set" : lineup ? (lineup.fun ? "Just for fun" : lineup.parts.join(", ")) : "Square price: not set"}
+        flagged={venue ? prizeLines.length === 0 : !lineup}
+        venue={!!venue}
         onEdit={onEdit}
       >
-        {lineup ? (
+        {venue ? (
+          <div data-testid="review-prizes" data-state={prizeLines.length > 0 ? "set" : "unset"} className="flex items-start gap-3">
+            <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-ink-gold">
+              <TrophyIcon size={18} filled={prizeLines.length > 0} />
+            </span>
+            <span className="min-w-0 flex-1">
+              {prizeLines.length > 0 ? (
+                <>
+                  <span className="block text-caption font-bold text-ink-subtle">What winners get</span>
+                  {prizeLines.map((line) => (
+                    <span key={line} className="mt-0.5 block text-callout font-bold leading-snug text-ink">
+                      {line}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1.5 font-display text-headline font-extrabold leading-tight text-ink">
+                    <span aria-hidden className="h-2 w-2 shrink-0 rounded-full bg-gold-400" />
+                    Prizes: not set
+                  </span>
+                  <span className="mt-0.5 block text-footnote text-ink-muted">Add what each quarter wins, like a free appetizer.</span>
+                </>
+              )}
+            </span>
+          </div>
+        ) : lineup ? (
           <div data-testid="review-prizes" data-state={lineup.fun ? "fun" : "set"} className="flex items-start gap-3">
             <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-400/15 text-ink-gold">
               {lineup.fun ? <span className="text-[1.15rem] leading-none">🎉</span> : <TrophyIcon size={18} filled />}
@@ -264,6 +310,7 @@ function ReviewCard({
   steps,
   summary,
   flagged = false,
+  venue = false,
   onEdit,
   children,
 }: {
@@ -272,6 +319,8 @@ function ReviewCard({
   /** What the card says, for its accessible name. */
   summary: string;
   flagged?: boolean;
+  /** A venue's board: its prizes step is "Prizes" (no square price). */
+  venue?: boolean;
   onEdit: (step: WizardStep) => void;
   children: ReactNode;
 }) {
@@ -280,7 +329,7 @@ function ReviewCard({
       type="button"
       data-testid="review-edit"
       data-step={step}
-      aria-label={`${STEP_INFO[step].label}: ${summary}. Change`}
+      aria-label={`${stepLabel(step, venue)}: ${summary}. Change`}
       onClick={() => {
         void haptic("selection");
         onEdit(step);
@@ -294,7 +343,7 @@ function ReviewCard({
     >
       <span className="flex items-center justify-between gap-2">
         <span className="eyebrow text-ink-subtle">
-          <span className="tabular-nums">{stepNumber(step, steps)}</span> · {STEP_INFO[step].label}
+          <span className="tabular-nums">{stepNumber(step, steps)}</span> · {stepLabel(step, venue)}
         </span>
         <span className="flex items-center gap-0.5 text-footnote font-bold text-ink-brand">
           {flagged ? "Set" : "Change"}

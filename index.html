@@ -2,6 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      The Worker also answers on its workers.dev address (the deploy's smoke test reads the API
+      there). People belong on jaxsquares.com: sign-in, Apple Pay and a device's saved identity
+      only work there (docs/domain.md). Before anything loads, a page there moves to the same path.
+    -->
+    <script>
+      if (/\.workers\.dev$/i.test(location.hostname)) location.replace("https://jaxsquares.com" + location.pathname + location.search + location.hash);
+    </script>
     <!-- Pinch zoom stays available (accessibility). Inputs use 16px+ text so iOS never auto-zooms on focus. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>JaxSquares</title>
@@ -56,8 +64,8 @@
     <script id="theme-boot">
       (function () {
         var d = document.documentElement, t = "dark", p = null;
-        // TV mode (/g/:id/tv, and a club's TV /club/:id/tv) has its own theme: dark unless picked on that screen (src/features/tv/screen.ts).
-        var tv = /^\/(g|club)\/[^/]+\/tv\/?$/i.test(location.pathname);
+        // TV mode (/g/:id/tv, a club's TV /club/:id/tv, and pairing a TV /tv) has its own theme: dark unless picked on that screen (src/features/tv/screen.ts).
+        var tv = /^\/((g|club)\/[^/]+\/)?tv\/?$/i.test(location.pathname);
         try {
           p = localStorage.getItem(tv ? "jaxsquares.tvTheme" : "jaxsquares.theme");
         } catch (e) {}

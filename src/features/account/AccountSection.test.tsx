@@ -152,3 +152,73 @@ describe("Profile → Account, signed in", () => {
     expect(await screen.findByText("Account deleted")).toBeInTheDocument();
   });
 });
+
+describe("Profile → Account, adding another way to sign in", () => {
+  const GOOGLE: AccountInfo = { provider: "google", providers: ["google"], email: "maya@example.com", name: null, since: 1_760_000_000_000 };
+  const BOTH: AccountInfo = { ...GOOGLE, providers: ["google", "apple"] };
+  let linkCalls: Record<string, unknown>[];
+
+  /** POST /auth/apple/link answers `exists` (409 account_exists) until it's sent with combine: true. */
+  function serveLink(exists: boolean) {
+    linkCalls = [];
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/config")) return json({ payments: {}, vapidPublicKey: null, auth: ALL });
+      if (url.endsWith("/api/auth/apple/link")) {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        linkCalls.push(body);
+        if (exists && body.combine !== true) {
+          return json({ error: "That Apple sign-in already has its own JaxSquares account.", code: "account_exists" }, 409);
+        }
+        return json({ playerId: CANONICAL, account: BOTH, hostTokens: { abc234: "host-token-1", xyz789: "host-token-2" }, profile: null });
+      }
+      if (url.includes("/api/me/games")) return json({ games: [] });
+      return json({ error: "Not found" }, 404);
+    });
+  }
+
+  function appleAnswers() {
+    const init = vi.fn();
+    window.AppleID = {
+      auth: {
+        init,
+        signIn: vi.fn(async () => ({ authorization: { id_token: "apple.id.token", code: "c0de", state: (init.mock.calls.at(-1)![0] as { state: string }).state } })),
+      },
+    };
+  }
+
+  beforeEach(() => {
+    setServerIdentity(CANONICAL, GOOGLE);
+  });
+
+  it("offers the sign-in the account doesn't have, and adds it", async () => {
+    serveLink(false);
+    appleAnswers();
+    renderSection();
+    const add = await screen.findByTestId("account-add");
+    expect(add).toHaveTextContent("Add Apple and either one opens this account, on any device.");
+    expect(within(add).queryByTestId("signin-google")).toBeNull();
+    await act(async () => void fireEvent.click(within(add).getByRole("button", { name: "Sign in with Apple" })));
+    expect(await screen.findByText("Sign-in added")).toBeInTheDocument();
+    expect(linkCalls).toHaveLength(1);
+    expect(linkCalls[0]).toMatchObject({ idToken: "apple.id.token", authorizationCode: "c0de" });
+    expect(screen.getByText("Signed in with Google and Apple")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-add")).toBeNull();
+  });
+
+  it("asks before combining an account that sign-in already has, then combines them", async () => {
+    serveLink(true);
+    appleAnswers();
+    renderSection();
+    const add = await screen.findByTestId("account-add");
+    await act(async () => void fireEvent.click(within(add).getByRole("button", { name: "Sign in with Apple" })));
+    const sheet = await screen.findByTestId("account-combine-sheet");
+    expect(screen.getByText("That Apple sign-in already has its own JaxSquares account.")).toBeInTheDocument();
+    expect(within(sheet).getByText("Its boards, squares and host controls move into this account.")).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't sign in")).toBeNull();
+    await act(async () => void fireEvent.click(screen.getByTestId("account-combine-confirm")));
+    expect(await screen.findByText("Accounts combined")).toBeInTheDocument();
+    expect(linkCalls.map((b) => b.combine)).toEqual([undefined, true]);
+    expect(linkCalls[1]).toMatchObject({ idToken: "apple.id.token" });
+    expect(getAdminToken("xyz789")).toBe("host-token-2");
+  });
+});

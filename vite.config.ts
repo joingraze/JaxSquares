@@ -22,6 +22,7 @@ const ROUTE_CHUNKS: { path: string; page: string }[] = [
   { path: "^/g/[^/]+/tv$", page: "src/pages/TvView.tsx" },
   { path: "^/g/[^/]+/print$", page: "src/pages/PrintView.tsx" },
   { path: "^/club/[^/]+/tv$", page: "src/pages/ClubTvView.tsx" },
+  { path: "^/tv$", page: "src/pages/TvPair.tsx" },
   { path: "^/me$", page: "src/pages/Profile.tsx" },
   { path: "^/privacy$", page: "src/pages/Privacy.tsx" },
   { path: "^/terms$", page: "src/pages/Terms.tsx" },

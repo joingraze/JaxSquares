@@ -8,7 +8,8 @@ import { Link } from "react-router-dom";
 import { PlusIcon } from "../../components/icons";
 import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
 import { useHideTabBar } from "../../components/shell";
-import { useAuthSetup } from "../../lib/auth";
+import { PROVIDER_LABEL, useAuthSetup } from "../../lib/auth";
+import { useAccount } from "../../lib/identity";
 import { haptic, isNative } from "../../lib/native";
 import { SignInSheet } from "../account";
 import { detectHelpEnv } from "../notifications/platformHelp";
@@ -21,6 +22,10 @@ export function Welcome() {
   const [signingIn, setSigningIn] = useState(false);
   // A new phone for someone who plays elsewhere: one tap brings their boards over.
   const canSignIn = useAuthSetup().providers.length > 0;
+  // Signed in with nothing to show: the account has no boards yet. A board made
+  // before signing in stays on the device (or browser) it was made on until
+  // that one signs in too.
+  const account = useAccount();
   // The iPhone Home Screen web app keeps its own storage, apart from Safari's:
   // someone who joined in Safari and then opened the icon lands here with no boards.
   const homeScreenApp = useMemo(() => {
@@ -84,17 +89,24 @@ export function Welcome() {
         <p data-testid="welcome-note" className="text-center text-footnote text-ink-subtle">
           {homeScreenApp
             ? "Joined a board in Safari? It's still there. Open your invite link in Safari to get back to it."
-            : "No account needed. Friends join from a link."}
+            : "Friends join from a link, no account needed."}
         </p>
-        {canSignIn && (
-          <button
-            type="button"
-            data-testid="welcome-signin"
-            onClick={() => setSigningIn(true)}
-            className="pressable mx-auto -mt-1 min-h-11 rounded-full px-4 text-subhead font-bold text-ink-muted hover:text-ink"
-          >
-            Playing on another device? <span className="text-ink-brand">Sign in</span>
-          </button>
+        {account ? (
+          <p data-testid="welcome-signed-in" className="mx-auto max-w-[22rem] text-center text-footnote text-ink-muted">
+            <span className="font-bold text-ink">Signed in with {PROVIDER_LABEL[account.provider]}, no boards yet.</span> Made one before
+            signing in? Open it on the phone or browser you made it on and sign in there too: it joins your account.
+          </p>
+        ) : (
+          canSignIn && (
+            <button
+              type="button"
+              data-testid="welcome-signin"
+              onClick={() => setSigningIn(true)}
+              className="pressable mx-auto -mt-1 min-h-11 rounded-full px-4 text-subhead font-bold text-ink-muted hover:text-ink"
+            >
+              Playing on another device? <span className="text-ink-brand">Sign in</span>
+            </button>
+          )
         )}
       </div>
 

@@ -20,6 +20,7 @@ import type {
   Sport,
 } from "./types";
 import { sportWords } from "./sportWords";
+import { venueFields, venueFormatError } from "./venue";
 
 /** A preset a host can pick (every board's rules either match one or are "custom"). */
 export type FixedPreset = Exclude<PeriodsPreset, "custom">;
@@ -795,6 +796,8 @@ export function formatError(input: unknown): string | null {
   const price = checkAmount(f.squarePrice, SQUARE_PRICE_MAX, "The square price");
   if (!price.ok) return price.error;
   if (f.justForFun === true && price.value !== null) return JUST_FOR_FUN_ERROR;
+  const venue = venueFormatError(f);
+  if (venue) return venue;
   if (f.rules !== undefined) {
     const rules = checkRules(f.rules);
     if (!rules.ok) return rules.error;
@@ -822,9 +825,10 @@ export function sanitizeFormat(input: unknown): GameFormat {
   const boardSize = isBoardSize(f.boardSize) ? f.boardSize : base.boardSize;
   const rules = sanitizeRules(f.rules);
   const price = checkAmount(f.squarePrice, SQUARE_PRICE_MAX, "");
-  const squarePrice = price.ok ? price.value : null;
-  const unit: AmountUnit = f.unit === "pts" ? "pts" : "$";
   const fun = f.justForFun === true;
+  // A venue board is free to play: never a square price.
+  const squarePrice = price.ok && f.venue !== true ? price.value : null;
+  const unit: AmountUnit = f.unit === "pts" ? "pts" : "$";
   if (rules) {
     return {
       periods: presetFor(rules),
@@ -835,6 +839,7 @@ export function sanitizeFormat(input: unknown): GameFormat {
       unit,
       squarePrice: fun ? null : squarePrice,
       justForFun: fun,
+      ...venueFields(f),
     };
   }
   const periods = isPreset(f.periods) ? f.periods : base.periods;
@@ -847,7 +852,7 @@ export function sanitizeFormat(input: unknown): GameFormat {
   if (f.unit !== undefined) out.unit = unit;
   if (f.squarePrice !== undefined) out.squarePrice = fun ? null : squarePrice;
   if (f.justForFun !== undefined) out.justForFun = fun;
-  return out;
+  return { ...out, ...venueFields(f) };
 }
 
 /**
@@ -858,15 +863,18 @@ export function sanitizeFormat(input: unknown): GameFormat {
 export function withRules(format: GameFormat, legacyPrizes?: Record<string, string>): GameFormat {
   const fun = format.justForFun === true;
   const rules = sortRules(rulesOf(format, legacyPrizes));
+  // A venue board is free to play: never a square price (nor the rest of a board total).
+  const price = format.venue ? null : (format.squarePrice ?? null);
   return {
     periods: presetFor(rules),
     reverse: rules.some((r) => !!r.reverse),
     boardSize: format.boardSize,
     freshNumbers: format.freshNumbers && freshNumbersAllowed(rules),
-    rules: fun ? withoutAmounts(rules) : format.squarePrice ? rules : withoutRest(rules),
+    rules: fun ? withoutAmounts(rules) : price ? rules : withoutRest(rules),
     unit: unitOf(format),
-    squarePrice: fun ? null : (format.squarePrice ?? null),
+    squarePrice: fun ? null : price,
     justForFun: fun,
+    ...venueFields(format),
   };
 }
 

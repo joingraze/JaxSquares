@@ -19,7 +19,7 @@ import { isSeasonBoard, isSeasonGame } from "../../shared/season";
 import { siblingCheckOf, siblingProblem } from "../../shared/siblings";
 import { cellKey, countClaimedBy, drawFor, fixedPeriodsOf, gridSize, playerTake, resolveResults, squaresLeft, upcomingPeriod } from "../../shared/squares";
 import { sportWords } from "../../shared/sportWords";
-import type { Activity, GameState, Sport } from "../../shared/types";
+import type { Activity, ClaimCode, GameState, Sport } from "../../shared/types";
 import { BellIcon, GiftIcon, GridIcon, MoonIcon, SearchIcon, ShareIcon, SunIcon, TrophyIcon, WifiOffIcon, XIcon } from "../components/icons";
 import { useHideTabBar } from "../components/shell";
 import { ActionBar, Avatar, Button, EmptyState, IconButton, Jax, JaxCheer, SegmentedControl, Skeleton, TopBar, celebrate, cx, useToast } from "../components/ui";
@@ -73,6 +73,8 @@ import { useRecapNudge } from "../features/recap/useRecapNudge";
 import { InviteHero } from "../features/invite/InviteHero";
 import { ClubBanner } from "../features/club/ClubMark";
 import { JoinedCard } from "../features/invite/JoinedCard";
+import { ClaimCard } from "../features/venue/ClaimCard";
+import { useClaims } from "../features/venue/useClaims";
 import { PrizeLineup } from "../features/rules/PrizeLineup";
 import { boardAlert } from "../features/notifications/alerts";
 import { alertTickerNote } from "../features/notifications/BoardAlert";
@@ -81,7 +83,7 @@ import { boardViewPath } from "../lib/boardViews";
 import { useEmailEnabled } from "../lib/emailNotices";
 import { pluralize, teamVars } from "../lib/format";
 import { useHostRole } from "../lib/hostRole";
-import { adoptSeasonToken, getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAdminToken } from "../lib/identity";
+import { adoptSeasonToken, getAdminToken, getPlayerId, isCohostGame, isHostOf, rememberCohost, rememberSeen, useAccount, useAdminToken } from "../lib/identity";
 import { claimPatch, releasePatch, useGame } from "../lib/live";
 import { haptic, shareLink } from "../lib/native";
 import { setThemePreference, useResolvedTheme } from "../lib/theme";
@@ -91,6 +93,7 @@ import { setThemePreference, useResolvedTheme } from "../lib/theme";
 const InviteSheet = lazy(() => import("../features/invite/InviteSheet").then((m) => ({ default: m.InviteSheet })));
 const JoinSheet = lazy(() => import("../features/invite/JoinSheet").then((m) => ({ default: m.JoinSheet })));
 const NotifyPrompt = lazy(() => import("../features/notifications/NotifyPrompt").then((m) => ({ default: m.NotifyPrompt })));
+const SignInCard = lazy(() => import("../features/account/SignInCard").then((m) => ({ default: m.SignInCard })));
 const BoardNotifySheet = lazy(() => import("../features/notifications/BoardNotifySheet").then((m) => ({ default: m.BoardNotifySheet })));
 const RulesSheet = lazy(() => import("../features/rules/RulesSheet").then((m) => ({ default: m.RulesSheet })));
 const CohostAcceptSheet = lazy(() => import("../features/invite/CohostAcceptSheet").then((m) => ({ default: m.CohostAcceptSheet })));
@@ -246,6 +249,9 @@ export default function GameView() {
     [state, me, selection, results, nowOnBoard, drawKey],
   );
   const joined = !!state?.players.some((p) => p.id === me);
+  const account = useAccount();
+  // A venue board's claim codes: this player's own wins (the host's tools list everyone's).
+  const claims = useClaims(state ?? null, useAdminToken(id), joined);
   const mineCount = state ? countClaimedBy(state.squares, me) : 0;
   // How this device runs the board: "host" (the admin token) or "cohost" (by public id), else null.
   const role = useHostRole(state);
@@ -394,6 +400,22 @@ export default function GameView() {
       }
     },
     [id, receive, toast],
+  );
+
+  /** A venue board's prize handed over, marked on the winner's own phone (the winning pass): the board shows it at once. */
+  const collectPrize = useCallback(
+    async (code: ClaimCode) => {
+      if (!id) return;
+      try {
+        const res = await api.collect(id, { periodKey: code.periodKey, reverse: code.reverse, collected: true });
+        receive(res.state);
+        void haptic("success");
+      } catch (err) {
+        void haptic("error");
+        throw new Error(errorMessage(err));
+      }
+    },
+    [id, receive],
   );
 
   /** "Become a co-host": joins the board first when this device isn't on it (the join sheet, then accept). */
@@ -1156,6 +1178,8 @@ export default function GameView() {
 
         {welcome && joined && !seasonPage && <JoinedCard state={state} onDismiss={dismissWelcome} />}
 
+        {!seasonPage && <ClaimCard state={state} claims={claims} onCollect={collectPrize} />}
+
         {season && tab === "schedule" && <SeasonSchedule season={season} players={state.players} me={me} now={now} />}
         {season && tab === "standings" && <SeasonStandings state={state} season={season} me={me} />}
 
@@ -1282,6 +1306,13 @@ export default function GameView() {
             </div>
           )}
         </section>
+
+        {/* ---- not signed in, with squares here (or hosting): keep them on every device. Never a gate; snoozes 3 days ---- */}
+        {!account && !pick && !seasonPage && !(welcome && joined) && (mineCount > 0 || isHost) && (
+          <Suspense fallback={null}>
+            <SignInCard place="board" />
+          </Suspense>
+        )}
 
         {/* ---- the other boards for this game ($1, $5, $20 boards): name, price, squares left ---- */}
         {!pick && state.siblings && state.siblings.length > 0 && <SiblingBoards siblings={state.siblings} boardName={game.name} />}

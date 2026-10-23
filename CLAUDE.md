@@ -24,15 +24,19 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
 
 ## Identity (security-critical)
 
-- No account needed. A device's `clientId` (localStorage + Capacitor Preferences) is
-  its only credential: it is sent **only** as the `x-client-id` header and must
+- Players never need an account; hosts sign in to make a board wherever
+  sign-in is set up (`hostsSignIn`, POST /api/games answers 409
+  `account_required`; docs/auth.md "Hosts sign in"). A device's `clientId`
+  (localStorage + Capacitor Preferences) is its only credential: it is sent **only** as the `x-client-id` header and must
   never appear in a response, URL, socket message, push payload or the UI.
 - Optional Sign in with Apple / Google (`worker/auth/`, docs/auth.md) maps
   devices to an account's **canonical clientId** (the first signed-in device's)
   via `client_links`. `requireClient` and the push routes resolve
   `x-client-id` to it (`canonicalClientId`, cached; `x-signed-in: 1` from a
   signed-in app forces a fresh read), so `c.get("clientId")` is the canonical
-  one and an account's devices are one player. Signing in on another device
+  one and an account's devices are one player. A new Apple/Google sign-in with
+  a verified email an account has joins it, and Profile adds the other
+  provider (combining two accounts after a confirm). Signing in on another device
   merges its rows into the canonical clientId in one batch: a new table keyed
   by a clientId must join that merge (docs/auth.md). Account tables are touched
   only by `worker/auth/store.ts`; email/name never go in a public object, nor
@@ -117,6 +121,12 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   it at the draw or at kickoff, as does the web-only Club Pass (`plan` 'club',
   never offered or linked in the iOS app), which adds the club features. Its
   tables join the sign-in merge, and buying it on the web needs a sign-in.
+- Venue boards (`shared/venue.ts`, docs/ARCHITECTURE.md "Venue boards"):
+  venue mode (`format.venue`) is free to play, so never a square price
+  (400); house rules never ask anyone to buy anything or talk money (400);
+  a claim code (`worker/claims.ts`) is only ever in `GET /api/games/:id/claims`
+  for its winner and the host or co-hosts: never in public state, the TV, a
+  push or share text. Collected prizes (`prize_claims`) join the sign-in merge.
 - Season boards (`Game.kind` "season", `shared/season.ts`, docs/ARCHITECTURE.md
   "Season boards"): squares are picked once, on the season board, which pays
   one fee (`SEASON_BOARD_PRICE_CENTS`) at its draw and sends one numbers-drawn

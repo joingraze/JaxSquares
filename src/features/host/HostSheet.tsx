@@ -11,7 +11,7 @@
 // Saves are confirmed in the sheet's own footer, never by a toast over its header.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
 import { freshNumbersInfo, isFootball, presetsFor, wordsFor, type GameKind } from "../../../shared/sports";
 import { squareHolders } from "../../../shared/hostFee";
@@ -60,7 +60,9 @@ import { PUBLIC_ORIGIN } from "../../lib/api";
 import { boardViewPath } from "../../lib/boardViews";
 import type { HostRole } from "../../lib/hostRole";
 import { kickoffLabel, kicksOffLabel, pluralize, teamVars } from "../../lib/format";
-import { hostLinkUrl } from "../../lib/identity";
+import { useAuthSetup } from "../../lib/auth";
+import { getAdminToken, hostLinkUrl, useAccount } from "../../lib/identity";
+import { useClaims } from "../venue/useClaims";
 import { haptic, shareLink } from "../../lib/native";
 import { canRemovePlayer, playerRows } from "../board/boardModel";
 import { siblingCreatePath } from "../create/sibling";
@@ -120,6 +122,8 @@ import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } fr
 import { useScoreEntry } from "./useScoreEntry";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
+import { ShowOnTv } from "../tv/SendToTv";
+import { TvDisplaySettings } from "../tv/TvDisplaySettings";
 import { useResolvedTheme } from "../../lib/theme";
 import { PassIncluded } from "../pass/PassParts";
 import { ExportPlayersRow } from "../club/ExportPlayersRow";
@@ -138,7 +142,9 @@ export type HostView =
   /** Confirm removing a co-host (host only). */
   | "cohost-remove"
   /** Confirm stepping down (a co-host). */
-  | "step-down";
+  | "step-down"
+  /** What TV mode shows (shared/tv.ts). */
+  | "tv";
 
 /** The player the host asked to remove, as they were when asked; `from` is where the ask came from. */
 export interface RemoveTarget {
@@ -159,6 +165,8 @@ export interface HostSheetProps {
   me: string;
   /** How this device runs the board: its host, or a co-host (no host-only actions). Default "host". */
   role?: HostRole;
+  /** Sign in (the host, not signed in, where sign-in is set up): the board's host controls then follow them to any device. */
+  onSignIn?: () => void;
   onInvite: () => void;
   /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
   fee: boolean;
@@ -193,8 +201,30 @@ interface Notice extends SavedNotice {
   draft: ScoreDraft | null;
 }
 
+/**
+ * Until the host signs in, only this device can run the board (it holds the
+ * admin token): signing in puts it on their account, on every device. Only
+ * rendered with the sheet's menu, so the sign-in setup is read when it opens.
+ */
+function SignInToHostRow({ onSignIn }: { onSignIn: () => void }) {
+  const account = useAccount();
+  const setup = useAuthSetup();
+  if (account || !setup.ready || setup.providers.length === 0) return null;
+  return (
+    <ListRow
+      data-testid="host-signin"
+      leading={<RowIcon><UsersIcon size={18} /></RowIcon>}
+      title="Run it from any device"
+      subtitle="Only this device can run it now. Sign in to keep it on your account"
+      chevron
+      onClick={onSignIn}
+    />
+  );
+}
+
 export function HostSheet(props: HostSheetProps) {
   const theme = useResolvedTheme();
+  const navigate = useNavigate();
   const { state, open, view, onView, onClose, actions, me, role = "host" } = props;
   const { game } = state;
   const isHost = role === "host";
@@ -254,6 +284,8 @@ export function HostSheet(props: HostSheetProps) {
   }, [view]);
 
   const targets = useMemo(() => scoreTargets(state), [state]);
+  // A venue board's claim codes, every winner's (a co-host's come by their sign-in, with no token).
+  const claims = useClaims(state, getAdminToken(game.id), open);
   const target = targets.find((t) => t.key === entry.key) ?? targets[targets.length - 1];
   const label = target?.label ?? "this period";
   // Mid-sentence: "Maya wins at halftime", "see who wins on score 3".
@@ -509,6 +541,22 @@ export function HostSheet(props: HostSheetProps) {
         {patch ? "Save rules & prizes" : "No changes yet"}
       </Button>
     );
+  } else if (view === "tv") {
+    title = <>{back()}Put it on a TV</>;
+    description = seasonGame
+      ? "Two ways, depending on the TV. What it shows is set on the season board."
+      : "Two ways, depending on the TV. Every TV with this board shows what you pick below.";
+    body = (
+      <div className="flex flex-col gap-6">
+        <ShowOnTv gameId={game.id} onOpenHere={() => navigate(boardViewPath(game.id, "tv"))} />
+        {!seasonGame && (
+          <section aria-label="What the TV shows" className="flex flex-col gap-2">
+            <p className="eyebrow px-1 text-ink-subtle">What the TV shows</p>
+            <TvDisplaySettings game={game} onChange={async (tv) => (await actions.update({ tv })) !== null} />
+          </section>
+        )}
+      </div>
+    );
   } else if (view === "edit") {
     const errors = editErrors(draft, game);
     const invalid = !!errors.name || !!errors.kickoff;
@@ -754,6 +802,8 @@ export function HostSheet(props: HostSheetProps) {
           <Section title="Winners">
             <WinnersList
               state={state}
+              codes={claims?.all ?? null}
+              onCollect={(k, reverse, collected) => void actions.collect(k, reverse, collected)}
               rows={rows}
               me={me}
               busy={actions.busy !== null}
@@ -774,21 +824,25 @@ export function HostSheet(props: HostSheetProps) {
           </Section>
         )}
 
-        {/* Watch parties: the board on the TV (TV mode, /g/:id/tv). */}
-        <Link
-          to={boardViewPath(game.id, "tv")}
+        {/* Watch parties and venues: the board on a TV (a smart TV's code, or TV mode mirrored or plugged in). */}
+        <button
+          type="button"
           data-testid="host-tv"
-          onClick={() => void haptic("selection")}
-          className="pressable flex min-h-14 items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2.5 ring-1 ring-inset ring-line"
+          onClick={() => {
+            void haptic("selection");
+            onView("tv");
+          }}
+          className="pressable flex min-h-14 w-full items-center gap-3 rounded-card bg-surface-3/60 px-4 py-2.5 text-left ring-1 ring-inset ring-line"
         >
           <RowIcon>
             <TvIcon size={18} />
           </RowIcon>
-          <span className="min-w-0 flex-1 text-subhead leading-snug text-ink-muted">
-            <b className="font-bold text-ink">Hosting a watch party?</b> Show the board on your TV.
+          <span className="min-w-0 flex-1 leading-snug">
+            <b className="block text-subhead font-bold text-ink">Put the board on a TV</b>
+            <span className="block text-footnote text-ink-muted">Smart TV, AirPlay, Chromecast or a cable</span>
           </span>
           <ChevronRightIcon size={18} className="-mr-1 shrink-0 text-ink-subtle" />
-        </Link>
+        </button>
 
         {seasonGame && game.seasonId ? (
           <ListGroup title="Season">
@@ -871,6 +925,7 @@ export function HostSheet(props: HostSheetProps) {
           )}
           {/* A Club Pass board's players as a CSV, for the host and co-hosts (src/features/club). */}
           <ExportPlayersRow game={game} />
+          {isHost && props.onSignIn && <SignInToHostRow onSignIn={props.onSignIn} />}
           {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
           {isHost && (
             <ListRow

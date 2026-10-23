@@ -28,6 +28,8 @@ const screens = {
   print: () => import("./pages/PrintView"),
   // A Club Pass holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
   clubTv: () => import("./pages/ClubTvView"),
+  // A smart TV pairing with a board by code (/tv).
+  tvPair: () => import("./pages/TvPair"),
   profile: () => import("./pages/Profile"),
   privacy: () => import("./pages/Privacy"),
   terms: () => import("./pages/Terms"),
@@ -157,6 +159,7 @@ export function appRoutes(): RouteObject[] {
             { path: "g/:id/tv", ...screen("tv") },
             { path: "g/:id/print", ...screen("print") },
             { path: "club/:clubId/tv", ...screen("clubTv") },
+            { path: "tv", ...screen("tvPair") },
             { path: "me", ...screen("profile") },
             { path: "privacy", ...screen("privacy") },
             { path: "terms", ...screen("terms") },
