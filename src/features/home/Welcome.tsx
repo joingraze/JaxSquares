@@ -1,7 +1,8 @@
 // First open on a new device: what JaxSquares is in one line, a board that's
 // already mid-game, and the two ways in, with "Sign in" at the top right for
 // someone who plays on another device. The tab dock stays out of the way so
-// "Make a board" is the one obvious move.
+// "Make a board" is the one obvious move. The homepage's static version for
+// crawlers (scripts/seo/home.ts) says the same: keep the two in step.
 
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -10,7 +11,7 @@ import { buttonStyles, Button, Jax, Wordmark } from "../../components/ui";
 import { useHideTabBar } from "../../components/shell";
 import { PROVIDER_LABEL } from "../../lib/auth";
 import { useAccount } from "../../lib/identity";
-import { haptic } from "../../lib/native";
+import { haptic, isNative } from "../../lib/native";
 import { SignInPill } from "../account";
 import { detectHelpEnv } from "../notifications/platformHelp";
 import { JoinCodeSheet } from "./JoinCodeSheet";
@@ -70,6 +71,15 @@ export function Welcome() {
         </div>
         <p className="mt-2.5 max-w-[22rem] text-callout text-ink-muted">
           Football, basketball or soccer: make a board, text the link, and watch the squares fill up. Scores and winners land live.
+          {/* New to squares: the rules guide, a page of the website (not in the app's bundle of screens). */}
+          {!isNative() && (
+            <>
+              {" "}
+              <a href="/how-to-play-football-squares" data-testid="welcome-guide" className="font-bold text-ink-brand">
+                How to play
+              </a>
+            </>
+          )}
         </p>
       </div>
 

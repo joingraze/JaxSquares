@@ -52,6 +52,22 @@ export function table(caption: string, head: string[], rows: string[][]): string
   return `<div class="table-wrap"><table><caption>${caption}</caption><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table></div>`;
 }
 
+/**
+ * A 10x10 grid of numbers as a heat map: rows and columns are the digits 0-9,
+ * each cell tinted by its value (the largest is the strongest tint).
+ */
+export function heatTable(caption: string, corner: string, values: number[][], format: (v: number) => string): string {
+  const max = Math.max(...values.flat());
+  const head = [corner, ...values.map((_, i) => String(i))].map((h) => `<th scope="col">${h}</th>`).join("");
+  const rows = values
+    .map((row, r) => {
+      const cells = row.map((v) => `<td style="--h:${(v / max).toFixed(2)}">${format(v)}</td>`).join("");
+      return `<tr><th scope="row">${r}</th>${cells}</tr>`;
+    })
+    .join("");
+  return `<div class="table-wrap scroll"><table class="heat"><caption>${caption}</caption><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 export function callout(html: string): string {
   return `<div class="callout">${html}</div>`;
 }

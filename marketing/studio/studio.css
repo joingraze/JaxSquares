@@ -1,0 +1,32 @@
+/* Studio-only styles; the app's design system comes from virtual:app.css. */
+
+html,
+body {
+  margin: 0;
+  background: #060c09;
+  color: #f3f7f1;
+}
+
+/* Renders are captured frame by frame, so all motion is computed from the frame
+   number. Time-based CSS animation would make captures non-deterministic. */
+.stage *,
+.stage *::before,
+.stage *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  font-family: "Figtree Variable", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Headlines: Bricolage Grotesque at its punchy optical size, as in the store art. */
+.display {
+  font-family: "Bricolage Grotesque Variable", "Figtree Variable", system-ui, sans-serif;
+  font-variation-settings: "opsz" 96;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}

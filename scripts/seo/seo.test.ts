@@ -4,12 +4,35 @@
 // canonical, one H1, parseable JSON-LD), links to the app, and never uses
 // betting vocabulary or quotes an amount.
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { WEEK_END, WEEK_ID, WEEK_PAGES, WEEK_START, injectWeek } from "../../shared/weekGames.ts";
 import { encodeQr, isDark } from "../../src/features/invite/qr.ts";
 import { PAGES } from "./content.ts";
+import { GAMES, PCT, RANKED, finalsCsv } from "./finals.ts";
+import { HOME_DESCRIPTION, HOME_TITLE, renderHome } from "./home.ts";
+import { indexNowBody } from "./indexnow.ts";
+import { htmlToText, renderLlms, renderLlmsFull } from "./llms.ts";
 import { SHEETS, qrSvg, sheetHtml, type SheetAssets, type SheetKind } from "./print.ts";
 import { renderPage, renderRobots, renderSitemap, type JaxPose, type RenderContext } from "./render.ts";
-import { APP_PAGES, BANNED_WORDS, CURRENCY_AMOUNT, HUB, LANDING_SLUGS, ORIGIN, PRINTABLES, SPA_SEGMENTS, TRADEMARKED_EVENT, pageUrl } from "./site.ts";
+import {
+  APP_PAGES,
+  BANNED_WORDS,
+  CURRENCY_AMOUNT,
+  FINALS_CSV,
+  HUB,
+  INDEXNOW_KEY,
+  LANDING_SLUGS,
+  ORIGIN,
+  PRINTABLES,
+  SOCIAL,
+  SPA_SEGMENTS,
+  TRADEMARKED_EVENT,
+  pageUrl,
+} from "./site.ts";
+import { boardMinute as appBoardMinute } from "../../shared/soccer.ts";
+import { boardMinute, countMinutes } from "./soccerStats.ts";
+import { countFinals } from "./stats.ts";
 
 const jax = (pose: JaxPose) =>
   `<svg width="120" height="124" viewBox="0 0 128 132" role="img" class="shrink-0" data-pose="${pose}"><title>Jax</title><rect/></svg>`;
@@ -73,6 +96,8 @@ describe("landing pages", () => {
 
     if (slug === HUB) {
       expect(types(doc)).toEqual(expect.arrayContaining(["Organization", "WebSite"]));
+      const org = data.find((d) => d["@type"] === "Organization") as { sameAs: string[] };
+      expect(org.sameAs).toContain(SOCIAL.instagram);
     } else if (slug === "basketball-squares" || slug === "soccer-squares") {
       // Heads its sport's pages: no breadcrumbs, like the hub.
       expect(types(doc)).not.toContain("BreadcrumbList");
@@ -232,8 +257,15 @@ describe("landing pages", () => {
 });
 
 describe("robots.txt and sitemap.xml", () => {
-  it("allows everything and points to the sitemap", () => {
-    expect(renderRobots()).toBe(`User-agent: *\nAllow: /\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
+  it("allows every page to every crawler, keeps out the API and points to the sitemap", () => {
+    expect(renderRobots()).toBe(`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${ORIGIN}/sitemap.xml\n`);
+  });
+
+  it("dates each URL by when its page last changed", () => {
+    const xml = new DOMParser().parseFromString(renderSitemap((url) => (url === `${ORIGIN}/` ? "2026-10-01" : "2026-09-15")), "application/xml");
+    const dates = Object.fromEntries([...xml.getElementsByTagName("url")].map((u) => [u.querySelector("loc")?.textContent, u.querySelector("lastmod")?.textContent]));
+    expect(dates[`${ORIGIN}/`]).toBe("2026-10-01");
+    expect(dates[pageUrl(HUB)]).toBe("2026-09-15");
   });
 
   it("lists the landing pages and the app's public pages with lastmod", () => {
@@ -241,6 +273,201 @@ describe("robots.txt and sitemap.xml", () => {
     const locs = [...xml.getElementsByTagName("loc")].map((l) => l.textContent);
     expect(locs).toEqual([...LANDING_SLUGS.map(pageUrl), ...APP_PAGES.map((p) => `${ORIGIN}${p}`)]);
     expect([...xml.getElementsByTagName("lastmod")].every((l) => l.textContent === "2026-01-15")).toBe(true);
+  });
+});
+
+describe("this week's games", () => {
+  it("gives each listing page one slot, with a fallback the Worker can replace", () => {
+    for (const { page, html } of rendered) {
+      const listed = Object.keys(WEEK_PAGES).includes(page.slug);
+      expect({ slug: page.slug, slots: html.split(WEEK_START).length - 1 }).toEqual({ slug: page.slug, slots: listed ? 1 : 0 });
+      if (!listed) continue;
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      expect(doc.getElementById(WEEK_ID)?.textContent?.length).toBeGreaterThan(80);
+      const swapped = injectWeek(html, `<ul class="games"><li>Hawks at Wolves</li></ul>`)!;
+      expect(swapped).toContain(`${WEEK_START}<ul class="games"><li>Hawks at Wolves</li></ul>${WEEK_END}`);
+      expect(new DOMParser().parseFromString(swapped, "text/html").querySelectorAll("h1")).toHaveLength(1);
+    }
+    expect(injectWeek("<p>no slot</p>", "<ul></ul>")).toBeNull();
+  });
+});
+
+describe("the data page", () => {
+  const data = rendered.find((r) => r.page.slug === "best-football-squares-numbers")!;
+
+  it("ranks the squares from the data, best first, and offers the table as CSV", () => {
+    expect(RANKED).toHaveLength(55);
+    expect(RANKED[0].pct).toBeGreaterThan(RANKED[54].pct);
+    expect(PCT.flat().reduce((a, b) => a + b, 0)).toBeCloseTo(100, 6);
+    const csv = finalsCsv().trim().split("\n");
+    expect(csv).toHaveLength(101);
+    expect(csv[0]).toMatch(/^top_digit,side_digit,/);
+    expect(data.doc.querySelector(`a[href="${FINALS_CSV}"]`)).not.toBeNull();
+    // The full board, digit by digit.
+    expect(data.doc.querySelectorAll("table.heat tbody td")).toHaveLength(100);
+  });
+
+  it("describes itself as a Dataset with a CSV download", () => {
+    const dataset = jsonLd(data.doc).find((d) => d["@type"] === "Dataset") as {
+      description: string;
+      distribution: { contentUrl: string; encodingFormat: string }[];
+      temporalCoverage: string;
+    };
+    expect(dataset.description.length).toBeGreaterThan(50);
+    expect(dataset.description).toContain(GAMES.toLocaleString("en-US"));
+    expect(dataset.distribution).toEqual([{ "@type": "DataDownload", encodingFormat: "text/csv", contentUrl: `${ORIGIN}${FINALS_CSV}` }]);
+    expect(dataset.temporalCoverage).toMatch(/^\d{4}-09\/\d{4}-02$/);
+    expect(rendered.filter((r) => types(r.doc).includes("Dataset")).map((r) => r.page.slug)).toEqual(["best-football-squares-numbers"]);
+  });
+
+  it("says chance, never odds, and carries the NFL line", () => {
+    expect(data.html).not.toMatch(BANNED_WORDS);
+    expect(data.doc.querySelector("footer")?.textContent).toContain("JaxSquares isn't affiliated with or endorsed by the NFL.");
+  });
+});
+
+describe("the homepage", () => {
+  // The source index.html: vite build only adds its script and style tags.
+  const shell = readFileSync("index.html", "utf8");
+  const html = renderHome(shell, PAGES);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+
+  it("has its own title, description, canonical and link preview", () => {
+    expect(doc.title).toBe(HOME_TITLE);
+    expect(HOME_TITLE.length).toBeLessThanOrEqual(70);
+    expect(HOME_DESCRIPTION.length).toBeGreaterThanOrEqual(70);
+    expect(HOME_DESCRIPTION.length).toBeLessThanOrEqual(170);
+    expect(meta(doc, 'meta[name="description"]')).toBe(HOME_DESCRIPTION);
+    expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe(`${ORIGIN}/`);
+    expect(meta(doc, 'meta[property="og:title"]')).not.toMatch(/invited/i);
+    expect(meta(doc, 'meta[name="twitter:title"]')).toBe(meta(doc, 'meta[property="og:title"]'));
+    expect(meta(doc, 'meta[property="og:description"]')).toBe(HOME_DESCRIPTION);
+  });
+
+  it("says who runs it and what the app is", () => {
+    expect(types(doc)).toEqual(["Organization", "WebSite", "WebApplication"]);
+    const org = jsonLd(doc)[0] as { sameAs: string[]; "@id": string };
+    expect(org.sameAs).toEqual([SOCIAL.instagram]);
+    // The same entity as the hub's.
+    const hub = rendered.find((r) => r.page.slug === HUB)!;
+    expect(jsonLd(hub.doc).find((d) => d["@type"] === "Organization")?.["@id"]).toBe(org["@id"]);
+  });
+
+  it("puts the welcome screen in #root for crawlers, hidden once the app's scripts run", () => {
+    const root = doc.getElementById("root")!;
+    expect(root.querySelectorAll("h1")).toHaveLength(1);
+    expect(root.querySelector("h1")?.textContent).toBe("Sports squares, live with your crew.");
+    expect(root.textContent).toContain("Football, basketball or soccer:");
+    const hrefs = [...root.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/new");
+    for (const slug of LANDING_SLUGS) expect(hrefs).toContain(`/${slug}`);
+    expect(html).toContain("html[data-theme] .prerender{display:none}");
+    // The theme script that sets data-theme is still there, ahead of the content.
+    expect(html.indexOf('id="theme-boot"')).toBeLessThan(html.indexOf('class="prerender"'));
+    expect(root.textContent).toContain("never collects, holds or sends money between players");
+    expect(root.textContent).toContain("isn't affiliated with or endorsed by any league or team");
+  });
+
+  it("never uses betting words, quotes an amount or names the big game", () => {
+    expect(html).not.toMatch(BANNED_WORDS);
+    expect(doc.body.textContent).not.toMatch(CURRENCY_AMOUNT);
+    expect(html).not.toMatch(TRADEMARKED_EVENT);
+  });
+
+  it("breaks the build when the shell changes shape", () => {
+    expect(() => renderHome(shell.replace('<div id="root"></div>', "<main></main>"), PAGES)).toThrow(/root/);
+  });
+});
+
+describe("llms.txt", () => {
+  const llms = renderLlms(PAGES);
+  const full = renderLlmsFull(PAGES, ctx);
+
+  it("says what JaxSquares is and links every guide", () => {
+    expect(llms).toMatch(/^# JaxSquares\n\n> /);
+    for (const slug of LANDING_SLUGS) expect(llms).toContain(`(${pageUrl(slug)})`);
+    expect(llms).toContain(`${ORIGIN}/llms-full.txt`);
+  });
+
+  it("carries every guide's full text, links made absolute", () => {
+    for (const page of PAGES) {
+      expect(full).toContain(`Source: ${pageUrl(page.slug)}`);
+      for (const f of page.faqs) expect(full).toContain(`### ${f.q}`);
+    }
+    expect(full).not.toMatch(/<[a-z][^>]*>/i);
+    expect(full).not.toMatch(/\]\(\//);
+    expect(htmlToText(`<p>Hi <a href="/new">there</a> &amp; <strong>you</strong></p>`)).toBe(`Hi [there](${ORIGIN}/new) & **you**`);
+  });
+
+  it("never uses betting words, quotes an amount or names the big game", () => {
+    for (const text of [llms, full]) {
+      expect(text).not.toMatch(BANNED_WORDS);
+      expect(text).not.toMatch(CURRENCY_AMOUNT);
+      expect(text).not.toMatch(TRADEMARKED_EVENT);
+    }
+  });
+});
+
+describe("IndexNow", () => {
+  it("pings for this host with the published key", () => {
+    expect(INDEXNOW_KEY).toMatch(/^[a-zA-Z0-9-]{8,128}$/);
+    expect(indexNowBody([`${ORIGIN}/nfl-squares`])).toEqual({
+      host: "jaxsquares.com",
+      key: INDEXNOW_KEY,
+      keyLocation: `${ORIGIN}/${INDEXNOW_KEY}.txt`,
+      urlList: [`${ORIGIN}/nfl-squares`],
+    });
+  });
+});
+
+describe("the final-score stats", () => {
+  const csv = [
+    "game_id,season,game_type,home_score,away_score",
+    "a,2024,REG,17,10",
+    "b,2024,REG,24,17",
+    "c,2024,SB,27,20",
+    // A season in progress (no final game yet) is left out.
+    "d,2025,REG,3,0",
+    // Not played yet.
+    "e,2024,REG,,",
+  ].join("\n");
+
+  it("counts completed seasons only, averaging each square over both orientations", () => {
+    const s = countFinals(csv);
+    expect(s.games).toBe(3);
+    expect([s.firstSeason, s.lastSeason]).toEqual(["2024", "2024"]);
+    // 17-10 and 27-20 land on home 7, away 0: half of each to 7-0, half to 0-7. 24-17 is 4-7.
+    expect(s.hits[7][0]).toBe(1);
+    expect(s.hits[0][7]).toBe(1);
+    expect(s.hits[4][7]).toBe(0.5);
+    expect(s.hits[7][4]).toBe(0.5);
+    expect(s.hits.flat().reduce((a, b) => a + b, 0)).toBe(3);
+    expect(s.digitShare[7]).toBe(50);
+    expect(s.topFinals[0]).toEqual([17, 10, 1]);
+  });
+});
+
+describe("the soccer-square stats", () => {
+  it("puts a goal on the same square the app does", () => {
+    for (let minute = 0; minute <= 130; minute++) {
+      for (const added of [0, 1, 4, 13]) expect([minute, added, boardMinute(minute, added)]).toEqual([minute, added, appBoardMinute(minute, added)]);
+    }
+  });
+
+  it("counts every goal, stoppage time and goalless matches, and refuses a match missing a goal's minute", () => {
+    const s = countMinutes([
+      {
+        year: 2026,
+        matches: [
+          { team1: "A", team2: "B", score: { ft: [2, 1] }, goals1: [{ minute: "45+3" }, { minute: "90+2" }], goals2: [{ minute: 7 }] },
+          { team1: "C", team2: "D", score: { ft: [0, 0], et: [1, 0] }, goals1: [{ minute: "105+1" }], goals2: [] },
+          { team1: "E", team2: "F", score: [0, 0] },
+        ],
+      },
+    ]);
+    expect([s.matches, s.goals, s.noGoalMatches, s.firstHalfStoppage, s.secondHalfStoppage, s.extraTime]).toEqual([3, 4, 1, 1, 1, 1]);
+    expect([45, 92, 7, 5].map((m) => s.squareGoals[m])).toEqual([1, 1, 1, 1]);
+    expect(() => countMinutes([{ year: 2026, matches: [{ team1: "A", team2: "B", score: { ft: [1, 0] }, goals1: [] }] }])).toThrow(/lists 0 goals/);
   });
 });
 

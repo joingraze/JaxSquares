@@ -27,6 +27,7 @@ import { SEASON_ERRORS, isSeasonBoard, isSeasonGame, seasonGameName, seasonNumbe
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
+import { WEEK_PAGES, type WeekPage } from "../shared/weekGames";
 import { ADDED_MAX, MINUTE_MAX, goalLabel } from "../shared/soccer";
 import { boardSportFor, formatProblemFor, freshNumbersInfo, isLeague, isLinkedLeague, isSoccer, leagueSportProblem } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
@@ -64,6 +65,7 @@ import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLim
 import { POLL_LEAD_MS } from "./room";
 import { scheduleRoutes } from "./scores";
 import { hasGamesAhead, parseSeasonInput, seasonSchedule, syncSeasonGames, syncSeasons, type SeasonSchedule } from "./season";
+import { serveWeekPage } from "./weekGames";
 import {
   broadcast,
   closeRoom,
@@ -1291,6 +1293,17 @@ app.onError((err, c) => {
 
 app.route("/api", api);
 
+// Boards, clubs and the app's own screens stay out of search results: a board
+// page carries its players' names, and none of them is a page to land on from
+// a search. Link previews (og.ts) don't read this header, so invites still unfurl.
+const noindex: MiddlewareHandler<AppEnv> = async (c, next) => {
+  await next();
+  const res = new Response(c.res.body, c.res);
+  res.headers.set("x-robots-tag", "noindex");
+  c.res = res;
+};
+for (const path of ["/g/*", "/club/*", "/new", "/me", "/tv"]) app.use(path, noindex);
+
 app.get("/.well-known/apple-app-site-association", (c) => {
   const env = c.env;
   const appId = `${env.APPLE_TEAM_ID ?? "TEAMID"}.${env.APPLE_BUNDLE_ID ?? DEFAULT_BUNDLE_ID}`;
@@ -1375,6 +1388,27 @@ function toBigGamePage(c: Ctx): Response {
 }
 app.get(OLD_BIG_GAME_PAGE, toBigGamePage);
 app.get(`${OLD_BIG_GAME_PAGE}/`, toBigGamePage);
+
+// The homepage: the build's home.html (scripts/seo/home.ts), the SPA shell with
+// the homepage's own title, description and JSON-LD and a static welcome for
+// crawlers that don't run JavaScript. Without it (local dev), the plain shell.
+app.get("/", async (c) => {
+  const url = new URL(c.req.url);
+  url.pathname = "/home";
+  const home = await c.env.ASSETS.fetch(new Request(url, c.req.raw));
+  return home.ok || home.status === 304 ? home : c.env.ASSETS.fetch(c.req.raw);
+});
+// home.html's own address is the homepage.
+app.get("/home", (c) => {
+  const url = new URL(c.req.url);
+  url.pathname = "/";
+  return c.redirect(url.toString(), 301);
+});
+
+// The NFL, college football and basketball pages list this week's games (worker/weekGames.ts).
+for (const page of Object.keys(WEEK_PAGES) as WeekPage[]) {
+  app.get(`/${page}`, (c) => serveWeekPage(c.env, c.req.raw, page));
+}
 
 // Everything else is the React SPA; `not_found_handling: single-page-application`
 // serves index.html for deep links so client-side routing works on refresh.
