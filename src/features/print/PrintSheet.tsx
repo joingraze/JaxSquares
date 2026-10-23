@@ -36,6 +36,8 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
   // Fresh numbers each quarter: the quarter in play's (or the next one's); the app has the others.
   const drawKey = defaultDrawKey(state);
   const axis = axisLabels(drawFor(game, drawKey), n);
+  // A soccer board's squares are minutes: its bands name the minute's tens and ones.
+  const soccer = game.sport === "soccer";
   const owners = new Map(state.squares.map((s) => [`${s.row},${s.col}`, s.playerId]));
   const names = new Map(state.players.map((p) => [p.id, p.name]));
   const winning = new Set(
@@ -88,12 +90,16 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
       </header>
 
       <div className="jx-paper-body">
-        <div className="jx-paper-grid" role="group" aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}>
+        <div
+          className="jx-paper-grid"
+          role="group"
+          aria-label={soccer ? "Board: each square is a minute, its tens down the side and its ones across the top" : `Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}
+        >
           <div className="jx-paper-band jx-paper-band-x" aria-hidden>
-            <span>{game.teamX.name || game.teamX.abbr}</span>
+            <span>{soccer ? "Minute · ones" : game.teamX.name || game.teamX.abbr}</span>
           </div>
           <div className="jx-paper-band jx-paper-band-y" aria-hidden>
-            <span>{game.teamY.name || game.teamY.abbr}</span>
+            <span>{soccer ? "Minute · tens" : game.teamY.name || game.teamY.abbr}</span>
           </div>
           {axis.x.map((d, i) => (
             <div key={`x${i}`} className="jx-paper-axis jx-paper-axis-x" style={{ gridColumn: i + 3 }} aria-hidden>

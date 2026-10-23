@@ -18,9 +18,9 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `week-toggle` | each week row in the game picker (also `data-week=<season type>-<week>`, e.g. `2-7`); `aria-expanded` when open |
 | `week-see-all` | "See all N games" in the lead week |
 | `week-more` | "Full schedule · N more weeks" |
-| `sport-picker` | the game step's Football / Basketball switch (segments `sport-football`, `sport-basketball`) |
-| `league-picker`, `league-option` | the league chips under it (`role=radiogroup`; each chip `data-league=nfl\|ncaaf\|nba\|wnba\|ncaab\|ncaaw`, `aria-checked`); the Custom chip is `custom-matchup` (`data-league=custom`) |
-| `day-list` | basketball's games, a day at a time: the next 7 days (local), then the date picker |
+| `sport-picker` | the game step's Football / Basketball / Soccer switch (segments `sport-football`, `sport-basketball`, `sport-soccer`) |
+| `league-picker`, `league-option` | the league chips under it (`role=radiogroup`; each chip `data-league=nfl\|ncaaf\|nba\|wnba\|ncaab\|ncaaw\|mls\|nwsl\|epl\|laliga\|ligamx\|ucl`, `aria-checked`); the Custom chip is `custom-matchup` (`data-league=custom`) |
+| `day-list` | basketball's and soccer's games, a day at a time: the next 7 days (local), then the date picker |
 | `day-toggle` | each day row in it ("Today", "Tomorrow", "Fri, Mar 20"; `data-week=<the day, slugged>`, `aria-expanded` when open) |
 | `day-see-all` | "See all N games" in an open day with more than 6 |
 | `day-picker` | "Another date": the date input (`type=date`) that loads one day's games, up to a year ahead |
@@ -153,6 +153,12 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `email-confirm`, `email-unsubscribe-board`, `email-unsubscribe-all`, `email-page-open` | on that page: "Confirm my email", "Unsubscribe from this board", "Unsubscribe from all JaxSquares email" (also "Stop all JaxSquares email too"), "Open the board" / "Open JaxSquares" |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
 | `score-saved` | footer confirmation after a host saves a score |
+| `goal-entry` | a soccer board's goal pad in the host sheet (in place of the score pad): the goals so far, then the next goal |
+| `goal-row` | each goal so far (`data-key=s1`...; `aria-pressed` while it's being fixed); tapping one fixes it |
+| `goal-team-x`, `goal-team-y` | who scored (`role=radio`) |
+| `goal-minute`, `goal-added` | the minute the match showed and its stoppage time (blank: none) |
+| `goal-preview` | the footer line before saving a goal: the minute, whose square it is and what it would win |
+| `goal-full-time` | "Full time": ends a soccer match (the last goal, or 00 with no goals) |
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
 | `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |
 | `cohost-invite` | host only: "Invite a co-host" in the host sheet's Co-hosts section ("They can do everything you can, except remove you."); makes a single-use link and opens "Co-host invite ready". Disabled at 3 co-hosts |

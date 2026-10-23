@@ -25,7 +25,7 @@ import { venueFields, venueFormatError } from "./venue";
 /** A preset a host can pick (every board's rules either match one or are "custom"). */
 export type FixedPreset = Exclude<PeriodsPreset, "custom">;
 
-export const PERIOD_PRESETS: readonly FixedPreset[] = ["quarters", "halves", "final", "every-score"];
+export const PERIOD_PRESETS: readonly FixedPreset[] = ["quarters", "halves", "final", "every-score", "first-last"];
 export const BOARD_SIZES: readonly BoardSize[] = [100, 25];
 
 /** Key of the single number draw used unless fresh numbers are drawn per quarter. */
@@ -35,14 +35,18 @@ export const SHARED_DRAW_KEY = "*";
 export const PRIZE_MAX_LENGTH = 60;
 
 /** Every moment, in canonical (game) order. */
-export const MOMENTS: readonly Moment[] = ["score", "q1", "q2", "q3", "final"];
-/** The moments decided by the score at a fixed point of the game. */
-export const FIXED_MOMENTS: readonly Exclude<Moment, "score">[] = ["q1", "q2", "q3", "final"];
+export const MOMENTS: readonly Moment[] = ["first", "score", "q1", "q2", "q3", "final"];
+/** A moment decided once (every moment but every score change). */
+export type FixedMoment = Exclude<Moment, "score">;
+/** The moments decided by the score at a fixed point of the game: the quarter-ends, halftime and the final. */
+export const FIXED_MOMENTS: readonly FixedMoment[] = ["q1", "q2", "q3", "final"];
+/** Every moment decided once, in game order: soccer's first goal, then the fixed moments. */
+export const PERIOD_MOMENTS: readonly FixedMoment[] = ["first", ...FIXED_MOMENTS];
 /** Keys of the per-quarter draws on a fresh-numbers board. */
 const QUARTER_DRAW_KEYS = ["q1", "q2", "q3", "final"];
 
-/** Most rules a board can have (one per moment). */
-export const MAX_RULES = MOMENTS.length;
+/** Most rules a board can have: one per moment its game offers, football's five at most. */
+export const MAX_RULES = 5;
 /** Largest prize amount, in the board's unit. */
 export const AMOUNT_MAX = 1_000_000;
 /** Largest square price, in the board's unit. */
@@ -51,6 +55,7 @@ export const AMOUNT_UNITS: readonly AmountUnit[] = ["$", "pts"];
 
 /** How each moment reads: `label` in the rules editor and sheet, `short` on chips. */
 export const MOMENT_INFO: Record<Moment, { label: string; short: string }> = {
+  first: { label: "First goal", short: "1st goal" },
   score: { label: "Every score change", short: "Every score" },
   q1: { label: "End of Q1", short: "Q1" },
   q2: { label: "Halftime", short: "Half" },
@@ -63,6 +68,7 @@ const PRESET_MOMENTS: Record<FixedPreset, Moment[]> = {
   halves: ["q2", "final"],
   final: ["final"],
   "every-score": ["score"],
+  "first-last": ["first", "final"],
 };
 
 /** Copy the UI can show when choosing a format. Never mentions money. */
@@ -87,12 +93,38 @@ export const PRESET_INFO: Record<PeriodsPreset, { label: string; short: string; 
     short: "Every score",
     description: "Each time the score changes, the matching square wins.",
   },
+  "first-last": {
+    label: "First & last goal",
+    short: "First & last",
+    description: "One winner at the first goal's minute, one at the last goal's. No goals? 00 wins both.",
+  },
   custom: {
     label: "Custom rules",
     short: "Custom",
     description: "Your own mix of moments, squares and reverse squares.",
   },
 };
+
+/** A soccer board's moments: its squares are the match's minutes (shared/soccer.ts). */
+const SOCCER_MOMENT_INFO: Partial<Record<Moment, { label: string; short: string }>> = {
+  score: { label: "Every goal", short: "Every goal" },
+  final: { label: "Last goal", short: "Last goal" },
+};
+
+/** How a moment reads on this sport's board: soccer's every score is "Every goal", its final "Last goal". */
+export function momentInfo(moment: Moment, sport?: Sport | null): { label: string; short: string } {
+  return (sport === "soccer" ? SOCCER_MOMENT_INFO[moment] : undefined) ?? MOMENT_INFO[moment];
+}
+
+const SOCCER_PRESET_INFO: Partial<Record<PeriodsPreset, { label: string; short: string; description: string }>> = {
+  "every-score": { label: "Every goal", short: "Every goal", description: "Each goal's minute wins. No goals? 00 wins." },
+  final: { label: "Last goal", short: "Last goal", description: "One winner: the last goal's minute, at the final whistle. No goals? 00 wins." },
+};
+
+/** A preset's copy on this sport's board (soccer's "Every goal", "Last goal"). */
+export function presetInfo(preset: PeriodsPreset, sport?: Sport | null): { label: string; short: string; description: string } {
+  return (sport === "soccer" ? SOCCER_PRESET_INFO[preset] : undefined) ?? PRESET_INFO[preset];
+}
 
 export const BOARD_SIZE_INFO: Record<BoardSize, { label: string; short: string; description: string }> = {
   100: { label: "Classic 10×10", short: "10×10", description: "100 squares, one number per row and column." },
@@ -141,9 +173,9 @@ export function defaultFormat(): GameFormat {
 }
 
 /** Fixed periods for a preset; every-score (and custom, whose periods come from its rules) has none. */
-export function periodsFor(preset: PeriodsPreset): Period[] {
+export function periodsFor(preset: PeriodsPreset, sport?: Sport | null): Period[] {
   if (preset === "every-score" || preset === "custom") return [];
-  return PRESET_MOMENTS[preset].map((m) => periodOfMoment(m as Exclude<Moment, "score">));
+  return PRESET_MOMENTS[preset].map((m) => periodOfMoment(m as FixedMoment, sport));
 }
 
 /** Key/label of the nth (1-based) score entry on an every-score board. */
@@ -163,13 +195,13 @@ export function emptyPrize(): Prize {
   return { amount: null, note: "" };
 }
 
-function periodOfMoment(m: Exclude<Moment, "score">): Period {
-  return { key: m, label: MOMENT_INFO[m].short };
+function periodOfMoment(m: FixedMoment, sport?: Sport | null): Period {
+  return { key: m, label: momentInfo(m, sport).short };
 }
 
 const momentOrder = (m: Moment) => MOMENTS.indexOf(m);
 
-/** Rules in canonical order (score, q1, q2, q3, final). */
+/** Rules in canonical order (first, score, q1, q2, q3, final). */
 export function sortRules(rules: readonly MomentRule[]): MomentRule[] {
   return [...rules].sort((a, b) => momentOrder(a.moment) - momentOrder(b.moment));
 }
@@ -199,7 +231,7 @@ export function rulesOf(format: Pick<GameFormat, "periods" | "reverse" | "rules"
 /** The moment a period key belongs to: "s3" -> "score", "q2" -> "q2"; null for anything else. */
 export function momentOfKey(key: string): Moment | null {
   if (everyScoreIndex(key) !== null) return "score";
-  return (FIXED_MOMENTS as readonly string[]).includes(key) ? (key as Moment) : null;
+  return (PERIOD_MOMENTS as readonly string[]).includes(key) ? (key as Moment) : null;
 }
 
 export function ruleFor(rules: readonly MomentRule[], moment: Moment): MomentRule | null {
@@ -217,14 +249,14 @@ export function hasScoreMoment(rules: readonly MomentRule[]): boolean {
   return rules.some((r) => r.moment === "score");
 }
 
-/** The fixed moments that win, in game order. */
-export function fixedMoments(rules: readonly MomentRule[]): Exclude<Moment, "score">[] {
-  return FIXED_MOMENTS.filter((m) => rules.some((r) => r.moment === m));
+/** The moments decided once that win (soccer's first goal, the quarter-ends, the final), in game order. */
+export function fixedMoments(rules: readonly MomentRule[]): FixedMoment[] {
+  return PERIOD_MOMENTS.filter((m) => rules.some((r) => r.moment === m));
 }
 
-/** Fixed periods (Q1 / Half / Q3 / Final) the rules award, in game order. */
-export function fixedPeriods(rules: readonly MomentRule[]): Period[] {
-  return fixedMoments(rules).map(periodOfMoment);
+/** Fixed periods (Q1 / Half / Q3 / Final; soccer's 1st goal / Last goal) the rules award, in game order. */
+export function fixedPeriods(rules: readonly MomentRule[], sport?: Sport | null): Period[] {
+  return fixedMoments(rules).map((m) => periodOfMoment(m, sport));
 }
 
 /** The preset whose moments these rules use, else "custom" (what GameFormat.periods holds). */
@@ -260,9 +292,13 @@ export function drawKeys(format: GameFormat): string[] {
   return format.freshNumbers && !hasScoreMoment(rules) && fixedMoments(rules).length > 0 ? [...QUARTER_DRAW_KEYS] : [SHARED_DRAW_KEY];
 }
 
-/** True when fresh numbers each quarter can go with these rules (no every-score winner, at least one fixed moment). */
+/**
+ * True when fresh numbers each quarter can go with these rules (no every-score
+ * winner, at least one fixed moment, no soccer first goal: a soccer board
+ * keeps one draw, see formatProblemFor in shared/sports.ts).
+ */
 export function freshNumbersAllowed(rules: readonly MomentRule[]): boolean {
-  return !hasScoreMoment(rules) && fixedMoments(rules).length > 0;
+  return !hasScoreMoment(rules) && fixedMoments(rules).length > 0 && !rules.some((r) => r.moment === "first");
 }
 
 // ---- Amounts ----
@@ -438,12 +474,15 @@ export function niceAmount(x: number, down = false): number {
   return Math.max(1, n);
 }
 
-/** How the suggestion weighs the fixed moments: Q1 20 · Half 20 · Q3 20 · Final 40 (Halftime + Final alone: 40 · 60). */
-const SUGGESTED_WEIGHTS: Record<Exclude<Moment, "score">, number> = { q1: 20, q2: 20, q3: 20, final: 40 };
+/**
+ * How the suggestion weighs the fixed moments: Q1 20 · Half 20 · Q3 20 ·
+ * Final 40 (Halftime + Final alone, or soccer's first + last goal: 40 · 60).
+ */
+const SUGGESTED_WEIGHTS: Record<FixedMoment, number> = { first: 40, q1: 20, q2: 20, q3: 20, final: 40 };
 
 /** The suggestion's weights for these fixed moments (in game order). */
-export function suggestedWeights(moments: readonly Exclude<Moment, "score">[]): number[] {
-  if (moments.join(",") === "q2,final") return [40, 60];
+export function suggestedWeights(moments: readonly FixedMoment[]): number[] {
+  if (moments.join(",") === "q2,final" || moments.join(",") === "first,final") return [40, 60];
   return moments.map((m) => SUGGESTED_WEIGHTS[m]);
 }
 
@@ -505,12 +544,38 @@ export function suggestedKindAmounts(price: number, unit: AmountUnit = "$"): Rec
  *   gets the rest of the board total; any other fixed moment's square, and
  *   every reverse square there, four square prices.
  *
+ * - A soccer board's every goal (`sport` "soccer"): a match brings a few
+ *   goals, so each goal's square gets SOCCER_GOAL_SHARE of the board's total
+ *   (its reverse square, the first goal's square and any reverse square
+ *   beside it four square prices), and the last goal's square the rest.
+ *
  * Fixed amounts are "nice" (niceAmount). Without a price or a square, the
  * rules come back unchanged.
  */
-export function suggestPrizes(rules: readonly MomentRule[], price: number | null | undefined, squares: number, unit: AmountUnit = "$"): MomentRule[] {
+export function suggestPrizes(
+  rules: readonly MomentRule[],
+  price: number | null | undefined,
+  squares: number,
+  unit: AmountUnit = "$",
+  sport?: Sport | null,
+): MomentRule[] {
   if (!price || !(price > 0) || !(squares > 0)) return [...rules];
-  return hasScoreMoment(rules) ? suggestEveryScore(rules, price, unit) : suggestFixed(rules, price, round2(price * squares));
+  const total = round2(price * squares);
+  if (!hasScoreMoment(rules)) return suggestFixed(rules, price, total);
+  return sport === "soccer" ? suggestGoals(rules, price, total) : suggestEveryScore(rules, price, unit);
+}
+
+/** Each goal's suggested share of a soccer board's total: about TYPICAL_GOALS of them leave the last goal about half. */
+export const SOCCER_GOAL_SHARE = 0.15;
+
+function suggestGoals(rules: readonly MomentRule[], price: number, total: number): MomentRule[] {
+  const goal = niceAmount(total * SOCCER_GOAL_SHARE);
+  const side = niceAmount(SUGGESTED_SIDE_SQUARES * price);
+  return rules.map((r) => {
+    if (r.moment === "score") return { ...r, square: r.square ? fixedPrize(r.square, goal) : null, reverse: r.reverse ? fixedPrize(r.reverse, side) : null };
+    const square = r.square ? (r.moment === "final" ? { amount: null, note: r.square.note, rest: true as const } : fixedPrize(r.square, side)) : null;
+    return { ...r, square, reverse: r.reverse ? fixedPrize(r.reverse, side) : null };
+  });
 }
 
 /** A prize with this amount (null for none), its note kept, "the rest" and amounts by score type dropped. */
@@ -537,7 +602,7 @@ function suggestFixed(rules: readonly MomentRule[], price: number, total: number
   const cap = total * REVERSE_MAX_SHARE;
   if (extras > 0 && reverse * extras > cap) reverse = niceAmount(cap / extras, true);
   const pool = round2(total - reverse * extras);
-  const weights = suggestedWeights(fixed.map((r) => r.moment as Exclude<Moment, "score">));
+  const weights = suggestedWeights(fixed.map((r) => r.moment as FixedMoment));
   const sum = weights.reduce((n, w) => n + w, 0);
   const last = fixed.length - 1;
   let mains = weights.map((w, i) => (i === last ? 0 : niceAmount((pool * w) / sum)));
@@ -555,16 +620,20 @@ function suggestFixed(rules: readonly MomentRule[], price: number, total: number
  * touchdowns, 8 extra points, 4 field goals and one 2-point conversion.
  */
 export const TYPICAL_GAME: Record<ScoreKind, number> = { touchdown: 9, fieldGoal: 4, extraPoint: 8, twoPoint: 1, safety: 0 };
+/** About how many goals a typical soccer match brings, for the every-goal estimate. */
+export const TYPICAL_GOALS = 3;
 
 /**
- * What the prizes would give out in a typical game (TYPICAL_GAME): every
- * score change's amounts (square and reverse), plus each fixed moment's
- * amounts other than the rest. null without an every-score rule.
+ * What the prizes would give out in a typical game (TYPICAL_GAME, or
+ * TYPICAL_GOALS on a soccer board): every score change's amounts (square and
+ * reverse), plus each fixed moment's amounts other than the rest. null
+ * without an every-score rule.
  */
-export function typicalGameTotal(rules: readonly MomentRule[]): number | null {
+export function typicalGameTotal(rules: readonly MomentRule[], sport?: Sport | null): number | null {
   const score = ruleFor(rules, "score");
   if (!score) return null;
   let sum = fixedPrizeTotal(rules);
+  if (sport === "soccer") return round2(sum + TYPICAL_GOALS * ((prizeAmount(score.square) ?? 0) + (prizeAmount(score.reverse) ?? 0)));
   for (const kind of SCORE_KINDS) sum += TYPICAL_GAME[kind] * ((prizeAmount(score.square, kind) ?? 0) + (prizeAmount(score.reverse, kind) ?? 0));
   return round2(sum);
 }
@@ -1038,49 +1107,59 @@ export function periodNote(format: GameFormat, prizes: Record<string, string>, p
 
 // ---- Summaries ----
 
-/** "Quarters", "Halves", "Final", "Every score", or the moments' chips ("Q1 + Q3"). */
-function fixedLabel(moments: readonly Moment[]): string {
+/** "Quarters", "Halves", "Final", "First & last goal", or the moments' chips ("Q1 + Q3"). */
+function fixedLabel(moments: readonly Moment[], sport?: Sport | null): string {
   const set = moments.join(",");
   if (set === "q1,q2,q3,final") return "Quarters";
   if (set === "q2,final") return "Halves";
-  if (set === "final") return "Final";
-  return moments.map((m) => MOMENT_INFO[m].short).join(" + ");
+  if (set === "first,final") return PRESET_INFO["first-last"].label;
+  if (set === "final") return momentInfo("final", sport).short;
+  return moments.map((m) => momentInfo(m, sport).short).join(" + ");
 }
 
-/** The moments that win, in a few words: "Quarters", "Every score + quarters", "Every score + Final". */
-export function momentsLabel(rules: readonly MomentRule[]): string {
+/** Labels that read lowercase after a "+" or "on": "Every score + quarters", "Every goal + last goal". */
+const lowerable = (label: string) => /^(Quarters|Halves|Every score|Every goal|Last goal|First & last goal|1st goal)$/.test(label);
+const midSentence = (label: string) => (lowerable(label) ? label.replace(/^\w/, (c) => c.toLowerCase()) : label);
+
+/** The moments that win, in a few words: "Quarters", "Every score + quarters", "Every score + Final", "Every goal + last goal". */
+export function momentsLabel(rules: readonly MomentRule[], sport?: Sport | null): string {
   const fixed = fixedMoments(rules);
-  if (!hasScoreMoment(rules)) return fixed.length ? fixedLabel(fixed) : "No winners";
-  if (fixed.length === 0) return "Every score";
-  const rest = fixedLabel(fixed);
-  return `Every score + ${rest === "Quarters" || rest === "Halves" ? rest.toLowerCase() : rest}`;
+  if (!hasScoreMoment(rules)) return fixed.length ? fixedLabel(fixed, sport) : "No winners";
+  const every = momentInfo("score", sport).short;
+  if (fixed.length === 0) return every;
+  const rest = fixedLabel(fixed, sport);
+  return `${every} + ${sport === "soccer" || rest === "Quarters" || rest === "Halves" ? midSentence(rest) : rest}`;
 }
 
 /** Where reverse squares win, when it isn't every moment: "Reverse on quarters", "Reverse on Final". Null without any. */
-function reverseLabel(rules: readonly MomentRule[]): string | null {
+function reverseLabel(rules: readonly MomentRule[], sport?: Sport | null): string | null {
   const rev = rules.filter((r) => r.reverse).map((r) => r.moment);
   if (rev.length === 0) return null;
   if (rev.length === rules.length) return "Reverse";
-  const label = momentsLabel(rules.filter((r) => r.reverse));
-  return `Reverse on ${label === "Quarters" || label === "Halves" || label === "Every score" ? label.toLowerCase() : label}`;
+  const label = momentsLabel(rules.filter((r) => r.reverse), sport);
+  return `Reverse on ${lowerable(label) ? midSentence(label) : label}`;
 }
 
-/** One-line summary, e.g. "Quarters · 10×10 · Reverse · New numbers each quarter" or "Every score + quarters · 10×10 · Reverse on quarters". */
-export function formatSummary(format: GameFormat): string {
+/**
+ * One-line summary, e.g. "Quarters · 10×10 · Reverse · New numbers each
+ * quarter" or "Every score + quarters · 10×10 · Reverse on quarters" (a
+ * soccer board's in its words: "Every goal · 10×10").
+ */
+export function formatSummary(format: GameFormat, sport?: Sport | null): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
-  const parts = [exact ? PRESET_INFO[exact.preset].short : momentsLabel(rules), BOARD_SIZE_INFO[format.boardSize].short];
-  const rev = reverseLabel(rules);
+  const parts = [exact ? presetInfo(exact.preset, sport).short : momentsLabel(rules, sport), BOARD_SIZE_INFO[format.boardSize].short];
+  const rev = reverseLabel(rules, sport);
   if (rev) parts.push(rev);
   if (format.freshNumbers && freshNumbersAllowed(rules)) parts.push("New numbers each quarter");
   return parts.join(" · ");
 }
 
-/** The rules as one line with no board size: "Every score + quarters · Reverse on quarters". */
-export function rulesSummary(rules: readonly MomentRule[]): string {
+/** The rules as one line with no board size: "Every score + quarters · Reverse on quarters", "First & last goal". */
+export function rulesSummary(rules: readonly MomentRule[], sport?: Sport | null): string {
   const exact = matchingPreset(rules);
-  const parts = [exact ? PRESET_INFO[exact.preset].label : momentsLabel(rules)];
-  const rev = reverseLabel(rules);
+  const parts = [exact ? presetInfo(exact.preset, sport).label : momentsLabel(rules, sport)];
+  const rev = reverseLabel(rules, sport);
   if (rev) parts.push(rev);
   return parts.join(" · ");
 }
@@ -1094,7 +1173,12 @@ export function rulesSummary(rules: readonly MomentRule[]): string {
  * final buzzer" (basketball).
  */
 export function periodPhrase(periodKey: string, label?: string, sport?: Sport | null): { short: string; moment: string } {
+  // A soccer board's periods read in goals; a caller without the sport still
+  // gets them from the label ("Last goal", "Goal 2", "No goals").
+  const soccer = sport === "soccer" || (!sport && /^(Last goal|Goal \d+|No goals)$/.test(label ?? ""));
   switch (periodKey) {
+    case "first":
+      return { short: MOMENT_INFO.first.short, moment: "on the first goal" };
     case "q1":
       return { short: "Q1", moment: "at the end of Q1" };
     case "q2":
@@ -1102,9 +1186,13 @@ export function periodPhrase(periodKey: string, label?: string, sport?: Sport | 
     case "q3":
       return { short: "Q3", moment: "at the end of Q3" };
     case "final":
-      return { short: "Final", moment: `at ${sportWords(sport).end}` };
+      return soccer ? { short: "Last goal", moment: "on the last goal" } : { short: "Final", moment: `at ${sportWords(sport).end}` };
   }
   const n = everyScoreIndex(periodKey);
+  if (n !== null && soccer) {
+    if (label === "No goals") return { short: label, moment: "with no goals" };
+    return { short: label || `Goal ${n}`, moment: `on goal ${n}` };
+  }
   if (n !== null) return { short: label || `Score ${n}`, moment: `on score ${n}` };
   return { short: label || periodKey, moment: label ? `at ${label}` : "" };
 }

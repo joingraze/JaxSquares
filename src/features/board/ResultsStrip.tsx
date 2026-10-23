@@ -13,6 +13,7 @@
 
 import { useEffect, useRef } from "react";
 import { everyScoreIndex, formatAmount, formatRange, periodPhrase, scorePlayLabel } from "../../../shared/formats";
+import { resultMinute } from "../../../shared/squares";
 import type { AmountUnit, Player, Team } from "../../../shared/types";
 import { GiftIcon, RefreshIcon } from "../../components/icons";
 import { Avatar, cx, LiveDot } from "../../components/ui";
@@ -35,7 +36,7 @@ export interface ResultsStripProps {
    * periods only: an every-score entry is never won by the score it's at now
    * (the next entry needs a new score; 0-0 never wins).
    */
-  liveNow: { playerId: string | null; scoreX: number; scoreY: number } | null;
+  liveNow: { playerId: string | null; scoreX: number; scoreY: number; minute?: string } | null;
   selectedKey: string | null;
   onSelect: (key: string | null) => void;
   /** Lay the cards out two by two (fixed periods) instead of a swipeable strip (every score). */
@@ -107,6 +108,9 @@ export function ResultsStrip({
         const now = card.status === "live" && everyScoreIndex(card.key) === null ? liveNow : null;
         const liveOwner = now?.playerId ? byId.get(now.playerId) : null;
         const short = periodPhrase(card.key, card.label).short;
+        // A soccer result is a minute: the goal's ("45+2'"), or square 00 with no goals.
+        const minute = r ? resultMinute(r) : null;
+        const lastGoal = minute && card.key === "final" && r?.score ? r.score : null;
         const noAmounts = !card.amount && !card.reverseAmount && !card.range && !card.reverseRange && !card.rest;
         return (
           <button
@@ -151,7 +155,19 @@ export function ResultsStrip({
               {r?.source === "host" && <span className="eyebrow shrink-0 text-ink-subtle">Host pick</span>}
             </div>
 
-            {r ? (
+            {r && minute ? (
+              <>
+                <div className="flex items-baseline gap-1.5 font-display font-extrabold tabular-nums leading-none">
+                  <span className="text-title-3">{minute}</span>
+                  {(lastGoal ?? r.score) && (
+                    <span className="ml-auto self-center text-[0.625rem] font-bold tracking-wide text-ink-subtle">
+                      {abbr(teamX)} {(lastGoal ?? r.score)!.scoreX}–{(lastGoal ?? r.score)!.scoreY} {abbr(teamY)}
+                    </span>
+                  )}
+                </div>
+                <WinnerLine player={main ?? null} me={me} empty={!mainId} score={null} nobodyHad={minute} reverse={reverseOnly} />
+              </>
+            ) : r ? (
               <>
                 <div className="flex items-baseline gap-1.5 font-display font-extrabold tabular-nums leading-none">
                   {r.score ? (
@@ -179,6 +195,16 @@ export function ResultsStrip({
                     </span>
                   </span>
                 )}
+              </>
+            ) : now?.minute ? (
+              <>
+                <div className="flex items-baseline gap-1.5 font-display font-extrabold tabular-nums leading-none">
+                  <span className="text-title-3">{now.minute}</span>
+                </div>
+                <div className="flex min-w-0 items-center gap-1.5 text-caption text-ink-muted">
+                  <span className="shrink-0">A goal now:</span>
+                </div>
+                <WinnerLine player={liveOwner ?? null} me={me} empty={!now.playerId} score={null} nobodyHad={now.minute} live />
               </>
             ) : now ? (
               <>
@@ -264,6 +290,7 @@ function WinnerLine({
   me,
   empty,
   score,
+  nobodyHad,
   live = false,
   reverse = false,
 }: {
@@ -272,12 +299,18 @@ function WinnerLine({
   empty: boolean;
   /** The score that pointed at the square, for "Nobody had 7–3". */
   score: { scoreX: number; scoreY: number } | null;
+  /** A soccer board's minute instead, for "Nobody had 43'". */
+  nobodyHad?: string;
   live?: boolean;
   /** It's the reverse square (the only one this moment awards). */
   reverse?: boolean;
 }) {
   if (empty || !player) {
-    const nobody = score ? `Nobody ${live ? "has" : "had"} ${reverse ? `${score.scoreY}–${score.scoreX}` : `${score.scoreX}–${score.scoreY}`}` : "Nobody had it";
+    const nobody = nobodyHad
+      ? `Nobody ${live ? "has" : "had"} ${nobodyHad}`
+      : score
+        ? `Nobody ${live ? "has" : "had"} ${reverse ? `${score.scoreY}–${score.scoreX}` : `${score.scoreX}–${score.scoreY}`}`
+        : "Nobody had it";
     return <span className="text-footnote font-semibold text-ink-subtle">{empty ? nobody : "Someone"}</span>;
   }
   const mine = player.id === me;

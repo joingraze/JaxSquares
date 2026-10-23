@@ -9,8 +9,6 @@ import {
   AMOUNT_MAX,
   FIXED_MOMENTS,
   KIND_UNITS,
-  MOMENT_INFO,
-  MOMENTS,
   SCORE_KIND_INFO,
   SCORE_KINDS,
   SQUARE_PRICE_MAX,
@@ -28,6 +26,7 @@ import {
   kindAmounts,
   kindUnit,
   matchingPreset,
+  momentInfo,
   niceAmount,
   prizeRange,
   restAllowed,
@@ -49,7 +48,7 @@ import {
 import { totalSquares } from "../../../shared/squares";
 import { VENUE_LOCKED_ERROR } from "../../../shared/pricing";
 import { VENUE_DEFAULTS, shownHouseRules } from "../../../shared/venue";
-import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
+import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, Sport, UpdateGameInput } from "../../../shared/types";
 
 export type Side = "square" | "reverse";
 export const SIDES: readonly Side[] = ["square", "reverse"];
@@ -149,8 +148,11 @@ export function formatOf(base: GameFormat, draft: RulesDraft): GameFormat {
 
 // ---- Editing ----
 
-/** Every moment in game order (the game's own, `moments`: basketball has no every score, a game of halves only halftime and the final), with its rule (null = it doesn't win). */
-export function editorRows(rules: readonly MomentRule[], moments: readonly Moment[] = MOMENTS): { moment: Moment; rule: MomentRule | null }[] {
+/** Football's moments: every score and the fixed ones (a soccer board's come from momentsFor). */
+const FOOTBALL_MOMENTS: readonly Moment[] = ["score", ...FIXED_MOMENTS];
+
+/** Every moment in game order (the game's own, `moments`: basketball has no every score, a game of halves only halftime and the final, soccer its goals), with its rule (null = it doesn't win). */
+export function editorRows(rules: readonly MomentRule[], moments: readonly Moment[] = FOOTBALL_MOMENTS): { moment: Moment; rule: MomentRule | null }[] {
   return moments.map((moment) => ({ moment, rule: rules.find((r) => r.moment === moment) ?? null }));
 }
 
@@ -159,19 +161,27 @@ export function allReverse(rules: readonly MomentRule[]): boolean {
   return rules.length > 0 && rules.every((r) => !!r.reverse);
 }
 
+/** The moments each preset card makes: every score comes with the final (its square takes the rest). */
+const CARD_MOMENTS: Record<FixedPreset, Moment[]> = {
+  quarters: ["q1", "q2", "q3", "final"],
+  halves: ["q2", "final"],
+  final: ["final"],
+  "every-score": ["score", "final"],
+  "first-last": ["first", "final"],
+};
+
 /**
  * A preset's moments, keeping what was typed for moments that remain: each
  * gets the square (its amount and note kept) and, with `reverse`, the reverse
  * square (kept too). `reverse` defaults to whether every moment has one now.
- * Every score comes with the final score's square, which takes the rest of
- * the board total once there's a square price (see suggestPrizes), and
- * starts with amounts by score type on.
+ * Every score comes with the final score's square (a soccer board's last
+ * goal), which takes the rest of the board total once there's a square price
+ * (see suggestPrizes), and on football starts with amounts by score type on.
  */
-export function selectPreset(rules: readonly MomentRule[], preset: FixedPreset, reverse = allReverse(rules)): MomentRule[] {
-  const moments: Moment[] =
-    preset === "quarters" ? ["q1", "q2", "q3", "final"] : preset === "halves" ? ["q2", "final"] : preset === "final" ? ["final"] : ["score", "final"];
-  // A new every-score rule starts with amounts by score type on.
-  const fresh = (moment: Moment): Prize => (moment === "score" ? { ...emptyPrize(), byKind: {} } : emptyPrize());
+export function selectPreset(rules: readonly MomentRule[], preset: FixedPreset, reverse = allReverse(rules), sport?: Sport | null): MomentRule[] {
+  const moments = CARD_MOMENTS[preset];
+  // A new every-score rule starts with amounts by score type on (football's: touchdowns, field goals...).
+  const fresh = (moment: Moment): Prize => (moment === "score" && sport !== "soccer" ? { ...emptyPrize(), byKind: {} } : emptyPrize());
   return moments.map((moment) => {
     const cur = rules.find((r) => r.moment === moment);
     return {
@@ -200,7 +210,8 @@ export function setMoment(rules: readonly MomentRule[], moment: Moment, on: bool
   if (!on) return has && rules.length > 1 ? rules.filter((r) => r.moment !== moment) : [...rules];
   if (has) return [...rules];
   let rule: MomentRule = { moment, square: emptyPrize(), reverse: null };
-  if (moment !== "score") {
+  // Soccer's first goal starts fresh; a quarter-end copies its neighbor's setup.
+  if (moment !== "score" && moment !== "first") {
     const idx = FIXED_MOMENTS.indexOf(moment);
     const near = rules
       .filter((r) => r.moment !== "score")
@@ -334,13 +345,13 @@ export interface PrizeBudget {
 /** Above this share of the board total, a typical game leaves little for the final. */
 export const TIGHT_SHARE = 0.8;
 
-/** How the prizes compare with the board's total ("Prizes: $800 of $1,000", or every score's typical game). */
-export function prizeBudget(rules: readonly MomentRule[], total: number): PrizeBudget {
+/** How the prizes compare with the board's total ("Prizes: $800 of $1,000", or every score's typical game; a soccer match's goals). */
+export function prizeBudget(rules: readonly MomentRule[], total: number, sport?: Sport | null): PrizeBudget {
   const fixed = fixedPrizeTotal(rules);
   const left = Math.round((total - fixed) * 100) / 100;
   const everyScore = hasScoreMoment(rules);
   const rest = hasRest(rules);
-  const typical = everyScore ? typicalGameTotal(rules) : null;
+  const typical = everyScore ? typicalGameTotal(rules, sport) : null;
   const status = left < 0 ? "over" : rest ? "rest" : fixed === 0 ? "none" : left > 0 ? "under" : "exact";
   return { total, fixed, left, status, everyScore, rest, typical, tight: typical !== null && typical > total * TIGHT_SHARE };
 }
@@ -359,22 +370,24 @@ export function budgetText(b: PrizeBudget, unit: AmountUnit): { main: string; de
  * typical game's estimate, and a warning when that would use most of the
  * total. null on fixed-moment boards (budgetText says it there).
  */
-export function everyScoreBudgetText(b: PrizeBudget, unit: AmountUnit): { lead: string; estimate: string | null; warning: string | null } | null {
+export function everyScoreBudgetText(b: PrizeBudget, unit: AmountUnit, sport?: Sport | null): { lead: string; estimate: string | null; warning: string | null } | null {
   if (!b.everyScore) return null;
   const total = formatAmount(b.total, unit);
+  // A soccer board's every score is its goals, its final the last goal, its game a match.
+  const w = sport === "soccer" ? { prizes: "Goal prizes", game: "match", final: "the last goal" } : { prizes: "Score prizes", game: "game", final: "the final" };
   const lead = b.rest
-    ? `Score prizes come out of the ${total} board total during the game; the final gets the rest.`
-    : `Score prizes come out of the ${total} board total during the game.`;
+    ? `${w.prizes} come out of the ${total} board total during the ${w.game}; ${w.final} gets the rest.`
+    : `${w.prizes} come out of the ${total} board total during the ${w.game}.`;
   if (!b.typical) return { lead, estimate: null, warning: null };
   const about = formatAmount(Math.round(b.typical), unit);
   if (b.tight) {
     const warning = b.rest
-      ? `A typical game would use about ${about} of the ${total} board total, leaving little for the final.`
-      : `A typical game would use about ${about} of the ${total} board total.`;
+      ? `A typical ${w.game} would use about ${about} of the ${total} board total, leaving little for ${w.final}.`
+      : `A typical ${w.game} would use about ${about} of the ${total} board total.`;
     return { lead, estimate: null, warning };
   }
-  const left = b.rest ? `, leaving about ${formatAmount(Math.round(b.total - b.typical), unit)} for the final` : "";
-  return { lead, estimate: `A typical game uses about ${about}${left}.`, warning: null };
+  const left = b.rest ? `, leaving about ${formatAmount(Math.round(b.total - b.typical), unit)} for ${w.final}` : "";
+  return { lead, estimate: `A typical ${w.game} uses about ${about}${left}.`, warning: null };
 }
 
 /** One prize's amounts as they read on a suggestion card: { label: "Q1", amount: "$170 + $40" }. */
@@ -401,7 +414,7 @@ export function amountsKey(rules: readonly MomentRule[]): string {
 }
 
 /** What each prize gets in these rules, for a suggestion card. */
-export function prizeParts(rules: readonly MomentRule[], unit: AmountUnit): PrizePart[] {
+export function prizeParts(rules: readonly MomentRule[], unit: AmountUnit, sport?: Sport | null): PrizePart[] {
   const sorted = sortRules(rules);
   const money = (n: number | null | undefined) => (n ? formatAmount(n, unit) : "–");
   const parts: PrizePart[] = [];
@@ -409,7 +422,7 @@ export function prizeParts(rules: readonly MomentRule[], unit: AmountUnit): Priz
   if (score?.square) {
     if (score.square.byKind !== undefined) {
       for (const k of SCORE_KINDS) parts.push({ label: SCORE_KIND_INFO[k].short, amount: money(kindAmount(score.square, k) ?? score.square.amount), kind: true });
-    } else parts.push({ label: "Every score", amount: money(score.square.amount) });
+    } else parts.push({ label: momentInfo("score", sport).short, amount: money(score.square.amount) });
     if (score.reverse) parts.push({ label: "Reverse", amount: amountsKey([{ ...score, reverse: score.square }]) === amountsKey([score]) ? "Same" : money(score.reverse.amount) });
   }
   const fixed = sorted.filter((r) => r.moment !== "score");
@@ -418,7 +431,7 @@ export function prizeParts(rules: readonly MomentRule[], unit: AmountUnit): Priz
   const reverseEach = !!score && fixed.length === 4 && revs.every((a) => a !== null && a === revs[0]);
   if (reverseEach) parts.push({ label: "Reverse each quarter", amount: money(revs[0]) });
   for (const r of fixed) {
-    const label = MOMENT_INFO[r.moment].short;
+    const label = momentInfo(r.moment, sport).short;
     const sq = r.square ? (r.square.rest ? "The rest" : money(r.square.amount)) : null;
     const rev = r.reverse && !reverseEach ? money(r.reverse.amount) : null;
     if (sq && rev) parts.push({ label, amount: `${sq} + ${rev}` });
@@ -443,11 +456,17 @@ export interface SuggestedPrizes {
  * squares (all of them in the create flow and before the draw, the claimed
  * ones after; see suggestPrizes), or null without a price.
  */
-export function suggestedPrizes(rules: readonly MomentRule[], price: number | null | undefined, squares: number, unit: AmountUnit): SuggestedPrizes | null {
+export function suggestedPrizes(
+  rules: readonly MomentRule[],
+  price: number | null | undefined,
+  squares: number,
+  unit: AmountUnit,
+  sport?: Sport | null,
+): SuggestedPrizes | null {
   if (!price || squares <= 0) return null;
-  const next = suggestPrizes(rules, price, squares, unit);
+  const next = suggestPrizes(rules, price, squares, unit, sport);
   const total = Math.round(price * squares * 100) / 100;
-  return { rules: next, selected: amountsKey(next) === amountsKey(rules), basis: `From the ${formatAmount(total, unit)} board total`, parts: prizeParts(next, unit) };
+  return { rules: next, selected: amountsKey(next) === amountsKey(rules), basis: `From the ${formatAmount(total, unit)} board total`, parts: prizeParts(next, unit, sport) };
 }
 
 export interface SplitOption {
@@ -468,11 +487,11 @@ export interface SplitOption {
  * win: the total shared evenly (see splitEvenly). null with every score
  * change, without a total, or when it's the same as the suggestion.
  */
-export function evenSplit(rules: readonly MomentRule[], total: number | null, unit: AmountUnit, suggested: MomentRule[] | null): SplitOption | null {
+export function evenSplit(rules: readonly MomentRule[], total: number | null, unit: AmountUnit, suggested: MomentRule[] | null, sport?: Sport | null): SplitOption | null {
   if (!total || total < 1 || hasScoreMoment(rules) || fixedMoments(rules).length === 0) return null;
   const next = splitEvenly(rules, total);
   if (suggested && amountsKey(next) === amountsKey(suggested)) return null;
-  const parts = sortRules(next).map((r) => ({ label: MOMENT_INFO[r.moment].short, amount: formatAmount((r.square?.amount ?? 0) + (r.reverse?.amount ?? 0), unit) }));
+  const parts = sortRules(next).map((r) => ({ label: momentInfo(r.moment, sport).short, amount: formatAmount((r.square?.amount ?? 0) + (r.reverse?.amount ?? 0), unit) }));
   return {
     label: "Even",
     preview: parts.map((p) => `${p.label} ${p.amount}`).join(" · "),
@@ -499,8 +518,8 @@ export function finalRestOn(rules: readonly MomentRule[]): boolean {
  * with every score, a typical game's score prizes; "nice", rounded down. null
  * when nothing would be left.
  */
-export function restEstimate(rules: readonly MomentRule[], total: number): number | null {
-  const left = total - (typicalGameTotal(rules) ?? fixedPrizeTotal(rules));
+export function restEstimate(rules: readonly MomentRule[], total: number, sport?: Sport | null): number | null {
+  const left = total - (typicalGameTotal(rules, sport) ?? fixedPrizeTotal(rules));
   return left >= 1 ? niceAmount(left, true) : null;
 }
 
@@ -509,35 +528,36 @@ export function restEstimate(rules: readonly MomentRule[], total: number): numbe
  * fixed amount: switching to a fixed amount starts it at about what the rest
  * would be (restEstimate, with the board's total), its note kept.
  */
-export function setFinalRest(rules: readonly MomentRule[], on: boolean, total: number | null): MomentRule[] {
+export function setFinalRest(rules: readonly MomentRule[], on: boolean, total: number | null, sport?: Sport | null): MomentRule[] {
   if (!restAllowed(rules)) return [...rules];
   return rules.map((r) => {
     if (r.moment !== "final" || !r.square) return r;
     if (on) return { ...r, square: { amount: null, note: r.square.note, rest: true } };
     if (!r.square.rest) return r;
     const others = rules.map((x) => (x.moment === "final" ? { ...x, square: null } : x));
-    return { ...r, square: { amount: total ? restEstimate(others, total) : null, note: r.square.note } };
+    return { ...r, square: { amount: total ? restEstimate(others, total, sport) : null, note: r.square.note } };
   });
 }
 
 // ---- Auto-filling the suggested amounts (the create flow) ----
 
-/** What the create flow's prizes look like: the format (rules, price, size) and how prizes read. */
+/** What the create flow's prizes look like: the format (rules, price, size), how prizes read, and the board's sport (a soccer match's few goals). */
 export interface PrizeSetup {
   format: GameFormat;
   choice: PrizeChoice;
+  sport?: Sport | null;
 }
 
-/** What the suggestion depends on: the square price, board size, who wins, amounts by score type on or off, the unit. */
-export function setupKey({ format, choice }: PrizeSetup): string {
+/** What the suggestion depends on: the square price, board size, who wins, amounts by score type on or off, the unit, the sport. */
+export function setupKey({ format, choice, sport }: PrizeSetup): string {
   const rules = rulesOf(format);
-  return JSON.stringify([format.squarePrice ?? null, format.boardSize, rulesShape(rules), byKindOn(rules), choice]);
+  return JSON.stringify([format.squarePrice ?? null, format.boardSize, rulesShape(rules), byKindOn(rules), choice, sport ?? null]);
 }
 
 /** The setup's rules with the suggested amounts (all the board's squares), or as they are without a price or amounts. */
-export function withSuggested({ format, choice }: PrizeSetup): GameFormat {
+export function withSuggested({ format, choice, sport }: PrizeSetup): GameFormat {
   if (choice !== "$" && choice !== "pts") return format;
-  return withRules({ ...format, rules: suggestPrizes(rulesOf(format), format.squarePrice, totalSquares(format.boardSize), choice) });
+  return withRules({ ...format, rules: suggestPrizes(rulesOf(format), format.squarePrice, totalSquares(format.boardSize), choice, sport) });
 }
 
 /** Every amount taken off (notes kept, amounts by score type still on but empty). */
@@ -830,21 +850,28 @@ export interface RuleLine {
 }
 
 const WHEN: Record<Moment, string> = {
+  first: "The minute of the first goal (no goals: 00)",
   score: "Each time either team scores",
   q1: "The score when the 1st quarter ends",
   q2: "The score at halftime",
   q3: "The score when the 3rd quarter ends",
   final: "The final score (overtime counts)",
 };
+/** A soccer board's moments: its squares are the match's minutes (shared/soccer.ts). */
+const SOCCER_WHEN: Record<Moment, string> = {
+  ...WHEN,
+  score: "The minute of each goal, whoever scores (no goals: 00)",
+  final: "The minute of the last goal, at the final whistle (no goals: 00)",
+};
 
-/** One line per moment that wins, in game order. */
-export function ruleLines(format: GameFormat, legacyPrizes?: Record<string, string>): RuleLine[] {
+/** One line per moment that wins, in game order (a soccer board's in goals: `sport`). */
+export function ruleLines(format: GameFormat, legacyPrizes?: Record<string, string>, sport?: Sport | null): RuleLine[] {
   const unit = unitOf(format);
   return sortRules(rulesOf(upgradeFormat(format), legacyPrizes)).map((r) => ({
     moment: r.moment,
-    label: MOMENT_INFO[r.moment].label,
-    short: MOMENT_INFO[r.moment].short,
-    when: WHEN[r.moment],
+    label: momentInfo(r.moment, sport).label,
+    short: momentInfo(r.moment, sport).short,
+    when: (sport === "soccer" ? SOCCER_WHEN : WHEN)[r.moment],
     sides: SIDES.flatMap((side) => {
       const p = r[side];
       if (!p) return [];
@@ -887,7 +914,7 @@ function momentAmounts(r: MomentRule, unit: AmountUnit, withReverse = true): str
  * host set nothing (players see nothing). In-app only: never in a push, a
  * link preview or share text.
  */
-export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[] } | null {
+export function prizeLineup(format: GameFormat, sport?: Sport | null): { fun: boolean; parts: string[] } | null {
   if (format.justForFun) return { fun: true, parts: [] };
   const unit = unitOf(format);
   const rules = sortRules(rulesOf(upgradeFormat(format)));
@@ -896,7 +923,7 @@ export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[]
   if (price) parts.push(price);
   const score = rules.find((r) => r.moment === "score");
   const scoreAmounts = score ? momentAmounts(score, unit) : null;
-  if (scoreAmounts) parts.push(`${scoreAmounts} every score`);
+  if (scoreAmounts) parts.push(`${scoreAmounts} ${sport === "soccer" ? "every goal" : "every score"}`);
   const fixed = rules.filter((r) => r.moment !== "score");
   const all = fixed.map((r) => momentAmounts(r, unit));
   if (fixed.length === 4 && all.every((a) => a && a === all[0]) && !hasRest(rules)) {
@@ -908,7 +935,8 @@ export function prizeLineup(format: GameFormat): { fun: boolean; parts: string[]
   if (reverseEach) parts.push(`${revs[0]} reverse each quarter`);
   for (const r of fixed) {
     const a = momentAmounts(r, unit, !reverseEach);
-    if (a) parts.push(r.square?.rest ? `${MOMENT_INFO[r.moment].short}: ${a}` : `${MOMENT_INFO[r.moment].short} ${a}`);
+    const label = momentInfo(r.moment, sport).short;
+    if (a) parts.push(r.square?.rest ? `${label}: ${a}` : `${label} ${a}`);
   }
   return parts.length > 0 ? { fun: false, parts } : null;
 }
@@ -930,7 +958,7 @@ export interface MomentPrize {
  * Moments with neither an amount nor a note are left out. The TV's prize
  * list; in-app only, like prizeLineup.
  */
-export function momentPrizes(format: GameFormat): MomentPrize[] {
+export function momentPrizes(format: GameFormat, sport?: Sport | null): MomentPrize[] {
   const unit = unitOf(format);
   const side = (p: Prize | null) => {
     const amount = format.justForFun ? null : prizeText(p, unit);
@@ -941,14 +969,14 @@ export function momentPrizes(format: GameFormat): MomentPrize[] {
     const square = side(r.square);
     const reverse = side(r.reverse);
     if (!square && !reverse) return [];
-    const label = r.moment === "score" ? "Every score" : MOMENT_INFO[r.moment].short;
+    const label = momentInfo(r.moment, sport).short;
     return [{ moment: r.moment, label, amount: square?.amount ?? null, note: square?.note ?? null, reverse }];
   });
 }
 
 /** The create page's collapsed "Square price & prizes" row: what players will see, or "Square price: not set". */
-export function prizesSummary(format: GameFormat): string {
-  const lineup = prizeLineup(format);
+export function prizesSummary(format: GameFormat, sport?: Sport | null): string {
+  const lineup = prizeLineup(format, sport);
   if (!lineup) return "Square price: not set";
   if (lineup.fun) return "Just for fun";
   return lineup.parts.join(" · ");

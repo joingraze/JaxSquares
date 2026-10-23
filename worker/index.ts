@@ -27,7 +27,8 @@ import { SEASON_ERRORS, isSeasonBoard, isSeasonGame, seasonGameName, seasonNumbe
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
 import { siblingProblem } from "../shared/siblings";
-import { boardSportFor, freshNumbersInfo, isLeague, isLinkedLeague, leagueSportProblem, rulesProblemFor } from "../shared/sports";
+import { ADDED_MAX, MINUTE_MAX, goalLabel } from "../shared/soccer";
+import { boardSportFor, formatProblemFor, freshNumbersInfo, isLeague, isLinkedLeague, isSoccer, leagueSportProblem } from "../shared/sports";
 import { MAX_PLAYERS, drawNumbers, fixedPeriodsOf, isValidCell, liveLabel, primaryAward, resolveResults, resultNote, totalSquares } from "../shared/squares";
 import { ACCOUNT_REQUIRED_CODE, PAYMENT_REQUIRED_CODE, type ClaimsResponse } from "../shared/types";
 import type {
@@ -66,6 +67,7 @@ import { hasGamesAhead, parseSeasonInput, seasonSchedule, syncSeasonGames, syncS
 import {
   broadcast,
   closeRoom,
+  decidedByEnding,
   loadState,
   newActivity,
   notifyAll,
@@ -74,6 +76,8 @@ import {
   scoreEvents,
   tokenMatches,
   touchSeason,
+  winnerEvents,
+  type ChangedScore,
 } from "./service";
 
 export { GameRoom } from "./room";
@@ -150,6 +154,15 @@ function intIn(v: unknown, min: number, max: number): number | null {
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 }
 
+/** A soccer goal's minute from ScoreInput: required, 0-MINUTE_MAX, with 0-ADDED_MAX of stoppage time. */
+function goalMinuteInput(body: Record<string, unknown>): { minute: number; added: number } {
+  const minute = intIn(body.minute, 0, MINUTE_MAX);
+  if (minute === null) fail(400, `Add the minute the goal was scored, 0 to ${MINUTE_MAX}.`);
+  const added = body.added == null ? 0 : intIn(body.added, 0, ADDED_MAX);
+  if (added === null) fail(400, `Stoppage time is 0 to ${ADDED_MAX} minutes.`);
+  return { minute, added };
+}
+
 /** Valid, de-duplicated cells for this board; null if any cell is malformed. */
 function parseCells(v: unknown, game: Game): { row: number; col: number }[] | null {
   const total = totalSquares(game.format.boardSize);
@@ -208,8 +221,8 @@ function legacyNotes(format: GameFormat, input: unknown): Record<string, string>
 }
 
 /** Fixed periods a format's rules award (what games.periods holds). */
-function periodsOf(format: GameFormat): Period[] {
-  return fixedPeriods(rulesOf(format));
+function periodsOf(format: GameFormat, sport: Sport): Period[] {
+  return fixedPeriods(rulesOf(format), sport);
 }
 
 /**
@@ -381,12 +394,14 @@ function resolvePeriodKey(state: GameState, raw: unknown, allowNext: boolean): {
   const key = typeof raw === "string" ? raw.trim() : "";
   const fixed = fixedPeriodsOf(game).find((x) => x.key === key);
   if (fixed) return fixed;
-  if (!hasScoreMoment(rulesOf(game.format))) fail(400, "Unknown period for this board");
+  // A soccer board records every goal whatever wins: its first and last goals are read from them.
+  const goals = isSoccer(game) && allowNext;
+  if (!hasScoreMoment(rulesOf(game.format)) && !goals) fail(400, "Unknown period for this board");
   const max = state.scores.reduce((m, s) => Math.max(m, everyScoreIndex(s.periodKey) ?? 0), 0);
   const n = allowNext && (key === "" || key === "next") ? max + 1 : everyScoreIndex(key);
   if (n === null || n > max + 1) fail(400, "Unknown score entry");
   const existing = state.scores.find((s) => s.periodKey === `s${n}`);
-  return { key: `s${n}`, label: existing?.label || everyScorePeriod(n).label };
+  return { key: `s${n}`, label: existing?.label || (isSoccer(game) ? goalLabel(n) : everyScorePeriod(n).label) };
 }
 
 // ---- API ----
@@ -458,7 +473,7 @@ api.post("/games", requireClient, async (c) => {
   if (linkedEvent) league = linkedEvent.league;
   // A custom board's kickoff is the host's (optional); a linked board's is its event's; a season board's, its first game's.
   const startsAt = season ? season.firstKickoff : linkedEvent ? linkedEvent.startsAt : source ? (source.game.startsAt ?? null) : cleanKickoff(body.startsAt, now);
-  // A league plays one sport (NBA: basketball); a custom board is football or basketball.
+  // A league plays one sport (NBA: basketball); a custom board is football, basketball or soccer.
   const sportProblem = source ? null : leagueSportProblem(body.sport, league);
   if (sportProblem) fail(400, sportProblem);
   const sport: Sport = source ? source.game.sport : boardSportFor(body.sport, league);
@@ -469,8 +484,9 @@ api.post("/games", requireClient, async (c) => {
   // New boards keep every note inside their rules; an older client's notes are folded in.
   const legacy = cleanPrizes(requested, body.prizes);
   const format = requested.rules ? withRules({ ...requested, rules: foldNotes(requested.rules, legacy) }) : withRules(requested, legacy);
-  // Every score isn't offered for basketball, and a game of halves has no Q1 or Q3.
-  const unfit = rulesProblemFor(rulesOf(format), { sport, league });
+  // Every score isn't offered for basketball, a game of halves has no Q1 or Q3,
+  // and a soccer board wins on goals with one draw (formatProblemFor).
+  const unfit = formatProblemFor(format, { sport, league });
   if (unfit) fail(400, unfit);
   // Counted only once the request is valid, so fixing a typo doesn't use up a try.
   const limited = await deviceLimited(c, RATE_LIMITS.createGame, RATE_LIMITS.createGameIp);
@@ -486,7 +502,7 @@ api.post("/games", requireClient, async (c) => {
       teamX,
       teamY,
       format,
-      periods: periodsOf(format),
+      periods: periodsOf(format, sport),
       prizes: {},
       maxPerPlayer,
       numbers: null,
@@ -652,14 +668,14 @@ api.patch("/games/:id", requireClient, async (c) => {
     const problem = formatError(body.format);
     if (problem) fail(400, problem);
     const next = withRules(sanitizeFormat(body.format));
-    // Moments the board's game doesn't have: every score on basketball, a quarter-end in a game of halves.
-    const unfit = rulesProblemFor(rulesOf(next), game);
+    // Moments the board's game doesn't have: every score on basketball, a quarter-end in a game of halves or soccer.
+    const unfit = formatProblemFor(next, game);
     if (unfit) fail(400, unfit);
     const locked = rulesEditProblem(state, next);
     if (locked) fail(409, locked);
     const scoring = rulesShape(rulesOf(next)) !== rulesShape(rulesOf(game.format)) || next.freshNumbers !== game.format.freshNumbers;
     fields.format = next;
-    fields.periods = periodsOf(next);
+    fields.periods = periodsOf(next, game.sport);
     // Notes now live in the rules (an older board's are in the editor's rules already).
     fields.prizes = {};
     rulesActivity = newActivity("rules", c.get("playerId"), { scoring });
@@ -960,13 +976,16 @@ api.post("/games/:id/scores", requireClient, async (c) => {
   const label = everyScore ? cleanText(body.label, 24) || period.label : period.label;
   // Shown on the board and in the winner push.
   if (mentionsMoney(label)) fail(400, MONEY_ERRORS.label);
+  // A soccer goal says when it was scored: its square is the minute's (shared/soccer.ts).
+  const goal = isSoccer(game) && everyScore ? goalMinuteInput(body) : null;
+  if (!goal && (body.minute != null || body.added != null)) fail(400, "Only a soccer board's goals have a minute.");
   const now = Date.now();
   const actor = c.get("playerId");
-  const changed = { periodKey: period.key, label, scoreX, scoreY };
+  const changed: ChangedScore = { periodKey: period.key, label, scoreX, scoreY, ...(goal ?? {}) };
   // Re-saving the recorded score (a double tap, a retry, a second host phone,
   // a label-only edit) isn't news: it's written, but not announced again.
   const existing = state.scores.find((s) => s.periodKey === period.key);
-  const same = existing?.scoreX === scoreX && existing?.scoreY === scoreY;
+  const same = existing?.scoreX === scoreX && existing?.scoreY === scoreY && existing?.minute === goal?.minute && (existing?.added ?? 0) === (goal?.added ?? 0);
 
   const projectedScores = [
     ...state.scores.filter((s) => s.periodKey !== period.key),
@@ -1069,16 +1088,21 @@ api.post("/games/:id/final", requireClient, async (c) => {
   const now = Date.now();
   const me = c.get("playerId");
   const final = newActivity("final", me, {}, now);
+  // Ending a soccer board decides its last goal (and, with no goals, square 00's moments).
+  const ended = { ...state, game: { ...state.game, status: "final" as const } };
+  const winners = winnerEvents(resolveResults(ended), decidedByEnding(state), me, now);
   const { state: next } = await commitOr404(
     c,
     id,
-    [db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final)],
+    [db.setFinal(c.env.DB, id), db.insertActivityIfChanged(c.env.DB, id, final), ...winners.activities.map((a) => db.insertActivity(c.env.DB, id, a))],
     now,
   );
   const recorded = next.activity.some((a) => a.id === final.id);
   // The host who ended the game isn't pushed about it. Ending a season board
   // early isn't pushed at all: each game's board says its own final.
-  publish(c, next, [final.id], recorded && !isSeasonBoard(state.game) ? [{ kind: "final", actor: me }] : []);
+  const notices: NotifyEvent[] = recorded ? winners.notifications : [];
+  if (recorded && !isSeasonBoard(state.game)) notices.push({ kind: "final", actor: me });
+  publish(c, next, [...winners.activities.map((a) => a.id), final.id], notices);
   return c.json({ state: next });
 });
 

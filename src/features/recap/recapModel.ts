@@ -11,7 +11,8 @@
 // the brand's lime and gold), whatever the device's theme.
 
 import { periodPhrase, scorePlayLabel } from "../../../shared/formats";
-import { lastDigit, resolveResults, winCounts, type PeriodResult } from "../../../shared/squares";
+import { squareMinute } from "../../../shared/soccer";
+import { lastDigit, resolveResults, resultMinute, winCounts, type PeriodResult } from "../../../shared/squares";
 import { sportWords } from "../../../shared/sportWords";
 import type { GameState, Player, Sport, Team } from "../../../shared/types";
 import { initialsOf, luminance, shortTeam, teamVars } from "../../lib/format";
@@ -69,6 +70,8 @@ export interface RecapRow {
   winner: RecapWinner | null;
   /** The winning digits, the column team's then the row team's (swapped for a reverse square); null without a score. */
   digits: [number, number] | null;
+  /** A soccer board's: the winning minute instead ("43'", "45+2'", "00" with no goals). */
+  minute?: string;
   reverse: boolean;
   /** A fixed moment (Q1, Half, Q3, Final): kept first when the card can't fit every row. */
   fixed: boolean;
@@ -91,7 +94,7 @@ export interface RecapCard {
   sport?: Sport;
 }
 
-const FIXED = new Set(["q1", "q2", "q3", "final"]);
+const FIXED = new Set(["first", "q1", "q2", "q3", "final"]);
 
 /** The recap of a board with at least one decided moment; null before the first one. */
 export function recapCard(state: GameState): RecapCard | null {
@@ -155,6 +158,8 @@ function cardScore(state: GameState, results: PeriodResult[], final: boolean): R
 /** Where a game in progress stands, by its latest decided moment. */
 function statusAfter(r: PeriodResult): string {
   switch (r.periodKey) {
+    case "first":
+      return "After the first goal";
     case "q1":
       return "After Q1";
     case "q2":
@@ -165,7 +170,7 @@ function statusAfter(r: PeriodResult): string {
       return "Final";
   }
   const short = periodPhrase(r.periodKey, r.label).short;
-  return /^Score \d+$/.test(short) ? `After ${short.toLowerCase()}` : `After ${short}`;
+  return /^(Score|Goal) \d+$/.test(short) ? `After ${short.toLowerCase()}` : `After ${short}`;
 }
 
 function rowsOf(r: PeriodResult, players: Map<string, Player>): RecapRow[] {
@@ -178,10 +183,14 @@ function rowsOf(r: PeriodResult, players: Map<string, Player>): RecapRow[] {
   };
   const x = r.score ? lastDigit(r.score.scoreX) : null;
   const y = r.score ? lastDigit(r.score.scoreY) : null;
+  // A soccer square is a minute: the goal's as the match showed it, or 00 with no goals (the reverse: its digits swapped).
+  const goal = r.goalMinute != null ? r.goalMinute : null;
+  const minute = resultMinute(r) ?? undefined;
+  const swapped = goal === null ? undefined : squareMinute((goal % 10) * 10 + Math.floor(goal / 10));
   const rows: RecapRow[] = [];
-  if (r.awardsSquare) rows.push({ key: r.periodKey, label, winner: winner(r.winnerPlayerId), digits: x !== null && y !== null ? [x, y] : null, reverse: false, fixed });
+  if (r.awardsSquare) rows.push({ key: r.periodKey, label, winner: winner(r.winnerPlayerId), digits: x !== null && y !== null ? [x, y] : null, reverse: false, fixed, ...(minute ? { minute } : {}) });
   if (r.awardsReverse) {
-    rows.push({ key: `${r.periodKey}:reverse`, label: `${label} reverse`, winner: winner(r.reverseWinnerPlayerId), digits: x !== null && y !== null ? [y, x] : null, reverse: true, fixed });
+    rows.push({ key: `${r.periodKey}:reverse`, label: `${label} reverse`, winner: winner(r.reverseWinnerPlayerId), digits: x !== null && y !== null ? [y, x] : null, reverse: true, fixed, ...(swapped ? { minute: `${swapped}'` } : {}) });
   }
   return rows;
 }
@@ -282,8 +291,8 @@ export function recapLayout(card: RecapCard): RecapLayout {
   const ops: RecapOp[] = [];
   const right = RECAP_WIDTH - PAD;
 
-  if (card.sport === "basketball") {
-    // A court under the floodlights, faint: the half-court line and the center circle.
+  if (card.sport === "basketball" || card.sport === "soccer") {
+    // A court (or a pitch) under the floodlights, faint: the halfway line and the center circle.
     ops.push(...courtLines(c.yardLine));
   } else {
     // Yard lines across the turf, faint.
@@ -382,7 +391,9 @@ export function recapLayout(card: RecapCard): RecapLayout {
       y: mid + 15,
       font: display(800, 44),
       align: "right",
-      runs: row.digits
+      runs: row.minute
+        ? [{ text: row.minute, color: c.ink }]
+        : row.digits
         ? [
             { text: String(row.digits[0]), color: card.teamX.text },
             { text: "–", color: c.subtle },

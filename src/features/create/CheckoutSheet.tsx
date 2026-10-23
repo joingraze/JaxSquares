@@ -653,7 +653,7 @@ function Ticket({ game }: { game: Game }) {
           <TeamMark team={y} size="lg" className="rotate-3" />
         </div>
         <p className="mt-3 max-w-full truncate font-display text-title-3 font-extrabold text-ink">{game.name}</p>
-        <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format)}</p>
+        <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format, game)}</p>
       </div>
       {/* Perforation */}
       <div aria-hidden className="relative h-0 border-t-2 border-dashed border-ink/12">

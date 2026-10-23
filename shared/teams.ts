@@ -1,5 +1,6 @@
 // The 32 NFL teams (and, for a custom basketball board, the 30 NBA teams), for
-// custom-matchup autocomplete when the live schedule is unavailable.
+// custom-matchup autocomplete when the live schedule is unavailable. A custom
+// soccer board takes any two sides as typed (no list).
 // Abbreviations match ESPN's so a custom board reads the same as a linked one.
 // Colors are intentionally absent: we only use colors from live data.
 
@@ -48,8 +49,9 @@ export const NBA_TEAMS: readonly ProTeam[] = [
   { location: "Washington", nickname: "Wizards", abbr: "WSH" },
 ];
 
-/** The teams a custom board suggests: the NBA's on a basketball board, else the NFL's. */
+/** The teams a custom board suggests: the NBA's on a basketball board, none on a soccer board (any two sides), else the NFL's. */
 export function teamsForSport(sport?: Sport | null): readonly ProTeam[] {
+  if (sport === "soccer") return [];
   return sport === "basketball" ? NBA_TEAMS : NFL_TEAMS;
 }
 

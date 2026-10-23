@@ -73,8 +73,8 @@ describe("landing pages", () => {
 
     if (slug === HUB) {
       expect(types(doc)).toEqual(expect.arrayContaining(["Organization", "WebSite"]));
-    } else if (slug === "basketball-squares") {
-      // Heads the basketball pages: no breadcrumbs, like the hub.
+    } else if (slug === "basketball-squares" || slug === "soccer-squares") {
+      // Heads its sport's pages: no breadcrumbs, like the hub.
       expect(types(doc)).not.toContain("BreadcrumbList");
       expect(doc.querySelector(".crumbs")).toBeNull();
     } else {
@@ -132,17 +132,40 @@ describe("landing pages", () => {
     expect(footer("football-squares")).not.toContain("NCAA");
   });
 
-  it("keeps football out of the basketball pages' share image text and lists only their own printable", () => {
+  it("carries the soccer leagues' line on the soccer page only", () => {
+    const line = "JaxSquares isn't affiliated with or endorsed by MLS, the NWSL, the Premier League, LaLiga, Liga MX or UEFA.";
+    for (const { page, doc } of rendered) {
+      const footer = doc.querySelector("footer")?.textContent ?? "";
+      if (page.slug === "soccer-squares") expect(footer).toContain(line);
+      else expect(footer).not.toContain(line);
+    }
+  });
+
+  it("explains the minute board, stoppage time and a goalless match on the soccer page", () => {
+    const page = rendered.find((r) => r.page.slug === "soccer-squares")!;
+    const text = page.doc.querySelector("main")?.textContent ?? "";
+    expect(text).toMatch(/43rd minute/);
+    expect(text).toMatch(/45\+2' wins for the 45 square/);
+    expect(text).toMatch(/90\+3' is the 93rd minute/);
+    expect(text).toMatch(/00 square/);
+    // The hero board is labeled with the minute's digits, not team names.
+    expect(page.doc.querySelector(".hero-art svg")?.textContent).toContain("MINUTE · TENS");
+    // Trademarked tournament names stay off the page.
+    expect(page.html).not.toMatch(/world cup|euros?\b|copa/i);
+  });
+
+  it("keeps football out of the basketball and soccer pages' share image text and lists only their own printable", () => {
     for (const { page, doc } of rendered) {
       const alt = meta(doc, 'meta[property="og:image:alt"]');
       const cards = [...doc.querySelectorAll(".printable a[download]")].map((a) => a.getAttribute("href"));
-      if (page.slug === "basketball-squares" || page.slug === "march-madness-squares") {
+      if (["basketball-squares", "march-madness-squares", "soccer-squares"].includes(page.slug)) {
         expect(alt).not.toMatch(/football/i);
         expect(doc.querySelector("h1")?.textContent).not.toMatch(/football/i);
       } else {
         expect(alt).toBe("JaxSquares football squares board");
       }
       if (page.slug === "basketball-squares") expect(cards).toEqual(["/printables/basketball-squares-10x10-letter.pdf"]);
+      if (page.slug === "soccer-squares") expect(cards).toEqual(["/printables/soccer-squares-10x10-letter.pdf"]);
       if (page.slug === "printable-football-squares") {
         expect(cards).toHaveLength(4);
         expect(cards.every((href) => href?.startsWith("/printables/football-squares-"))).toBe(true);
@@ -227,7 +250,8 @@ describe("printables", () => {
   it.each(Object.keys(SHEETS) as SheetKind[])("%s has team lines, amount lines and the live-board QR", (kind) => {
     const doc = new DOMParser().parseFromString(sheetHtml(kind, assets), "text/html");
     const text = doc.body.textContent ?? "";
-    for (const label of ["Team across the top", "Team down the side", "Square price", "Prizes", "Run this board live", "jaxsquares.com/new"]) {
+    const bands = kind === "soccer-10x10-letter" ? ["Minute · ones", "Minute · tens", "Match"] : ["Team across the top", "Team down the side"];
+    for (const label of [...bands, "Square price", "Prizes", "Run this board live", "jaxsquares.com/new"]) {
       expect(text).toContain(label);
     }
     expect(doc.querySelector("svg[aria-label^='QR code']")).not.toBeNull();
@@ -242,6 +266,7 @@ describe("printables", () => {
     expect(count("board-10x10-a4")).toBe(20);
     expect(count("board-5x5")).toBe(10);
     expect(count("basketball-10x10-letter")).toBe(20);
+    expect(count("soccer-10x10-letter")).toBe(20);
   });
 
   it("matches each printable on the page to a sheet", () => {
@@ -253,6 +278,13 @@ describe("printables", () => {
     expect(doc.querySelector("h1")?.textContent).toBe("Basketball squares");
     expect(doc.body.textContent).toContain("Use the Half and Final lines");
     expect(new DOMParser().parseFromString(sheetHtml("board-10x10-letter", assets), "text/html").querySelector("h1")?.textContent).toBe("Football squares");
+  });
+
+  it("heads the soccer board as soccer, with lines for the goals and the stoppage-time rules", () => {
+    const doc = new DOMParser().parseFromString(sheetHtml("soccer-10x10-letter", assets), "text/html");
+    expect(doc.querySelector("h1")?.textContent).toBe("Soccer squares");
+    const text = doc.body.textContent ?? "";
+    for (const label of ["1st goal", "Each goal", "Last goal", "Minute", "45th minute", "00 wins"]) expect(text).toContain(label);
   });
 
   it("draws exactly the QR modules for the new-board page", () => {

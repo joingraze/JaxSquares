@@ -10,7 +10,7 @@
 import type { ReactNode } from "react";
 import { rulesOf } from "../../../shared/formats";
 import { SEASON_NUMBERS_INFO } from "../../../shared/season";
-import { playsHalves, regulationPeriods, wordsFor, type GameKind } from "../../../shared/sports";
+import { playsHalves, regulationPeriods, sportOf, wordsFor, type GameKind } from "../../../shared/sports";
 import type { GameFormat, LinkedEvent, SeasonEvent, SeasonNumbers, SeasonTeam, Team } from "../../../shared/types";
 import { CalendarIcon, ChevronRightIcon, ClockIcon, GridIcon, LiveIcon, PencilIcon, TrophyIcon, TvIcon } from "../../components/icons";
 import { Avatar, cx, TeamMark } from "../../components/ui";
@@ -78,10 +78,11 @@ export function ReviewStep({
   venue = null,
 }: ReviewStepProps) {
   const words = wordsFor(kind);
+  const sport = sportOf(kind);
   const rules = rulesOf(format);
-  const lineup = prizeLineup(format);
+  const lineup = prizeLineup(format, sport);
   // A venue's prizes, one line each ("Q1 · Free appetizer"); none yet is flagged like an unset price.
-  const venuePrizes = venue ? momentPrizes(format) : [];
+  const venuePrizes = venue ? momentPrizes(format, sport) : [];
   const prizeLines = venuePrizes.map((p) => [p.label, p.amount, p.note, p.reverse && `Reverse ${[p.reverse.amount, p.reverse.note].filter(Boolean).join(" ")}`].filter(Boolean).join(" · "));
   const modifiers = [format.reverse && "Reverse", format.freshNumbers && (playsHalves(kind) ? "New numbers each half" : "New numbers each Q")].filter(Boolean) as string[];
   const when = linked ? kickoffLine(linked.startsAt, now) : kickoffLine(kickoff, now);
@@ -118,7 +119,7 @@ export function ReviewStep({
                 {linked ? <LiveIcon size={14} className="shrink-0 text-ink-brand" /> : <ClockIcon size={14} className="shrink-0 text-ink-brand" />}
                 <span className="truncate">{linked ? `Live scores · ${when}` : kickoff === null ? "No set time" : `${words.starts} ${when}`}</span>
               </span>
-              <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[rulesTitle(format), boardHeadline(format), ...modifiers].join(" · ")}</span>
+              <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[rulesTitle(format, sport), boardHeadline(format, sport), ...modifiers].join(" · ")}</span>
             </span>
           </div>
         </section>
@@ -161,14 +162,14 @@ export function ReviewStep({
             </ReviewCard>
           )}
 
-          <ReviewCard step="format" steps={steps} summary={`${rulesTitle(format)}, ${boardHeadline(format)}`} onEdit={onEdit}>
+          <ReviewCard step="format" steps={steps} summary={`${rulesTitle(format, sport)}, ${boardHeadline(format, sport)}`} onEdit={onEdit}>
             <div className="flex items-center gap-3">
               <span aria-hidden className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-surface-4">
                 <FormatGlyph rules={rules} segments={regulationPeriods(kind)} />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{rulesTitle(format)}</span>
-                <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[boardHeadline(format), ...modifiers].join(" · ")}</span>
+                <span className="block truncate font-display text-headline font-extrabold leading-tight text-ink">{rulesTitle(format, sport)}</span>
+                <span className="mt-0.5 block truncate text-footnote text-ink-muted">{[boardHeadline(format, sport), ...modifiers].join(" · ")}</span>
               </span>
             </div>
           </ReviewCard>

@@ -91,13 +91,22 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   at the draw, board size never (409).
 - Every score change may show an amount per kind of score (`Prize.byKind`,
   score moment only; `amount` is the flat amount with score types off and a
-  quiet fallback). Score kinds and every score are football-only: a
-  basketball board (`shared/sports.ts`) never shows them, and a score rule on
-  one is a 400. Five kinds: `touchdown`, `fieldGoal`, `extraPoint`,
-  `twoPoint`, `safety`; every entry gets one, derived on read from the
+  quiet fallback). Score kinds are football-only (`byKind` elsewhere is a
+  400), and so is every score except soccer's every goal: a basketball board
+  (`shared/sports.ts`) never shows them, and a score rule on one is a 400.
+  Five kinds: `touchdown`, `fieldGoal`, `extraPoint`, `twoPoint`, `safety`; every entry gets one, derived on read from the
   ordered entries (`entryPlays` in `shared/squares.ts`), never stored. A
   stored legacy `byKind.conversion` reads as both `extraPoint` and `twoPoint`
   (`kindAmount` / `upgradeFormat`); new input with it is a 400.
+- Soccer boards (`shared/soccer.ts`, docs/ARCHITECTURE.md "Soccer boards")
+  are goal-minute boards: a square is a minute (column = ones, row = tens),
+  and the first goal, every goal and the last goal win (`first` / `score` /
+  `final`; a quarter on one is a 400), whoever scored. First-half stoppage
+  counts as 45, other stoppage runs on (90+3' is 93), extra time keeps the
+  last two digits; a goalless match gives 00 each goal moment once. The board
+  minute comes from `Score.minute` / `added` through `boardMinute`, derived
+  on read, never stored; show a result's through `resultMinute`. One draw
+  (fresh numbers are a 400) and no season boards.
 - The final's square can take "the rest of the board total" (`Prize.rest`,
   final square only, needs a square price): board total (price × all squares
   before the draw, × claimed squares after) minus every other prize a claimed

@@ -114,6 +114,8 @@ export interface BoardDiagramOptions {
   win: { x: number; y: number };
   /** Tint the winning row and column and ring their numbers. */
   guide?: boolean;
+  /** What the top and side stand for, when not the teams (a soccer board's minute ones and tens). */
+  bands?: { x: string; y: string };
   title: string;
 }
 
@@ -128,7 +130,7 @@ function noise(r: number, c: number): number {
  * side, digits drawn, most squares claimed (a friend's color in each) and the
  * winning square lit gold. Colors come from the page's theme tokens.
  */
-export function boardDiagram({ id, win, guide = false, title }: BoardDiagramOptions): string {
+export function boardDiagram({ id, win, guide = false, bands, title }: BoardDiagramOptions): string {
   const n = 10;
   const cell = 26;
   const gap = 3;
@@ -140,11 +142,12 @@ export function boardDiagram({ id, win, guide = false, title }: BoardDiagramOpti
   const winRow = DRAW_Y.indexOf(win.y) + 1;
   const parts: string[] = [];
 
-  // Team names: across the top and down the side.
+  // Team names (or the bands' names): across the top and down the side.
   const mid = band + cell + gap + (span - cell - gap) / 2;
-  parts.push(`<text class="bd-team bd-tx" x="${mid}" y="14" text-anchor="middle">${TEAM_X.name.toUpperCase()}</text>`);
+  const [top, side] = bands ? [bands.x, bands.y] : [TEAM_X.name, TEAM_Y.name];
+  parts.push(`<text class="bd-team bd-tx" x="${mid}" y="14" text-anchor="middle">${esc(top.toUpperCase())}</text>`);
   parts.push(
-    `<text class="bd-team bd-ty" x="0" y="0" text-anchor="middle" transform="translate(14 ${mid}) rotate(-90)">${TEAM_Y.name.toUpperCase()}</text>`,
+    `<text class="bd-team bd-ty" x="0" y="0" text-anchor="middle" transform="translate(14 ${mid}) rotate(-90)">${esc(side.toUpperCase())}</text>`,
   );
 
   parts.push(`<rect class="bd-corner" x="${at(0)}" y="${at(0)}" width="${cell}" height="${cell}" rx="6"/>`);

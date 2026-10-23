@@ -9,7 +9,7 @@
 // the board's own.
 
 import { formatAmount, formatRange, periodPhrase, scorePlayLabel, unitOf } from "../../../shared/formats";
-import { primaryAward, resolveResults, type PeriodResult } from "../../../shared/squares";
+import { primaryAward, resolveResults, resultMinute, type PeriodResult } from "../../../shared/squares";
 import type { Activity, AmountUnit, Game, GameState, Player, Team } from "../../../shared/types";
 import { tvShowAll, type TvShow } from "../../../shared/tv";
 import { CLAIM_LINE, collectedFor, freeToPlayLines, shownHouseRules } from "../../../shared/venue";
@@ -149,7 +149,8 @@ export function tvWinners(
       player: who(main.playerId),
       prize: show.prizes ? (main.reverse ? r.reversePrize : r.prize) || null : null,
       collected: !!collectedFor(state, r.periodKey, main.reverse, main.playerId),
-      score: r.score ? (main.reverse ? `${r.score.scoreY}–${r.score.scoreX}` : `${r.score.scoreX}–${r.score.scoreY}`) : null,
+      // A soccer result's is its minute ("90+4'").
+      score: resultMinute(r) ?? (r.score ? (main.reverse ? `${r.score.scoreY}–${r.score.scoreX}` : `${r.score.scoreX}–${r.score.scoreY}`) : null),
       reverseOnly: main.reverse,
       reverse: showReverse
         ? { label: ["Reverse", show.amounts ? money(r.reverseAmount, unit) : null].filter(Boolean).join(" · "), player: who(r.reverseWinnerPlayerId) }
@@ -217,8 +218,8 @@ export function celebrationFor(
   return {
     id: activity.id,
     periodKey: r.periodKey,
-    title: TITLES[r.periodKey] ?? `${periodPhrase(r.periodKey, r.label).short} winner`,
-    kind: r.scoreKind ? scorePlayLabel(r.scoreKind, true) : null,
+    title: (game.sport === "soccer" ? undefined : TITLES[r.periodKey]) ?? `${periodPhrase(r.periodKey, r.label, game.sport).short} winner`,
+    kind: r.scoreKind ? scorePlayLabel(r.scoreKind, true) : resultMinute(r),
     player: w.player,
     amount: show.amounts ? money(main.amount, unit) : null,
     prize: w.prize,

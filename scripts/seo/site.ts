@@ -14,6 +14,7 @@ export const LANDING_SLUGS = [
   "college-football-squares",
   "basketball-squares",
   "march-madness-squares",
+  "soccer-squares",
   "printable-football-squares",
   "how-to-play-football-squares",
 ] as const;
@@ -127,8 +128,8 @@ export const PRINT_QR_LABEL = "jaxsquares.com/new";
 
 export interface Printable {
   id: string;
-  /** The game the sheet is for: the football printables page lists the football ones, the basketball page its own. */
-  sport: "football" | "basketball";
+  /** The game the sheet is for: the football printables page lists the football ones, the basketball and soccer pages their own. */
+  sport: "football" | "basketball" | "soccer";
   /** Published PDF path. */
   href: string;
   /** Preview image (first page) published next to the pages. */
@@ -190,6 +191,16 @@ export const PRINTABLES = [
     name: "Basketball squares board",
     paper: "US Letter, landscape",
     blurb: "A 100-square board with winner lines for each quarter, halftime and the final.",
+  },
+  {
+    id: "soccer-10x10-letter",
+    sport: "soccer",
+    href: "/printables/soccer-squares-10x10-letter.pdf",
+    thumb: "/seo/printables/soccer-squares-10x10-letter.webp",
+    thumbSize: { width: 560, height: 433 },
+    name: "Soccer squares board",
+    paper: "US Letter, landscape",
+    blurb: "A 100-square minute board: the tens down the side, the ones across the top, with lines for the first, every and last goal.",
   },
 ] as const satisfies readonly Printable[];
 

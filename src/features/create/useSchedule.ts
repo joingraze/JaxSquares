@@ -1,9 +1,10 @@
 // Real games for the picker. Football goes a week at a time: on mount, NFL and
 // college each load their first week with games still to link plus the list
 // of weeks after it; a later week's games load only when someone opens it
-// (useWeekGames). Basketball goes by day: its leagues load only once wanted
-// (the host picks Basketball, or football has nothing to link), each with the
-// next 7 days' games; a day further out loads when picked (useDayGames).
+// (useWeekGames). Basketball and soccer go by day: their leagues load only
+// once wanted (the host picks the sport, or football has nothing to link),
+// each with the next 7 days' games; a day further out loads when picked
+// (useDayGames).
 // The schedule endpoint answers 200 with `unavailable: true` when ESPN can't be
 // reached; that (or an empty week) just means "lead with custom teams".
 
@@ -17,19 +18,19 @@ export type ScheduleLeague = Exclude<League, "custom">;
 
 export interface LeagueSchedule {
   loading: boolean;
-  /** Games in `week` (football) or the next 7 days (basketball) that can still be linked, soonest first. */
+  /** Games in `week` (football) or the next 7 days (basketball, soccer) that can still be linked, soonest first. */
   events: ScheduleEvent[];
   /** The week `events` belong to: this week, or next week once this one's games are over (football). */
   week: ScheduleWeek | null;
   /** The weeks after it, through the end of the season (football). */
   weeks: ScheduleWeek[];
-  /** The days `events` covers, YYYYMMDD, today first (basketball). */
+  /** The days `events` covers, YYYYMMDD, today first (basketball, soccer). */
   dates: string[];
 }
 
 export type Schedule = Record<ScheduleLeague, LeagueSchedule>;
 
-const ALL: readonly ScheduleLeague[] = [...SPORT_LEAGUES.football, ...SPORT_LEAGUES.basketball];
+const ALL: readonly ScheduleLeague[] = [...SPORT_LEAGUES.football, ...SPORT_LEAGUES.basketball, ...SPORT_LEAGUES.soccer];
 const LOADING: LeagueSchedule = { loading: true, events: [], week: null, weeks: [], dates: [] };
 const NOTHING: LeagueSchedule = { loading: false, events: [], week: null, weeks: [], dates: [] };
 /** Session cache so going back and forth doesn't flash skeletons or refetch. */
@@ -77,8 +78,8 @@ function initial(): Schedule {
 }
 
 /**
- * Every league's games: football's load on mount, basketball's once `sports`
- * includes it. A league not asked for yet reads as loading.
+ * Every league's games: football's load on mount, basketball's and soccer's
+ * once `sports` includes them. A league not asked for yet reads as loading.
  */
 export function useSchedule(sports: readonly BoardSport[] = ["football"]): Schedule {
   const [schedule, setSchedule] = useState<Schedule>(initial);
@@ -161,7 +162,7 @@ export function useWeekGames(league: ScheduleLeague, weekId: string | null, atte
   return usePeriodGames(league, weekId ? { week: weekId } : null, attempt);
 }
 
-/** One basketball day's games ("20260402"), fetched once picked (null = none picked). Bump `attempt` to retry. */
+/** One basketball or soccer day's games ("20260402"), fetched once picked (null = none picked). Bump `attempt` to retry. */
 export function useDayGames(league: ScheduleLeague, date: string | null, attempt = 0): WeekGames | null {
   return usePeriodGames(league, date ? { date } : null, attempt);
 }

@@ -10,7 +10,7 @@ import {
   matchingPreset,
   momentsLabel,
   periodPhrase,
-  PRESET_INFO,
+  presetInfo,
   prizeFor,
   prizeRange,
   ruleFor,
@@ -39,7 +39,8 @@ import {
   type PeriodResult,
 } from "../../../shared/squares";
 import { isCohostOf, type HostRole } from "../../../shared/cohosts";
-import { isBasketball, periodName, wordsFor, type GameKind } from "../../../shared/sports";
+import { boardMinute, goalBoardMinute, goalsOf, minuteCell, minuteText, NO_GOALS_MINUTE, parseMinute, reverseMinuteCell, squareMinute } from "../../../shared/soccer";
+import { isBasketball, isSoccer, periodName, wordsFor, type GameKind } from "../../../shared/sports";
 import type { Activity, AmountUnit, Game, GameState, GameStatus, MomentRule, NumberDraw, Player, Sport, Square } from "../../../shared/types";
 
 /** Matches docs/testids.md: `data-state` on every board square. */
@@ -320,7 +321,9 @@ export function headlineScore(state: Pick<GameState, "game" | "scores" | "live">
   for (let i = order.length - 1; i >= 0; i--) {
     const s = scores.find((x) => x.periodKey === order[i].key);
     if (!s) continue;
-    if (everyScoreIndex(order[i].key) !== null) return { scoreX: s.scoreX, scoreY: s.scoreY, detail: game.status === "final" ? "Final" : "Latest score" };
+    // A soccer goal: its minute ("Goal 2 · 43'").
+    const goal = typeof s.minute === "number" ? `${order[i].label} · ${minuteText(s.minute, s.added ?? 0)}` : null;
+    if (everyScoreIndex(order[i].key) !== null) return { scoreX: s.scoreX, scoreY: s.scoreY, detail: game.status === "final" ? "Final" : (goal ?? "Latest score") };
     return { scoreX: s.scoreX, scoreY: s.scoreY, detail: order[i].key === "final" ? "Final" : `End of ${order[i].label}` };
   }
   return null;
@@ -522,6 +525,13 @@ export interface NowView {
   /** Where the next common score lands (TD or field goal, either team), and whose square it is. */
   outcomes: { play: ScoringPlay; cell: Cell; ownerId: string | null }[];
   mineCount: number;
+  /**
+   * A soccer board (its squares are minutes): which minute's square this is
+   * and why. "now": a goal now lands here (the match clock); "last": the last
+   * goal's square, if no more goals come; "none": no goals yet, so square 00.
+   * `next` is my next minute after the clock's (live only).
+   */
+  goal?: { minute: number; text: string; basis: "now" | "last" | "none"; next: { minute: number; text: string; inMinutes: number } | null };
 }
 
 /** The four plays worth showing as "what if": a touchdown or a field goal by either team. */
@@ -541,6 +551,7 @@ const OUTCOME_PLAYS: ScoringPlay[] = [
 export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners" | "live">, me: string): NowView | null {
   const { game, live, squares } = state;
   if (game.status !== "locked" || !game.numbers || live?.state === "post") return null;
+  if (isSoccer(game)) return goalNow(state, me);
   const rules = rulesOf(game.format);
   let periodKey: string | null = null;
   let rule: MomentRule | null;
@@ -610,6 +621,101 @@ export function rightNow(state: Pick<GameState, "game" | "squares" | "scores" | 
     range: prizeRange(reverseOnly ? rule?.reverse : rule?.square),
     unit: unitOf(game.format),
   };
+}
+
+/** The minute a soccer board's "right now" is about: the clock's while it runs, else the last goal's or 00 (see NowView.goal). */
+function goalNow(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners" | "live">, me: string): NowView | null {
+  const { game, live, squares } = state;
+  const draw = drawFor(game, SHARED_DRAW_KEY);
+  if (!draw) return null;
+  const rules = rulesOf(game.format);
+  const inPlay = momentInPlay(state, live?.period ?? 1);
+  let { periodKey, rule } = inPlay;
+  if (!rule) return null;
+  const goals = goalsOf(state.scores);
+  const halftime = /^(ht|half)/i.test(live?.detail.trim() ?? "");
+  const clock = live?.state === "in" && !halftime ? parseMinute(live.clock) : null;
+  let minute: number;
+  let basis: "now" | "last" | "none";
+  if (clock) {
+    minute = boardMinute(clock.minute, clock.added);
+    basis = "now";
+  } else if (goals.length === 0) {
+    minute = NO_GOALS_MINUTE;
+    basis = "none";
+  } else if (ruleFor(rules, "final")) {
+    // No clock to say when the next goal comes: what stands is the last goal's square, for the last goal.
+    minute = goalBoardMinute(goals[goals.length - 1]);
+    basis = "last";
+    periodKey = "final";
+    rule = ruleFor(rules, "final")!;
+  } else return null;
+  // As the match shows it: the clock's "45+2'", the last goal's "90+4'", or square 00.
+  const last = goals[goals.length - 1];
+  const shownMinute = clock ? minuteText(clock.minute, clock.added) : basis === "last" ? minuteText(last.minute ?? 0, last.added ?? 0) : squareMinute(minute);
+  const reverseOnly = !rule.square && !!rule.reverse;
+  const cell = (reverseOnly ? reverseMinuteCell : minuteCell)(minute, draw);
+  if (!cell) return null;
+  const owner = (c: Cell) => squareAt(squares, c.row, c.col)?.playerId ?? null;
+  const ownerId = owner(cell);
+  const mineKeys = new Set(squares.filter((s) => s.playerId === me).map((s) => cellKey(s.row, s.col)));
+  const rev = rule.reverse && !reverseOnly ? reverseMinuteCell(minute, draw) : null;
+  // My next minute on the clock: the next one whose square (or reverse square) I hold.
+  let next: NonNullable<NowView["goal"]>["next"] = null;
+  if (clock && mineKeys.size > 0) {
+    const at = clock.minute + clock.added;
+    for (let m = at + 1; m <= at + 100 && !next; m++) {
+      const c = (reverseOnly ? reverseMinuteCell : minuteCell)(m % 100, draw);
+      if (c && mineKeys.has(cellKey(c.row, c.col))) next = { minute: m % 100, text: minuteText(m), inMinutes: m - at };
+    }
+  }
+  const head = headlineScore(state);
+  const label = periodKey ? (fixedPeriodsOf(game).find((p) => p.key === periodKey)?.label ?? "Next goal") : "Next goal";
+  const labels = axisLabels(draw, gridSize(game.format.boardSize));
+  return {
+    sport: game.sport,
+    live: basis === "now",
+    periodKey,
+    label,
+    everyScore: false,
+    scoreX: live && live.state !== "pre" ? live.scoreX : (head?.scoreX ?? 0),
+    scoreY: live && live.state !== "pre" ? live.scoreY : (head?.scoreY ?? 0),
+    detail: clock ? minuteText(clock.minute, clock.added) : null,
+    drawKey: SHARED_DRAW_KEY,
+    cell,
+    digits: { x: labels.x[cell.col], y: labels.y[cell.row] },
+    ownerId,
+    mine: ownerId !== null && ownerId === me,
+    reverse: rev ? { cell: rev, ownerId: owner(rev) } : null,
+    path: null,
+    threat: null,
+    outcomes: [],
+    mineCount: mineKeys.size,
+    reverseOnly,
+    amount: !reverseOnly && rule.square?.rest ? restSoFar(state) : ((reverseOnly ? rule.reverse?.amount : rule.square?.amount) ?? null),
+    rest: !reverseOnly && !!rule.square?.rest,
+    range: prizeRange(reverseOnly ? rule.reverse : rule.square),
+    unit: unitOf(game.format),
+    goal: { minute, text: shownMinute, basis, next },
+  };
+}
+
+/**
+ * A soccer board's "Right now" line: "Yours if a goal comes now", "Wins the
+ * first goal if it comes now", "Wins the last goal if no more goals come",
+ * "Wins if there are no goals".
+ */
+export function goalNowSentence(now: Pick<NowView, "periodKey" | "mine" | "ownerId" | "goal">): string {
+  const verb = now.mine ? "Yours" : now.ownerId ? "Wins" : "Nobody wins";
+  const what = now.periodKey === "first" ? " the first goal" : now.periodKey === "final" ? " the last goal" : now.periodKey === null ? " the next goal" : "";
+  switch (now.goal?.basis) {
+    case "now":
+      return now.periodKey === "final" ? `${verb} if a goal now is the last one` : `${verb}${what} if it comes now`;
+    case "last":
+      return `${verb} the last goal if no more goals come`;
+    default:
+      return `${verb} if there are no goals`;
+  }
 }
 
 /**
@@ -868,7 +974,9 @@ export function fallbackActivityText(a: Activity, state: Pick<GameState, "game" 
       return d.auto ? `${wordsFor(state.game).start}! Numbers are locked in` : "Numbers drawn. Good luck!";
     case "score": {
       const label = typeof d.label === "string" ? d.label : "Score";
-      return `${label}: ${teamX.abbr || teamX.name} ${Number(d.scoreX) || 0} – ${teamY.abbr || teamY.name} ${Number(d.scoreY) || 0}`;
+      // A soccer goal says its minute: "Goal 2 · 43': ARS 1 – 1 CHE".
+      const minute = typeof d.minute === "number" ? ` · ${minuteText(d.minute, typeof d.added === "number" ? d.added : 0)}` : "";
+      return `${label}${minute}: ${teamX.abbr || teamX.name} ${Number(d.scoreX) || 0} – ${teamY.abbr || teamY.name} ${Number(d.scoreY) || 0}`;
     }
     case "winner": {
       const label = typeof d.label === "string" ? d.label : "This period";
@@ -895,8 +1003,8 @@ export function claimedCount(state: Pick<GameState, "game" | "squares">): { clai
   return { claimed: state.squares.length, total: totalSquares(state.game.format.boardSize) };
 }
 
-export function formatLabel(game: Pick<Game, "format">): string {
+export function formatLabel(game: Pick<Game, "format"> & Partial<Pick<Game, "sport">>): string {
   const rules = rulesOf(game.format);
   const exact = matchingPreset(rules);
-  return exact ? PRESET_INFO[exact.preset].short : momentsLabel(rules);
+  return exact ? presetInfo(exact.preset, game.sport).short : momentsLabel(rules, game.sport);
 }

@@ -8,7 +8,8 @@
 import { describe, expect, it } from "vitest";
 import { rulesForPreset, withRules } from "../../shared/formats";
 import { periodKeyForLive, periodScoresFromLinescores } from "../../shared/squares";
-import { BASKETBALL_LEAGUES, defaultPresetFor, playsHalves, regulationPeriods, type BasketballLeague } from "../../shared/sports";
+import { boardMinute, minuteText, parseMinute } from "../../shared/soccer";
+import { BASKETBALL_LEAGUES, defaultPresetFor, playsHalves, regulationPeriods, SOCCER_LEAGUES, type BasketballLeague, type DayLeague, type SoccerLeague } from "../../shared/sports";
 import type { LinkedEvent, LiveUpdate, ScheduleEvent } from "../../shared/types";
 import { espnDate, fetchEspnJson, parseDayId, parseSchedule, scoreboardUrl } from "./espn";
 import { fetchLiveForEvent, getDaySchedule, getSchedule, getSeasonTeams, getTeamSeason, SCHEDULE_DAYS } from "./index";
@@ -40,7 +41,7 @@ const linkOf = (e: ScheduleEvent, startsAt = e.startsAt): LinkedEvent => ({ prov
 const line = (u: LiveUpdate) => `${u.live.scoreX}-${u.live.scoreY} [${u.linescoresX.join(" ")}] / [${u.linescoresY.join(" ")}] ${u.live.detail}`;
 
 /** A slate's games as the schedule parser reads them, finished ones included. */
-async function slate(league: BasketballLeague, date: string): Promise<ScheduleEvent[]> {
+async function slate(league: DayLeague, date: string): Promise<ScheduleEvent[]> {
   return parseSchedule(await fetchEspnJson(scoreboardUrl(league, parseDayId(date)!), 10_000), league);
 }
 
@@ -105,33 +106,36 @@ describe.each(["nfl", "ncaaf"] as const)("%s (football, by week)", (league) => {
   }, 60_000);
 });
 
-describe.each(BASKETBALL_LEAGUES)("%s (basketball, by day)", (league) => {
-  it("reads the next 7 days, today first, and a date ahead", async () => {
-    const result = await getDaySchedule(league);
-    if (!result) throw new Error(`${league} schedule unavailable`);
-    const dates = result.dates ?? [];
-    expect(dates).toHaveLength(SCHEDULE_DAYS);
-    // Consecutive days, starting with today's slate (or last night's, before 6am Eastern).
-    for (let i = 1; i < dates.length; i++) expect(parseDayId(dates[i])! - parseDayId(dates[i - 1])!).toBe(DAY_MS);
-    expect(Math.abs(parseDayId(dates[0])! - (NOW - 10 * 3_600_000))).toBeLessThan(DAY_MS + 3_600_000);
-    const perDay = dates.map((d) => `${d}: ${result.events.filter((e) => espnDate(e.startsAt - 10 * 3_600_000) === d).length}`);
-    console.log(`${league}: ${result.events.length} games in the next ${SCHEDULE_DAYS} days (${perDay.join(", ")})`);
-    for (const e of result.events) {
-      expect(e.league).toBe(league);
-      expect(e.state).not.toBe("post");
-      expect(e.home.name && e.away.name).toBeTruthy();
-    }
-    if (result.events.length === 0) console.log(`  ${league}: nothing to link this week (off-season?)`);
-    else {
-      console.log(`  first: ${result.events.slice(0, 3).map((e) => `${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state}${e.neutralSite ? " (neutral)" : ""} ${JSON.stringify(e.ranks ?? {})}`).join(" | ")}`);
-      console.log(`  ranked games: ${result.events.filter((e) => e.ranks).length}`);
-    }
+/** A by-day league's next 7 days (today's slate first) and one date ahead, as the game picker asks. */
+async function checkDays(league: DayLeague): Promise<void> {
+  const result = await getDaySchedule(league);
+  if (!result) throw new Error(`${league} schedule unavailable`);
+  const dates = result.dates ?? [];
+  expect(dates).toHaveLength(SCHEDULE_DAYS);
+  // Consecutive days, starting with today's slate (or last night's, before 6am Eastern).
+  for (let i = 1; i < dates.length; i++) expect(parseDayId(dates[i])! - parseDayId(dates[i - 1])!).toBe(DAY_MS);
+  expect(Math.abs(parseDayId(dates[0])! - (NOW - 10 * 3_600_000))).toBeLessThan(DAY_MS + 3_600_000);
+  const perDay = dates.map((d) => `${d}: ${result.events.filter((e) => espnDate(e.startsAt - 10 * 3_600_000) === d).length}`);
+  console.log(`${league}: ${result.events.length} games in the next ${SCHEDULE_DAYS} days (${perDay.join(", ")})`);
+  for (const e of result.events) {
+    expect(e.league).toBe(league);
+    expect(e.state).not.toBe("post");
+    expect(e.home.name && e.away.name).toBeTruthy();
+  }
+  if (result.events.length === 0) console.log(`  ${league}: nothing to link this week (off-season?)`);
+  else {
+    console.log(`  first: ${result.events.slice(0, 3).map((e) => `${e.shortName} ${new Date(e.startsAt).toISOString()} ${e.state}${e.neutralSite ? " (neutral)" : ""} ${JSON.stringify(e.ranks ?? {})}`).join(" | ")}`);
+    console.log(`  ranked games: ${result.events.filter((e) => e.ranks).length}`);
+  }
 
-    const ahead = espnDate(NOW + 3 * DAY_MS);
-    const day = await getDaySchedule(league, ahead);
-    expect(day?.dates).toEqual([ahead]);
-    console.log(`  ${ahead}: ${day?.events.length} games`);
-  }, 60_000);
+  const ahead = espnDate(NOW + 3 * DAY_MS);
+  const day = await getDaySchedule(league, ahead);
+  expect(day?.dates).toEqual([ahead]);
+  console.log(`  ${ahead}: ${day?.events.length} games`);
+}
+
+describe.each(BASKETBALL_LEAGUES)("%s (basketball, by day)", (league) => {
+  it("reads the next 7 days, today first, and a date ahead", () => checkDays(league), 60_000);
 
   it("parses a past slate's finals onto the board's moments", async () => {
     const games = (await slate(league, PAST_SLATES[league])).filter((e) => e.state === "post");
@@ -235,105 +239,80 @@ describe("college basketball's Division I filter", () => {
   }, 60_000);
 });
 
-// Soccer (goal-minute squares): the raw shape ESPN gives, logged so the parser
-// is built on it. Goals with their minute (stoppage time, extra time, own
-// goals, penalties, a shootout), the match clock while it's on, and the
-// summary endpoint's view of the same match.
-describe("soccer: what ESPN sends", () => {
-  const SOCCER = "https://site.api.espn.com/apis/site/v2/sports/soccer";
-  const rec = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
-  const arr = (v: unknown) => (Array.isArray(v) ? (v as unknown[]) : []);
-  const statusLine = (s: unknown) => {
-    const st = rec(s);
-    const t = rec(st.type);
-    return `period ${String(st.period)} clock ${String(st.clock)} "${String(st.displayClock)}" ${String(t.name)} ${String(t.state)} "${String(t.detail)}" "${String(t.shortDetail)}"`;
-  };
-  const detailLine = (d: unknown) => {
-    const x = rec(d);
-    const clock = rec(x.clock);
-    return `${String(rec(x.type).text)} clock ${String(clock.value)} "${String(clock.displayValue)}" team ${String(rec(x.team).id)} scoring ${String(x.scoringPlay)} own ${String(x.ownGoal)} pen ${String(x.penaltyKick)} shootout ${String(x.shootout)} value ${String(x.scoreValue)}`;
-  };
-  // Goals worth a look: stoppage time ("45'+2'"), extra time (past 90'), own goals and the shootout.
-  const interesting = (d: unknown) => {
-    const x = rec(d);
-    const shown = String(rec(x.clock).displayValue ?? "");
-    return shown.includes("+") || Number(rec(x.clock).value) > 5400 || x.ownGoal === true || x.shootout === true;
-  };
-  async function scan(league: string, date: string, all: boolean) {
-    const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${date}`, 15_000));
-    for (const e of arr(board.events)) {
-      const ev = rec(e);
-      const comp = rec(arr(ev.competitions)[0]);
-      const goals = arr(comp.details).filter((d) => rec(d).scoringPlay === true);
-      const shown = all ? goals : goals.filter(interesting);
-      if (shown.length === 0) continue;
-      const score = arr(comp.competitors).map((c) => `${String(rec(rec(c).team).id)}:${String(rec(c).homeAway)}:${String(rec(c).score)}`).join(" ");
-      console.log(`  ${league} ${date} ${String(ev.id)} ${String(ev.shortName)} [${score}] ${statusLine(comp.status ?? ev.status)}`);
-      for (const d of shown) console.log(`      ${detailLine(d)}`);
-    }
+// Soccer (goal-minute squares): each league's days, a finished match's goals
+// with their minutes (the scoreboard and the summary must agree, and add up
+// to the score), and the clock of anything on right now.
+
+/** Past dates with finished matches, tried in order until one has some (any month, off-season included). */
+const SOCCER_PAST: Record<SoccerLeague, string[]> = {
+  mls: ["20251018", "20251004", "20250927"],
+  nwsl: ["20251102", "20251018", "20251004"],
+  epl: ["20251018", "20251025", "20251101"],
+  laliga: ["20251018", "20251025", "20251101"],
+  ligamx: ["20251018", "20251025", "20251004"],
+  ucl: ["20250506", "20251021", "20251022"],
+};
+
+const goalsLine = (u: LiveUpdate) =>
+  (u.goals ?? []).map((g) => `${minuteText(g.minute, g.added)}${g.team}->${String(boardMinute(g.minute, g.added)).padStart(2, "0")}`).join(" ");
+
+/** A finished match's goals, read from the scoreboard and again from the summary. */
+async function checkGoals(league: SoccerLeague, game: ScheduleEvent): Promise<void> {
+  const update = await fetchLiveForEvent(linkOf(game));
+  console.log(`    final ${game.shortName}: ${update ? `${update.live.scoreX}-${update.live.scoreY} "${update.live.detail}" goals ${goalsLine(update)}` : "null"}`);
+  expect(update, `${league} ${game.eventId} live lookup`).not.toBeNull();
+  const u = update!;
+  expect(u.isFinal).toBe(true);
+  const goals = u.goals;
+  expect(goals, `${league} ${game.eventId} goals list`).toBeDefined();
+  // Every goal in the score is listed, in order, with a minute on the clock (shootouts never are).
+  expect(goals!.length).toBe(u.live.scoreX + u.live.scoreY);
+  for (let i = 0; i < goals!.length; i++) {
+    expect(goals![i].minute).toBeGreaterThanOrEqual(0);
+    expect(goals![i].minute).toBeLessThanOrEqual(130);
+    if (i > 0) expect(goals![i].minute + goals![i].added).toBeGreaterThanOrEqual(goals![i - 1].minute + goals![i - 1].added);
   }
-  const weekends = ["20250816", "20250817", "20250823", "20250830", "20250913", "20250920", "20250927", "20251004", "20251018", "20251025", "20251101", "20251108", "20251122", "20251129", "20251206", "20251213", "20251220", "20251227", "20260103", "20260117", "20260131", "20260214", "20260228", "20260314", "20260404", "20260418", "20260502", "20260516", "20261017", "20261018"];
+  const perSide = [goals!.filter((g) => g.team === "x").length, goals!.filter((g) => g.team === "y").length];
+  if (perSide[0] !== u.live.scoreX) console.log(`    sides: ${perSide.join("-")} by team vs ${u.live.scoreX}-${u.live.scoreY} (an own goal credited to the other side?)`);
 
-  it.each(["eng.1", "esp.1", "usa.1", "usa.nwsl", "mex.1"])("%s: stoppage-time, extra-time and own goals over a season", async (league) => {
-    for (const date of weekends) {
-      try {
-        await scan(league, date, false);
-      } catch (err) {
-        console.log(`${league} ${date}: ${String(err)}`);
-      }
-    }
-  }, 120_000);
+  const viaSummary = await fetchLiveForEvent(linkOf(game, 0));
+  expect(viaSummary, `${league} ${game.eventId} summary lookup`).not.toBeNull();
+  expect(viaSummary!.goals?.map((g) => [g.minute, g.added])).toEqual(goals!.map((g) => [g.minute, g.added]));
+}
 
-  it.each([
-    // Inter 4-3 Barcelona after extra time (Frattesi in the 99th minute).
-    ["uefa.champions", "20250506"],
-    // Liverpool vs PSG: extra time, then penalties.
-    ["uefa.champions", "20250311"],
-    // MLS Cup playoffs, extra time and shootouts.
-    ["usa.1", "20251122"],
-    ["usa.1", "20251123"],
-    ["usa.1", "20251129"],
-    ["usa.1", "20251206"],
-  ])("%s %s: every goal", async (league, date) => {
-    try {
-      await scan(league, date, true);
-    } catch (err) {
-      console.log(`${league} ${date}: ${String(err)}`);
-    }
-  }, 60_000);
+describe.each(SOCCER_LEAGUES)("%s (soccer, by day)", (league) => {
+  it("reads the next 7 days, today first, and a date ahead", () => checkDays(league), 60_000);
 
-  it("the summary endpoint for a finished match, and anything on now", async () => {
-    for (const [league, date] of [["eng.1", "20251018"], ["uefa.champions", "20250506"]]) {
-      try {
-        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${date}`, 15_000));
-        const ev = rec(arr(board.events)[0]);
-        if (!ev.id) continue;
-        const sum = rec(await fetchEspnJson(`${SOCCER}/${league}/summary?event=${String(ev.id)}`, 15_000));
-        console.log(`${league} summary ${String(ev.id)}: keys ${Object.keys(sum).join(", ")}`);
-        const comp = rec(arr(rec(sum.header).competitions)[0]);
-        console.log(`  header status: ${statusLine(comp.status)}`);
-        const keyEvents = arr(sum.keyEvents);
-        console.log(`  keyEvents ${keyEvents.length}: ${[...new Set(keyEvents.map((k) => String(rec(rec(k).type).text)))].join(", ")}`);
-        for (const k of keyEvents.filter((k) => rec(k).scoringPlay === true).slice(0, 8)) {
-          const kk = rec(k);
-          console.log(`    ${String(rec(kk.type).text)} clock ${JSON.stringify(kk.clock)} period ${JSON.stringify(kk.period)} team ${String(rec(kk.team).id)} shootout ${String(kk.shootout)} text "${String(kk.text ?? kk.shortText ?? "").slice(0, 80)}"`);
-        }
-      } catch (err) {
-        console.log(`${league} summary: ${String(err)}`);
-      }
+  it("reads a past match's goals and their minutes", async () => {
+    let games: ScheduleEvent[] = [];
+    for (const date of SOCCER_PAST[league]) {
+      games = (await slate(league, date)).filter((e) => e.state === "post");
+      console.log(`${league} ${date}: ${games.length} finished matches`);
+      if (games.length) break;
     }
-    const today = espnDate(NOW - 6 * 3_600_000);
-    for (const league of ["eng.1", "esp.1", "usa.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "mex.1", "usa.nwsl"]) {
-      try {
-        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${today}`, 15_000));
-        for (const e of arr(board.events)) {
-          const comp = rec(arr(rec(e).competitions)[0]);
-          const state = String(rec(rec(comp.status).type).state);
-          console.log(`  ${state === "in" ? "LIVE" : state} ${league} ${String(rec(e).shortName)}: ${statusLine(comp.status)}; goals ${arr(comp.details).filter((d) => rec(d).scoringPlay === true).map(detailLine).join(" | ")}`);
-        }
-      } catch (err) {
-        console.log(`${league} today: ${String(err)}`);
-      }
+    expect(games.length).toBeGreaterThan(0);
+    for (const game of games.slice(0, 3)) await checkGoals(league, game);
+  }, 90_000);
+
+  it("reads the latest finals and the clock of anything on right now", async () => {
+    let finals: ScheduleEvent[] = [];
+    for (let back = 0; back <= 10 && finals.length === 0; back++) {
+      const date = espnDate(NOW - back * DAY_MS - 10 * 3_600_000);
+      finals = (await slate(league, date)).filter((e) => e.state === "post");
+      if (finals.length) console.log(`${league}: latest finals on ${date} (${finals.length})`);
     }
+    if (finals.length === 0) console.log(`${league}: no finals in the last 10 days (off-season?)`);
+    else await checkGoals(league, finals[0]);
+
+    const live = (await getDaySchedule(league))?.events.filter((e) => e.state === "in") ?? [];
+    for (const game of live.slice(0, 3)) {
+      const u = await fetchLiveForEvent(linkOf(game));
+      const clock = u ? parseMinute(u.live.clock) : null;
+      console.log(`  live ${game.shortName}: ${u ? `${u.live.scoreX}-${u.live.scoreY} clock "${u.live.clock}" detail "${u.live.detail}" period ${u.live.period} -> minute ${clock ? minuteText(clock.minute, clock.added) : "none"}; goals ${goalsLine(u)}` : "null"}`);
+      expect(u, `${league} live lookup for ${game.eventId}`).not.toBeNull();
+      expect(u!.goals, `${league} ${game.eventId} goals list`).toBeDefined();
+      expect(u!.goals!.length).toBeLessThanOrEqual(u!.live.scoreX + u!.live.scoreY);
+    }
+    if (live.length === 0) console.log(`  ${league}: no match on right now`);
   }, 120_000);
 });

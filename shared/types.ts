@@ -16,10 +16,12 @@ export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer"
 /**
  * Leagues we can pull live schedules/scores for. "custom" = typed-in matchup.
  * Football: "nfl", "ncaaf" (college). Basketball: "nba", "wnba", "ncaab"
- * (men's college, played in halves) and "ncaaw" (women's college). Which
- * sport each plays, and how its game splits, lives in shared/sports.ts.
+ * (men's college, played in halves) and "ncaaw" (women's college). Soccer:
+ * "mls", "nwsl", "epl" (the English top flight), "laliga", "ligamx" and
+ * "ucl" (the European club cup). Which sport each plays, and how its game
+ * splits, lives in shared/sports.ts.
  */
-export type League = "nfl" | "ncaaf" | "nba" | "wnba" | "ncaab" | "ncaaw" | "custom";
+export type League = "nfl" | "ncaaf" | "nba" | "wnba" | "ncaab" | "ncaaw" | "mls" | "nwsl" | "epl" | "laliga" | "ligamx" | "ucl" | "custom";
 
 /**
  * draft  – legacy: a board waiting on its creator's payment before it opened,
@@ -34,20 +36,23 @@ export type GameStatus = "draft" | "open" | "locked" | "final";
 
 /**
  * Which scoring moments win a square. "custom" = the rules' moments match no
- * preset (e.g. every score plus the quarters).
+ * preset (e.g. every score plus the quarters). "first-last" is soccer's first
+ * and last goal.
  */
-export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "custom";
+export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "first-last" | "custom";
 
 /** 100 = classic 10x10 (one digit per row/col); 25 = 5x5 (two digits per row/col). */
 export type BoardSize = 100 | 25;
 
 /**
  * A moment a square can win at: every score change, or the score at the end of
- * Q1 / halftime / Q3 / the game. Every score is football only; a game played
- * in halves (men's college basketball) has only halftime ("q2") and the final
- * (shared/sports.ts `momentsFor`).
+ * Q1 / halftime / Q3 / the game. Every score is football and soccer only; a
+ * game played in halves (men's college basketball) has only halftime ("q2")
+ * and the final (shared/sports.ts `momentsFor`). A soccer board's squares are
+ * the match's minutes (shared/soccer.ts): "first" is the first goal's minute,
+ * "score" every goal's and "final" the last goal's.
  */
-export type Moment = "score" | "q1" | "q2" | "q3" | "final";
+export type Moment = "first" | "score" | "q1" | "q2" | "q3" | "final";
 
 /**
  * The kind of score an every-score entry was (football only: every score
@@ -218,6 +223,17 @@ export interface LinkedEvent {
 }
 
 /**
+ * One goal of a soccer match as the feed reports it (penalty-shootout kicks
+ * aren't goals): the minute shown ("45'+2'" is minute 45, 2 added) and the
+ * team it counts for, on the board's X/Y orientation.
+ */
+export interface LiveGoal {
+  minute: number;
+  added: number;
+  team: "x" | "y";
+}
+
+/**
  * Raw live data for a linked game, oriented to the board's X/Y teams. Periods
  * are the feed's own: quarters (index 0 = Q1, 4+ = OT), or halves for men's
  * college basketball (index 0 = 1st half, 2+ = OT); shared/sports.ts
@@ -231,6 +247,8 @@ export interface LiveUpdate {
   /** Number of fully completed periods (0-4 for quarters, 0-2 for halves, more with OT). */
   completedPeriods: number;
   isFinal: boolean;
+  /** Soccer: every goal so far, in order (absent when the feed sent none, or another sport). */
+  goals?: LiveGoal[];
 }
 
 /**
@@ -505,12 +523,20 @@ export interface Square {
 /** A recorded score. For fixed periods it's the cumulative score at the end of that period. */
 export interface Score {
   periodKey: string;
-  /** Only set for every-score entries, e.g. "Score 3". */
+  /** Only set for every-score entries, e.g. "Score 3", "Goal 2". */
   label?: string;
   scoreX: number; // the column team's score
   scoreY: number; // the row team's score
   source: "live" | "host";
   updatedAt: number;
+  /**
+   * A soccer goal (an entry s1..sN on a soccer board): the minute shown, 45
+   * for "45'+2'" (shared/soccer.ts `boardMinute` says which square it is).
+   * Absent everywhere else.
+   */
+  minute?: number;
+  /** The goal's stoppage time ("45'+2'" -> 2); 0 or absent for none. */
+  added?: number;
 }
 
 /** A host's manual winner pick for a period; overrides the computed square. */
@@ -839,6 +865,10 @@ export interface ScoreInput {
   scoreY: number;
   /** every-score only: label for a new score entry. */
   label?: string;
+  /** A soccer goal (required for one, refused elsewhere): its minute, 0-130, as shown ("45'+2'" -> 45). */
+  minute?: number;
+  /** A soccer goal's stoppage time, 0-30 ("45'+2'" -> 2). */
+  added?: number;
 }
 
 export interface ManualWinnerInput {

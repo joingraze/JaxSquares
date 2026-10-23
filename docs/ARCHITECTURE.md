@@ -197,7 +197,7 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
-| GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
+| GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw\|mls\|nwsl\|epl\|laliga\|ligamx\|ucl[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball and soccer go by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
 | GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color; never a logo: team logos are the leagues' trademarks, so teams show as their abbreviation on their color), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
 | GET | `/api/season/schedule?league=<linked league>&team=<id>[&year=2026]` | – | – | `TeamScheduleResponse` `{ team, year, events }`: one team's season (regular season, then the postseason games scheduled so far; the NBA's play-in too), every game in order, a finished one with its `result`; `homeId`/`awayId`, `label` ("Week 7", "Wild Card"), `playoff`. 200 `unavailable` when ESPN is down; 400 bad league, team or year |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 409 `{ error, code: "account_required" }` from a device that isn't signed in wherever web sign-in is set up (`hostsSignIn`, docs/auth.md "Hosts sign in"), checked first; 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
@@ -721,11 +721,13 @@ score, q1, q2, q3, final.
   period 2 through halftime). `liveCell`, the board's "Right now" and its draw
   tab follow it.
 
-## Sports: football and basketball (`shared/sports.ts`)
+## Sports: football, basketball and soccer (`shared/sports.ts`)
 
-- A board's `sport` is `football` or `basketball` (older boards without one
-  read as football); its `league` is `nfl`/`ncaaf` (football), `nba`, `wnba`,
-  `ncaab` (men's college), `ncaaw` (women's college) or `custom`.
+- A board's `sport` is `football`, `basketball` or `soccer` (older boards
+  without one read as football); its `league` is `nfl`/`ncaaf` (football),
+  `nba`, `wnba`, `ncaab` (men's college), `ncaaw` (women's college), the
+  soccer leagues (`mls`, `nwsl`, `epl`, `laliga`, `ligamx`, `ucl`; "Soccer
+  boards" below) or `custom`.
   `LEAGUE_INFO` holds each league's sport, chip label, schedule shape (by
   `week` or by `day`) and whether it plays halves (only `ncaab`). Create
   validates the pair (`leagueSportProblem`: 400 "That league plays basketball,
@@ -755,6 +757,64 @@ score, q1, q2, q3, final.
   basketball board's description. The brand stays "football squares".
 - "How close am I" on the board (`playBookFor`): baskets (2), threes (3) and
   free throws (1) instead of touchdowns and field goals.
+
+### Soccer boards: goal minutes (`shared/soccer.ts`)
+
+- A soccer match has too few goals for score digits, so every square is a
+  **minute**: the column's digit is the minute's ones, the row's its tens
+  (`minuteCell`; a 5×5 board's two digits per row and column work the same).
+  Reverse is the minute with its digits swapped (`reverseMinuteCell`: 43' ->
+  the 34th minute's square). One draw all match: `freshNumbers` on a soccer
+  board is a 400 (`SOCCER_FRESH_ERROR`, `formatProblemFor`) and the create
+  flow and host sheet hide it.
+- The minute on the board (`boardMinute(minute, added)`): first-half
+  stoppage counts as 45 (45+2' -> 45) and stoppage after extra time's first
+  period as 105; other stoppage runs on (90+3' -> 93, 120+2' -> 122); then
+  only the last two digits count (105 -> 05, 122 -> 22). A goal stores the
+  minute the match showed, `Score.minute` and `Score.added` (migration 0022);
+  the board minute is derived on read, never stored.
+- Moments (`momentsFor`): `first` (the first goal), `score` (every goal:
+  entries `s1`..`sN` labeled "Goal n") and `final` (the last goal, decided
+  when the match ends: a `final` score row or `status` final, `matchOver`).
+  Presets (`SOCCER_PRESETS`, copy via `presetInfo(preset, sport)` /
+  `momentInfo(moment, sport)`): Every goal, First & last goal, Last goal; a
+  new board starts on every goal + the last goal (`defaultRulesFor`). A
+  quarter moment on a soccer board is a 400 (`SOCCER_MOMENT_ERROR`), and
+  `first` off soccer is one too (`MOMENT_SPORT_ERROR`); amounts by score type are football's
+  (`BY_KIND_SPORT_ERROR`). The scoring team doesn't matter, and own goals
+  count; shootout goals never do.
+- No goals: once the match is over, 00 (`NO_GOALS_MINUTE`) wins each goal
+  moment once: the first goal, the last goal and one every-goal winner (`s1`,
+  labeled "No goals").
+- Results (`resolveGoalResults` in `shared/squares.ts`): squares by
+  `PeriodResult.goalMinute`, with the deciding `goal`; show a result's time
+  through `resultMinute(r)` ("45+2'", "00"). Suggestions (`suggestPrizes`
+  with the sport) assume `TYPICAL_GOALS` and give the last goal the rest.
+- Linked matches: ESPN's soccer scoreboard and summary list the scoring
+  plays (`details` / `keyEvents`; `parseGoals` skips the shootout and reads
+  the clock's text, else its seconds), sent as `LiveUpdate.goals` oriented
+  x/y. `goalsFromFeed` (run by `applyLiveUpdate` in `worker/service.ts`)
+  writes them in order as `s1`..`sN`; it retracts a feed goal only once the feed's list is
+  settled (as many goals as the score says) and never touches a goal the host
+  typed. `periodsDecidedBy` adds the first goal (with `s1`) and, at full time
+  with no goals, `first` and `s1`, for winner events.
+- Typed-in matches: POST `/scores` takes `minute` (0–`MINUTE_MAX`) and
+  `added` (0–`ADDED_MAX`) on a soccer goal (`periodKey` "next" or `sN`; a
+  goal without a minute is a 400, and a minute anywhere else is a 400 "Only a
+  soccer board's goals have a minute."). The host pad
+  (`src/features/host/GoalEntry.tsx`, `goalModel.ts`) asks who scored and the
+  minute, prefilled from the live clock, previews whose square it is, and
+  ends the match with Full time (the `final` row where the last goal wins,
+  else POST `/final`).
+- "Right now" (`liveMinuteCell`, `goalNow` in the board model): the square a
+  goal at the match clock's minute would land on (none at halftime), else the
+  last goal's square on a typed-in board, else 00; plus the viewer's next
+  minute. The scorebug, TV, recap, results, pushes ("1st goal", "Goal 2",
+  "Last goal", "No goals") and emails (the numbers block lists minutes) show
+  minutes, never score digits.
+- No season boards for soccer (`worker/season.ts` 400s a soccer league).
+  The landing page is `/soccer-squares` with its printable
+  (`scripts/seo/`), and names the leagues as not affiliated.
 
 ## Module ownership (one owner per file)
 
@@ -966,11 +1026,12 @@ in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
 ## Create flow (client)
 
 `/new` is a five-step guided flow (`src/pages/CreateGame.tsx`, model in
-`src/features/create/wizard.ts`): `game` (Football or Basketball at the top
-(`sport-picker`), then the league chips: NFL / College by week, soonest
-picked; NBA / WNBA / Men's college / Women's college by day, the next 7 days
+`src/features/create/wizard.ts`): `game` (Football, Basketball or Soccer at
+the top (`sport-picker`), then the league chips: NFL / College by week,
+soonest picked; NBA / WNBA / Men's college / Women's college and MLS / NWSL /
+Premier League / LaLiga / Liga MX / Champions League by day, the next 7 days
 grouped under day headers with a date picker for later days; or Custom teams
-+ kickoff), `format` (how squares win), `prizes` (the
++ kickoff; soccer has no season scope), `format` (how squares win), `prizes` (the
 rules & prizes editor; skippable, Review then flags "Square price: not set"),
 `details` (board name, max per player, the host's name on a device without
 one) and `review` (a card per step, then Create). Every step starts filled

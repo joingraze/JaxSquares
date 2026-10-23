@@ -12,7 +12,8 @@
 // an amount; a host's prize note is quoted only the way a push quotes it.
 
 import { drawKeys, everyScoreIndex, hasScoreMoment, periodNote, periodPhrase, rulesOf, SHARED_DRAW_KEY } from "../../shared/formats";
-import { freshNumbersInfo } from "../../shared/sports";
+import { minuteText } from "../../shared/soccer";
+import { freshNumbersInfo, isSoccer } from "../../shared/sports";
 import { drawFor, fixedPeriodsOf, resolveResults, winnersOf, type PeriodResult } from "../../shared/squares";
 import type { GameState, Team } from "../../shared/types";
 import { getGameState, seasonIdOf } from "../db";
@@ -25,11 +26,11 @@ import { claimNotices, confirmedOn, isMissingTable, type Recipient } from "./sto
 import { confirmEmail, finalEmail, numbersEmail, winEmail, wonPhrase, type EmailFrame, type FinalFacts, type Rendered, type TeamLabel } from "./templates";
 import { unsubscribeToken } from "./tokens";
 
-/** "numbers", a quarter-end / half period key, or "final". */
-export type NoticeKey = "numbers" | "q1" | "q2" | "q3" | "final";
+/** "numbers", a quarter-end / half period key (a soccer board's first goal), or "final". */
+export type NoticeKey = "numbers" | "first" | "q1" | "q2" | "q3" | "final";
 
 /** Moments with a win email of their own (the final's winners are in the results email). */
-const WIN_KEYS = new Set<string>(["q1", "q2", "q3"]);
+const WIN_KEYS = new Set<string>(["first", "q1", "q2", "q3"]);
 const NOTICE_EVENTS = new Set<NotifyEvent["kind"]>(["numbers-drawn", "winner", "final"]);
 /** Most players listed under "Scores won" in the results email. */
 export const SCORE_WINNERS_LISTED = 10;
@@ -94,15 +95,28 @@ export function teamLabel(t: Team): TeamLabel {
 
 const digits = (d: number[] | undefined) => (d && d.length > 0 ? d.join("·") : "?");
 
-/** My squares' numbers under the board's first draw (Q1's on a board with new numbers each quarter). */
-export function numbersOf(state: GameState, playerId: string): { squares: { x: string; y: string }[]; freshLabel: string | null } {
+/**
+ * My squares' numbers under the board's first draw (Q1's on a board with new
+ * numbers each quarter); on a soccer board, each square's minutes too (the
+ * row's tens digit, the column's ones: "43'").
+ */
+export function numbersOf(state: GameState, playerId: string): { squares: { x: string; y: string }[]; freshLabel: string | null; minutes?: string[] } {
   const { game } = state;
   const key = drawKeys(game.format)[0] ?? SHARED_DRAW_KEY;
   const draw = drawFor(game, key);
   const mine = state.squares.filter((s) => s.playerId === playerId).sort((a, b) => a.row - b.row || a.col - b.col);
   const squares = draw ? mine.map((s) => ({ x: digits(draw.x[s.col]), y: digits(draw.y[s.row]) })) : [];
   const freshLabel = key === SHARED_DRAW_KEY ? null : (fixedPeriodsOf(game).find((p) => p.key === key)?.label ?? periodPhrase(key).short);
-  return { squares, freshLabel };
+  if (!isSoccer(game) || !draw) return { squares, freshLabel };
+  const minutes = mine.map((s) =>
+    draw.y[s.row]
+      .flatMap((tens) => draw.x[s.col].map((ones) => tens * 10 + ones))
+      .sort((a, b) => a - b)
+      // Square 00 is no minute of its own: it's the no-goals square (and 100').
+      .map((m) => (m === 0 ? "00" : minuteText(m)))
+      .join(" · "),
+  );
+  return { squares, freshLabel, minutes };
 }
 
 /** The game's final score: the Final period's, else the feed's once it's over, else the last score change. */
@@ -138,6 +152,7 @@ export function finalFactsOf(state: GameState, playerId: string, boardUrl: strin
     moments: moments.map(({ label, winners, mine }) => ({ label, winners, mine })),
     scoreWins,
     everyScore: hasScoreMoment(rulesOf(game.format)),
+    ...(isSoccer(game) ? { goals: true } : {}),
     mine: { moments: moments.filter((m) => m.mine).map((m) => wonPhrase(m.key, m.result.label)), scores: counts.get(playerId) ?? 0 },
     boardUrl,
   };
@@ -170,11 +185,12 @@ export async function composeNotice(plan: NoticePlan, state: GameState, setup: E
   const teamY = teamLabel(game.teamY);
   let rendered: Rendered;
   if (plan.key === "numbers") {
-    const { squares, freshLabel } = numbersOf(state, plan.to.playerId);
+    const { squares, freshLabel, minutes } = numbersOf(state, plan.to.playerId);
     rendered = numbersEmail(frame, {
       teamX,
       teamY,
       squares,
+      ...(minutes ? { minutes } : {}),
       freshLabel,
       freshEach: freshNumbersInfo(game).each,
       everyScore: hasScoreMoment(rulesOf(game.format)),

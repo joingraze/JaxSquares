@@ -40,6 +40,7 @@ type Block =
   | { kind: "note"; text: string }
   | { kind: "score"; label: string; teamX: TeamLabel; teamY: TeamLabel; x: number; y: number }
   | { kind: "squares"; teamX: TeamLabel; teamY: TeamLabel; rows: { x: string; y: string }[]; more: number }
+  | { kind: "minutes"; rows: string[]; more: number }
   | { kind: "rows"; title: string; rows: { label: string; value: string; mine?: boolean }[] };
 
 interface Email {
@@ -111,6 +112,20 @@ function blockHtml(b: Block): string {
         `<tr>${th(b.teamX)}${th(b.teamY)}</tr>${rows}${more}</table>`
       );
     }
+    case "minutes": {
+      // A soccer board's squares are minutes: one row per square ("43'", or a 5x5 square's four).
+      const rows = b.rows
+        .map((m, i) => {
+          const rule = i < b.rows.length - 1 || b.more > 0 ? `border-bottom:1px solid ${C.line};` : "";
+          return `<tr><td align="center" style="padding:8px;${rule}font:800 22px/1.2 ${DISPLAY};color:${C.ink};">${escapeHtml(m)}</td></tr>`;
+        })
+        .join("");
+      const more = b.more > 0 ? `<tr><td align="center" style="padding:10px 8px;font:600 14px/1.4 ${SANS};color:${C.subtle};">and ${b.more} more on the board</td></tr>` : "";
+      return (
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border:1px solid ${C.line};border-radius:14px;border-collapse:separate;">` +
+        `<tr><th align="center" style="padding:10px 8px;border-bottom:1px solid ${C.line};font:800 13px/1.3 ${SANS};color:${C.subtle};text-transform:uppercase;letter-spacing:1px;">Your minutes</th></tr>${rows}${more}</table>`
+      );
+    }
     case "rows": {
       const rows = b.rows
         .map(
@@ -140,6 +155,8 @@ function blockText(b: Block): string {
         ...b.rows.map((r) => `- ${b.teamX.abbr} ${r.x} · ${b.teamY.abbr} ${r.y}`),
         ...(b.more > 0 ? [`- and ${b.more} more on the board`] : []),
       ].join("\n");
+    case "minutes":
+      return ["Your minutes:", ...b.rows.map((m) => `- ${m}`), ...(b.more > 0 ? [`- and ${b.more} more on the board`] : [])].join("\n");
     case "rows":
       return [`${b.title}:`, ...b.rows.map((r) => `- ${r.label}: ${r.value}${r.mine ? " (you)" : ""}`)].join("\n");
   }
@@ -211,6 +228,8 @@ export interface NumbersFacts {
   teamY: TeamLabel;
   /** My squares' digits ("3", or "3·8" on a 5x5 board), board order. */
   squares: { x: string; y: string }[];
+  /** A soccer board: each of my squares as its minutes ("43'", a 5x5 square's "43' · 48' · 93' · 98'"), shown instead of the digits. */
+  minutes?: string[];
   /** New numbers each quarter: the label of the draw shown ("Q1"). */
   freshLabel: string | null;
   /** How often new numbers come: each "quarter" (the default), or each "half" in a game of halves. */
@@ -228,10 +247,14 @@ export const SQUARES_LISTED = 25;
 export function numbersEmail(frame: EmailFrame, f: NumbersFacts): Rendered {
   const board = clean(frame.boardName);
   const n = f.squares.length;
+  const more = Math.max(0, n - SQUARES_LISTED);
   const blocks: Block[] = [
     { kind: "p", text: n === 1 ? `Here's your square on ${board}.` : `Here are your ${n} squares on ${board}.` },
-    { kind: "squares", teamX: f.teamX, teamY: f.teamY, rows: f.squares.slice(0, SQUARES_LISTED), more: Math.max(0, n - SQUARES_LISTED) },
+    f.minutes
+      ? { kind: "minutes", rows: f.minutes.slice(0, SQUARES_LISTED), more }
+      : { kind: "squares", teamX: f.teamX, teamY: f.teamY, rows: f.squares.slice(0, SQUARES_LISTED), more },
   ];
+  if (f.minutes) blocks.push({ kind: "p", text: "Each square is a minute of the match: a goal in your minute wins. No goals? 00 wins.", muted: true });
   if (f.freshLabel) {
     blocks.push({ kind: "p", text: `These are your ${f.freshLabel} numbers. Every ${f.freshEach ?? "quarter"} gets new ones, and the board shows them all.`, muted: true });
   }
@@ -240,7 +263,7 @@ export function numbersEmail(frame: EmailFrame, f: NumbersFacts): Rendered {
     text: f.season
       ? "They're your numbers for every game of the season. We'll email you if one of your squares wins, and when each game ends."
       : f.everyScore
-        ? "When the game ends, we'll email you how many scores your squares won."
+        ? `When the game ends, we'll email you how many ${f.minutes ? "goals" : "scores"} your squares won.`
         : "We'll email you if one of your squares wins, and when the game ends.",
     muted: true,
   });
@@ -253,19 +276,21 @@ export function numbersEmail(frame: EmailFrame, f: NumbersFacts): Rendered {
   });
 }
 
-/** How a win reads: "Q1", "the half", "Q3", "the final". */
+/** How a win reads: "Q1", "the half", "Q3", "the final"; a soccer board's "the first goal", "the last goal". */
 export function wonPhrase(periodKey: string, label: string): string {
   switch (periodKey) {
+    case "first":
+      return "the first goal";
     case "q2":
       return "the half";
     case "final":
-      return "the final";
+      return label === "Last goal" ? "the last goal" : "the final";
     default:
       return label;
   }
 }
 
-const AT: Record<string, string> = { q1: "at the end of Q1", q2: "at halftime", q3: "at the end of Q3", final: "at the final whistle" };
+const AT: Record<string, string> = { first: "on the first goal", q1: "at the end of Q1", q2: "at halftime", q3: "at the end of Q3", final: "at the final whistle" };
 
 export interface WinFacts {
   periodKey: string;
@@ -305,6 +330,8 @@ export interface FinalFacts {
   /** Every score: how many each player's squares won, most first (names only). */
   scoreWins: { name: string; count: number; mine: boolean }[];
   everyScore: boolean;
+  /** A soccer board: its score changes are goals ("Goals won"). */
+  goals?: boolean;
   /** What I won: the fixed moments (wonPhrase) and how many score changes. */
   mine: { moments: string[]; scores: number };
   boardUrl: string;
@@ -316,10 +343,10 @@ export function joinWords(words: string[]): string {
   return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
-const scoresWord = (n: number) => (n === 1 ? "1 score" : `${n} scores`);
-
 /** The final results: the score, who won what by name, and what I won (never an amount). */
 export function finalEmail(frame: EmailFrame, f: FinalFacts): Rendered {
+  const unit = f.goals ? "goal" : "score";
+  const scoresWord = (n: number) => (n === 1 ? `1 ${unit}` : `${n} ${unit}s`);
   const board = clean(frame.boardName);
   const parts = [...(f.mine.scores > 0 ? [scoresWord(f.mine.scores)] : []), ...f.mine.moments];
   const won = parts.length > 0;
@@ -331,14 +358,14 @@ export function finalEmail(frame: EmailFrame, f: FinalFacts): Rendered {
       text:
         f.mine.scores > 0
           ? `Your squares won ${scoresWord(f.mine.scores)} on ${board}.`
-          : `Your squares didn't win a score on ${board} this time.`,
+          : `Your squares didn't win a ${unit} on ${board} this time.`,
     });
   } else if (!won) {
     blocks.push({ kind: "p", text: `Your squares didn't hit this time. Here's who won on ${board}.` });
   }
   if (f.moments.length > 0) blocks.push({ kind: "rows", title: "Winners", rows: f.moments.map((m) => ({ label: m.label, value: m.winners, mine: m.mine })) });
   if (f.scoreWins.length > 0) {
-    blocks.push({ kind: "rows", title: "Scores won", rows: f.scoreWins.map((s) => ({ label: s.name, value: scoresWord(s.count), mine: s.mine })) });
+    blocks.push({ kind: "rows", title: f.goals ? "Goals won" : "Scores won", rows: f.scoreWins.map((s) => ({ label: s.name, value: scoresWord(s.count), mine: s.mine })) });
   }
   return render(frame, {
     subject: won ? `You won ${joinWords(parts)}! 🎉 ${board} final results` : `Final results: ${board}`,

@@ -16,7 +16,7 @@ import "../board/board.css";
 import { tvCellName, type TvLayout } from "./tvModel";
 
 export interface TvBoardProps {
-  game: Pick<Game, "teamX" | "teamY" | "league" | "status" | "format">;
+  game: Pick<Game, "teamX" | "teamY" | "league" | "status" | "format"> & Partial<Pick<Game, "sport">>;
   cells: CellView[][];
   axis: { x: string[]; y: string[]; drawn: boolean };
   layout: TvLayout;
@@ -24,9 +24,9 @@ export interface TvBoardProps {
   nowKind: "live" | "projected" | null;
 }
 
-/** "Q1", "Half", "#3" for an every-score entry. */
+/** "Q1", "Half", "#3" for an every-score entry (a soccer goal's too). */
 function shortWin(label: string): string {
-  const m = /^score\s+(\d+)$/i.exec(label);
+  const m = /^(?:score|goal)\s+(\d+)$/i.exec(label);
   return m ? `#${m[1]}` : label;
 }
 
@@ -49,8 +49,9 @@ export function TvBoard({ game, cells, axis, layout, nowKind }: TvBoardProps) {
   return (
     <div className="tv-board" style={sizes} data-testid="tv-board" data-drawn={axis.drawn} data-final={game.status === "final"}>
       <div aria-hidden />
-      <TeamBand axis="x" name={shortTeam(game.teamX, game.league)} />
-      <TeamBand axis="y" name={shortTeam(game.teamY, game.league)} />
+      {/* A soccer board's squares are minutes: its bands name the minute's ones and tens. */}
+      <TeamBand axis="x" name={game.sport === "soccer" ? "Minute · ones" : shortTeam(game.teamX, game.league)} />
+      <TeamBand axis="y" name={game.sport === "soccer" ? "Minute · tens" : shortTeam(game.teamY, game.league)} />
       <div
         role="group"
         aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}

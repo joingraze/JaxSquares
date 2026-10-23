@@ -37,7 +37,8 @@ import { cohostIdsOf } from "../../../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../../../shared/hostFee";
 import { kickoffProblem } from "../../../shared/kickoff";
 import { isSeasonBoard } from "../../../shared/season";
-import { isFootball, periodsBefore, wordsFor } from "../../../shared/sports";
+import { goalsOf } from "../../../shared/soccer";
+import { isFootball, isSoccer, periodsBefore, wordsFor } from "../../../shared/sports";
 import type { AmountUnit, Game, GameState, LiveStatus, ManualWinner, NumberDraw, Player, Score, UpdateGameInput } from "../../../shared/types";
 import { isUrgent } from "../invite/inviteModel";
 
@@ -218,7 +219,13 @@ export function hostSummary(state: GameState, price?: string | null, now = Date.
     };
   }
 
-  // Locked.
+  // Locked. A soccer board counts its goals (its first and last goals come from them).
+  if (isSoccer(game)) {
+    const goals = goalsOf(state.scores).length;
+    const status = `${goals} ${goals === 1 ? "goal" : "goals"} so far`;
+    if (isLinked(game)) return { status: goals === 0 ? "Goals come in on their own" : `${status} · auto-scored`, progress: 0, action: { kind: "auto", label: "Goals" }, slim: true };
+    return { status, progress: 0, action: { kind: "score", label: "Add goal" }, slim: false };
+  }
   const everyScore = entriesOnly(game);
   const mixed = !everyScore && hasEntries(game);
   const recorded = everyScore ? state.scores.length : decidedCount(state);
@@ -291,10 +298,12 @@ export function hostStatusLine(state: GameState, now = Date.now()): string {
     const empty = emptyPrizes(state);
     return empty === 0 ? "Final · the winners are in" : `Final · ${empty} ${empty === 1 ? "prize has" : "prizes have"} no winner yet`;
   }
+  const scores = isSoccer(game) ? "goals" : "scores";
   if (isLinked(game)) {
-    if (state.live?.state === "in") return "Live · scores come in on their own";
-    return gameStarted(state, now) ? "Scores come in on their own" : `Numbers drawn · waiting for ${wordsFor(game).startLower}`;
+    if (state.live?.state === "in") return `Live · ${scores} come in on their own`;
+    return gameStarted(state, now) ? `${scores[0].toUpperCase()}${scores.slice(1)} come in on their own` : `Numbers drawn · waiting for ${wordsFor(game).startLower}`;
   }
+  if (isSoccer(game)) return "Numbers drawn · add each goal with its minute";
   if (entriesOnly(game)) return "Numbers drawn · add each score as it happens";
   const next = upcomingPeriod(state);
   if (hasEntries(game)) return next ? `Numbers drawn · add each score · ${next.label} is up next` : "Numbers drawn · add each score as it happens";

@@ -18,6 +18,7 @@
 
 import { drawFor, myWins, resolveResults, squaresLeft, winCounts } from "../../../shared/squares";
 import { SHARED_DRAW_KEY, drawKeys, periodPhrase } from "../../../shared/formats";
+import { minuteText } from "../../../shared/soccer";
 import { sportWords } from "../../../shared/sportWords";
 import type { Activity, ActivityType, GameState, Sport, Team } from "../../../shared/types";
 
@@ -246,12 +247,15 @@ function score(a: Activity, state: GameState): ActivityAnnouncement | null {
   const line = `${teamShort(teamX)} ${scoreX}–${scoreY} ${teamShort(teamY)}`;
   const label = str(d.label) ?? periodKey;
   const phrase = periodPhrase(periodKey, label, state.game.sport);
+  const soccer = state.game.sport === "soccer";
+  // A soccer goal says its minute ("Goal! ARS 1–0 CHE · 43'").
+  const minute = typeof d.minute === "number" ? ` · ${minuteText(d.minute, typeof d.added === "number" ? d.added : 0)}` : "";
   let lead: string;
-  if (/^s\d+$/.test(periodKey)) lead = "Score!";
-  else if (periodKey === "final") lead = "Final:";
+  if (/^s\d+$/.test(periodKey)) lead = soccer ? "Goal!" : "Score!";
+  else if (periodKey === "final") lead = soccer ? "Full time:" : "Final:";
   else lead = phrase.moment ? `${capitalize(phrase.moment)}:` : "Score:";
   return {
-    text: `${lead} ${line}`,
+    text: `${lead} ${line}${minute}`,
     tone: "live",
     haptic: "light",
     subject: { kind: "system", glyph: "score" },

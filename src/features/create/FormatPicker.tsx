@@ -13,11 +13,14 @@
 // tapping a preset goes back to it, keeping amounts. A basketball board gets
 // the cards its game offers (shared/sports.ts `presetsFor`): no Every score
 // (too many scores), and men's college basketball, played in two halves,
-// only Halftime + Final and the Final, its timeline drawn as two halves.
+// only Halftime + Final and the Final, its timeline drawn as two halves. A
+// soccer board's squares are the match's minutes: Every goal, First & last
+// goal and Last goal, its timeline two halves, no score types or fresh numbers.
 
 import type { CSSProperties, ReactNode } from "react";
-import { PRESET_INFO, hasScoreMoment, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
-import { freshNumbersInfo, playsHalves, presetsFor, regulationPeriods, type GameKind } from "../../../shared/sports";
+import { PRESET_INFO, hasScoreMoment, presetInfo, rulesOf, rulesSummary, withRules, type FixedPreset } from "../../../shared/formats";
+import { freshNumbersInfo, isSoccer, playsHalves, presetsFor, regulationPeriods, sportOf, type GameKind } from "../../../shared/sports";
+import type { Sport } from "../../../shared/types";
 import type { BoardSize, GameFormat, MomentRule, Team } from "../../../shared/types";
 import { CheckIcon, ShuffleIcon } from "../../components/icons";
 import { cx, Switch } from "../../components/ui";
@@ -63,7 +66,10 @@ const MARKS: Record<FixedPreset, number[]> = {
   halves: [0.5, 1],
   final: [1],
   "every-score": [0.08, 0.2, 0.33, 0.46, 0.6, 0.71, 0.86, 0.95],
+  "first-last": [0.22, 1],
 };
+/** A soccer match has a few goals, not a score every few minutes. */
+const SOCCER_GOAL_MARKS = [0.22, 0.58, 0.86];
 
 /** Each preset in one plain line, short enough for a card. */
 const WHEN: Record<FixedPreset, string> = {
@@ -71,6 +77,12 @@ const WHEN: Record<FixedPreset, string> = {
   halves: "One at the half, one at the final",
   final: "One winner when the game ends",
   "every-score": "A winner each time the score changes",
+  "first-last": "The first goal's minute, then the last goal's",
+};
+/** A soccer board's cards: its squares are minutes. */
+const SOCCER_WHEN: Partial<Record<FixedPreset, string>> = {
+  "every-score": "Each goal's minute wins. No goals? 00 wins",
+  final: "The last goal's minute, at the final whistle",
 };
 
 const SIZES: { size: BoardSize; label: string; line: string }[] = [
@@ -90,6 +102,8 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
   const presets = presetsFor(kind);
   const segments = regulationPeriods(kind);
   const fresh = freshNumbersInfo(kind);
+  const soccer = isSoccer(kind);
+  const sport = kind ? sportOf(kind) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -98,6 +112,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
           <FormatCard
             key={preset}
             preset={preset}
+            sport={sport}
             segments={segments}
             halves={playsHalves(kind)}
             wide={presets.length % 2 === 1 && i === presets.length - 1}
@@ -105,7 +120,7 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
             onSelect={() => {
               if (current === preset) return;
               void haptic("selection");
-              setRules(selectPreset(rules, preset));
+              setRules(selectPreset(rules, preset, undefined, sport));
             }}
           />
         ))}
@@ -119,13 +134,13 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
             <FormatGlyph rules={rules} segments={segments} />
             <span className="min-w-0">
               <span className="block font-display text-headline font-extrabold leading-tight text-ink">{PRESET_INFO.custom.label}</span>
-              <span className="mt-0.5 block text-footnote font-semibold text-ink-brand">{rulesSummary(rules)}</span>
+              <span className="mt-0.5 block text-footnote font-semibold text-ink-brand">{rulesSummary(rules, sport)}</span>
             </span>
           </div>
         )}
       </div>
 
-      {hasScoreMoment(rules) && (
+      {hasScoreMoment(rules) && !soccer && (
         <div className="-mt-2.5 flex flex-col gap-2 animate-fade-in">
           <p className="eyebrow px-1 text-ink-subtle">Every score options</p>
           <EveryScoreOptions
@@ -186,12 +201,12 @@ export function FormatPicker({ format, onChange, prizeChoice = null, teamX, team
             <Switch
               data-testid="format-reverse"
               label="Reverse winners"
-              description="Swap the two digits: that square wins too."
+              description={soccer ? "Swap the minute's digits (34' and 43'): that square wins too." : "Swap the two digits: that square wins too."}
               checked={allReverse(rules)}
               onChange={(reverse) => setRules(setReverseEverywhere(rules, reverse))}
             />
           </OptionRow>
-          {canUseFreshNumbers(rules) && (
+          {canUseFreshNumbers(rules) && !soccer && (
             <OptionRow
               visual={
                 <span className={cx("grid h-full w-full place-items-center", format.freshNumbers ? "text-ink-brand" : "text-ink-subtle")}>
@@ -227,7 +242,7 @@ function OptionRow({ visual, children }: { visual: ReactNode; children: ReactNod
   );
 }
 
-const FIXED_AT: Record<string, number> = { q1: 0.25, q2: 0.5, q3: 0.75, final: 1 };
+const FIXED_AT: Record<string, number> = { first: 0.22, q1: 0.25, q2: 0.5, q3: 0.75, final: 1 };
 
 /** The rules' timeline as a small glyph (dots where squares win), for summary rows: four quarters, or two halves (`segments`). */
 export function FormatGlyph({ rules, segments = 4 }: { rules: readonly MomentRule[]; segments?: number }) {
@@ -291,6 +306,7 @@ function ReverseGlyph({ on }: { on: boolean }) {
 
 function FormatCard({
   preset,
+  sport,
   selected,
   onSelect,
   segments = 4,
@@ -298,6 +314,8 @@ function FormatCard({
   wide = false,
 }: {
   preset: FixedPreset;
+  /** A soccer board's cards read in goals. */
+  sport?: Sport | null;
   selected: boolean;
   onSelect: () => void;
   /** The game's periods: four quarters, or two halves. */
@@ -307,10 +325,11 @@ function FormatCard({
   /** The last card of an odd row takes the full width. */
   wide?: boolean;
 }) {
-  const info = PRESET_INFO[preset];
-  const marks = MARKS[preset];
-  const many = preset === "every-score";
-  const when = halves && preset === "halves" ? "One at halftime, one at the final" : WHEN[preset];
+  const info = presetInfo(preset, sport);
+  const soccer = sport === "soccer";
+  const marks = soccer && preset === "every-score" ? SOCCER_GOAL_MARKS : MARKS[preset];
+  const many = preset === "every-score" && !soccer;
+  const when = halves && preset === "halves" ? "One at halftime, one at the final" : ((soccer ? SOCCER_WHEN[preset] : undefined) ?? WHEN[preset]);
   return (
     <button
       type="button"
@@ -350,7 +369,7 @@ function FormatCard({
       <span className="flex flex-1 flex-col">
         <span className="block font-display text-headline font-extrabold leading-tight text-ink">{info.label}</span>
         <span className="mt-1 block text-footnote leading-snug text-ink-muted">{when}</span>
-        <span className={cx("mt-auto block pt-1.5 text-caption font-bold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset)}</span>
+        <span className={cx("mt-auto block pt-1.5 text-caption font-bold", selected ? "text-ink-brand" : "text-ink-subtle")}>{winnersTag(preset, sport)}</span>
       </span>
     </button>
   );
@@ -358,7 +377,7 @@ function FormatCard({
 
 /** Mini board + plain-language rules; both follow every choice. */
 function HowItWorks({ format, teamX, teamY, kind }: { format: GameFormat; teamX?: Team | null; teamY?: Team | null; kind?: GameKind }) {
-  const { winners, size } = boardHeadlineParts(format);
+  const { winners, size } = boardHeadlineParts(format, kind ? sportOf(kind) : null);
   const text = describeBoard(format, kind);
   return (
     <div className="flex items-center gap-4 rounded-2xl bg-surface-3 p-3.5 ring-1 ring-inset ring-line">

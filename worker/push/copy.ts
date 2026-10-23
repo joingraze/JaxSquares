@@ -32,14 +32,23 @@ const WRAP_UP: Record<PeriodsPreset, string> = {
   halves: "See who won each half.",
   final: "See the winning square.",
   "every-score": "See every winning square.",
+  "first-last": "See who won the first and last goal.",
   custom: "See every winning square.",
 };
 
-/** Natural phrasing for a period label: "in Q1", "at Half", "at the Final", "on Score 3". */
+/**
+ * Natural phrasing for a period label: "in Q1", "at Half", "at the Final",
+ * "on Score 3"; a soccer board's "on the first goal", "on goal 2", "on the
+ * last goal", "with no goals".
+ */
 export function atPeriod(label: string): string {
   if (/^Q\d$/.test(label)) return `in ${label}`;
   if (label === "Half") return "at Half";
   if (label === "Final") return "at the Final";
+  if (label === "1st goal") return "on the first goal";
+  if (label === "Last goal") return "on the last goal";
+  if (label === "No goals") return "with no goals";
+  if (/^Goal \d+$/.test(label)) return `on ${label.toLowerCase()}`;
   return `on ${label}`;
 }
 

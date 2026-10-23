@@ -138,6 +138,9 @@ interface ScoreRow {
   score_y: number;
   source: string;
   updated_at: number;
+  /** A soccer goal's minute and stoppage time (migration 0022); NULL elsewhere. */
+  minute?: number | null;
+  added?: number | null;
 }
 
 interface ManualWinnerRow {
@@ -236,6 +239,10 @@ function rowToScore(r: ScoreRow): Score {
     updatedAt: r.updated_at,
   };
   if (r.label) s.label = r.label;
+  if (typeof r.minute === "number") {
+    s.minute = r.minute;
+    s.added = r.added ?? 0;
+  }
   return s;
 }
 
@@ -360,7 +367,7 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
     db.prepare(`SELECT * FROM games WHERE id = ?`).bind(id),
     db.prepare(`SELECT client_id, name, color, emoji, joined_at FROM players WHERE game_id = ? ORDER BY joined_at, rowid`).bind(id),
     db.prepare(`SELECT row, col, client_id, claimed_at FROM squares WHERE game_id = ?`).bind(id),
-    db.prepare(`SELECT period_key, label, score_x, score_y, source, updated_at FROM scores WHERE game_id = ?`).bind(id),
+    db.prepare(`SELECT period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE game_id = ?`).bind(id),
     db.prepare(`SELECT period_key, row, col, updated_at FROM manual_winners WHERE game_id = ?`).bind(id),
     db.prepare(`SELECT state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE game_id = ?`).bind(id),
     db
@@ -760,7 +767,7 @@ async function seasonOf(db: D1Database, row: GameRow, squares: Square[]): Promis
   const { events, ...spec } = stored;
   const [kids, scores, manual, live] = await db.batch([
     db.prepare(`SELECT ${SEASON_GAME_COLUMNS} FROM games WHERE season_id = ?1 ORDER BY starts_at, id`).bind(row.id),
-    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inSeason}`).bind(row.id),
+    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE ${inSeason}`).bind(row.id),
     db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inSeason}`).bind(row.id),
     db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inSeason}`).bind(row.id),
   ]);
@@ -1258,41 +1265,36 @@ export function reopenFinal(db: D1Database, gameId: string): D1PreparedStatement
   return db.prepare(`UPDATE games SET status = 'locked' WHERE id = ? AND status = 'final'`).bind(gameId);
 }
 
+/** A score to write: a soccer goal carries its minute and stoppage time (null elsewhere). */
+type ScoreWrite = { periodKey: string; label?: string | null; scoreX: number; scoreY: number; minute?: number | null; added?: number | null };
+
 /** A host-entered score always wins over (and replaces) a live one. */
-export function upsertHostScore(
-  db: D1Database,
-  gameId: string,
-  s: { periodKey: string; label?: string | null; scoreX: number; scoreY: number },
-  now: number,
-): D1PreparedStatement {
+export function upsertHostScore(db: D1Database, gameId: string, s: ScoreWrite, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'host', ?)
+      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at, minute, added)
+       VALUES (?, ?, ?, ?, ?, 'host', ?, ?, ?)
        ON CONFLICT (game_id, period_key) DO UPDATE SET
          label = COALESCE(excluded.label, scores.label), score_x = excluded.score_x,
-         score_y = excluded.score_y, source = 'host', updated_at = excluded.updated_at`,
+         score_y = excluded.score_y, source = 'host', updated_at = excluded.updated_at,
+         minute = excluded.minute, added = excluded.added`,
     )
-    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now);
+    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now, s.minute ?? null, s.minute == null ? null : (s.added ?? 0));
 }
 
 /** A provider score; never overwrites a host-entered score for the same period. */
-export function upsertLiveScore(
-  db: D1Database,
-  gameId: string,
-  s: { periodKey: string; label?: string | null; scoreX: number; scoreY: number },
-  now: number,
-): D1PreparedStatement {
+export function upsertLiveScore(db: D1Database, gameId: string, s: ScoreWrite, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'live', ?)
+      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at, minute, added)
+       VALUES (?, ?, ?, ?, ?, 'live', ?, ?, ?)
        ON CONFLICT (game_id, period_key) DO UPDATE SET
          label = COALESCE(excluded.label, scores.label), score_x = excluded.score_x,
-         score_y = excluded.score_y, updated_at = excluded.updated_at
+         score_y = excluded.score_y, updated_at = excluded.updated_at,
+         minute = excluded.minute, added = excluded.added
        WHERE scores.source = 'live'`,
     )
-    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now);
+    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now, s.minute ?? null, s.minute == null ? null : (s.added ?? 0));
 }
 
 export function deleteScore(db: D1Database, gameId: string, periodKey: string): D1PreparedStatement {
@@ -1452,7 +1454,7 @@ export async function listGamesForClient(
   const inIds = `game_id IN (SELECT value FROM json_each(?1))`;
   const [live, scores, manual, drawnSquares] = await db.batch([
     db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inIds}`).bind(ids),
-    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inIds}`).bind(ids),
+    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, row, col, client_id, claimed_at FROM squares WHERE ${inIds}`).bind(drawnIds),
   ]);

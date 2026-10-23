@@ -16,7 +16,20 @@ import {
   ruleForPeriodKey,
   rulesOf,
 } from "./formats";
-import { isFootball, liveMomentIndex, periodName, periodsBefore, type GameKind } from "./sports";
+import { isFootball, isSoccer, liveMomentIndex, periodName, periodsBefore, sportOf, type GameKind } from "./sports";
+import {
+  goalBoardMinute,
+  goalLabel,
+  goalsOf,
+  minuteCell,
+  NO_GOALS_LABEL,
+  NO_GOALS_MINUTE,
+  boardMinute,
+  minuteText,
+  parseMinute,
+  reverseMinuteCell,
+  squareMinute,
+} from "./soccer";
 import type {
   BoardSize,
   Game,
@@ -24,6 +37,7 @@ import type {
   GameState,
   LiveStatus,
   LiveUpdate,
+  ManualWinner,
   MomentRule,
   NumberDraw,
   Period,
@@ -156,22 +170,27 @@ export function isBoardFull(state: Pick<GameState, "game" | "squares">): boolean
 
 // ---- Periods & results ----
 
+/** A board as the period helpers read it: its rules, stored periods and (when known) its sport and status. */
+export type BoardOf = Pick<Game, "format" | "periods"> & GameKind & { status?: Game["status"] };
+
 /**
- * The fixed periods a board awards (Q1 / Half / Q3 / Final), from its rules.
- * A board made before rules existed keeps the periods it stored.
+ * The fixed periods a board awards (Q1 / Half / Q3 / Final; a soccer board's
+ * 1st goal / Last goal), from its rules. A board made before rules existed
+ * keeps the periods it stored.
  */
-export function fixedPeriodsOf(game: Pick<Game, "format" | "periods">): Period[] {
+export function fixedPeriodsOf(game: BoardOf): Period[] {
   if (!game.format.rules?.length && game.periods.length > 0) return game.periods;
-  return fixedPeriods(rulesOf(game.format));
+  return fixedPeriods(rulesOf(game.format), sportOf(game));
 }
 
-/** Every-score entries (s1..sN) for these keys, in order, labelled from their score. */
-function entryPeriods(keys: Iterable<string>, scoreBy: Map<string, Score>): Period[] {
+/** Every-score entries (s1..sN) for these keys, in order, labelled from their score ("Goal n" on a soccer board). */
+function entryPeriods(keys: Iterable<string>, scoreBy: Map<string, Score>, soccer = false): Period[] {
   const seen = new Set<string>();
   for (const k of keys) if (everyScoreIndex(k) !== null) seen.add(k);
+  const fallback = (n: number) => (soccer ? goalLabel(n) : everyScorePeriod(n).label);
   return [...seen]
     .sort((a, b) => (everyScoreIndex(a) ?? 0) - (everyScoreIndex(b) ?? 0))
-    .map((key) => ({ key, label: scoreBy.get(key)?.label || everyScorePeriod(everyScoreIndex(key) ?? 0).label }));
+    .map((key) => ({ key, label: scoreBy.get(key)?.label || fallback(everyScoreIndex(key) ?? 0) }));
 }
 
 /**
@@ -205,13 +224,138 @@ function mergePeriods(fixed: Period[], entries: Period[], scoreBy: Map<string, S
 
 /**
  * Periods shown on a board: its fixed ones (from the rules), plus one per
- * recorded score entry (s1..sN) when every score wins, in game order.
+ * recorded score entry (s1..sN) when every score wins, in game order (a
+ * soccer board's: the first goal, every goal, the last goal).
  */
-export function boardPeriods(game: Pick<Game, "format" | "periods">, scores: Score[]): Period[] {
+export function boardPeriods(game: BoardOf, scores: Score[]): Period[] {
+  if (isSoccer(game)) return soccerPeriods(game, scores, []);
   const fixed = fixedPeriodsOf(game);
   if (!hasScoreMoment(rulesOf(game.format))) return fixed;
   const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
   return mergePeriods(fixed, entryPeriods(scoreBy.keys(), scoreBy), scoreBy);
+}
+
+// ---- Soccer: goal minutes (shared/soccer.ts) ----
+
+/** The match is over: its full-time score is in, or the board is final (the host ended it). */
+function matchOver(game: { status?: Game["status"] }, scores: readonly Pick<Score, "periodKey">[]): boolean {
+  return game.status === "final" || scores.some((s) => s.periodKey === "final");
+}
+
+/**
+ * A soccer board's periods, in game order: the first goal, each goal (when
+ * every goal wins; with none by the final whistle, one "No goals" entry that
+ * square 00 takes), the last goal. A host pick for an entry keeps its period.
+ */
+function soccerPeriods(game: BoardOf, scores: readonly Score[], manualWinners: readonly Pick<ManualWinner, "periodKey">[]): Period[] {
+  const rules = rulesOf(game.format);
+  const fixed = fixedPeriodsOf(game);
+  const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
+  let entries: Period[] = [];
+  if (hasScoreMoment(rules)) {
+    entries = entryPeriods([...scoreBy.keys(), ...manualWinners.map((m) => m.periodKey)], scoreBy, true);
+    if (goalsOf(scores).length === 0 && matchOver(game, scores)) entries = [{ key: "s1", label: NO_GOALS_LABEL }];
+  }
+  return [...fixed.filter((p) => p.key === "first"), ...entries, ...fixed.filter((p) => p.key !== "first")];
+}
+
+/**
+ * What decided a soccer period, if anything yet: the goal (or, for the last
+ * goal, the full-time score) and the minute on the board. The first goal is
+ * goal 1's minute; the last goal waits for the final whistle; with no goals
+ * by then, each goal moment is minute 00 (NO_GOALS_MINUTE).
+ */
+function goalDecider(
+  key: string,
+  goals: readonly Score[],
+  scoreBy: Map<string, Score>,
+  over: boolean,
+): { score: Score | null; minute: number; goal: Score | null } | null {
+  const fullTime = scoreBy.get("final") ?? null;
+  const none = { score: fullTime, minute: NO_GOALS_MINUTE, goal: null };
+  if (key === "first") return goals[0] ? { score: goals[0], minute: goalBoardMinute(goals[0]), goal: goals[0] } : over ? none : null;
+  if (key === "final") {
+    if (!over) return null;
+    const last = goals.at(-1);
+    return last ? { score: fullTime ?? last, minute: goalBoardMinute(last), goal: last } : none;
+  }
+  const goal = scoreBy.get(key);
+  if (goal) return { score: goal, minute: goalBoardMinute(goal), goal };
+  return key === "s1" && goals.length === 0 && over ? none : null;
+}
+
+/** resolveResults for a soccer board: squares by goal minute, never by the score's digits. */
+function resolveGoalResults(state: ResultsInput): PeriodResult[] {
+  const { game, squares, scores, manualWinners } = state;
+  const rules = rulesOf(game.format);
+  const owner = new Map(squares.map((s) => [cellKey(s.row, s.col), s.playerId]));
+  const ownerOf = (cell: Cell | null) => (cell ? (owner.get(cellKey(cell.row, cell.col)) ?? null) : null);
+  const scoreBy = new Map(scores.map((s) => [s.periodKey, s]));
+  const manualBy = new Map(manualWinners.map((m) => [m.periodKey, m]));
+  const goals = goalsOf(scores);
+  const over = matchOver(game, scores);
+  const draw = drawFor(game, SHARED_DRAW_KEY);
+
+  const out: PeriodResult[] = [];
+  for (const p of soccerPeriods(game, scores, manualWinners)) {
+    const rule = ruleForPeriodKey(rules, p.key);
+    if (!rule) continue;
+    const decided = goalDecider(p.key, goals, scoreBy, over);
+    const manual = manualBy.get(p.key);
+    if (!decided && !manual) continue;
+    const picked = manual ? { row: manual.row, col: manual.col } : null;
+    const cell = rule.square ? (picked ?? (decided && draw ? minuteCell(decided.minute, draw) : null)) : null;
+    const rev = rule.reverse ? ((!rule.square ? picked : null) ?? (decided && draw ? reverseMinuteCell(decided.minute, draw) : null)) : null;
+    out.push({
+      periodKey: p.key,
+      label: p.label,
+      score: decided?.score ?? null,
+      cell,
+      winnerPlayerId: ownerOf(cell),
+      reverseCell: rev,
+      reverseWinnerPlayerId: ownerOf(rev),
+      awardsSquare: !!rule.square,
+      awardsReverse: !!rule.reverse,
+      prize: rule.square?.note || null,
+      reversePrize: rule.reverse?.note || null,
+      amount: prizeAmount(rule.square),
+      reverseAmount: prizeAmount(rule.reverse),
+      ...(rule.square?.rest ? { amountIsRest: true as const } : {}),
+      scoreKind: null,
+      scorePoints: null,
+      goalMinute: decided?.minute ?? null,
+      goal: decided?.goal ?? null,
+      source: manual ? "host" : "auto",
+    });
+  }
+  const total = boardTotalOf(state);
+  for (const r of out) if (r.amountIsRest) r.amount = restAfter(total, out);
+  return out;
+}
+
+/** The soccer periods decided so far (a goal, its moment, the full-time ones), host picks included. */
+function decidedGoalKeys(state: Pick<GameState, "game" | "scores" | "manualWinners">): Set<string> {
+  const goals = goalsOf(state.scores);
+  const over = matchOver(state.game, state.scores);
+  const out = new Set([...state.scores.map((s) => s.periodKey), ...state.manualWinners.map((m) => m.periodKey)]);
+  if (goals.length > 0 || over) out.add("first");
+  if (over) out.add("final");
+  return out;
+}
+
+/**
+ * What a goal now would win on a soccer board: the first goal while it's
+ * still to come, then the next goal when every goal wins, then the last goal.
+ */
+function goalInPlay(state: Pick<GameState, "game" | "scores" | "manualWinners">): { periodKey: string | null; rule: MomentRule | null } {
+  const rules = rulesOf(state.game.format);
+  const done = decidedGoalKeys(state);
+  const first = ruleFor(rules, "first");
+  if (first && !done.has("first")) return { periodKey: "first", rule: first };
+  const every = ruleFor(rules, "score");
+  if (every) return { periodKey: null, rule: every };
+  const last = ruleFor(rules, "final");
+  return last ? { periodKey: "final", rule: last } : { periodKey: null, rule: null };
 }
 
 // ---- Kinds of score (every-score entries) ----
@@ -339,6 +483,14 @@ export interface PeriodResult {
   scoreKind: ScoreKind | null;
   /** The points behind `scoreKind`; null without a kind. */
   scorePoints: number | null;
+  /**
+   * A soccer board's minute on the board (0-99) that decided the square: the
+   * goal's (shared/soccer.ts `boardMinute`), 0 when the match had none. Only
+   * on a soccer board's results (null when a host pick decided it alone).
+   */
+  goalMinute?: number | null;
+  /** A soccer board's: the goal that decided it (the first goal, the goal itself, the last goal); null with no goals. */
+  goal?: Score | null;
   /** "host" when the winner comes from a ManualWinner override. */
   source: "auto" | "host";
 }
@@ -355,6 +507,7 @@ export type ResultsInput = Pick<GameState, "game" | "squares" | "scores" | "manu
 export function resolveResults(state: ResultsInput): PeriodResult[] {
   const { game, squares, scores, manualWinners } = state;
   if (!game.numbers) return [];
+  if (isSoccer(game)) return resolveGoalResults(state);
 
   const rules = rulesOf(game.format);
   const legacy = !game.format.rules?.length;
@@ -533,7 +686,8 @@ function cumulative(linescores: number[], n: number): number {
  */
 export function periodScoresFromLinescores(format: GameFormat, update: LiveUpdate, kind?: GameKind): PeriodScore[] {
   const out: PeriodScore[] = [];
-  for (const p of fixedPeriods(rulesOf(format))) {
+  // A soccer board's first goal comes from its goals (goalsFromFeed): only its full-time score is a period's.
+  for (const p of fixedPeriods(rulesOf(format), kind ? sportOf(kind) : null)) {
     if (p.key === "final") {
       if (!update.isFinal) continue;
       const x = Number.isFinite(update.live.scoreX) ? update.live.scoreX : cumulative(update.linescoresX, update.linescoresX.length);
@@ -639,6 +793,10 @@ const decidedKeys = (state: Pick<GameState, "scores" | "manualWinners">) =>
  * game splits (quarters, or halves).
  */
 export function periodInPlay(state: Pick<GameState, "game" | "scores" | "manualWinners">, livePeriod: number): string | null {
+  if (isSoccer(state.game)) {
+    const done = decidedGoalKeys(state);
+    return fixedPeriodsOf(state.game).find((p) => !done.has(p.key))?.key ?? null;
+  }
   const key = periodKeyForLive(state.game.format, livePeriod, state.game);
   if (key === null) return null;
   const done = decidedKeys(state);
@@ -656,6 +814,7 @@ export function momentInPlay(
   state: Pick<GameState, "game" | "scores" | "manualWinners">,
   livePeriod: number,
 ): { periodKey: string | null; rule: MomentRule | null } {
+  if (isSoccer(state.game)) return goalInPlay(state);
   const rules = rulesOf(state.game.format);
   const scoreRule = ruleFor(rules, "score");
   const key = periodInPlay(state, livePeriod);
@@ -674,6 +833,7 @@ export function liveCell(
 ): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null; reverse?: true } | null {
   const { game, live } = state;
   if (!game.numbers || !live || live.state === "pre") return null;
+  if (isSoccer(game)) return liveMinuteCell(state);
   const { periodKey, rule } = momentInPlay(state, live.period);
   const draw = drawFor(game, periodKey ?? SHARED_DRAW_KEY);
   if (!draw) return null;
@@ -683,6 +843,41 @@ export function liveCell(
   const ownerOf = (c: Cell) => squareAt(state.squares, c.row, c.col)?.playerId ?? null;
   if (rule && !rule.square && rev) return { periodKey, cell: rev, playerId: ownerOf(rev), reverseCell: null, reverse: true };
   return { periodKey, cell, playerId: ownerOf(cell), reverseCell: rev };
+}
+
+/**
+ * A soccer board's live square: the minute the match is in ("34'", "45'+2'"
+ * on the feed's clock), the square a goal now would land on, for the moment
+ * a goal now would win (goalInPlay). null between halves and once it's over.
+ */
+function liveMinuteCell(
+  state: Pick<GameState, "game" | "squares" | "live" | "scores" | "manualWinners">,
+): { periodKey: string | null; cell: Cell; playerId: string | null; reverseCell: Cell | null; reverse?: true } | null {
+  const { game, live } = state;
+  // Halftime (ESPN's "HT") keeps the clock on the half's last minute: no goal is coming then.
+  const between = /^(ht|half)/i.test(live?.detail.trim() ?? "");
+  const at = live?.state === "in" && !between ? parseMinute(live.clock) : null;
+  const draw = drawFor(game, SHARED_DRAW_KEY);
+  if (!at || !draw) return null;
+  const { periodKey, rule } = goalInPlay(state);
+  if (!rule) return null;
+  const minute = boardMinute(at.minute, at.added);
+  const cell = minuteCell(minute, draw);
+  if (!cell) return null;
+  const rev = rule.reverse ? reverseMinuteCell(minute, draw) : null;
+  const ownerOf = (c: Cell) => squareAt(state.squares, c.row, c.col)?.playerId ?? null;
+  if (!rule.square && rev) return { periodKey, cell: rev, playerId: ownerOf(rev), reverseCell: null, reverse: true };
+  return { periodKey, cell, playerId: ownerOf(cell), reverseCell: rev };
+}
+
+/**
+ * A soccer result's minute as the match showed it: its goal's ("90+4'"), or
+ * "00" when the match had none; null for any other board's result (and a
+ * host pick that decided it alone).
+ */
+export function resultMinute(r: Pick<PeriodResult, "goalMinute" | "goal">): string | null {
+  if (r.goal && typeof r.goal.minute === "number") return minuteText(r.goal.minute, r.goal.added ?? 0);
+  return r.goalMinute == null ? null : squareMinute(r.goalMinute);
 }
 
 // ---- Dashboard / summary ----
@@ -712,7 +907,7 @@ export function winCounts(results: PeriodResult[]): Record<string, number> {
 
 /** First fixed period still waiting for a result (null without fixed moments, or when all are done). */
 export function upcomingPeriod(state: ResultsInput): Period | null {
-  const done = decidedKeys(state);
+  const done = isSoccer(state.game) ? decidedGoalKeys(state) : decidedKeys(state);
   return fixedPeriodsOf(state.game).find((p) => !done.has(p.key)) ?? null;
 }
 
