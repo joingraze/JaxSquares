@@ -59,7 +59,7 @@ jobs:
           cp worker/scores/espn.probe.ts worker/scores/probe.live.test.ts
           status=0
           npx vitest run worker/scores/probe.live.test.ts --reporter=verbose > probe.log 2>&1 || status=$?
-          grep -vE "^\s*$|^stdout \|" probe.log | head -250
+          grep -vE "^\s*$|^stdout \|" probe.log | head -2000
           exit "$status"
 
       - name: Deployed site
