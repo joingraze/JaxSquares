@@ -14,6 +14,7 @@ export type Scene =
   | "tv-game"
   | "hoops-create"
   | "hoops-live"
+  | "soccer-live"
   | "join"
   | "sync-left"
   | "sync-center"

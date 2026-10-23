@@ -20,6 +20,11 @@ and the same banned-text guard, so a clip can never show betting words,
 league marks or dev addresses. Friends' claims and scores are posted through
 the API mid-recording, so the board fills and winners land live.
 
+The fictional hosts can't sign in with Google or Apple, so when the recorder
+starts its own dev server it writes a `.dev.vars` (removed afterwards) that
+turns sign-in off and uses the no-charge test checkout. If you keep a
+`.dev.vars` of your own, it's used as is.
+
 ```bash
 npm run db:migrate:local
 npm run marketing:capture                 # every scene
@@ -35,7 +40,9 @@ screen at a bar: the QR code while the room scans in, then the draw and a
 winner card), `hoops-create` and `hoops-live` (a basketball board made, then
 Q3 landing on your square), `join` (a stranger's phone opens the link, picks a
 square, types a name), `sync` (one board on three phones as Q3 lands:
-`sync-left`, `sync-center`, `sync-right`). Each lands in `out/clips/<scene>/`
+`sync-left`, `sync-center`, `sync-right`), `soccer-live` (a soccer board: a
+goal at 45+2' lands on your square 45; the board is dealt again until you hold
+the 45th minute). Each lands in `out/clips/<scene>/`
 as numbered JPEGs plus `clip.json` (with the scene's scores and names);
 `out/clips/manifest.json` lists them. Re-record after any UI change, then
 re-render: compositions pick moments by clip frame number (noted in
@@ -110,7 +117,16 @@ Schedule and history facts for the templated videos live in
 `studio/compositions/data.ts`. The square stats in `studio/lib/stats.ts` come
 from `scripts/seo/data/nflFinals.ts`, which `scripts/seo/stats.ts` generates
 from nflverse's `games.csv` (NFL final scores 1999–2025): the same numbers as
-the website's data page, refreshed yearly (docs/seo.md).
+the website's data page, refreshed yearly (docs/seo.md). The soccer stats in
+`studio/lib/soccerStats.ts` come from `scripts/seo/data/soccerMinutes.ts`, which
+`scripts/seo/soccerStats.ts` counts from openfootball's public-domain
+`worldcup.json` (every goal of 2018, 2022 and 2026, on the square the app would
+give it). Copy names that tournament without its trademarked name.
+
+History and stat posts cite their source: the on-this-day videos show it on
+screen (`source` in `compositions/data.ts`), and the launch plan's build fails
+when a history or stats post has no `source` or its caption lacks
+"Source: …".
 
 ### Compositions
 
@@ -130,6 +146,8 @@ the website's data page, refreshed yearly (docs/seo.md).
 | `u4-every-phone` | One score, every phone: three phones on one board as Q3 lands |
 | `u5-office-squares` | The office spreadsheet and reply-all chaos → one link in the team chat → live winners |
 | `u6-join-from-link` | The friend's side: a text with the link → tap a square → type a name → in, no app |
+| `u7-soccer-squares` | Soccer squares: every square is a minute (43' → 43, 45+2' → 45, 90+3' → 93), then a 45+2' goal lands on your square 45 |
+| `u8-soccer-minutes` | Data: which minute wins soccer squares, from 649 goals (square 45 leads, the 90s row, 00 for goalless matches) |
 | `m1`–`m7` | "Run a board for this game" matchup template |
 | `otd1`–`otd6` | On this day: a famous final score and the square it landed on |
 | `c1`–`c4` | Carousels: how squares works, every square ranked, host cheat sheet, Thanksgiving playbook |

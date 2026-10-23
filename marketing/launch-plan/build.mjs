@@ -50,6 +50,15 @@ for (const it of items) {
   if (it.altText) postable(`${it.id} alt text`, it.altText);
   for (const c of it.copy ?? []) postable(`${it.id} ${c.label}`, c.text);
 }
+// History and stats say where they come from, on the post itself: `source` names it, and the
+// caption or story text carries "Source: <it>" word for word.
+const NEEDS_SOURCE = (it) =>
+  /^(otd|04-best|c2-every|u8-soccer)/.test(it.asset ?? "") || /on this day|ago today|years? ago|fun fact|^\d{4}:/i.test(it.title);
+for (const it of items) {
+  const text = it.caption ?? it.story?.text ?? "";
+  if (NEEDS_SOURCE(it) && !it.source) throw new Error(`${it.id}: a history or stats post needs a source`);
+  if (it.source && !text.includes(`Source: ${it.source}`)) throw new Error(`${it.id}: the caption or story text must end with “Source: ${it.source}”`);
+}
 postable("profile name", PLAN.strategy.setup.name);
 postable("profile bio", PLAN.strategy.setup.bio);
 

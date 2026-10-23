@@ -69,16 +69,16 @@ Do these in order. Each one is a step in the calendar page's Start here list.
 
 ## Positioning
 
-Football and basketball squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Annual Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.
+Football, basketball and soccer squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Annual Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.
 
 ## Content pillars
 
 | Pillar | Share | What |
 |---|---|---|
-| Show the product | 35% | Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app. |
-| Squares nerdery | 25% | Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent. |
-| This game, this week | 25% | Primetime, Jaguars, Gators and Thanksgiving games. Make the board the plan for the game. |
-| On this day | 15% | Verified history with a squares twist: which square that famous final score landed on. |
+| Show the product | 40% | Real-app demos for each sport: the 30-second setup, Let Jax pick, the live draw, winners lighting up, soccer's minute squares, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app. |
+| Stats and fun facts | 20% | Real numbers, always with their source: best/worst football squares from 7,276 NFL finals (nflverse), which minute wins soccer squares from 649 goals (openfootball), late-goal and fastest-goal facts (Opta, Premier League). Built to be saved and sent. |
+| This game, this week | 25% | Primetime, Jaguars, Gators, Thanksgiving, and soccer's big days: Premier League mornings, Champions League afternoons, MLS and NWSL playoffs. Make the board the plan for the game. |
+| On this day | 15% | Verified history with a squares twist, football and soccer: which square that famous final score (or goal's minute) won. Every post names its source. |
 
 ## Who it's for
 
@@ -90,6 +90,7 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 | Offices | No spreadsheet, no reply-all; Just for fun boards with prize notes. | `u5-office-squares` |
 | Families (Thanksgiving) | One board for every house, live on every phone. | `05b-group-chat-thanksgiving`, `08-thanksgiving-slate`, `u4-every-phone` |
 | Basketball fans | NBA and college games with live scores, or any matchup. | `u3-basketball-squares` |
+| Soccer fans | Every square is a minute and each goal's minute wins: Premier League mornings, Champions League afternoons (office boards), MLS and NWSL playoffs, Liga MX. | `u7-soccer-squares`, `u8-soccer-minutes` |
 
 ## Cadence
 
@@ -106,9 +107,13 @@ Football and basketball squares, run by Jax and live now at jaxsquares.com. No a
 - Keywords first. Captions and alt text feed Instagram search and Google. Lead with 'football squares' or 'squares pool'.
 - Original content only. Instagram cuts recommendations for reposted content and for videos with other apps' watermarks. Everything here is original and has no watermarks.
 - Reply to every comment in the first hour after posting. Answer good questions with 'Reply with Reel'.
+- Balance the feed. After the launch grid, never more than two product posts in a row: follow a demo with a stat, a game-day or an on-this-day post. Stories carry most of the game days and history.
+- Every sport gets its days. Football leads in the fall; soccer gets a feed post most weeks and a story on each big match day; basketball a feed post once the NBA is underway.
+- Cite every fact. History and stats posts end with 'Source: …' (the build checks it) and the video shows it on screen; the link to check is in the post's notes.
 
 ## Stay out of trouble
 
+- Name soccer's men's world championship without its trademarked name, the same way (FIFA polices it): 'the last three men's world championships', 'the big tournament'.
 - Say 'the big game', never 'Super Bowl', in posts and ads (NFL trademark). Team names are fine to identify a game. No logos, uniforms, team colors, broadcast footage or player photos.
 - Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.
 - No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.
@@ -133,9 +138,9 @@ Stretch targets, not forecasts: 400+ followers and 150+ boards created by Nov 29
 - **Bio:**
 
   ```
-  Football & basketball squares 🏈🏀
+  Football, basketball & soccer squares 🏈🏀⚽
   Free to set up · no app for players
-  Live scores call winners. Make a board 👇
+  Live scores call winners 👇
   Not affiliated w/ any league or team
   ```
 - **Link:** https://jaxsquares.com (title: “Make a board”). Link taps show in Instagram's Insights; the site runs no analytics, so no tracking tag.
@@ -197,10 +202,12 @@ Preview of the profile on launch day: `out/g-grid-preview/01.png`
 | Sat, Oct 24 | 11:00 AM | Story | College Saturday slate | — |
 | Sat, Oct 24 | 11:00 AM | Reel | Grid 3/9: Jax draws the numbers (POV: you hit Draw) | `03-the-draw` |
 | Sat, Oct 24 | 11:20 AM | Story | Grid story: the board is open | `s-grid-progress/01` |
+| Sat, Oct 24 | 12:00 PM | Story | Soccer squares are live | `u7-soccer-squares` |
 | Sun, Oct 25 | 9:15 AM | Story | Breakfast football from Paris | — |
 | Sun, Oct 25 | 11:00 AM | Reel | Grid 4/9: Your square hits, the gold one (Winners light up) | `06-winners-light-up` |
 | Sun, Oct 25 | 11:30 AM | Story | Game day checklist | `s-story-frames/06` |
 | Sun, Oct 25 | 1:00 PM | Task | Launch check-in: Reels 1–2 | — |
+| Sun, Oct 25 | 3:15 PM | Story | El Clásico at 4 | — |
 | Sun, Oct 25 | 7:30 PM | Story | SNF: Chiefs at Seahawks poll | — |
 
 ### Wed, Oct 21, 2:30 PM · Task: Profile 1/7: Switch to a professional account
@@ -254,9 +261,9 @@ jaxsquares
 **Bio:**
 
 ```text
-Football & basketball squares 🏈🏀
+Football, basketball & soccer squares 🏈🏀⚽
 Free to set up · no app for players
-Live scores call winners. Make a board 👇
+Live scores call winners 👇
 Not affiliated w/ any league or team
 ```
 
@@ -332,9 +339,9 @@ No app needed. Friends tap the link and pick their squares from any phone. Same 
 **Caption:**
 
 ```text
-JaxSquares is live 🏈🏀🐶
+JaxSquares is live 🏈🏀⚽🐶
 
-Football and basketball squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
+Football, basketball and soccer squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
 
 Free to set up, and your friends never need an app or an account. Make your board: link in bio.
 
@@ -365,15 +372,15 @@ Send this to whoever runs your squares 📲
 ### Fri, Oct 23, 12:15 PM · Task: Fix the live Grid 1 caption and the bio
 
 - [ ] Grid 1 (posted yesterday): open it → ⋯ → Edit → select the whole caption, delete it, paste the new one below → Done.
-- [ ] Bio: Edit profile → Bio → paste the new bio below. One line changed: hosts now sign in to make a board, so “no signup” is out.
+- [ ] Bio: Edit profile → Bio → paste the new bio below. It adds soccer, and “no signup” is out (hosts now sign in to make a board).
 - [ ] Then post Grid 2 at 12:30.
 
 **Grid 1 caption:**
 
 ```text
-JaxSquares is live 🏈🏀🐶
+JaxSquares is live 🏈🏀⚽🐶
 
-Football and basketball squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
+Football, basketball and soccer squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.
 
 Free to set up, and your friends never need an app or an account. Make your board: link in bio.
 
@@ -385,13 +392,13 @@ Send this to whoever runs your squares 📲
 **Bio:**
 
 ```text
-Football & basketball squares 🏈🏀
+Football, basketball & soccer squares 🏈🏀⚽
 Free to set up · no app for players
-Live scores call winners. Make a board 👇
+Live scores call winners 👇
 Not affiliated w/ any league or team
 ```
 
-- The old caption had “Square 1 of 9” (a note for us, not for followers) and “No signup”, which no longer holds for hosts.
+- The old caption had “Square 1 of 9” (a note for us, not for followers) and “No signup”, which no longer holds for hosts. The new one names soccer too.
 
 ### Fri, Oct 23, 12:30 PM · Reel: Grid 2/9: Scores update themselves (One score, every phone)
 
@@ -480,8 +487,10 @@ Chiefs–Seahawks tonight? Your board is one link away: link in bio. Send this t
 - **Thu, Oct 22 6:45 PM** · TNF: Patriots at Bears · frame `s-story-frames/06` · sticker: Link → app. “TNF: Patriots at Bears, 8:15 on Prime. Board takes 30 seconds 👇”
 - **Sat, Oct 24 11:00 AM** · College Saturday slate · sticker: Link → app. “College Saturday 🏈 / BYU at UCF · 3:30 FOX / Ole Miss at Texas · 7:30 ABC / Houston at Utah · 10:15 ESPN / Running a board? 👇”
 - **Sat, Oct 24 11:20 AM** · Grid story: the board is open · frame `s-grid-progress/01` · sticker: Link → app. “Our grid is a squares board 🟩 3 of 9 squares claimed. One more every day.”
+- **Sat, Oct 24 12:00 PM** · Soccer squares are live · frame `u7-soccer-squares` · sticker: Link → app. “New: soccer squares ⚽ Every square is a minute, and each goal's minute wins. Chelsea–Spurs at 12:30 👇” (Post the video as a Story (it's 9:16). Feed posts wait until the grid is done: it goes in the feed on Oct 31. Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).)
 - **Sun, Oct 25 9:15 AM** · Breakfast football from Paris · sticker: Link → app. “Breakfast football from Paris 🇫🇷 Steelers vs Saints at 9:30. Coffee + a squares board?”
 - **Sun, Oct 25 11:30 AM** · Game day checklist · frame `s-story-frames/06` · sticker: Link → app. “Draw before the 1:00 kickoffs 👇” (The frame carries the checklist: add only this line, above the link sticker.)
+- **Sun, Oct 25 3:15 PM** · El Clásico at 4 · sticker: Link → app. “El Clásico at 4 ⚽ Barcelona–Real Madrid. Every goal's minute wins a square. Board's a link away 👇”
 - **Sun, Oct 25 7:30 PM** · SNF: Chiefs at Seahawks poll · sticker: Poll: Yes / No. “SNF: do the Chiefs stay unbeaten?”
 
 ## Week 1 · Oct 26–Nov 1: Launch: what it is
@@ -506,12 +515,14 @@ Chiefs–Seahawks tonight? Your board is one link away: link in bio. Send this t
 | Fri, Oct 30 | 12:50 PM | Story | Grid story: board's full | `s-grid-progress/03` |
 | Fri, Oct 30 | 2:00 PM | Task | Profile: Highlights | — |
 | Fri, Oct 30 | 5:00 PM | Story | Who's running squares this weekend? | `s-story-frames/05` |
-| Sat, Oct 31 | 10:00 AM | Reel | Florida vs Georgia: it left Jax | `m2-florida-georgia` |
+| Sat, Oct 31 | 8:00 AM | Reel | Soccer squares: every square is a minute | `u7-soccer-squares` |
+| Sat, Oct 31 | 12:30 PM | Reel | Florida vs Georgia: it left Jax | `m2-florida-georgia` |
 | Sat, Oct 31 | 2:45 PM | Story | Cocktail Party kickoff | — |
 | Sat, Oct 31 | 7:00 PM | Story | Halloween: scariest square | `s-story-frames/08` |
 | Sun, Nov 1 | 10:30 AM | Story | Jags are home | `m3-colts-jaguars` |
 | Sun, Nov 1 | 11:30 AM | Reel | Best and worst squares | `04-best-worst-squares` |
 | Sun, Nov 1 | 11:30 AM | Story | Game day checklist | `s-story-frames/06` |
+| Sun, Nov 1 | 4:15 PM | Story | NWSL Decision Day | — |
 | Sun, Nov 1 | 8:00 PM | Task | Weekly review (15 min) | — |
 
 ### Mon, Oct 26, 2:00 PM · Reel: Grid 5/9: Meet Jax (Let Jax pick)
@@ -634,7 +645,7 @@ Panthers–Packers tonight? Link in bio. Send this to the friend who always asks
 ```text
 Squares aren't just for football 🏀
 
-JaxSquares runs basketball squares too: pick tonight's NBA game or type in any matchup, choose how squares win, and live scores call every winner. College hoops tips off next week.
+JaxSquares runs basketball squares too: pick tonight's NBA game or type in any matchup, choose how squares win, and live scores call every winner. College hoops tips off next week. Soccer's in too: every square is a minute, and each goal's minute wins ⚽
 
 Send this to your hoops group chat. Your board → link in bio.
 
@@ -683,7 +694,31 @@ Square stats
 Thanksgiving
 ```
 
-### Sat, Oct 31, 10:00 AM · Reel: Florida vs Georgia: it left Jax
+### Sat, Oct 31, 8:00 AM · Reel: Soccer squares: every square is a minute
+
+*Chelsea v Man United · 8:30 AM ET*
+
+**Asset:** `out/u7-soccer-squares.mp4`, `out/u7-soccer-squares-cover.png`
+
+**Caption:**
+
+```text
+Soccer squares are here ⚽
+
+Every square is a minute of the match, and each goal's minute wins. A goal at 45+2' counts as the 45th, so that's square 45; 90+3' runs on to square 93.
+
+Chelsea–Man United at 8:30 this morning. Make your board: link in bio. Send this to your soccer group chat.
+
+#soccersquares #soccer #premierleague #footballsquares #squarespool
+```
+
+**Alt text:** A card explains soccer squares: 43 minutes is square 43, 45+2 is square 45 and 90+3 is square 93. Then a JaxSquares soccer board where a goal at 45+2 lands on the viewer's square 45 and Jax cheers.
+
+- Has its own soundtrack: original JaxSquares music, cut to the video, so post it as is (it shows as Original audio, and it's yours to boost).
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+- Florida–Georgia moved to 12:30 so the two Reels aren't back to back.
+
+### Sat, Oct 31, 12:30 PM · Reel: Florida vs Georgia: it left Jax
 
 *Florida vs. Georgia · 3:30 PM ET · ABC · Mercedes-Benz Stadium, Atlanta*
 
@@ -717,9 +752,12 @@ The best and worst squares in football, from 7,276 NFL final scores 📊
 
 Send this to whoever drew 2–2 this week.
 
+Source: nflverse
+
 #footballsquares #squarespool #nfl #footballstats #fantasyfootball
 ```
 
+- Source link (check before posting): https://github.com/nflverse/nfldata (games.csv: every NFL final, 1999–2025)
 - Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 - Top boost candidate (no money on screen).
@@ -736,9 +774,9 @@ Send this to whoever drew 2–2 this week.
 - **Mon, Oct 26 6:30 PM** · MNF board is open · frame `m1-mnf-cowboys-eagles` · sticker: Link → app. “Start tonight's board 👇”
 - **Mon, Oct 26 9:30 PM** · Q1 poll · sticker: Poll: 🙋 me / 😭 not me. “Who's got the Q1 square?”
 - **Tue, Oct 27 1:20 PM** · Grid story: 6 of 9 · frame `s-grid-progress/02` · sticker: Question: “Who runs your squares?”. “6 of 9 squares claimed 👀 Three to go. Who runs your squares? Tell us 👇”
-- **Tue, Oct 27 4:30 PM** · On this day: Emmitt breaks the record (2002) · frame `otd1-oct27-emmitt` · sticker: Link → app. “On this day in 2002: former Gator Emmitt Smith passes Walter Payton 🐊 The final (17–14) landed on the 7–4 square. Make your board 👇” (Post the video as a Story (it's 9:16). Feed posts wait until the grid is done. Has its own retro soundtrack (original music). Post it as is.)
+- **Tue, Oct 27 4:30 PM** · On this day: Emmitt breaks the record (2002) · frame `otd1-oct27-emmitt` · sticker: Link → app. “On this day in 2002: former Gator Emmitt Smith passes Walter Payton 🐊 The final (17–14) landed on the 7–4 square. Make your board 👇 / Source: Pro Football Hall of Fame” (Source link (check before posting): https://profootballhof.com/news/smith-s-firm-hold-on-coveted-record1 Post the video as a Story (it's 9:16). Feed posts wait until the grid is done. Has its own retro soundtrack (original music). Post it as is.)
 - **Tue, Oct 27 6:00 PM** · Poll: 0–0 or 7–7? · frame `s-story-frames/01` · sticker: Poll: 0–0 / 7–7. No text to add (No text to add: the frame asks the question. Place the poll sticker in the frame's empty middle band.)
-- **Wed, Oct 28 6:00 PM** · Poll answer · frame `s-story-frames/02` · sticker: None (or a link to the carousel). “Basically a coin flip.” (The frame shows the answer: add only this line.)
+- **Wed, Oct 28 6:00 PM** · Poll answer · frame `s-story-frames/02` · sticker: None (or a link to the carousel). “Basically a coin flip. / Source: nflverse” (The frame shows the answer: add only this line.)
 - **Thu, Oct 29 6:45 PM** · TNF: Panthers at Packers · sticker: Link → app. “TNF: Panthers at Packers, 8:15 on Prime. Board's a link away 👇”
 - **Fri, Oct 30 12:50 PM** · Grid story: board's full · frame `s-grid-progress/03` · sticker: Link → app. “Board's full. That's our logo 🟩 Tap to make yours.”
 - **Fri, Oct 30 5:00 PM** · Who's running squares this weekend? · frame `s-story-frames/05` · sticker: Questions. No text to add (No text to add: the frame asks the question. Place the Questions sticker in the frame's middle band.)
@@ -746,6 +784,7 @@ Send this to whoever drew 2–2 this week.
 - **Sat, Oct 31 7:00 PM** · Halloween: scariest square · frame `s-story-frames/08` · sticker: Emoji slider 💀 → 🔥. “Happy Halloween 👻 Scariest square on the board: 2–2.”
 - **Sun, Nov 1 10:30 AM** · Jags are home · frame `m3-colts-jaguars` · sticker: Link → app. “Jags are home at 1. Lock your board by kickoff 🐆”
 - **Sun, Nov 1 11:30 AM** · Game day checklist · frame `s-story-frames/06` · sticker: Link → app. “Board full? Lock it before 1.”
+- **Sun, Nov 1 4:15 PM** · NWSL Decision Day · sticker: Link → app. “NWSL Decision Day at 5 ⚽ Every match at once. A board for your club's game? 👇”
 
 ## Week 2 · Nov 2–8: Proof and personality
 
@@ -758,15 +797,19 @@ Send this to whoever drew 2–2 this week.
 | Mon, Nov 2 | 7:00 PM | Story | MNF: Bears at Seahawks | — |
 | Tue, Nov 3 | 12:00 PM | Story | Quiz: most common final | `s-story-frames/03` |
 | Tue, Nov 3 | 8:15 PM | Story | First CFP rankings | — |
+| Wed, Nov 4 | 11:45 AM | Story | Champions League afternoon: office board | — |
 | Wed, Nov 4 | 12:30 PM | Carousel | Host cheat sheet | `c3-host-cheat-sheet` |
 | Wed, Nov 4 | 6:00 PM | Story | Quiz answer: 23–20 | `s-story-frames/04` |
 | Thu, Nov 5 | 12:00 PM | Reel | Jags in primetime | `m4-tnf-jaguars-ravens` |
+| Thu, Nov 5 | 4:00 PM | Story | On this day: MLS Cup 2022, square 28 twice | — |
 | Thu, Nov 5 | 6:30 PM | Story | Jags board: lock by 8:15 | — |
 | Thu, Nov 5 | 11:30 PM | Story | Which square hit? | — |
 | Fri, Nov 6 | 12:00 PM | Story | 1869: the first college football game | — |
 | Fri, Nov 6 | 12:15 PM | Task | Optional: comment-to-DM link | — |
+| Fri, Nov 6 | 1:00 PM | Reel | Which minute wins soccer squares | `u8-soccer-minutes` |
 | Fri, Nov 6 | 5:15 PM | Task | Reply with a Reel | — |
 | Sat, Nov 7 | 11:00 AM | Reel | Miami at Notre Dame | `m5-miami-notre-dame` |
+| Sat, Nov 7 | 3:30 PM | Story | MLS Decision Day | — |
 | Sat, Nov 7 | 7:00 PM | Story | Miami at Notre Dame board | — |
 | Sun, Nov 8 | 9:15 AM | Story | Madrid game | — |
 | Sun, Nov 8 | 11:00 AM | Reel | On this day: Dempsey's 63-yarder (1970) | `otd3-nov08-dempsey` |
@@ -793,9 +836,12 @@ Jaguars 30, Raiders 29 in overtime. That's the 0–9 square, which lands on 0.7%
 
 Duval, where were you for this one?
 
+Source: Pro Football Hall of Fame
+
 #duuuval #jaguars #onthisday #nflhistory #footballsquares
 ```
 
+- Source link (check before posting): https://www.profootballhof.com/news/jaguars-kicker-cam-little-sets-nfl-record-with-68-yard-field-goal-vs-raiders
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
@@ -843,6 +889,33 @@ Who's running the Duval board tonight? 👇
 - [ ] Set up a comment keyword (e.g. BOARD) that DMs the app link (ManyChat or Meta's own automation).
 - [ ] Then end one caption a week with “Comment BOARD and we'll DM you the link.” It's allowed because it delivers something.
 
+### Fri, Nov 6, 1:00 PM · Reel: Which minute wins soccer squares
+
+*NWSL quarterfinals Nov 6–8 · MLS Decision Day Sat Nov 7*
+
+**Asset:** `out/u8-soccer-minutes.mp4`, `out/u8-soccer-minutes-cover.png`
+
+**Caption:**
+
+```text
+Which minute wins soccer squares? ⚽📊
+
+We put all 649 goals from the last three men's world championships (2018, 2022, 2026) on the square each would have won. Square 45 led with 24, almost 4× an average square, because all of first-half stoppage time counts as the 45th minute. Second-half stoppage time runs on, so the 90s row stays busy. And 7% of matches had no goals: that's square 00.
+
+Every one of the 100 squares won at least once. Send this to whoever runs your soccer squares.
+
+Source: openfootball
+
+#soccersquares #soccer #soccerstats #mls #nwsl
+```
+
+**Alt text:** A 10 by 10 heat map of soccer squares, one per minute from 00 to 99, shaded by how many goals landed on each. Square 45 is brightest with 24 goals, the 90s row glows, and square 00 marks the 16 of 232 matches with no goals.
+
+- Source link (check before posting): https://github.com/openfootball/worldcup.json (public domain; 2018, 2022 and 2026 list every goal's minute)
+- The tournament isn't named, in the caption or on screen: like the big game, its name is a trademark.
+- Has its own soundtrack, with the drop on the reveal. To ride a trending sound instead (the ↗ arrow in the audio browser), add it in the Reels editor and turn the original audio down to 0–20%.
+- Upload the matching cover image as the Reel cover so the profile grid stays clean.
+
 ### Fri, Nov 6, 5:15 PM · Task: Reply with a Reel
 
 - [ ] Pick the best comment or question of the week (“does it work for college?” is perfect).
@@ -882,9 +955,12 @@ On this day in 1970, Tom Dempsey kicked a 63-yard field goal at the gun. Saints 
 
 Got a 9 this week? 👀
 
+Source: New Orleans Saints
+
 #onthisday #nflhistory #saints #footballsquares #squarespool
 ```
 
+- Source link (check before posting): https://www.neworleanssaints.com/news/this-day-in-new-orleans-saints-history-november-8-17951175
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
@@ -899,10 +975,13 @@ Got a 9 this week? 👀
 - **Mon, Nov 2 7:00 PM** · MNF: Bears at Seahawks · sticker: Link → app. “MNF: Bears at Seahawks. Make the board before 8:15 👇”
 - **Tue, Nov 3 12:00 PM** · Quiz: most common final · frame `s-story-frames/03` · sticker: Quiz: 20–17 / 23–20 ✓ / 27–24 / 24–17. No text to add (No text to add: the frame asks the question. Place the quiz sticker in the frame's middle band and mark 23–20 as the answer.)
 - **Tue, Nov 3 8:15 PM** · First CFP rankings · sticker: Questions. “First CFP rankings are out. Who's your #1?”
-- **Wed, Nov 4 6:00 PM** · Quiz answer: 23–20 · frame `s-story-frames/04` · sticker: None. No text to add (No text to add: the frame shows the answer.)
+- **Wed, Nov 4 11:45 AM** · Champions League afternoon: office board · sticker: Link → app. “Champions League at 12:45 and 3 ⚽ Liverpool, Real Madrid, Arsenal, Man City. One link in the team chat 👇”
+- **Wed, Nov 4 6:00 PM** · Quiz answer: 23–20 · frame `s-story-frames/04` · sticker: None. “Source: nflverse” (The frame shows the answer: add only the source line.)
+- **Thu, Nov 5 4:00 PM** · On this day: MLS Cup 2022, square 28 twice · sticker: Link → app. “On this day in 2022: LAFC 3, Philadelphia 3 in MLS Cup, and LAFC won on penalties ⚽ The first goal (28') and Bale's 128th-minute header both won square 28: extra time keeps the last two digits. / Source: MLS” (Source link (check before posting): https://www.mlssoccer.com/playoffs/2025/news/hollywood-ending-lafc-win-legendary-mls-cup-2022-over-philadelphia-union)
 - **Thu, Nov 5 6:30 PM** · Jags board: lock by 8:15 · sticker: Link → app. “Jags board. Lock it by 8:15 🐆”
 - **Thu, Nov 5 11:30 PM** · Which square hit? · sticker: Questions. “Jaguars–Ravens is final 🐆 Who had the winning square? 🙋” (Post it after the final whistle.)
-- **Fri, Nov 6 12:00 PM** · 1869: the first college football game · sticker: None. “On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, the 6–4 square takes it. 🏈”
+- **Fri, Nov 6 12:00 PM** · 1869: the first college football game · sticker: None. “On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, the 6–4 square takes it. 🏈 / Source: Rutgers University” (Source link (check before posting): https://www.rutgers.edu/news/birthplace-college-football)
+- **Sat, Nov 7 3:30 PM** · MLS Decision Day · sticker: Link → app. “MLS Decision Day ⚽ East at 4, West at 7. Late goals decide it, and the 90s row is waiting 👀 Board's a link away 👇”
 - **Sat, Nov 7 7:00 PM** · Miami at Notre Dame board · sticker: Link → app. “Canes at Irish in 30. Board's open 👇”
 - **Sun, Nov 8 9:15 AM** · Madrid game · sticker: Link → app. “Breakfast football from Madrid 🇪🇸 Bengals vs Falcons at 9:30.”
 
@@ -914,6 +993,7 @@ Got a 9 this week? 👀
 |---|---|---|---|---|
 | Mon, Nov 9 | 2:00 PM | Carousel | How football squares works | `c1-how-squares-works` |
 | Mon, Nov 9 | 7:00 PM | Story | MNF: Bills at Vikings | — |
+| Tue, Nov 10 | 12:30 PM | Story | Fun fact: late goals | — |
 | Tue, Nov 10 | 1:30 PM | Task | Boost decision | — |
 | Wed, Nov 11 | 9:00 AM | Story | Veterans Day | — |
 | Wed, Nov 11 | 12:30 PM | Reel (film it) | Founder Reel: why we built it (and who Jax is) | — |
@@ -921,7 +1001,9 @@ Got a 9 this week? 👀
 | Thu, Nov 12 | 12:30 PM | Reel | Squares on the bar TV | `u2-bar-big-screen` |
 | Thu, Nov 12 | 6:45 PM | Story | TNF: Commanders at Giants | `s-story-frames/06` |
 | Fri, Nov 13 | 12:30 PM | Carousel | Every square, ranked | `c2-every-square-ranked` |
+| Fri, Nov 13 | 1:00 PM | Story | On this day: Pando's 107th minute (2005) | — |
 | Fri, Nov 13 | 5:00 PM | Story | Friday night: FSU at Pitt | — |
+| Sat, Nov 14 | 10:30 AM | Story | Fun fact: the fastest goal | — |
 | Sat, Nov 14 | 12:00 PM | Story | College Saturday | — |
 | Sun, Nov 15 | 9:15 AM | Story | Munich game | — |
 | Sun, Nov 15 | 11:00 AM | Reel | COLLAB: Feature rundown | `07-features` |
@@ -1022,10 +1104,14 @@ S-tier digits: 0 and 7. D-tier: 2 and 5. The 2–2 square has hit 4 times in 27 
 
 Save this before your next draw, and send it to your board's 2–2 holder.
 
+Source: nflverse
+
 #footballsquares #squarespool #nfl #footballstats #fantasyfootball
 ```
 
 **Alt text:** Heat map and rankings of football squares by how often NFL final scores land on them since 1999. Best: 0-7, 4-7 and 0-3. Worst: 2-2, 5-5 and 5-9. Most common final since 1999: 23-20.
+
+- Source link (check before posting): https://github.com/nflverse/nfldata (games.csv: every NFL final, 1999–2025)
 
 ### Sun, Nov 15, 11:00 AM · Reel: COLLAB: Feature rundown
 
@@ -1057,9 +1143,12 @@ Jags at Titans at 1. Board's open 👇
 **Stories:**
 
 - **Mon, Nov 9 7:00 PM** · MNF: Bills at Vikings · sticker: Link → app. “MNF: Bills at Vikings. Draw your numbers live 🔢”
+- **Tue, Nov 10 12:30 PM** · Fun fact: late goals · sticker: Quiz: 2% / 5% / 8% ✓. “Fun fact: in 2023-24, 8.3% of Premier League goals came after the 90th minute, a record ⚽ Every one lands in the 90s row. / Source: Opta” (Source link (check before posting): https://theanalyst.com/articles/football-newsletter-late-goals-arsenal-unstoppable-corners)
 - **Wed, Nov 11 9:00 AM** · Veterans Day · sticker: None. “Thank you to everyone who served 🇺🇸” (Optional. Keep it simple, with no product mention.)
 - **Thu, Nov 12 6:45 PM** · TNF: Commanders at Giants · frame `s-story-frames/06` · sticker: Link → app. “TNF: Commanders at Giants 👇”
+- **Fri, Nov 13 1:00 PM** · On this day: Pando's 107th minute (2005) · sticker: None. “On this day in 2005: Pando Ramírez scored in the 107th minute and the Galaxy won MLS Cup 1–0 ⚽ Extra time keeps the last two digits, so that's square 07. / Source: MLS” (Source link (check before posting): https://www.mlssoccer.com/news/pando-mania-ramirez-takes-home-mvp)
 - **Fri, Nov 13 5:00 PM** · Friday night: FSU at Pitt · sticker: Link → app. “Friday night football: FSU at Pitt, 7:00 on ESPN. Board? 👇”
+- **Sat, Nov 14 10:30 AM** · Fun fact: the fastest goal · sticker: Emoji slider ⚽. “Fastest goal in Premier League history: Shane Long, 7.69 seconds (2019) ⚽ The clock reads 1', so it wins square 01. / Source: Premier League” (Source link (check before posting): https://www.premierleague.com (records: fastest goals). Check the record still stands.)
 - **Sat, Nov 14 12:00 PM** · College Saturday · sticker: Link → app. “College Saturday: Florida at Kentucky tonight · Duke at Miami. One board per game 👇” (Check kickoff times the week of. Florida–Kentucky was in a 6–8 PM window when this plan was written.)
 - **Sun, Nov 15 9:15 AM** · Munich game · sticker: Link → app. “Breakfast football from Munich 🇩🇪 Patriots vs Lions at 9:30.”
 
@@ -1072,12 +1161,17 @@ Jags at Titans at 1. Board's open 👇
 | Mon, Nov 16 | 2:00 PM | Reel | Thanksgiving slate: 6 games, 6 boards | `08-thanksgiving-slate` |
 | Mon, Nov 16 | 7:00 PM | Story | MNF: Chargers at Ravens | — |
 | Tue, Nov 17 | 12:00 PM | Story | Thanksgiving boards poll | `s-story-frames/07` |
+| Tue, Nov 17 | 6:00 PM | Story | USMNT vs Haiti | — |
 | Tue, Nov 17 | 9:30 PM | Story | CFP rankings reaction | — |
 | Wed, Nov 18 | 12:30 PM | Carousel | Thanksgiving squares playbook | `c4-thanksgiving-playbook` |
 | Thu, Nov 19 | 12:30 PM | Reel | On this day: Rams 54, Chiefs 51 (2018) | `otd4-nov19-rams-chiefs` |
+| Thu, Nov 19 | 5:00 PM | Story | On this day: Caligiuri's shot (1989) | — |
 | Thu, Nov 19 | 6:45 PM | Story | TNF: Colts at Texans | — |
 | Fri, Nov 20 | 12:00 PM | Reel | On this day: The Play (1982) | `otd5-nov20-the-play` |
+| Fri, Nov 20 | 5:00 PM | Story | On this day: Alex Morgan at 90+4' (2010) | — |
 | Sat, Nov 21 | 11:00 AM | Story | College Saturday | — |
+| Sat, Nov 21 | 7:00 PM | Story | NWSL Championship | — |
+| Sun, Nov 22 | 10:45 AM | Story | Liverpool–Man United | — |
 | Sun, Nov 22 | 11:30 AM | Story | Jags at Giants | `s-story-frames/06` |
 | Sun, Nov 22 | 12:00 PM | Reel | SNF from Mexico City | `m6-snf-mexico-city` |
 | Sun, Nov 22 | 8:00 PM | Task | Weekly review + Thanksgiving prep | — |
@@ -1139,9 +1233,12 @@ On this day in 2018: Rams 54, Chiefs 51 on Monday Night Football, the first NFL 
 
 Send this to the friend who still talks about this game.
 
+Source: Los Angeles Rams
+
 #onthisday #nflhistory #mondaynightfootball #footballsquares #squarespool
 ```
 
+- Source link (check before posting): https://www.therams.com/news/seven-stats-rams-beat-chiefs-in-monday-night-thriller
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
@@ -1158,9 +1255,12 @@ Stanford led 20–19 with four seconds left. The winning square flipped from 9�
 
 Send this to the most heartbroken squares player you know.
 
+Source: NPR
+
 #onthisday #collegefootball #theplay #calbears #footballsquares
 ```
 
+- Source link (check before posting): https://www.npr.org/2007/11/20/16442781/key-players-from-stanford-and-cal-relive-the-play
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
@@ -1195,9 +1295,14 @@ Who's taking the Vikings–49ers board? 👇
 
 - **Mon, Nov 16 7:00 PM** · MNF: Chargers at Ravens · sticker: Link → app. “MNF: Chargers at Ravens 👇”
 - **Tue, Nov 17 12:00 PM** · Thanksgiving boards poll · frame `s-story-frames/07` · sticker: Poll: 1 / 2–3 / All of them. No text to add (No text to add: the frame asks the question. Place the poll sticker in the frame's middle band.)
+- **Tue, Nov 17 6:00 PM** · USMNT vs Haiti · sticker: Link → app. “USMNT vs Haiti at 7 ⚽ Every goal's minute wins a square. Board's a link away 👇”
 - **Tue, Nov 17 9:30 PM** · CFP rankings reaction · sticker: Questions. “New CFP rankings. Who got robbed?”
+- **Thu, Nov 19 5:00 PM** · On this day: Caligiuri's shot (1989) · sticker: None. “On this day in 1989: Paul Caligiuri's 31st-minute strike beat Trinidad & Tobago 1–0 and sent the US men to their first world championship in 40 years ⚽ Square 31. / Source: U.S. Soccer” (Source link (check before posting): https://ussoccer.com/stories/2026/05/usmnt/26-moments-paul-caligiuri-shot-heard-round-world)
 - **Thu, Nov 19 6:45 PM** · TNF: Colts at Texans · sticker: Link → app. “TNF: Colts at Texans 👇”
+- **Fri, Nov 20 5:00 PM** · On this day: Alex Morgan at 90+4' (2010) · sticker: None. “On this day in 2010: Alex Morgan came off the bench and scored at 90+4' to win 1–0 in Italy ⚽ Stoppage time runs on, so that's square 94. / Source: AP” (Source link (check before posting): https://www.cbsnews.com/sanfrancisco/news/cals-morgan-gives-usa-womens-soccer-team-advantage/)
 - **Sat, Nov 21 11:00 AM** · College Saturday · sticker: Link → app. “College Saturday: Vandy at Florida · NC State at FSU. Board up? 👇” (Check kickoff times the week of.)
+- **Sat, Nov 21 7:00 PM** · NWSL Championship · sticker: Link → app. “The NWSL Championship, 8 on CBS ⚽ One link, and every goal's minute wins a square 👇”
+- **Sun, Nov 22 10:45 AM** · Liverpool–Man United · sticker: Link → app. “Liverpool–Man United at 11:30 ⚽ Then the 1:00 kickoffs. Two boards, one Sunday 👇”
 - **Sun, Nov 22 11:30 AM** · Jags at Giants · frame `s-story-frames/06` · sticker: Link → app. “Jags at Giants at 1. Lock the board 🐆”
 
 ## Bonus · Nov 23–29: Thanksgiving week payoff
@@ -1211,6 +1316,8 @@ Who's taking the Vikings–49ers board? 👇
 | Tue, Nov 24 | 12:00 PM | Story | Hosting Thursday? | `s-story-frames/07` |
 | Tue, Nov 24 | 1:00 PM | Reel | Office squares, minus the spreadsheet | `u5-office-squares` |
 | Wed, Nov 25 | 12:00 PM | Reel | Thanksgiving Eve: Packers at Rams | `m7-thanksgiving-eve` |
+| Wed, Nov 25 | 1:30 PM | Story | Champions League before the long weekend | — |
+| Wed, Nov 25 | 4:00 PM | Story | On this day: USA 0, England 0 (2022) | — |
 | Wed, Nov 25 | 7:00 PM | Story | Thanksgiving Eve board | — |
 | Thu, Nov 26 | 9:30 AM | Reel | Happy Thanksgiving: Red Grange, 101 years ago | `otd6-nov26-grange` |
 | Thu, Nov 26 | 12:30 PM | Story | Board 1: Bears at Lions | — |
@@ -1219,8 +1326,10 @@ Who's taking the Vikings–49ers board? 👇
 | Thu, Nov 26 | 10:30 PM | Story | Show us your boards | — |
 | Fri, Nov 27 | 1:00 PM | Story | Leftovers board | — |
 | Sat, Nov 28 | 11:00 AM | Story | Rivalry Saturday | — |
+| Sun, Nov 29 | 6:45 AM | Story | Premier League Sunday | — |
 | Sun, Nov 29 | 3:30 PM | Story | Titans at Jaguars | — |
 | Sun, Nov 29 | 8:00 PM | Task | Launch retro | — |
+| Sun, Nov 29 | 8:30 PM | Story | On this day: Pulisic vs Iran (2022) | — |
 
 ### Mon, Nov 23, 2:00 PM · Reel: Every Thanksgiving family group chat
 
@@ -1300,9 +1409,12 @@ A 0–0 tie means the same square won every quarter. Happy Thanksgiving from Jax
 
 What's your square for Bears–Lions? 👇
 
+Source: Pro Football Hall of Fame
+
 #thanksgiving #thanksgivingfootball #onthisday #nflhistory #footballsquares
 ```
 
+- Source link (check before posting): https://profootballhof.com/news/grange-s-debut-on-thanksgiving
 - Has its own retro soundtrack (original music). Post it as is.
 - Upload the matching cover image as the Reel cover so the profile grid stays clean.
 
@@ -1317,6 +1429,8 @@ What's your square for Bears–Lions? 👇
 
 - **Mon, Nov 23 7:00 PM** · MNF: Bengals at Commanders · sticker: Link → app. “MNF: Bengals at Commanders 👇”
 - **Tue, Nov 24 12:00 PM** · Hosting Thursday? · frame `s-story-frames/07` · sticker: Link → app. “Hosting Thursday? Make your boards tonight. 30 seconds each 🦃”
+- **Wed, Nov 25 1:30 PM** · Champions League before the long weekend · sticker: Link → app. “Champions League at 3 ⚽ An office board before the long weekend? One link in the team chat 👇”
+- **Wed, Nov 25 4:00 PM** · On this day: USA 0, England 0 (2022) · sticker: None. “On this day in 2022: USA 0, England 0 ⚽ No goals, so square 00 wins. / Source: CBS News” (Source link (check before posting): https://www.cbsnews.com/boston/news/us-remains-unbeaten-against-england-at-world-cups-after-goalless-draw-in-qatar/)
 - **Wed, Nov 25 7:00 PM** · Thanksgiving Eve board · sticker: Link → app. “Packers at Rams in an hour. Friendsgiving board 👇”
 - **Thu, Nov 26 12:30 PM** · Board 1: Bears at Lions · sticker: Link → app. “Board 1 of 3: Bears at Lions, 1:00 🦃”
 - **Thu, Nov 26 4:00 PM** · Board 2: Eagles at Cowboys · sticker: Link → app. “Board 2 of 3: Eagles at Cowboys, 4:30 🦃”
@@ -1324,7 +1438,9 @@ What's your square for Bears–Lions? 👇
 - **Thu, Nov 26 10:30 PM** · Show us your boards · sticker: Add Yours. “Show us your Thanksgiving board 📸 Screenshot + tag @jaxsquares”
 - **Fri, Nov 27 1:00 PM** · Leftovers board · sticker: Link → app. “Leftovers board 🥪 Broncos at Steelers 3:00 · Florida at FSU 3:30”
 - **Sat, Nov 28 11:00 AM** · Rivalry Saturday · sticker: Link → app. “Rivalry Saturday. One board per game 👇”
+- **Sun, Nov 29 6:45 AM** · Premier League Sunday · sticker: Link → app. “Merseyside derby at 7, Arsenal–Man City at 11:30 ⚽ Two boards before the NFL even kicks off 👇”
 - **Sun, Nov 29 3:30 PM** · Titans at Jaguars · sticker: Link → app. “Jags home at 4:05. Last board of the holiday weekend 🐆”
+- **Sun, Nov 29 8:30 PM** · On this day: Pulisic vs Iran (2022) · sticker: None. “On this day in 2022: Christian Pulisic's 38th-minute goal beat Iran 1–0 and sent the US to the knockout round ⚽ Square 38. / Source: AP” (Source link (check before posting): https://www.espn.com/soccer/report/_/gameId/633822)
 
 ## Research behind this plan
 

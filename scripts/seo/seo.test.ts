@@ -30,6 +30,8 @@ import {
   TRADEMARKED_EVENT,
   pageUrl,
 } from "./site.ts";
+import { boardMinute as appBoardMinute } from "../../shared/soccer.ts";
+import { boardMinute, countMinutes } from "./soccerStats.ts";
 import { countFinals } from "./stats.ts";
 
 const jax = (pose: JaxPose) =>
@@ -442,6 +444,30 @@ describe("the final-score stats", () => {
     expect(s.hits.flat().reduce((a, b) => a + b, 0)).toBe(3);
     expect(s.digitShare[7]).toBe(50);
     expect(s.topFinals[0]).toEqual([17, 10, 1]);
+  });
+});
+
+describe("the soccer-square stats", () => {
+  it("puts a goal on the same square the app does", () => {
+    for (let minute = 0; minute <= 130; minute++) {
+      for (const added of [0, 1, 4, 13]) expect([minute, added, boardMinute(minute, added)]).toEqual([minute, added, appBoardMinute(minute, added)]);
+    }
+  });
+
+  it("counts every goal, stoppage time and goalless matches, and refuses a match missing a goal's minute", () => {
+    const s = countMinutes([
+      {
+        year: 2026,
+        matches: [
+          { team1: "A", team2: "B", score: { ft: [2, 1] }, goals1: [{ minute: "45+3" }, { minute: "90+2" }], goals2: [{ minute: 7 }] },
+          { team1: "C", team2: "D", score: { ft: [0, 0], et: [1, 0] }, goals1: [{ minute: "105+1" }], goals2: [] },
+          { team1: "E", team2: "F", score: [0, 0] },
+        ],
+      },
+    ]);
+    expect([s.matches, s.goals, s.noGoalMatches, s.firstHalfStoppage, s.secondHalfStoppage, s.extraTime]).toEqual([3, 4, 1, 1, 1, 1]);
+    expect([45, 92, 7, 5].map((m) => s.squareGoals[m])).toEqual([1, 1, 1, 1]);
+    expect(() => countMinutes([{ year: 2026, matches: [{ team1: "A", team2: "B", score: { ft: [1, 0] }, goals1: [] }] }])).toThrow(/lists 0 goals/);
   });
 });
 

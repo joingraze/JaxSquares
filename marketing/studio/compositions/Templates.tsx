@@ -160,6 +160,8 @@ export interface OnThisDayProps {
   loser: { name: string; score: number; abbr?: string };
   note: string;
   tag?: string;
+  /** Who the fact comes from, shown on screen ("Pro Football Hall of Fame"): the video travels without its caption. */
+  source: string;
 }
 
 export const OTD_FRAMES = 330;
@@ -294,6 +296,9 @@ export function makeOnThisDay(p: OnThisDayProps) {
               <div style={{ fontSize: 13.5, fontWeight: 600, lineHeight: 1.35, color: COLORS.ink }}>{p.note}</div>
               <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: COLORS.gold }}>
                 {x}–{y} lands on {pct(x, y).toFixed(1)}% of NFL finals since 1999
+              </div>
+              <div style={{ marginTop: 3, fontSize: 9.5, fontWeight: 600, color: COLORS.muted }}>
+                Source: {p.source} · Square stats: nflverse
               </div>
             </Panel>
           </Rise>

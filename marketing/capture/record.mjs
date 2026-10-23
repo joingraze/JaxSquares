@@ -62,10 +62,28 @@ async function healthy() {
   }
 }
 
+/**
+ * The fictional hosts can't sign in with Google or Apple, so the recording's
+ * dev server runs with sign-in (and with it, hosts signing in to make a
+ * board) off, and the no-charge test checkout: a .dev.vars written for the
+ * run and removed after. A .dev.vars of your own is left alone.
+ */
+const DEV_VARS = join(ROOT, ".dev.vars");
+const CAPTURE_VARS = [
+  "# Written by marketing/capture/record.mjs for one recording; removed when it ends.",
+  "GOOGLE_WEB_CLIENT_ID=",
+  "APPLE_SERVICES_ID=",
+  "PAYMENTS_MODE=",
+  "",
+].join("\n");
+
 async function devServer() {
   if (await healthy()) return () => {};
   const { hostname, port } = new URL(BASE);
   log(`Starting a dev server on ${BASE} ...`);
+  const ownVars = !existsSync(DEV_VARS);
+  if (ownVars) writeFileSync(DEV_VARS, CAPTURE_VARS);
+  else log("  .dev.vars exists: using it as is (hosts may need to sign in to make a board)");
   const child = spawn(process.execPath, [join(ROOT, "node_modules/vite/bin/vite.js"), "--port", port, "--host", hostname, "--strictPort"], {
     cwd: ROOT,
     env: { ...process.env, VITE_PUBLIC_ORIGIN: "https://jaxsquares.com" },
@@ -78,6 +96,7 @@ async function devServer() {
     } catch {
       /* gone */
     }
+    if (ownVars) rmSync(DEV_VARS, { force: true });
   };
   for (let i = 0; i < 120; i++) {
     if (await healthy()) return stop;
@@ -306,7 +325,7 @@ function scatter(salt = 0) {
 }
 
 /** A paid 10×10 board `host` runs; everyone joins and `counts[i]` squares go to `players[i]`. */
-async function makeBoard(call, host, { name, sport = "football", teamX, teamY, prizes = {} }, players, counts, salt = 0) {
+async function makeBoard(call, host, { name, sport = "football", teamX, teamY, prizes = {}, format = null }, players, counts, salt = 0) {
   const created = await call("POST", "/games", {
     device: host,
     body: {
@@ -315,7 +334,7 @@ async function makeBoard(call, host, { name, sport = "football", teamX, teamY, p
       league: "custom",
       teamX,
       teamY,
-      format: { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
+      format: format ?? { periods: "quarters", reverse: false, boardSize: 100, freshNumbers: false },
       prizes,
       maxPerPlayer: 0,
       linkedEvent: null,
@@ -334,12 +353,37 @@ async function makeBoard(call, host, { name, sport = "football", teamX, teamY, p
   }
   board.lock = async () => (await call("POST", `/games/${board.id}/lock`, { device: host, admin: board.admin })).state;
   board.score = (periodKey, scoreX, scoreY) => call("POST", `/games/${board.id}/scores`, { device: host, admin: board.admin, body: { periodKey, scoreX, scoreY } });
+  // A soccer goal: the score after it and the minute it went in (45+2' is minute 45, added 2).
+  board.goal = (scoreX, scoreY, minute, added = 0) =>
+    call("POST", `/games/${board.id}/scores`, { device: host, admin: board.admin, body: { periodKey: "next", scoreX, scoreY, minute, added } });
   board.openCells = async () => {
     const st = await call("GET", `/games/${board.id}`);
     const taken = new Set(st.squares.map((q) => `${q.row},${q.col}`));
     return scatter(salt + 3).filter((c) => !taken.has(`${c.row},${c.col}`));
   };
   return board;
+}
+
+/** Every goal, the first and the last: soccer's moments, each with a prize note. */
+const SOCCER_FORMAT = {
+  periods: "custom",
+  reverse: false,
+  boardSize: 100,
+  freshNumbers: false,
+  rules: [
+    { moment: "first", square: { amount: null, note: "Picks the halftime snacks" }, reverse: null },
+    { moment: "score", square: { amount: null, note: "A round of high fives" }, reverse: null },
+    { moment: "final", square: { amount: null, note: "Trophy mug + bragging rights" }, reverse: null },
+  ],
+};
+
+/** Who holds a minute's square on a drawn soccer board: rows are the tens digit, columns the ones. */
+function minuteOwner(st, minute) {
+  const draw = st.game.numbers["*"];
+  const col = draw.x.findIndex((d) => d.includes(minute % 10));
+  const row = draw.y.findIndex((d) => d.includes(Math.floor(minute / 10)));
+  const sq = st.squares.find((q) => q.row === row && q.col === col);
+  return st.players.find((p) => p.id === sq?.playerId)?.name ?? null;
 }
 
 /** The lowest score at least `min` that ends in `digit` (basketball: any number will do). */
@@ -687,6 +731,50 @@ const SCENES = {
     await guard(page, "hoops-live");
     const at = (q) => ({ x: q.x, y: q.y });
     await rec.stop({ board: board.name, scores: { q1: at(q1), q2: at(q2), q3: at(q3) } });
+    await ctx.close();
+  },
+
+  /**
+   * A soccer board: every square is a minute. Goal 1 lands at 23'; then a goal
+   * in first-half stoppage time (45+2') lands on my square 45. The draw is
+   * random, so the board is dealt again until I hold the 45th minute.
+   */
+  async "soccer-live"({ browser, world, call }) {
+    const [maya, dre, priya, luis, tess, omar, kim, sam, ava] = world.friends;
+    const T = world.teams;
+    const me = world.me.profile.name;
+    const players = [maya, world.me, dre, priya, luis, tess, omar, kim, sam, ava];
+    let board = null;
+    for (let salt = 0; salt < 60; salt++) {
+      const b = await makeBoard(
+        call,
+        maya,
+        { name: "Derby Day Squares", sport: "soccer", teamX: T.comets, teamY: T.otters, format: SOCCER_FORMAT },
+        players,
+        [10, 14, 10, 10, 10, 10, 9, 9, 9, 9],
+        salt + 7,
+      );
+      const st = await b.lock();
+      // Mine: the 45th minute. Someone else's: the 23rd (so the first goal goes to a friend).
+      if (minuteOwner(st, 45) === me && minuteOwner(st, 23) && minuteOwner(st, 23) !== me) {
+        board = b;
+        break;
+      }
+    }
+    if (!board) throw new Error("soccer-live: no deal gave me the 45th minute");
+    await board.goal(1, 0, 23);
+    const dev = deviceFor(world, world.me, [world.live, world.pick]);
+    dev.games = [board.id, ...dev.games];
+    const { ctx, page, cdp } = await phone(browser, world, dev);
+    await page.goto(`${BASE}/g/${board.id}`);
+    await page.locator('[data-testid="cell"]').first().waitFor();
+    await settle(page, 1200);
+    const rec = await record(cdp, "soccer-live");
+    await sleep(1800);
+    await board.goal(1, 1, 45, 2);
+    await sleep(5600);
+    await guard(page, "soccer-live");
+    await rec.stop({ board: board.name, goals: [{ minute: "23'", square: 23 }, { minute: "45+2'", square: 45 }] });
     await ctx.close();
   },
 

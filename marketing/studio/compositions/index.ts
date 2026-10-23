@@ -18,6 +18,8 @@ import {
   WinnersLightUp,
 } from "./Walkthroughs";
 import { BEST_WORST_AUDIO, BEST_WORST_FRAMES, BestWorst } from "./BestWorst";
+import { SOCCER_MINUTES_AUDIO, SOCCER_MINUTES_FRAMES, SoccerMinutes } from "./SoccerMinutes";
+import { SOCCER_AUDIO, SOCCER_FRAMES, SoccerSquares } from "./SoccerSquares";
 import { CHAT_FRAMES, FAMILY_CHAT, SUNDAY_CHAT, chatAudio, makeGroupChat } from "./GroupChat";
 import {
   MATCHUP_AUDIO,
@@ -106,6 +108,15 @@ export const COMPOSITIONS: Composition[] = [
   reel({ id: "u4-every-phone", title: "One score, every phone", durationInFrames: SYNC_FRAMES, coverFrame: 40, audio: SYNC_AUDIO, component: EveryPhone }),
   reel({ id: "u5-office-squares", title: "Office squares, minus the spreadsheet", durationInFrames: OFFICE_FRAMES, coverFrame: 110, audio: OFFICE_AUDIO, component: OfficeSquares }),
   reel({ id: "u6-join-from-link", title: "Join from the link", durationInFrames: JOIN_FRAMES, coverFrame: 40, audio: JOIN_AUDIO, component: JoinFromLink }),
+  reel({ id: "u7-soccer-squares", title: "Soccer squares: every square is a minute", durationInFrames: SOCCER_FRAMES, coverFrame: 70, audio: SOCCER_AUDIO, component: SoccerSquares }),
+  reel({
+    id: "u8-soccer-minutes",
+    title: "Which minute wins soccer squares (data)",
+    durationInFrames: SOCCER_MINUTES_FRAMES,
+    coverFrame: 60,
+    audio: SOCCER_MINUTES_AUDIO,
+    component: SoccerMinutes,
+  }),
   ...MATCHUPS.map(({ id, title, props }) =>
     reel({ id, title, durationInFrames: MATCHUP_FRAMES, coverFrame: 40, audio: MATCHUP_AUDIO, component: makeMatchup(props) }),
   ),

@@ -40,7 +40,7 @@ const NO_PIN = "Don't pin it: pinned posts jump to the top of the grid and break
 const PROFILE = {
   name: "JaxSquares · Sports Squares",
   username: "jaxsquares",
-  bio: "Football & basketball squares 🏈🏀\nFree to set up · no app for players\nLive scores call winners. Make a board 👇\nNot affiliated w/ any league or team",
+  bio: "Football, basketball & soccer squares 🏈🏀⚽\nFree to set up · no app for players\nLive scores call winners 👇\nNot affiliated w/ any league or team",
   linkUrl: "https://jaxsquares.com",
   linkTitle: "Make a board",
   category: "Sports & Recreation",
@@ -60,12 +60,20 @@ export const PLAN = {
 
   strategy: {
     positioning:
-      "Football and basketball squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Annual Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
+      "Football, basketball and soccer squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Annual Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
     pillars: [
-      { name: "Show the product", share: "35%", what: "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app." },
-      { name: "Squares nerdery", share: "25%", what: "Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent." },
-      { name: "This game, this week", share: "25%", what: "Primetime, Jaguars, Gators and Thanksgiving games. Make the board the plan for the game." },
-      { name: "On this day", share: "15%", what: "Verified history with a squares twist: which square that famous final score landed on." },
+      {
+        name: "Show the product",
+        share: "40%",
+        what: "Real-app demos for each sport: the 30-second setup, Let Jax pick, the live draw, winners lighting up, soccer's minute squares, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app.",
+      },
+      {
+        name: "Stats and fun facts",
+        share: "20%",
+        what: "Real numbers, always with their source: best/worst football squares from 7,276 NFL finals (nflverse), which minute wins soccer squares from 649 goals (openfootball), late-goal and fastest-goal facts (Opta, Premier League). Built to be saved and sent.",
+      },
+      { name: "This game, this week", share: "25%", what: "Primetime, Jaguars, Gators, Thanksgiving, and soccer's big days: Premier League mornings, Champions League afternoons, MLS and NWSL playoffs. Make the board the plan for the game." },
+      { name: "On this day", share: "15%", what: "Verified history with a squares twist, football and soccer: which square that famous final score (or goal's minute) won. Every post names its source." },
     ],
     cadence: [
       "Launch (Oct 22–30): one grid Reel a day, nothing else in the feed. Reels reach the most people who don't follow you yet, which is everyone at launch.",
@@ -80,8 +88,12 @@ export const PLAN = {
       "Keywords first. Captions and alt text feed Instagram search and Google. Lead with 'football squares' or 'squares pool'.",
       "Original content only. Instagram cuts recommendations for reposted content and for videos with other apps' watermarks. Everything here is original and has no watermarks.",
       "Reply to every comment in the first hour after posting. Answer good questions with 'Reply with Reel'.",
+      "Balance the feed. After the launch grid, never more than two product posts in a row: follow a demo with a stat, a game-day or an on-this-day post. Stories carry most of the game days and history.",
+      "Every sport gets its days. Football leads in the fall; soccer gets a feed post most weeks and a story on each big match day; basketball a feed post once the NBA is underway.",
+      "Cite every fact. History and stats posts end with 'Source: …' (the build checks it) and the video shows it on screen; the link to check is in the post's notes.",
     ],
     compliance: [
+      "Name soccer's men's world championship without its trademarked name, the same way (FIFA polices it): 'the last three men's world championships', 'the big tournament'.",
       "Say 'the big game', never 'Super Bowl', in posts and ads (NFL trademark). Team names are fine to identify a game. No logos, uniforms, team colors, broadcast footage or player photos.",
       "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
       "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
@@ -130,6 +142,11 @@ export const PLAN = {
       { who: "Offices", sells: "No spreadsheet, no reply-all; Just for fun boards with prize notes.", reels: ["u5-office-squares"] },
       { who: "Families (Thanksgiving)", sells: "One board for every house, live on every phone.", reels: ["05b-group-chat-thanksgiving", "08-thanksgiving-slate", "u4-every-phone"] },
       { who: "Basketball fans", sells: "NBA and college games with live scores, or any matchup.", reels: ["u3-basketball-squares"] },
+      {
+        who: "Soccer fans",
+        sells: "Every square is a minute and each goal's minute wins: Premier League mornings, Champions League afternoons (office boards), MLS and NWSL playoffs, Liga MX.",
+        reels: ["u7-soccer-squares", "u8-soccer-minutes"],
+      },
     ],
     outreach: {
       creator:
@@ -291,11 +308,12 @@ export const PLAN = {
     {
       date: "2026-11-01", time: "11:30", kind: "reel", week: "w1",
       title: "Best and worst squares",
+      source: "nflverse",
       asset: "04-best-worst-squares",
       caption:
-        "The best and worst squares in football, from 7,276 NFL final scores 📊\n\n0–7 lands on 3.6% of finals. 2–2 has hit 4 times since 1999. 💀\n\nSend this to whoever drew 2–2 this week.",
+        "The best and worst squares in football, from 7,276 NFL final scores 📊\n\n0–7 lands on 3.6% of finals. 2–2 has hit 4 times since 1999. 💀\n\nSend this to whoever drew 2–2 this week.\n\nSource: nflverse",
       hashtags: [...H.core, H.nfl, H.stats, H.fantasy],
-      notes: [AUDIO_TRENDING, COVER, "Top boost candidate (no money on screen).", "Data: nflverse games.csv, NFL finals 1999–2025."],
+      notes: ["Source link (check before posting): https://github.com/nflverse/nfldata (games.csv: every NFL final, 1999–2025)", AUDIO_TRENDING, COVER, "Top boost candidate (no money on screen).", "Data: nflverse games.csv, NFL finals 1999–2025."],
     },
     {
       date: "2026-10-24", time: "11:00", kind: "story", week: "prep",
@@ -370,7 +388,7 @@ export const PLAN = {
       asset: "01-how-it-works", cover: "r-grid-covers/01",
       tieIn: "Thursday Night Football · Patriots at Bears · 8:15 PM ET · Prime Video",
       caption:
-        "JaxSquares is live 🏈🏀🐶\n\nFootball and basketball squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.\n\nFree to set up, and your friends never need an app or an account. Make your board: link in bio.\n\nSend this to whoever runs your squares 📲",
+        "JaxSquares is live 🏈🏀⚽🐶\n\nFootball, basketball and soccer squares, run for you: pick the game, text one link, and everyone grabs squares from their phone. Jax draws the numbers live, scores update themselves, and the winning square lights up every quarter.\n\nFree to set up, and your friends never need an app or an account. Make your board: link in bio.\n\nSend this to whoever runs your squares 📲",
       hashtags: [...H.core, H.hoops, "#gameday", "#bears"],
       altText:
         "Screen recording of JaxSquares, the football and basketball squares app: a live score lands on a winning square, then picking a game, texting the board link, friends picking squares and Jax drawing the numbers.",
@@ -381,12 +399,12 @@ export const PLAN = {
       title: "Fix the live Grid 1 caption and the bio",
       checklist: [
         "Grid 1 (posted yesterday): open it → ⋯ → Edit → select the whole caption, delete it, paste the new one below → Done.",
-        "Bio: Edit profile → Bio → paste the new bio below. One line changed: hosts now sign in to make a board, so “no signup” is out.",
+        "Bio: Edit profile → Bio → paste the new bio below. It adds soccer, and “no signup” is out (hosts now sign in to make a board).",
         "Then post Grid 2 at 12:30.",
       ],
       // Filled in below the plan from Grid 1 and the profile, so they can't drift apart.
       copy: [],
-      notes: ["The old caption had “Square 1 of 9” (a note for us, not for followers) and “No signup”, which no longer holds for hosts."],
+      notes: ["The old caption had “Square 1 of 9” (a note for us, not for followers) and “No signup”, which no longer holds for hosts. The new one names soccer too."],
     },
     {
       date: "2026-10-23", time: "12:30", kind: "reel", week: "prep", start: true,
@@ -475,7 +493,7 @@ export const PLAN = {
       asset: "u3-basketball-squares", cover: "r-grid-covers/09",
       tieIn: "NBA Cup group play starts Oct 30 · college basketball opens Nov 1–2",
       caption:
-        "Squares aren't just for football 🏀\n\nJaxSquares runs basketball squares too: pick tonight's NBA game or type in any matchup, choose how squares win, and live scores call every winner. College hoops tips off next week.\n\nSend this to your hoops group chat. Your board → link in bio.",
+        "Squares aren't just for football 🏀\n\nJaxSquares runs basketball squares too: pick tonight's NBA game or type in any matchup, choose how squares win, and live scores call every winner. College hoops tips off next week. Soccer's in too: every square is a minute, and each goal's minute wins ⚽\n\nSend this to your hoops group chat. Your board → link in bio.",
       hashtags: [H.hoops, "#footballsquares", "#nba", "#collegebasketball", "#squarespool"],
       altText:
         "Screen recording of JaxSquares: tapping Basketball, picking tonight's game and making a basketball squares board in five taps, then the third quarter ending 75 to 70 on the viewer's square as Jax cheers.",
@@ -570,9 +588,10 @@ export const PLAN = {
     {
       date: "2026-10-27", time: "16:30", kind: "story", week: "w1",
       title: "On this day: Emmitt breaks the record (2002)",
+      source: "Pro Football Hall of Fame",
       asset: "otd1-oct27-emmitt",
-      story: { sticker: "Link → app", text: "On this day in 2002: former Gator Emmitt Smith passes Walter Payton 🐊 The final (17–14) landed on the 7–4 square. Make your board 👇" },
-      notes: ["Post the video as a Story (it's 9:16). Feed posts wait until the grid is done.", AUDIO_NOSTALGIC],
+      story: { sticker: "Link → app", text: "On this day in 2002: former Gator Emmitt Smith passes Walter Payton 🐊 The final (17–14) landed on the 7–4 square. Make your board 👇\nSource: Pro Football Hall of Fame" },
+      notes: ["Source link (check before posting): https://profootballhof.com/news/smith-s-firm-hold-on-coveted-record1", "Post the video as a Story (it's 9:16). Feed posts wait until the grid is done.", AUDIO_NOSTALGIC],
     },
     {
       date: "2026-10-27", time: "18:00", kind: "story", week: "w1",
@@ -584,18 +603,21 @@ export const PLAN = {
     {
       date: "2026-11-13", time: "12:30", kind: "carousel", week: "w3",
       title: "Every square, ranked",
+      source: "nflverse",
       asset: "c2-every-square-ranked", slides: 6,
       caption:
-        "Every square in football, ranked 📊 (7,276 NFL final scores, 1999–2025)\n\nS-tier digits: 0 and 7. D-tier: 2 and 5. The 2–2 square has hit 4 times in 27 seasons.\n\nSave this before your next draw, and send it to your board's 2–2 holder.",
+        "Every square in football, ranked 📊 (7,276 NFL final scores, 1999–2025)\n\nS-tier digits: 0 and 7. D-tier: 2 and 5. The 2–2 square has hit 4 times in 27 seasons.\n\nSave this before your next draw, and send it to your board's 2–2 holder.\n\nSource: nflverse",
       hashtags: [...H.core, H.nfl, H.stats, H.fantasy],
       altText:
         "Heat map and rankings of football squares by how often NFL final scores land on them since 1999. Best: 0-7, 4-7 and 0-3. Worst: 2-2, 5-5 and 5-9. Most common final since 1999: 23-20.",
+      notes: ["Source link (check before posting): https://github.com/nflverse/nfldata (games.csv: every NFL final, 1999–2025)"],
     },
     {
       date: "2026-10-28", time: "18:00", kind: "story", week: "w1",
       title: "Poll answer",
       asset: "s-story-frames/02",
-      story: { sticker: "None (or a link to the carousel)", text: "Basically a coin flip." },
+      source: "nflverse",
+      story: { sticker: "None (or a link to the carousel)", text: "Basically a coin flip.\nSource: nflverse" },
       notes: ["The frame shows the answer: add only this line."],
     },
     {
@@ -620,7 +642,7 @@ export const PLAN = {
       ],
     },
     {
-      date: "2026-10-31", time: "10:00", kind: "reel", week: "w1",
+      date: "2026-10-31", time: "12:30", kind: "reel", week: "w1",
       title: "Florida vs Georgia: it left Jax",
       asset: "m2-florida-georgia",
       tieIn: "Florida vs. Georgia · 3:30 PM ET · ABC · Mercedes-Benz Stadium, Atlanta",
@@ -668,12 +690,13 @@ export const PLAN = {
     {
       date: "2026-11-02", time: "14:00", kind: "reel", week: "w2",
       title: "1 year ago: Cam Little's 68-yarder",
+      source: "Pro Football Hall of Fame",
       asset: "otd2-nov02-cam-little",
       tieIn: "Monday Night Football · Bears at Seahawks · 8:15 PM ET · ESPN",
       caption:
-        "One year ago today: Cam Little drilled an NFL-record 68-yard field goal in Las Vegas 🦵💥\n\nJaguars 30, Raiders 29 in overtime. That's the 0–9 square, which lands on 0.7% of NFL finals.\n\nDuval, where were you for this one?",
+        "One year ago today: Cam Little drilled an NFL-record 68-yard field goal in Las Vegas 🦵💥\n\nJaguars 30, Raiders 29 in overtime. That's the 0–9 square, which lands on 0.7% of NFL finals.\n\nDuval, where were you for this one?\n\nSource: Pro Football Hall of Fame",
       hashtags: [H.duval, H.jags, H.otd, H.history, "#footballsquares"],
-      notes: [AUDIO_NOSTALGIC, COVER],
+      notes: ["Source link (check before posting): https://www.profootballhof.com/news/jaguars-kicker-cam-little-sets-nfl-record-with-68-yard-field-goal-vs-raiders", AUDIO_NOSTALGIC, COVER],
     },
     {
       date: "2026-11-02", time: "19:00", kind: "story", week: "w2",
@@ -709,8 +732,9 @@ export const PLAN = {
       date: "2026-11-04", time: "18:00", kind: "story", week: "w2",
       title: "Quiz answer: 23–20",
       asset: "s-story-frames/04",
-      story: { sticker: "None", text: "" },
-      notes: ["No text to add: the frame shows the answer."],
+      source: "nflverse",
+      story: { sticker: "None", text: "Source: nflverse" },
+      notes: ["The frame shows the answer: add only the source line."],
     },
     {
       date: "2026-11-05", time: "12:00", kind: "reel", week: "w2",
@@ -737,10 +761,12 @@ export const PLAN = {
     {
       date: "2026-11-06", time: "12:00", kind: "story", week: "w2",
       title: "1869: the first college football game",
+      source: "Rutgers University",
       story: {
         sticker: "None",
-        text: "On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, the 6–4 square takes it. 🏈",
+        text: "On this day in 1869: Rutgers 6, Princeton 4, the first college football game ever. If they'd had squares, the 6–4 square takes it. 🏈\nSource: Rutgers University",
       },
+      notes: ["Source link (check before posting): https://www.rutgers.edu/news/birthplace-college-football"],
     },
     {
       date: "2026-11-06", time: "12:15", kind: "task", week: "w2",
@@ -775,11 +801,12 @@ export const PLAN = {
     {
       date: "2026-11-08", time: "11:00", kind: "reel", week: "w2",
       title: "On this day: Dempsey's 63-yarder (1970)",
+      source: "New Orleans Saints",
       asset: "otd3-nov08-dempsey",
       caption:
-        "On this day in 1970, Tom Dempsey kicked a 63-yard field goal at the gun. Saints 19, Lions 17 🦵\n\n19–17 is a squares legend: the Miracle at the Meadowlands (1978) ended 19–17 too. The 9–7 square keeps winning in chaos.\n\nGot a 9 this week? 👀",
+        "On this day in 1970, Tom Dempsey kicked a 63-yard field goal at the gun. Saints 19, Lions 17 🦵\n\n19–17 is a squares legend: the Miracle at the Meadowlands (1978) ended 19–17 too. The 9–7 square keeps winning in chaos.\n\nGot a 9 this week? 👀\n\nSource: New Orleans Saints",
       hashtags: [H.otd, H.history, "#saints", ...H.core],
-      notes: [AUDIO_NOSTALGIC, COVER],
+      notes: ["Source link (check before posting): https://www.neworleanssaints.com/news/this-day-in-new-orleans-saints-history-november-8-17951175", AUDIO_NOSTALGIC, COVER],
     },
     {
       date: "2026-11-08", time: "20:00", kind: "task", week: "w2",
@@ -921,12 +948,13 @@ export const PLAN = {
     {
       date: "2026-11-19", time: "12:30", kind: "reel", week: "w4",
       title: "On this day: Rams 54, Chiefs 51 (2018)",
+      source: "Los Angeles Rams",
       asset: "otd4-nov19-rams-chiefs",
       tieIn: "Thursday Night Football · Colts at Texans · 8:15 PM ET · Prime Video",
       caption:
-        "On this day in 2018: Rams 54, Chiefs 51 on Monday Night Football, the first NFL game where both teams scored 50+ 🤯\n\n105 points, and the winning square was 4–1.\n\nSend this to the friend who still talks about this game.",
+        "On this day in 2018: Rams 54, Chiefs 51 on Monday Night Football, the first NFL game where both teams scored 50+ 🤯\n\n105 points, and the winning square was 4–1.\n\nSend this to the friend who still talks about this game.\n\nSource: Los Angeles Rams",
       hashtags: [H.otd, H.history, H.mnf, ...H.core],
-      notes: [AUDIO_NOSTALGIC, COVER],
+      notes: ["Source link (check before posting): https://www.therams.com/news/seven-stats-rams-beat-chiefs-in-monday-night-thriller", AUDIO_NOSTALGIC, COVER],
     },
     {
       date: "2026-11-19", time: "18:45", kind: "story", week: "w4",
@@ -937,11 +965,12 @@ export const PLAN = {
     {
       date: "2026-11-20", time: "12:00", kind: "reel", week: "w4",
       title: "On this day: The Play (1982)",
+      source: "NPR",
       asset: "otd5-nov20-the-play",
       caption:
-        "On this day in 1982: The Play. Five laterals, the Stanford band on the field, Cal wins 25–20 🎺\n\nStanford led 20–19 with four seconds left. The winning square flipped from 9–0 to 5–0 on the very last play. That's squares.\n\nSend this to the most heartbroken squares player you know.",
+        "On this day in 1982: The Play. Five laterals, the Stanford band on the field, Cal wins 25–20 🎺\n\nStanford led 20–19 with four seconds left. The winning square flipped from 9–0 to 5–0 on the very last play. That's squares.\n\nSend this to the most heartbroken squares player you know.\n\nSource: NPR",
       hashtags: [H.otd, H.cfb, "#theplay", "#calbears", "#footballsquares"],
-      notes: [AUDIO_NOSTALGIC, COVER],
+      notes: ["Source link (check before posting): https://www.npr.org/2007/11/20/16442781/key-players-from-stanford-and-cal-relive-the-play", AUDIO_NOSTALGIC, COVER],
     },
     {
       date: "2026-11-21", time: "11:00", kind: "story", week: "w4",
@@ -1019,11 +1048,12 @@ export const PLAN = {
     {
       date: "2026-11-26", time: "09:30", kind: "reel", week: "tg",
       title: "Happy Thanksgiving: Red Grange, 101 years ago",
+      source: "Pro Football Hall of Fame",
       asset: "otd6-nov26-grange",
       caption:
-        "101 years ago today, Red Grange made his NFL debut on Thanksgiving. Bears 0, Cardinals 0 🦃\n\nA 0–0 tie means the same square won every quarter. Happy Thanksgiving from JaxSquares: three games today, three boards, one link each.\n\nWhat's your square for Bears–Lions? 👇",
+        "101 years ago today, Red Grange made his NFL debut on Thanksgiving. Bears 0, Cardinals 0 🦃\n\nA 0–0 tie means the same square won every quarter. Happy Thanksgiving from JaxSquares: three games today, three boards, one link each.\n\nWhat's your square for Bears–Lions? 👇\n\nSource: Pro Football Hall of Fame",
       hashtags: ["#thanksgiving", H.tg, H.otd, H.history, "#footballsquares"],
-      notes: [AUDIO_NOSTALGIC, COVER],
+      notes: ["Source link (check before posting): https://profootballhof.com/news/grange-s-debut-on-thanksgiving", AUDIO_NOSTALGIC, COVER],
     },
     {
       date: "2026-11-26", time: "12:30", kind: "story", week: "tg",
@@ -1099,6 +1129,176 @@ export const PLAN = {
       altText:
         "A messy office squares spreadsheet with conflicting names and reply-all emails freezes, then the JaxSquares invite sheet for an Office Game Day board, coworkers picking squares and a live score calling a winner.",
       notes: [AUDIO_EXPLAINER, COVER, "Offices: pitch Just for fun boards with no purchase needed.", "Boost candidate: no amounts on screen."],
+    },
+    // ------------------------------------------------------------ SOCCER: every square is a minute (sources: research/soccer_calendar.md, soccer_on_this_day.md)
+    {
+      date: "2026-10-24", time: "12:00", kind: "story", week: "prep",
+      title: "Soccer squares are live",
+      asset: "u7-soccer-squares",
+      tieIn: "Chelsea v Tottenham · 12:30 PM ET · Peacock, NBCSN, Telemundo",
+      story: { sticker: "Link → app", text: "New: soccer squares ⚽ Every square is a minute, and each goal's minute wins. Chelsea–Spurs at 12:30 👇" },
+      notes: ["Post the video as a Story (it's 9:16). Feed posts wait until the grid is done: it goes in the feed on Oct 31.", AUDIO_EXPLAINER],
+    },
+    {
+      date: "2026-10-25", time: "15:15", kind: "story", week: "prep",
+      title: "El Clásico at 4",
+      tieIn: "Barcelona v Real Madrid · 4:00 PM ET (US channel not confirmed: check before posting)",
+      story: { sticker: "Link → app", text: "El Clásico at 4 ⚽ Barcelona–Real Madrid. Every goal's minute wins a square. Board's a link away 👇" },
+    },
+    {
+      date: "2026-10-31", time: "08:00", kind: "reel", week: "w1",
+      title: "Soccer squares: every square is a minute",
+      asset: "u7-soccer-squares",
+      tieIn: "Chelsea v Man United · 8:30 AM ET",
+      caption:
+        "Soccer squares are here ⚽\n\nEvery square is a minute of the match, and each goal's minute wins. A goal at 45+2' counts as the 45th, so that's square 45; 90+3' runs on to square 93.\n\nChelsea–Man United at 8:30 this morning. Make your board: link in bio. Send this to your soccer group chat.",
+      hashtags: ["#soccersquares", "#soccer", "#premierleague", "#footballsquares", "#squarespool"],
+      altText:
+        "A card explains soccer squares: 43 minutes is square 43, 45+2 is square 45 and 90+3 is square 93. Then a JaxSquares soccer board where a goal at 45+2 lands on the viewer's square 45 and Jax cheers.",
+      notes: [AUDIO_EXPLAINER, COVER, "Florida–Georgia moved to 12:30 so the two Reels aren't back to back."],
+    },
+    {
+      date: "2026-11-01", time: "16:15", kind: "story", week: "w1",
+      title: "NWSL Decision Day",
+      tieIn: "NWSL Decision Day · 5:00 PM ET · ESPN",
+      story: { sticker: "Link → app", text: "NWSL Decision Day at 5 ⚽ Every match at once. A board for your club's game? 👇" },
+    },
+    {
+      date: "2026-11-04", time: "11:45", kind: "story", week: "w2",
+      title: "Champions League afternoon: office board",
+      tieIn: "Champions League Matchday 4 · Fenerbahçe v Liverpool, AEK v Real Madrid 12:45 PM ET · Slavia Praha v Arsenal, Leipzig v Man City 3:00 PM ET · Paramount+",
+      story: { sticker: "Link → app", text: "Champions League at 12:45 and 3 ⚽ Liverpool, Real Madrid, Arsenal, Man City. One link in the team chat 👇" },
+    },
+    {
+      date: "2026-11-05", time: "16:00", kind: "story", week: "w2",
+      title: "On this day: MLS Cup 2022, square 28 twice",
+      source: "MLS",
+      story: {
+        sticker: "Link → app",
+        text: "On this day in 2022: LAFC 3, Philadelphia 3 in MLS Cup, and LAFC won on penalties ⚽ The first goal (28') and Bale's 128th-minute header both won square 28: extra time keeps the last two digits.\nSource: MLS",
+      },
+      notes: ["Source link (check before posting): https://www.mlssoccer.com/playoffs/2025/news/hollywood-ending-lafc-win-legendary-mls-cup-2022-over-philadelphia-union"],
+    },
+    {
+      date: "2026-11-06", time: "13:00", kind: "reel", week: "w2",
+      title: "Which minute wins soccer squares",
+      asset: "u8-soccer-minutes",
+      source: "openfootball",
+      tieIn: "NWSL quarterfinals Nov 6–8 · MLS Decision Day Sat Nov 7",
+      caption:
+        "Which minute wins soccer squares? ⚽📊\n\nWe put all 649 goals from the last three men's world championships (2018, 2022, 2026) on the square each would have won. Square 45 led with 24, almost 4× an average square, because all of first-half stoppage time counts as the 45th minute. Second-half stoppage time runs on, so the 90s row stays busy. And 7% of matches had no goals: that's square 00.\n\nEvery one of the 100 squares won at least once. Send this to whoever runs your soccer squares.\n\nSource: openfootball",
+      hashtags: ["#soccersquares", "#soccer", "#soccerstats", "#mls", "#nwsl"],
+      altText:
+        "A 10 by 10 heat map of soccer squares, one per minute from 00 to 99, shaded by how many goals landed on each. Square 45 is brightest with 24 goals, the 90s row glows, and square 00 marks the 16 of 232 matches with no goals.",
+      notes: [
+        "Source link (check before posting): https://github.com/openfootball/worldcup.json (public domain; 2018, 2022 and 2026 list every goal's minute)",
+        "The tournament isn't named, in the caption or on screen: like the big game, its name is a trademark.",
+        AUDIO_TRENDING,
+        COVER,
+      ],
+    },
+    {
+      date: "2026-11-07", time: "15:30", kind: "story", week: "w2",
+      title: "MLS Decision Day",
+      tieIn: "MLS Decision Day · East 4:00 PM ET · West 7:00 PM ET",
+      story: { sticker: "Link → app", text: "MLS Decision Day ⚽ East at 4, West at 7. Late goals decide it, and the 90s row is waiting 👀 Board's a link away 👇" },
+    },
+    {
+      date: "2026-11-10", time: "12:30", kind: "story", week: "w3",
+      title: "Fun fact: late goals",
+      source: "Opta",
+      story: {
+        sticker: "Quiz: 2% / 5% / 8% ✓",
+        text: "Fun fact: in 2023-24, 8.3% of Premier League goals came after the 90th minute, a record ⚽ Every one lands in the 90s row.\nSource: Opta",
+      },
+      notes: ["Source link (check before posting): https://theanalyst.com/articles/football-newsletter-late-goals-arsenal-unstoppable-corners"],
+    },
+    {
+      date: "2026-11-13", time: "13:00", kind: "story", week: "w3",
+      title: "On this day: Pando's 107th minute (2005)",
+      source: "MLS",
+      story: {
+        sticker: "None",
+        text: "On this day in 2005: Pando Ramírez scored in the 107th minute and the Galaxy won MLS Cup 1–0 ⚽ Extra time keeps the last two digits, so that's square 07.\nSource: MLS",
+      },
+      notes: ["Source link (check before posting): https://www.mlssoccer.com/news/pando-mania-ramirez-takes-home-mvp"],
+    },
+    {
+      date: "2026-11-14", time: "10:30", kind: "story", week: "w3",
+      title: "Fun fact: the fastest goal",
+      source: "Premier League",
+      story: {
+        sticker: "Emoji slider ⚽",
+        text: "Fastest goal in Premier League history: Shane Long, 7.69 seconds (2019) ⚽ The clock reads 1', so it wins square 01.\nSource: Premier League",
+      },
+      notes: ["Source link (check before posting): https://www.premierleague.com (records: fastest goals). Check the record still stands."],
+    },
+    {
+      date: "2026-11-17", time: "18:00", kind: "story", week: "w4",
+      title: "USMNT vs Haiti",
+      tieIn: "USMNT v Haiti · Cincinnati · 7:00 PM ET (one source: confirm the time before posting)",
+      story: { sticker: "Link → app", text: "USMNT vs Haiti at 7 ⚽ Every goal's minute wins a square. Board's a link away 👇" },
+    },
+    {
+      date: "2026-11-19", time: "17:00", kind: "story", week: "w4",
+      title: "On this day: Caligiuri's shot (1989)",
+      source: "U.S. Soccer",
+      story: {
+        sticker: "None",
+        text: "On this day in 1989: Paul Caligiuri's 31st-minute strike beat Trinidad & Tobago 1–0 and sent the US men to their first world championship in 40 years ⚽ Square 31.\nSource: U.S. Soccer",
+      },
+      notes: ["Source link (check before posting): https://ussoccer.com/stories/2026/05/usmnt/26-moments-paul-caligiuri-shot-heard-round-world"],
+    },
+    {
+      date: "2026-11-20", time: "17:00", kind: "story", week: "w4",
+      title: "On this day: Alex Morgan at 90+4' (2010)",
+      source: "AP",
+      story: {
+        sticker: "None",
+        text: "On this day in 2010: Alex Morgan came off the bench and scored at 90+4' to win 1–0 in Italy ⚽ Stoppage time runs on, so that's square 94.\nSource: AP",
+      },
+      notes: ["Source link (check before posting): https://www.cbsnews.com/sanfrancisco/news/cals-morgan-gives-usa-womens-soccer-team-advantage/"],
+    },
+    {
+      date: "2026-11-21", time: "19:00", kind: "story", week: "w4",
+      title: "NWSL Championship",
+      tieIn: "NWSL Championship · 8:00 PM ET · CBS and Paramount+ · Audi Field, Washington, D.C.",
+      story: { sticker: "Link → app", text: "The NWSL Championship, 8 on CBS ⚽ One link, and every goal's minute wins a square 👇" },
+    },
+    {
+      date: "2026-11-22", time: "10:45", kind: "story", week: "w4",
+      title: "Liverpool–Man United",
+      tieIn: "Liverpool v Man United · 11:30 AM ET",
+      story: { sticker: "Link → app", text: "Liverpool–Man United at 11:30 ⚽ Then the 1:00 kickoffs. Two boards, one Sunday 👇" },
+    },
+    {
+      date: "2026-11-25", time: "13:30", kind: "story", week: "tg",
+      title: "Champions League before the long weekend",
+      tieIn: "Champions League Matchday 5 · PSG v Roma, Sporting v Man United, Club Brugge v Liverpool · 3:00 PM ET · Paramount+",
+      story: { sticker: "Link → app", text: "Champions League at 3 ⚽ An office board before the long weekend? One link in the team chat 👇" },
+    },
+    {
+      date: "2026-11-25", time: "16:00", kind: "story", week: "tg",
+      title: "On this day: USA 0, England 0 (2022)",
+      source: "CBS News",
+      story: { sticker: "None", text: "On this day in 2022: USA 0, England 0 ⚽ No goals, so square 00 wins.\nSource: CBS News" },
+      notes: ["Source link (check before posting): https://www.cbsnews.com/boston/news/us-remains-unbeaten-against-england-at-world-cups-after-goalless-draw-in-qatar/"],
+    },
+    {
+      date: "2026-11-29", time: "06:45", kind: "story", week: "tg",
+      title: "Premier League Sunday",
+      tieIn: "Everton v Liverpool 7:00 AM ET · Arsenal v Man City 11:30 AM ET",
+      story: { sticker: "Link → app", text: "Merseyside derby at 7, Arsenal–Man City at 11:30 ⚽ Two boards before the NFL even kicks off 👇" },
+    },
+    {
+      date: "2026-11-29", time: "20:30", kind: "story", week: "tg",
+      title: "On this day: Pulisic vs Iran (2022)",
+      source: "AP",
+      story: {
+        sticker: "None",
+        text: "On this day in 2022: Christian Pulisic's 38th-minute goal beat Iran 1–0 and sent the US to the knockout round ⚽ Square 38.\nSource: AP",
+      },
+      notes: ["Source link (check before posting): https://www.espn.com/soccer/report/_/gameId/633822"],
     },
   ],
 };
