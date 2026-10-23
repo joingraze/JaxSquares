@@ -88,9 +88,9 @@ DESCRIPTION:☐ Set it Wednesday? Replace it: it now leads with football &
  e link sits right under the bio)\, and the last line disclaims any league 
  or team.\n☐ Edit profile → Bio → paste the bio. Keep the line breaks
  .\n☐ 149 characters\, inside Instagram's 150. Leave Pronouns empty.\n\nB
- IO:\nFootball & basketball squares 🏈🏀\nFree to set up · no app · n
- o signup\nLive scores call winners. Make a board 👇\nNot affiliated w/ a
- ny league or team
+ IO:\nFootball & basketball squares 🏈🏀\nFree to set up · no app for 
+ players\nLive scores call winners. Make a board 👇\nNot affiliated w/ an
+ y league or team
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Task: Profile 4/7: Bio
@@ -199,24 +199,24 @@ DURATION:PT20M
 SUMMARY:[Reel] Grid 1/9: JaxSquares is live (How it works)
 DESCRIPTION:Thursday Night Football · Patriots at Bears · 8:15 PM ET · P
  rime Video\nAsset: 01-how-it-works.mp4\, r-grid-covers/01.png\n\nCAPTION:\
- nJaxSquares is live 🏈🏀🐶 Square 1 of 9.\n\nFootball and basketball
-  squares\, run for you: pick the game\, text one link\, and everyone grabs
-  squares from their phone. Jax draws the numbers live\, scores update them
- selves\, and the winning square lights up every quarter.\n\nFree to set up
- . No app. No signup. Running a Patriots–Bears board tonight? Link in bio
- .\n\nSend this to whoever runs your squares 📲\n\n#footballsquares #squa
- respool #basketballsquares #gameday #bears\n\nAlt text: Screen recording o
- f JaxSquares\, the football and basketball squares app: a live score lands
-  on a winning square\, then picking a game\, texting the board link\, frie
- nds picking squares and Jax drawing the numbers.\n\n• At 48 hours (Sat O
- ct 24\, 12:30): Insights → plays\, average watch time\, skip rate\, send
- s\, saves\, profile visits.\n• Has its own soundtrack: original JaxSquar
- es music\, cut to the video\, so post it as is (it shows as Original audio
- \, and it's yours to boost).\n• Cover: save the grid cover above. On the
-  share screen tap Edit cover → Add from camera roll → pick it\, then o
- pen the Profile grid tab: the whole square shows\, board map included.\n
- • Don't pin it: pinned posts jump to the top of the grid and break the l
- ogo.\n• Square 1 sits bottom right of the logo.
+ nJaxSquares is live 🏈🏀🐶\n\nFootball and basketball squares\, run 
+ for you: pick the game\, text one link\, and everyone grabs squares from t
+ heir phone. Jax draws the numbers live\, scores update themselves\, and th
+ e winning square lights up every quarter.\n\nFree to set up\, and your fri
+ ends never need an app or an account. Make your board: link in bio.\n\nSen
+ d this to whoever runs your squares 📲\n\n#footballsquares #squarespool 
+ #basketballsquares #gameday #bears\n\nAlt text: Screen recording of JaxSqu
+ ares\, the football and basketball squares app: a live score lands on a wi
+ nning square\, then picking a game\, texting the board link\, friends pick
+ ing squares and Jax drawing the numbers.\n\n• At 48 hours (Sat Oct 24\, 
+ 12:30): Insights → plays\, average watch time\, skip rate\, sends\, save
+ s\, profile visits.\n• Has its own soundtrack: original JaxSquares music
+ \, cut to the video\, so post it as is (it shows as Original audio\, and i
+ t's yours to boost).\n• Cover: save the grid cover above. On the share s
+ creen tap Edit cover → Add from camera roll → pick it\, then open the 
+ Profile grid tab: the whole square shows\, board map included.\n• Don't 
+ pin it: pinned posts jump to the top of the grid and break the logo.\n• 
+ Square 1 sits bottom right of the logo.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 1/9: JaxSquares is live (How it works)
@@ -269,29 +269,57 @@ TRIGGER:-PT10M
 END:VALARM
 END:VEVENT
 BEGIN:VEVENT
+UID:2026-10-23T1215-task@jaxsquares-launch
+DTSTAMP:20261019T220000Z
+DTSTART;TZID=America/New_York:20261023T121500
+DURATION:PT30M
+SUMMARY:[Task] Fix the live Grid 1 caption and the bio
+DESCRIPTION:☐ Grid 1 (posted yesterday): open it → ⋯ → Edit → sel
+ ect the whole caption\, delete it\, paste the new one below → Done.\n☐
+  Bio: Edit profile → Bio → paste the new bio below. One line changed: 
+ hosts now sign in to make a board\, so “no signup” is out.\n☐ Then p
+ ost Grid 2 at 12:30.\n\nGRID 1 CAPTION:\nJaxSquares is live 🏈🏀🐶\n
+ \nFootball and basketball squares\, run for you: pick the game\, text one 
+ link\, and everyone grabs squares from their phone. Jax draws the numbers 
+ live\, scores update themselves\, and the winning square lights up every q
+ uarter.\n\nFree to set up\, and your friends never need an app or an accou
+ nt. Make your board: link in bio.\n\nSend this to whoever runs your square
+ s 📲\n\n#footballsquares #squarespool #basketballsquares #gameday #bears
+ \nBIO:\nFootball & basketball squares 🏈🏀\nFree to set up · no app f
+ or players\nLive scores call winners. Make a board 👇\nNot affiliated w/
+  any league or team\n\n• The old caption had “Square 1 of 9” (a note
+  for us\, not for followers) and “No signup”\, which no longer holds f
+ or hosts.
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Task: Fix the live Grid 1 caption and the bio
+TRIGGER:-PT10M
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
 UID:2026-10-23T1230-reel@jaxsquares-launch
 DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261023T123000
 DURATION:PT20M
 SUMMARY:[Reel] Grid 2/9: Scores update themselves (One score\, every phone)
 DESCRIPTION:Asset: u4-every-phone.mp4\, r-grid-covers/02.png\n\nCAPTION:\nF
- ootball squares\, live on every phone 📲 Square 2 of 9.\n\nPick an NFL\,
-  college or NBA game and the board follows it live. When the quarter ends\
- , everyone sees it at the same moment: the winner gets the celebration\, e
- veryone else gets the news. No refreshing\, no group-chat math.\n\nSend th
- is to whoever keeps score with a pen. Your board → link in bio.\n\n#foot
- ballsquares #squarespool #basketballsquares #groupchat\n\nAlt text: Three 
- phones side by side showing the same JaxSquares board. The third quarter e
- nds 10 to 13\; Maya's phone in the middle shows You won with Jax cheering\
- , and the two others show Maya wins Q3.\n\n• At 48 hours (Sun Oct 25\, 1
- 2:30): Insights → plays\, average watch time\, skip rate\, sends\, saves
- \, profile visits.\n• Has its own soundtrack: original JaxSquares music\
- , cut to the video\, so post it as is (it shows as Original audio\, and it
- 's yours to boost).\n• Cover: save the grid cover above. On the share sc
- reen tap Edit cover → Add from camera roll → pick it\, then open the P
- rofile grid tab: the whole square shows\, board map included.\n• Don't p
- in it: pinned posts jump to the top of the grid and break the logo.\n• S
- quare 2: bottom row\, middle.
+ ootball squares\, live on every phone 📲\n\nPick an NFL\, college or NBA
+  game and the board follows it live. When the quarter ends\, everyone sees
+  it at the same moment: the winner gets the celebration\, everyone else ge
+ ts the news. No refreshing\, no group-chat math.\n\nSend this to whoever k
+ eeps score with a pen. Your board → link in bio.\n\n#footballsquares #sq
+ uarespool #basketballsquares #groupchat\n\nAlt text: Three phones side by 
+ side showing the same JaxSquares board. The third quarter ends 10 to 13\; 
+ Maya's phone in the middle shows You won with Jax cheering\, and the two o
+ thers show Maya wins Q3.\n\n• At 48 hours (Sun Oct 25\, 12:30): Insights
+  → plays\, average watch time\, skip rate\, sends\, saves\, profile visi
+ ts.\n• Has its own soundtrack: original JaxSquares music\, cut to the vi
+ deo\, so post it as is (it shows as Original audio\, and it's yours to boo
+ st).\n• Cover: save the grid cover above. On the share screen tap Edit c
+ over → Add from camera roll → pick it\, then open the Profile grid tab
+ : the whole square shows\, board map included.\n• Don't pin it: pinned p
+ osts jump to the top of the grid and break the logo.\n• Square 2: bottom
+  row\, middle.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 2/9: Scores update themselves (One score\, every pho
@@ -324,22 +352,22 @@ SUMMARY:[Reel] Grid 3/9: Jax draws the numbers (POV: you hit Draw)
 DESCRIPTION:College Saturday · BYU at UCF 3:30 PM FOX · Ole Miss at Texas
   7:30 PM ABC · Houston at Utah 10:15 PM ESPN\nAsset: 03-the-draw.mp4\, r-
  grid-covers/03.png\n\nCAPTION:\nPOV: your squares board is full and you hi
- t Draw 🔢 Square 3 of 9.\n\nJax shuffles 0–9 for each team\, live\, in
-  front of everyone. Somebody gets 0–7. Somebody gets 2–2. Nobody can s
- ay you rigged it.\n\nRunning a board for Ole Miss–Texas tonight? Link in
-  bio. Send this to your board's most suspicious player.\n\n#footballsquare
- s #squarespool #collegefootball #texaslonghorns\n\nAlt text: Screen record
- ing of JaxSquares: the host taps Draw on a full board\, the digits 0 to 9 
- shuffle for both teams\, and the app shows The numbers are in.\n\n• At 4
- 8 hours (Mon Oct 26\, 11:00): Insights → plays\, average watch time\, sk
- ip rate\, sends\, saves\, profile visits.\n• Has its own soundtrack: ori
- ginal JaxSquares music\, cut to the video\, so post it as is (it shows as 
- Original audio\, and it's yours to boost).\n• Cover: save the grid cover
-  above. On the share screen tap Edit cover → Add from camera roll → pi
- ck it\, then open the Profile grid tab: the whole square shows\, board map
-  included.\n• Don't pin it: pinned posts jump to the top of the grid and
-  break the logo.\n• Square 3: bottom left. The bottom row is done: the g
- rid story goes up at 11:20.
+ t Draw 🔢\n\nJax shuffles 0–9 for each team\, live\, in front of every
+ one. Somebody gets 0–7. Somebody gets 2–2. Nobody can say you rigged i
+ t.\n\nRunning a board for Ole Miss–Texas tonight? Link in bio. Send this
+  to your board's most suspicious player.\n\n#footballsquares #squarespool 
+ #collegefootball #texaslonghorns\n\nAlt text: Screen recording of JaxSquar
+ es: the host taps Draw on a full board\, the digits 0 to 9 shuffle for bot
+ h teams\, and the app shows The numbers are in.\n\n• At 48 hours (Mon Oc
+ t 26\, 11:00): Insights → plays\, average watch time\, skip rate\, sends
+ \, saves\, profile visits.\n• Has its own soundtrack: original JaxSquare
+ s music\, cut to the video\, so post it as is (it shows as Original audio\
+ , and it's yours to boost).\n• Cover: save the grid cover above. On the 
+ share screen tap Edit cover → Add from camera roll → pick it\, then op
+ en the Profile grid tab: the whole square shows\, board map included.\n•
+  Don't pin it: pinned posts jump to the top of the grid and break the logo
+ .\n• Square 3: bottom left. The bottom row is done: the grid story goes 
+ up at 11:20.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 3/9: Jax draws the numbers (POV: you hit Draw)
@@ -384,23 +412,22 @@ SUMMARY:[Reel] Grid 4/9: Your square hits\, the gold one (Winners light up)
 DESCRIPTION:NFL Sunday · Steelers vs. Saints in Paris 9:30 AM ET · 1:00 P
  M kickoffs · SNF Chiefs at Seahawks 8:20 PM\nAsset: 06-winners-light-up.m
  p4\, r-grid-covers/04.png\n\nCAPTION:\nEvery football squares board has a 
- winning square. This is ours 🏆 Square 4 of 9\, the gold one.\n\nLive sc
- ores are built in\, so the winning square lights up at Q1\, Half\, Q3 and 
- the Final\, and the winner's phone gets the news. No math\, no arguing.\n\
- nChiefs–Seahawks tonight? Your board is one link away: link in bio. Send
-  this to the friend who always does the math wrong.\n\n#footballsquares #s
- quarespool #officepool #chiefs\n\nAlt text: Screen recording of JaxSquares
-  on game day: a push notification\, the score landing on the viewer's squa
- re as it lights up gold\, then the home screen and the activity feed.\n\n
- • At 48 hours (Tue Oct 27\, 11:00): Insights → plays\, average watch t
- ime\, skip rate\, sends\, saves\, profile visits.\n• Has its own soundtr
- ack: original JaxSquares music\, cut to the video\, so post it as is (it s
- hows as Original audio\, and it's yours to boost).\n• Cover: save the gr
- id cover above. On the share screen tap Edit cover → Add from camera rol
- l → pick it\, then open the Profile grid tab: the whole square shows\, b
- oard map included.\n• Don't pin it: pinned posts jump to the top of the 
- grid and break the logo.\n• Square 4: middle row\, right. The gold squar
- e of the logo.
+ winning square. When it's yours\, you'll know 🏆\n\nLive scores are buil
+ t in\, so the winning square lights up at Q1\, Half\, Q3 and the Final\, a
+ nd the winner's phone gets the news. No math\, no arguing.\n\nChiefs–Sea
+ hawks tonight? Your board is one link away: link in bio. Send this to the 
+ friend who always does the math wrong.\n\n#footballsquares #squarespool #o
+ fficepool #chiefs\n\nAlt text: Screen recording of JaxSquares on game day:
+  a push notification\, the score landing on the viewer's square as it ligh
+ ts up gold\, then the home screen and the activity feed.\n\n• At 48 hour
+ s (Tue Oct 27\, 11:00): Insights → plays\, average watch time\, skip rat
+ e\, sends\, saves\, profile visits.\n• Has its own soundtrack: original 
+ JaxSquares music\, cut to the video\, so post it as is (it shows as Origin
+ al audio\, and it's yours to boost).\n• Cover: save the grid cover above
+ . On the share screen tap Edit cover → Add from camera roll → pick it\
+ , then open the Profile grid tab: the whole square shows\, board map inclu
+ ded.\n• Don't pin it: pinned posts jump to the top of the grid and break
+  the logo.\n• Square 4: middle row\, right. The gold square of the logo.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 4/9: Your square hits\, the gold one (Winners light 
@@ -414,8 +441,9 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261025T113000
 DURATION:PT10M
 SUMMARY:[Story] Game day checklist
-DESCRIPTION:Asset: s-story-frames/06.png\nSticker: Link → app\nText: (Fra
- me says it all.) Draw before the 1:00 kickoffs.
+DESCRIPTION:Asset: s-story-frames/06.png\nSticker: Link → app\nText: Draw
+  before the 1:00 kickoffs 👇\n\n• The frame carries the checklist: add
+  only this line\, above the link sticker.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Game day checklist
@@ -461,22 +489,22 @@ DURATION:PT20M
 SUMMARY:[Reel] Grid 5/9: Meet Jax (Let Jax pick)
 DESCRIPTION:Monday Night Football · Cowboys at Eagles · 8:15 PM ET · ESP
  N/ABC\nAsset: 02-let-jax-pick.mp4\, r-grid-covers/05.png\n\nCAPTION:\nMeet
-  Jax 🐶 the dog behind JaxSquares\, football and basketball squares. Squ
- are 5 of 9\, right in the middle.\n\nCan't pick a square? Tap “Let Jax p
- ick”\, choose how many\, and he grabs random open squares for you. No fa
- vorites (unless you count treats).\n\nRunning a Cowboys–Eagles board ton
- ight? Link in bio. Send this to the friend who'd let Jax pick 🐶\n\n#foo
- tballsquares #squarespool #officepool #eagles\n\nAlt text: Jax\, an illust
- rated tan and white dog\, then a screen recording of JaxSquares where Let 
- Jax pick claims five random open squares on a board.\n\n• At 48 hours (W
- ed Oct 28\, 14:00): Insights → plays\, average watch time\, skip rate\, 
- sends\, saves\, profile visits.\n• Has its own soundtrack: original JaxS
- quares music\, cut to the video\, so post it as is (it shows as Original a
- udio\, and it's yours to boost).\n• Cover: save the grid cover above. On
-  the share screen tap Edit cover → Add from camera roll → pick it\, th
- en open the Profile grid tab: the whole square shows\, board map included.
- \n• Don't pin it: pinned posts jump to the top of the grid and break the
-  logo.\n• Square 5: the center of the logo.
+  Jax 🐶 the dog behind JaxSquares\, football and basketball squares.\n\n
+ Can't pick a square? Tap “Let Jax pick”\, choose how many\, and he gra
+ bs random open squares for you. No favorites (unless you count treats).\n\
+ nRunning a Cowboys–Eagles board tonight? Link in bio. Send this to the f
+ riend who'd let Jax pick 🐶\n\n#footballsquares #squarespool #officepool
+  #eagles\n\nAlt text: Jax\, an illustrated tan and white dog\, then a scre
+ en recording of JaxSquares where Let Jax pick claims five random open squa
+ res on a board.\n\n• At 48 hours (Wed Oct 28\, 14:00): Insights → play
+ s\, average watch time\, skip rate\, sends\, saves\, profile visits.\n• 
+ Has its own soundtrack: original JaxSquares music\, cut to the video\, so 
+ post it as is (it shows as Original audio\, and it's yours to boost).\n•
+  Cover: save the grid cover above. On the share screen tap Edit cover → 
+ Add from camera roll → pick it\, then open the Profile grid tab: the who
+ le square shows\, board map included.\n• Don't pin it: pinned posts jump
+  to the top of the grid and break the logo.\n• Square 5: the center of t
+ he logo.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 5/9: Meet Jax (Let Jax pick)
@@ -520,21 +548,21 @@ DURATION:PT20M
 SUMMARY:[Reel] Grid 6/9: Text one link (Every squares group chat)
 DESCRIPTION:Asset: 05-group-chat.mp4\, r-grid-covers/06.png\n\nCAPTION:\nEv
  ery football squares group chat: “who has the 7–3??” “resend the s
- preadsheet” “MIKE.” 😭 Square 6 of 9.\n\nOr… one link. Everyone 
- picks from their own phone\, Jax draws the numbers\, and the board shows w
- ho won.\n\nSend this to the person who runs your squares 📲 Your board 
- → link in bio.\n\n#footballsquares #squarespool #groupchat #officepool\n
- \nAlt text: A chaotic group chat about a squares spreadsheet freezes\, one
-  JaxSquares invite link drops in\, and a phone shows friends picking squar
- es on the board.\n\n• At 48 hours (Thu Oct 29\, 13:00): Insights → pla
- ys\, average watch time\, skip rate\, sends\, saves\, profile visits.\n•
-  Has its own soundtrack: original JaxSquares music\, cut to the video\, so
-  post it as is (it shows as Original audio\, and it's yours to boost).\n
- • Cover: save the grid cover above. On the share screen tap Edit cover 
- → Add from camera roll → pick it\, then open the Profile grid tab: the
-  whole square shows\, board map included.\n• Don't pin it: pinned posts 
- jump to the top of the grid and break the logo.\n• Square 6: middle row\
- , left. The middle row is done: the grid story goes up at 13:20.
+ preadsheet” “MIKE.” 😭\n\nOr… one link. Everyone picks from thei
+ r own phone\, Jax draws the numbers\, and the board shows who won.\n\nSend
+  this to the person who runs your squares 📲 Your board → link in bio.
+ \n\n#footballsquares #squarespool #groupchat #officepool\n\nAlt text: A ch
+ aotic group chat about a squares spreadsheet freezes\, one JaxSquares invi
+ te link drops in\, and a phone shows friends picking squares on the board.
+ \n\n• At 48 hours (Thu Oct 29\, 13:00): Insights → plays\, average wat
+ ch time\, skip rate\, sends\, saves\, profile visits.\n• Has its own sou
+ ndtrack: original JaxSquares music\, cut to the video\, so post it as is (
+ it shows as Original audio\, and it's yours to boost).\n• Cover: save th
+ e grid cover above. On the share screen tap Edit cover → Add from camera
+  roll → pick it\, then open the Profile grid tab: the whole square shows
+ \, board map included.\n• Don't pin it: pinned posts jump to the top of 
+ the grid and break the logo.\n• Square 6: middle row\, left. The middle 
+ row is done: the grid story goes up at 13:20.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 6/9: Text one link (Every squares group chat)
@@ -580,8 +608,9 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261027T180000
 DURATION:PT10M
 SUMMARY:[Story] Poll: 0–0 or 7–7?
-DESCRIPTION:Asset: s-story-frames/01.png\nSticker: Poll: 0–0 / 7–7\nTex
- t: (Place the poll in the empty middle band.)
+DESCRIPTION:Asset: s-story-frames/01.png\nSticker: Poll: 0–0 / 7–7\nNo 
+ text to add\n\n• No text to add: the frame asks the question. Place the 
+ poll sticker in the frame's empty middle band.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Poll: 0–0 or 7–7?
@@ -595,26 +624,26 @@ DTSTART;TZID=America/New_York:20261028T123000
 DURATION:PT20M
 SUMMARY:[Reel] Grid 7/9: Free to set up (Squares board speedrun)
 DESCRIPTION:Asset: u1-speedrun.mp4\, r-grid-covers/07.png\n\nCAPTION:\nMake
-  a squares board in 10 seconds ⏱ Square 7 of 9.\n\nPick the game\, how s
- quares win\, prizes or just for fun\, a name\, create. Then one text to th
- e group chat. 10 seconds flat with the defaults\; read every step and it's
-  still under a minute.\n\nFree to set up and invite\, and players never pa
- y. Boards with up to 5 players draw free\; bigger boards are $4.99 for the
-  host at the draw.\n\nSend this to whoever still makes the board on paper.
-  Link in bio.\n\n#footballsquares #squarespool #officepool #gameday\n\nAlt
-  text: Screen recording of the JaxSquares squares app with a running stopw
- atch: picking a game\, choosing how squares win\, Just for fun\, naming th
- e board and creating it\, then sending the invite to a group chat. The sto
- pwatch stops at 10 seconds.\n\n• At 48 hours (Fri Oct 30\, 12:30): Insig
- hts → plays\, average watch time\, skip rate\, sends\, saves\, profile v
- isits.\n• Has its own soundtrack: original JaxSquares music\, cut to the
-  video\, so post it as is (it shows as Original audio\, and it's yours to 
- boost).\n• Cover: save the grid cover above. On the share screen tap Edi
- t cover → Add from camera roll → pick it\, then open the Profile grid 
- tab: the whole square shows\, board map included.\n• Don't pin it: pinne
- d posts jump to the top of the grid and break the logo.\n• Square 7: top
-  row\, right.\n• Not a boost pick: the review step shows the host-fee li
- ne.
+  a squares board in 10 seconds ⏱\n\nPick the game\, how squares win\, pr
+ izes or just for fun\, a name\, create. Then one text to the group chat. 1
+ 0 seconds flat with the defaults once you're signed in\; read every step a
+ nd it's still under a minute.\n\nFree to set up and invite\, and players n
+ ever pay. Boards with up to 5 players draw free\; bigger boards are $4.99 
+ for the host at the draw.\n\nSend this to whoever still makes the board on
+  paper. Link in bio.\n\n#footballsquares #squarespool #officepool #gameday
+ \n\nAlt text: Screen recording of the JaxSquares squares app with a runnin
+ g stopwatch: picking a game\, choosing how squares win\, Just for fun\, na
+ ming the board and creating it\, then sending the invite to a group chat. 
+ The stopwatch stops at 10 seconds.\n\n• At 48 hours (Fri Oct 30\, 12:30)
+ : Insights → plays\, average watch time\, skip rate\, sends\, saves\, pr
+ ofile visits.\n• Has its own soundtrack: original JaxSquares music\, cut
+  to the video\, so post it as is (it shows as Original audio\, and it's yo
+ urs to boost).\n• Cover: save the grid cover above. On the share screen 
+ tap Edit cover → Add from camera roll → pick it\, then open the Profil
+ e grid tab: the whole square shows\, board map included.\n• Don't pin it
+ : pinned posts jump to the top of the grid and break the logo.\n• Square
+  7: top row\, right.\n• Not a boost pick: the review step shows the host
+ -fee line.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 7/9: Free to set up (Squares board speedrun)
@@ -644,7 +673,8 @@ DTSTART;TZID=America/New_York:20261028T180000
 DURATION:PT10M
 SUMMARY:[Story] Poll answer
 DESCRIPTION:Asset: s-story-frames/02.png\nSticker: None (or a link to the c
- arousel)\nText: Answer frame. Basically a coin flip.
+ arousel)\nText: Basically a coin flip.\n\n• The frame shows the answer: 
+ add only this line.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Poll answer
@@ -659,22 +689,22 @@ DURATION:PT20M
 SUMMARY:[Reel] Grid 8/9: No app needed (Join from the link)
 DESCRIPTION:Thursday Night Football · Panthers at Packers · 8:15 PM ET ·
   Prime Video\nAsset: u6-join-from-link.mp4\, r-grid-covers/08.png\n\nCAPTI
- ON:\nNo app needed 📲 Square 8 of 9. Here's a football squares link from
-  the friend's side:\n\nTap a square\, type your name\, you're in. Nothing 
- to download\, no account\, no password. Same room? Scan the code on the ho
- st's screen.\n\nPanthers–Packers tonight? Link in bio. Send this to the 
- friend who always asks “do I have to download something?”\n\n#football
- squares #squarespool #packers\n\nAlt text: A text from Maya with a JaxSqua
- res link. The board opens on a phone with no app\; the friend taps a squar
- e\, types Sam and joins\, then grabs a second square. A timer reads 3.6 se
- conds.\n\n• At 48 hours (Sat Oct 31\, 12:30): Insights → plays\, avera
- ge watch time\, skip rate\, sends\, saves\, profile visits.\n• Has its o
- wn soundtrack: original JaxSquares music\, cut to the video\, so post it a
- s is (it shows as Original audio\, and it's yours to boost).\n• Cover: s
- ave the grid cover above. On the share screen tap Edit cover → Add from 
- camera roll → pick it\, then open the Profile grid tab: the whole square
-  shows\, board map included.\n• Don't pin it: pinned posts jump to the t
- op of the grid and break the logo.\n• Square 8: top row\, middle.
+ ON:\nNo app needed 📲 Here's a football squares link from the friend's s
+ ide:\n\nTap a square\, type your name\, you're in. Nothing to download\, n
+ o account\, no password. Same room? Scan the code on the host's screen.\n\
+ nPanthers–Packers tonight? Link in bio. Send this to the friend who alwa
+ ys asks “do I have to download something?”\n\n#footballsquares #square
+ spool #packers\n\nAlt text: A text from Maya with a JaxSquares link. The b
+ oard opens on a phone with no app\; the friend taps a square\, types Sam a
+ nd joins\, then grabs a second square. A timer reads 3.6 seconds.\n\n• A
+ t 48 hours (Sat Oct 31\, 12:30): Insights → plays\, average watch time\,
+  skip rate\, sends\, saves\, profile visits.\n• Has its own soundtrack: 
+ original JaxSquares music\, cut to the video\, so post it as is (it shows 
+ as Original audio\, and it's yours to boost).\n• Cover: save the grid co
+ ver above. On the share screen tap Edit cover → Add from camera roll →
+  pick it\, then open the Profile grid tab: the whole square shows\, board 
+ map included.\n• Don't pin it: pinned posts jump to the top of the grid 
+ and break the logo.\n• Square 8: top row\, middle.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 8/9: No app needed (Join from the link)
@@ -704,26 +734,25 @@ SUMMARY:[Reel] Grid 9/9: Football and basketball squares (Basketball square
  s)
 DESCRIPTION:NBA Cup group play starts Oct 30 · college basketball opens No
  v 1–2\nAsset: u3-basketball-squares.mp4\, r-grid-covers/09.png\n\nCAPTIO
- N:\nSquare 9 of 9 🏈🏀 The board's full\, and that's our logo up there
- .\n\nSquares aren't just for football: JaxSquares runs basketball squares 
- too. Pick tonight's NBA game or type in any matchup\, choose how squares w
- in\, and live scores call every winner. College hoops tips off next week.\
- n\nSend this to your hoops group chat. Your board → link in bio.\n\n#bas
- ketballsquares #footballsquares #nba #collegebasketball #squarespool\n\nAl
- t text: Screen recording of JaxSquares: tapping Basketball\, picking tonig
- ht's game and making a basketball squares board in five taps\, then the th
- ird quarter ending 75 to 70 on the viewer's square as Jax cheers.\n\n• A
- t 48 hours (Sun Nov 1\, 12:30): Insights → plays\, average watch time\, 
- skip rate\, sends\, saves\, profile visits.\n• Has its own soundtrack: o
- riginal JaxSquares music\, cut to the video\, so post it as is (it shows a
- s Original audio\, and it's yours to boost).\n• Cover: save the grid cov
- er above. On the share screen tap Edit cover → Add from camera roll → 
- pick it\, then open the Profile grid tab: the whole square shows\, board m
- ap included.\n• Don't pin it: pinned posts jump to the top of the grid a
- nd break the logo.\n• Square 9: top left\, the last one. Open your profi
- le and check the logo lines up\, then post the grid story at 12:50.\n• O
- n screen the league tab reads “Pro”\, like the App Store art\; the cap
- tion names the NBA to describe the games (not affiliated).
+ N:\nSquares aren't just for football 🏀\n\nJaxSquares runs basketball sq
+ uares too: pick tonight's NBA game or type in any matchup\, choose how squ
+ ares win\, and live scores call every winner. College hoops tips off next 
+ week.\n\nSend this to your hoops group chat. Your board → link in bio.\n
+ \n#basketballsquares #footballsquares #nba #collegebasketball #squarespool
+ \n\nAlt text: Screen recording of JaxSquares: tapping Basketball\, picking
+  tonight's game and making a basketball squares board in five taps\, then 
+ the third quarter ending 75 to 70 on the viewer's square as Jax cheers.\n\
+ n• At 48 hours (Sun Nov 1\, 12:30): Insights → plays\, average watch t
+ ime\, skip rate\, sends\, saves\, profile visits.\n• Has its own soundtr
+ ack: original JaxSquares music\, cut to the video\, so post it as is (it s
+ hows as Original audio\, and it's yours to boost).\n• Cover: save the gr
+ id cover above. On the share screen tap Edit cover → Add from camera rol
+ l → pick it\, then open the Profile grid tab: the whole square shows\, b
+ oard map included.\n• Don't pin it: pinned posts jump to the top of the 
+ grid and break the logo.\n• Square 9: top left\, the last one. Open your
+  profile and check the logo lines up\, then post the grid story at 12:50.\
+ n• On screen the league tab reads “Pro”\, like the App Store art\; t
+ he caption names the NBA to describe the games (not affiliated).
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel: Grid 9/9: Football and basketball squares (Basketball squ
@@ -772,8 +801,9 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261030T170000
 DURATION:PT10M
 SUMMARY:[Story] Who's running squares this weekend?
-DESCRIPTION:Asset: s-story-frames/05.png\nSticker: Questions\nText: (Questi
- ons sticker in the middle band.)
+DESCRIPTION:Asset: s-story-frames/05.png\nSticker: Questions\nNo text to ad
+ d\n\n• No text to add: the frame asks the question. Place the Questions 
+ sticker in the frame's middle band.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Who's running squares this weekend?
@@ -958,8 +988,9 @@ DTSTART;TZID=America/New_York:20261103T120000
 DURATION:PT10M
 SUMMARY:[Story] Quiz: most common final
 DESCRIPTION:Election Day. Keep the feed quiet today.\nAsset: s-story-frames
- /03.png\nSticker: Quiz: 20–17 / 23–20 ✓ / 27–24 / 24–17\nText: (
- Quiz sticker in the middle band.)
+ /03.png\nSticker: Quiz: 20–17 / 23–20 ✓ / 27–24 / 24–17\nNo text
+  to add\n\n• No text to add: the frame asks the question. Place the quiz
+  sticker in the frame's middle band and mark 23–20 as the answer.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Quiz: most common final
@@ -1009,8 +1040,8 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261104T180000
 DURATION:PT10M
 SUMMARY:[Story] Quiz answer: 23–20
-DESCRIPTION:Asset: s-story-frames/04.png\nSticker: None\nText: Answer frame
- .
+DESCRIPTION:Asset: s-story-frames/04.png\nSticker: None\nNo text to add\n\n
+ • No text to add: the frame shows the answer.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Quiz answer: 23–20
@@ -1060,9 +1091,8 @@ DTSTAMP:20261019T220000Z
 DTSTART;TZID=America/New_York:20261105T233000
 DURATION:PT10M
 SUMMARY:[Story] Which square hit?
-DESCRIPTION:Sticker: Questions\nText: Final: Jaguars __\, Ravens __. That's
-  the _–_ square. Who had it? 🙋\n\n• Fill in the final score and dig
- its after the game.
+DESCRIPTION:Sticker: Questions\nText: Jaguars–Ravens is final 🐆 Who ha
+ d the winning square? 🙋\n\n• Post it after the final whistle.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Which square hit?
@@ -1282,18 +1312,18 @@ DESCRIPTION:Script:\n- 0–2s (on-screen text): “I built a squares app be
  cause our group chat broke.”\n- 2–10s: hold up the old way. Show the w
  hiteboard photo\, the spreadsheet\, the 99+ unread chat.\n- 10–25s: scre
  en-record making a real board\, start to share link (you recorded this in 
- Prep).\n- 25–35s\, to camera: “Free to set up\, no app\, no signup. Ja
- x draws the numbers live\, winners light up.” If you can\, film the real
-  Jax here: he's the logo.\n- 35–40s\, ask: “What do we build next: Pic
- k'em\, Bracket Battles\, or King of the Hill?”\n\nCAPTION:\nWhy we built
-  JaxSquares 🐶 (and what's next)\n\nOur squares lived in a group chat\, 
- a blurry whiteboard photo and a spreadsheet nobody could find. So we built
-  the board we wanted\, and named it after Jax: one link\, everyone picks f
- rom their phone\, numbers draw live\, winners light up.\n\nNext up: Pick'e
- m\, Bracket Battles or King of the Hill? Vote in the comments 👇\n\n#bui
- ldinpublic #startup #jacksonville #footballsquares #squarespool\n\n• Fil
- m vertical\, natural light\, captions on (Instagram's auto-captions are fi
- ne).
+ Prep).\n- 25–35s\, to camera: “Free to set up\, and your friends never
+  need an app or an account. Jax draws the numbers live\, winners light up.
+ ” If you can\, film the real Jax here: he's the logo.\n- 35–40s\, ask:
+  “What do we build next: Pick'em\, Bracket Battles\, or King of the Hill
+ ?”\n\nCAPTION:\nWhy we built JaxSquares 🐶 (and what's next)\n\nOur sq
+ uares lived in a group chat\, a blurry whiteboard photo and a spreadsheet 
+ nobody could find. So we built the board we wanted\, and named it after Ja
+ x: one link\, everyone picks from their phone\, numbers draw live\, winner
+ s light up.\n\nNext up: Pick'em\, Bracket Battles or King of the Hill? Vot
+ e in the comments 👇\n\n#buildinpublic #startup #jacksonville #footballs
+ quares #squarespool\n\n• Film vertical\, natural light\, captions on (In
+ stagram's auto-captions are fine).
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Reel (film it): Founder Reel: why we built it (and who Jax is)
@@ -1507,7 +1537,8 @@ DTSTART;TZID=America/New_York:20261117T120000
 DURATION:PT10M
 SUMMARY:[Story] Thanksgiving boards poll
 DESCRIPTION:Asset: s-story-frames/07.png\nSticker: Poll: 1 / 2–3 / All of
-  them\nText: (Poll sticker in the middle band.)
+  them\nNo text to add\n\n• No text to add: the frame asks the question. 
+ Place the poll sticker in the frame's middle band.
 BEGIN:VALARM
 ACTION:DISPLAY
 DESCRIPTION:Story: Thanksgiving boards poll

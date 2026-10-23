@@ -27,6 +27,32 @@ for (const it of items) {
   if (!PLAN.weeks.some((w) => w.key === it.week)) throw new Error(`${it.id}: unknown week ${it.week}`);
 }
 
+// Captions, story text, alt text and the profile are pasted into Instagram exactly as written, so
+// none of it may be a note to whoever posts (a grid position, where a sticker goes) or a blank to
+// fill in. Directions for the poster go in notes or the sticker field.
+const NOT_FOR_POSTING = [
+  [/\b(?:square|post|reel|tile) \d+ of \d+\b/i, "a grid position"],
+  [/_{2,}|_\s*[–-]\s*_/, "a blank to fill in"],
+  [/\[[^\]]*\]|\{[^}]*\}|<[^>]+>/, "a placeholder in brackets"],
+  [/\b(?:TBD|TODO|FIXME|XXX?|lorem)\b/i, "a placeholder"],
+  [/\([^)]*\b(?:sticker|frame|band|slide|cover|placeholder)\b[^)]*\)/i, "a direction to the poster"],
+  [/\b(?:answer|question|quiz|poll) frame\b|\bfill in\b|\bsays it all\b/i, "a direction to the poster"],
+];
+function postable(where, text) {
+  for (const [re, what] of NOT_FOR_POSTING) {
+    const m = re.exec(text);
+    if (m) throw new Error(`${where}: “${m[0]}” is ${what}, but this text is posted exactly as written. Directions for the poster go in notes.`);
+  }
+}
+for (const it of items) {
+  if (it.caption) postable(`${it.id} caption`, it.caption);
+  if (it.story?.text) postable(`${it.id} story text`, it.story.text);
+  if (it.altText) postable(`${it.id} alt text`, it.altText);
+  for (const c of it.copy ?? []) postable(`${it.id} ${c.label}`, c.text);
+}
+postable("profile name", PLAN.strategy.setup.name);
+postable("profile bio", PLAN.strategy.setup.bio);
+
 const fmtDay = (date) =>
   new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const fmtTime = (t) => {
@@ -174,7 +200,8 @@ function markdown() {
         const bits = [`**${fmtDay(it.date)} ${fmtTime(it.time)}** · ${it.title}`];
         if (it.asset) bits.push(`frame \`${it.asset}\``);
         bits.push(`sticker: ${it.story.sticker}`);
-        out.push(`- ${bits.join(" · ")}. “${it.story.text.replace(/\n/g, " / ")}”${it.notes ? ` (${it.notes.join(" ")})` : ""}`);
+        const text = it.story.text ? `“${it.story.text.replace(/\n/g, " / ")}”` : "No text to add";
+        out.push(`- ${bits.join(" · ")}. ${text}${it.notes ? ` (${it.notes.join(" ")})` : ""}`);
       }
       out.push("");
     }
@@ -245,7 +272,7 @@ function ics() {
     const desc = [];
     if (it.tieIn) desc.push(it.tieIn);
     if (it.asset || it.extras) desc.push(`Asset: ${assetFiles(it).join(", ")}`);
-    if (it.story) desc.push(`Sticker: ${it.story.sticker}`, `Text: ${it.story.text}`);
+    if (it.story) desc.push(`Sticker: ${it.story.sticker}`, it.story.text ? `Text: ${it.story.text}` : "No text to add");
     if (it.script) desc.push("Script:", ...it.script.map((l) => `- ${l}`));
     if (it.checklist) desc.push(...it.checklist.map((l) => `☐ ${l}`));
     if (it.copy) desc.push("", ...it.copy.map((c) => `${c.label.toUpperCase()}:\n${c.text}`));

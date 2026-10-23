@@ -750,10 +750,13 @@ code.cmd { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-
       const b = h("div", { class: "copybox", text: it.altText });
       body.append(h("div", { class: "block" }, h("h4", { text: "Alt text (Advanced settings)" }), b, h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => copy(it.altText, b), text: "Copy alt text" }))));
     }
-    if (it.story) {
+    if (it.story && it.story.text) {
       const b = h("div", { class: "copybox", text: it.story.text });
       body.append(h("div", { class: "block" }, h("h4", { text: `Story text · sticker: ${it.story.sticker}` }), b,
         h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", onclick: () => copy(it.story.text, b), text: "Copy story text" }))));
+    } else if (it.story) {
+      // The frame carries all the words: nothing to type, only the sticker to place.
+      body.append(h("div", { class: "block" }, h("h4", { text: `Story · sticker: ${it.story.sticker}` }), h("p", { class: "note", text: "No text to add: the frame has it all." })));
     }
     if (it.notes) body.append(h("div", { class: "block" }, h("h4", { text: "Notes" }), list(it.notes)));
 
