@@ -234,3 +234,94 @@ describe("college basketball's Division I filter", () => {
     }
   }, 60_000);
 });
+
+// Soccer (goal-minute squares): the raw shape ESPN gives, logged so the parser
+// is built on it. Goals with their minute (stoppage time, extra time, own
+// goals, penalties, a shootout), the match clock while it's on, and the
+// summary endpoint's view of the same match.
+describe("soccer: what ESPN sends", () => {
+  const SOCCER = "https://site.api.espn.com/apis/site/v2/sports/soccer";
+  const rec = (v: unknown) => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as unknown[]) : []);
+  const statusLine = (s: unknown) => {
+    const st = rec(s);
+    const t = rec(st.type);
+    return `period ${String(st.period)} clock ${String(st.clock)} "${String(st.displayClock)}" ${String(t.name)} ${String(t.state)} "${String(t.detail)}" "${String(t.shortDetail)}"`;
+  };
+  const detailLine = (d: unknown) => {
+    const x = rec(d);
+    const clock = rec(x.clock);
+    return `${String(rec(x.type).text)} clock ${String(clock.value)} "${String(clock.displayValue)}" team ${String(rec(x.team).id)} scoring ${String(x.scoringPlay)} own ${String(x.ownGoal)} pen ${String(x.penaltyKick)} shootout ${String(x.shootout)} value ${String(x.scoreValue)}`;
+  };
+  async function logEvents(league: string, dates: string, limit: number) {
+    const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${dates}`, 15_000));
+    const events = arr(board.events);
+    console.log(`${league} ${dates}: ${events.length} events; leagues ${JSON.stringify(arr(board.leagues).map((l) => rec(l).abbreviation ?? rec(l).name))}`);
+    for (const e of events.slice(0, limit)) {
+      const ev = rec(e);
+      const comp = rec(arr(ev.competitions)[0]);
+      console.log(`  ${String(ev.id)} ${String(ev.shortName)} ${String(ev.date)} | ${statusLine(comp.status ?? ev.status)}`);
+      for (const c of arr(comp.competitors)) {
+        const cc = rec(c);
+        const team = rec(cc.team);
+        console.log(`    ${String(cc.homeAway)} ${String(team.id)} ${String(team.abbreviation)} "${String(team.displayName)}" "${String(team.shortDisplayName)}" #${String(team.color)} score ${String(cc.score)} linescores ${JSON.stringify(cc.linescores ?? null)} shootout ${String(cc.shootoutScore)} winner ${String(cc.winner)}`);
+      }
+      const details = arr(comp.details);
+      console.log(`    details ${details.length}: ${[...new Set(details.map((d) => String(rec(rec(d).type).text)))].join(", ")}`);
+      for (const d of details.filter((d) => rec(d).scoringPlay === true || /goal|penalty/i.test(String(rec(rec(d).type).text)))) console.log(`      ${detailLine(d)}`);
+    }
+    return events;
+  }
+
+  it.each([
+    ["eng.1", "20251018-20251020"],
+    ["usa.1", "20251018-20251020"],
+    ["usa.nwsl", "20251018-20251020"],
+    ["esp.1", "20251018-20251020"],
+    ["mex.1", "20251018-20251020"],
+    // Liverpool vs PSG went to extra time and penalties.
+    ["uefa.champions", "20250311"],
+    ["uefa.champions", "20251021-20251022"],
+    ["fifa.world", "20260718-20260719"],
+  ])("%s %s: events, goals and their minutes", async (league, dates) => {
+    try {
+      await logEvents(league, dates, 4);
+    } catch (err) {
+      console.log(`${league} ${dates}: ${String(err)}`);
+    }
+  }, 60_000);
+
+  it("the summary endpoint for a finished match, and anything on now", async () => {
+    for (const league of ["eng.1", "uefa.champions"]) {
+      try {
+        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${league === "eng.1" ? "20251018" : "20250311"}`, 15_000));
+        const ev = rec(arr(board.events)[0]);
+        if (!ev.id) continue;
+        const sum = rec(await fetchEspnJson(`${SOCCER}/${league}/summary?event=${String(ev.id)}`, 15_000));
+        console.log(`${league} summary ${String(ev.id)}: keys ${Object.keys(sum).join(", ")}`);
+        const comp = rec(arr(rec(sum.header).competitions)[0]);
+        console.log(`  header status: ${statusLine(comp.status)}`);
+        const keyEvents = arr(sum.keyEvents);
+        console.log(`  keyEvents ${keyEvents.length}: ${[...new Set(keyEvents.map((k) => String(rec(rec(k).type).text)))].join(", ")}`);
+        for (const k of keyEvents.filter((k) => rec(k).scoringPlay === true).slice(0, 8)) {
+          const kk = rec(k);
+          console.log(`    ${String(rec(kk.type).text)} clock ${JSON.stringify(kk.clock)} period ${JSON.stringify(kk.period)} team ${String(rec(kk.team).id)} shootout ${String(kk.shootout)} text "${String(kk.text ?? kk.shortText ?? "").slice(0, 80)}"`);
+        }
+      } catch (err) {
+        console.log(`${league} summary: ${String(err)}`);
+      }
+    }
+    const today = espnDate(NOW - 6 * 3_600_000);
+    for (const league of ["eng.1", "esp.1", "usa.1", "uefa.champions", "mex.1"]) {
+      try {
+        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${today}`, 15_000));
+        for (const e of arr(board.events)) {
+          const comp = rec(arr(rec(e).competitions)[0]);
+          if (rec(rec(comp.status).type).state === "in") console.log(`  LIVE ${league} ${String(rec(e).shortName)}: ${statusLine(comp.status)}; goals ${arr(comp.details).filter((d) => rec(d).scoringPlay === true).map(detailLine).join(" | ")}`);
+        }
+      } catch (err) {
+        console.log(`${league} today: ${String(err)}`);
+      }
+    }
+  }, 120_000);
+});
