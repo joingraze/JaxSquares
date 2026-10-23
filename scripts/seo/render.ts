@@ -91,6 +91,11 @@ export function parentOf(page: LandingPage, all: readonly LandingPage[]): Landin
   return all.find((p) => p.slug === slug) ?? null;
 }
 
+/** On the Worker's workers.dev address, the same page on jaxsquares.com (index.html does the same for the app; docs/domain.md). */
+const WORKERS_DEV_REDIRECT =
+  `<script>if(/\\.workers\\.dev$/i.test(location.hostname))` +
+  `location.replace(${JSON.stringify(ORIGIN)}+location.pathname+location.search+location.hash)</script>`;
+
 /** Lets the page follow the app's saved Appearance (src/lib/theme.ts); without one, the phone's setting. */
 const THEME_BOOT =
   `<script>try{var t=localStorage.getItem("jaxsquares.theme");` +
@@ -170,6 +175,7 @@ function head(page: LandingPage, all: readonly LandingPage[]): string {
   const d = esc(page.description);
   return [
     `<meta charset="utf-8">`,
+    WORKERS_DEV_REDIRECT,
     `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">`,
     `<title>${t}</title>`,
     `<meta name="description" content="${d}">`,
