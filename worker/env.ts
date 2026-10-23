@@ -58,6 +58,12 @@ export interface Env {
   CLUB_PASS_PRICE_CENTS?: string;
   /** The Stripe Price id of the yearly Annual Pass + Venue (price_...). Unset: the web doesn't sell it in live mode. */
   STRIPE_CLUB_PASS_PRICE_ID?: string;
+  /**
+   * The Customer Portal configuration Manage opens (bpc_..., made by
+   * scripts/ops/stripe-setup.ts). Unset: Stripe's default portal settings,
+   * which exist only once they're saved in the Dashboard.
+   */
+  STRIPE_PORTAL_CONFIGURATION_ID?: string;
 
   // ---- Android app links (/.well-known/assetlinks.json) ----
   /** Android application id (default "com.jaxsquares.app"). */

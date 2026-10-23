@@ -202,7 +202,42 @@ Pass: there's no per-game fee for it (see "Pricing").
 
 ## Setup checklist
 
-Do these steps in order. Payments stay in test mode until step 4.
+**The quick way: the Stripe setup workflow.** Only the account itself and
+its keys need the Stripe Dashboard; `.github/workflows/stripe-setup.yml`
+(`scripts/ops/stripe-setup.ts`) does the rest, and nobody types a key into a
+chat or a terminal:
+
+1. **Activate the account** at dashboard.stripe.com: business details, the
+   person responsible, and the bank account for payouts (step 2.1 below).
+2. **Copy the live keys** from Developers → API keys: the publishable key
+   (`pk_live_…`) and the secret key (`sk_live_…`). Use the secret key here,
+   not a restricted one: the setup makes Products, the webhook endpoint and
+   the portal settings.
+3. **Add them to GitHub** as repository secrets (Settings → Secrets and
+   variables → Actions → New repository secret): `STRIPE_SECRET_KEY` and
+   `STRIPE_PUBLISHABLE_KEY`.
+4. **Run the workflow**: Actions → Stripe setup → the latest run → Re-run all
+   jobs. It makes or finds the Annual Pass and Annual Pass + Venue Prices
+   (by lookup key, at `HOST_PASS_PRICE_CENTS` / `CLUB_PASS_PRICE_CENTS`),
+   registers `jaxsquares.com` for Apple Pay, makes the webhook endpoint
+   (every event below, at the API version `stripe.ts` pins) and the Customer
+   Portal settings, then stores `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`
+   and the endpoint's `STRIPE_WEBHOOK_SECRET` as the Worker's secrets. Live
+   mode starts then: host fees work at once.
+5. **Put the printed ids in `wrangler.jsonc`** (`STRIPE_HOST_PASS_PRICE_ID`,
+   `STRIPE_CLUB_PASS_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID`; they aren't
+   secrets) and deploy. Until then live mode doesn't sell the passes on the
+   web.
+
+Running it again is safe: it keeps what's there. A changed pass amount gets
+a new Price that takes over the lookup key (put its id in `wrangler.jsonc`;
+subscriptions keep renewing at their old Price). If Cloudflare doesn't hold
+the webhook's signing secret, the endpoint is replaced so a fresh one can be
+stored. It never prints a key or a signing secret. Test keys (`sk_test_`,
+`pk_test_`) work the same way, for a staging run.
+
+The manual steps follow, for reference. Do these steps in order. Payments
+stay in test mode until step 4.
 
 ### 1. Price
 

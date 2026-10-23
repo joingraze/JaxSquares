@@ -79,6 +79,11 @@ export function stripeClubPassPriceId(env: Env): string | null {
   return env.STRIPE_CLUB_PASS_PRICE_ID?.trim() || null;
 }
 
+/** The Customer Portal configuration Manage opens, or null for Stripe's default one. */
+export function stripePortalConfigurationId(env: Env): string | null {
+  return env.STRIPE_PORTAL_CONFIGURATION_ID?.trim() || null;
+}
+
 /**
  * How the Annual Pass with the Venue add-on is sold: on the web only (the iOS
  * app never offers it), as a no-charge test pass in test mode and in live mode

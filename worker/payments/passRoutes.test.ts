@@ -276,6 +276,16 @@ describe("POST /payments/pass/portal (Manage on the web)", () => {
     const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/billing_portal/sessions"))! as [string, RequestInit];
     expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ customer: "cus_1", return_url: "https://jaxsquares.com/me" });
   });
+
+  it("opens the portal settings stripe-setup made, when they're named", async () => {
+    env = { ...env, STRIPE_PORTAL_CONFIGURATION_ID: "bpc_jax" };
+    signedIn(PHONE);
+    stripeAnswers({ sub: subscription() });
+    await call("POST", "/payments/pass/stripe");
+    expect((await call("POST", "/payments/pass/portal")).status).toBe(200);
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/billing_portal/sessions"))! as [string, RequestInit];
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ customer: "cus_1", return_url: "https://jaxsquares.com/me", configuration: "bpc_jax" });
+  });
 });
 
 describe("the Stripe webhook keeps a web pass current", () => {

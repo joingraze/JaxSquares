@@ -185,11 +185,12 @@ export function cancelSubscriptionNow(secretKey: string, id: string): Promise<St
   return stripeFetch<StripeSubscription>(secretKey, "DELETE", `/subscriptions/${encodeURIComponent(id)}`);
 }
 
-/** A Customer Portal session (Manage): update the card, see receipts, cancel. */
-export function createPortalSession(secretKey: string, input: { customerId: string; returnUrl: string }): Promise<{ id: string; url: string }> {
+/** A Customer Portal session (Manage): update the card, see receipts, cancel. `configuration`: which portal settings (null: the account's default). */
+export function createPortalSession(secretKey: string, input: { customerId: string; returnUrl: string; configuration?: string | null }): Promise<{ id: string; url: string }> {
   return stripeFetch<{ id: string; url: string }>(secretKey, "POST", "/billing_portal/sessions", {
     customer: input.customerId,
     return_url: input.returnUrl,
+    configuration: input.configuration ?? undefined,
   });
 }
 

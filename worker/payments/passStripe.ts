@@ -10,7 +10,7 @@
 import type { HostPassIntent, PassPlan } from "../../shared/types";
 import { forgetClubBrand } from "../clubs/brand";
 import type { Env } from "../env";
-import { stripeClubPassPriceId, stripeHostPassPriceId } from "./config";
+import { stripeClubPassPriceId, stripeHostPassPriceId, stripePortalConfigurationId } from "./config";
 import { bestActive, stripePassStatus } from "./pass";
 import * as store from "./store";
 import {
@@ -220,7 +220,7 @@ export async function portalUrl(env: Env, clientId: string, returnUrl: string): 
   if (!secretKey) return null;
   const customerId = await store.stripeCustomerOf(env.DB, clientId, isLiveKey(secretKey));
   if (!customerId) return null;
-  return (await createPortalSession(secretKey, { customerId, returnUrl })).url;
+  return (await createPortalSession(secretKey, { customerId, returnUrl, configuration: stripePortalConfigurationId(env) })).url;
 }
 
 /**
