@@ -253,48 +253,59 @@ describe("soccer: what ESPN sends", () => {
     const clock = rec(x.clock);
     return `${String(rec(x.type).text)} clock ${String(clock.value)} "${String(clock.displayValue)}" team ${String(rec(x.team).id)} scoring ${String(x.scoringPlay)} own ${String(x.ownGoal)} pen ${String(x.penaltyKick)} shootout ${String(x.shootout)} value ${String(x.scoreValue)}`;
   };
-  async function logEvents(league: string, dates: string, limit: number) {
-    const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${dates}`, 15_000));
-    const events = arr(board.events);
-    console.log(`${league} ${dates}: ${events.length} events; leagues ${JSON.stringify(arr(board.leagues).map((l) => rec(l).abbreviation ?? rec(l).name))}`);
-    for (const e of events.slice(0, limit)) {
+  // Goals worth a look: stoppage time ("45'+2'"), extra time (past 90'), own goals and the shootout.
+  const interesting = (d: unknown) => {
+    const x = rec(d);
+    const shown = String(rec(x.clock).displayValue ?? "");
+    return shown.includes("+") || Number(rec(x.clock).value) > 5400 || x.ownGoal === true || x.shootout === true;
+  };
+  async function scan(league: string, date: string, all: boolean) {
+    const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${date}`, 15_000));
+    for (const e of arr(board.events)) {
       const ev = rec(e);
       const comp = rec(arr(ev.competitions)[0]);
-      console.log(`  ${String(ev.id)} ${String(ev.shortName)} ${String(ev.date)} | ${statusLine(comp.status ?? ev.status)}`);
-      for (const c of arr(comp.competitors)) {
-        const cc = rec(c);
-        const team = rec(cc.team);
-        console.log(`    ${String(cc.homeAway)} ${String(team.id)} ${String(team.abbreviation)} "${String(team.displayName)}" "${String(team.shortDisplayName)}" #${String(team.color)} score ${String(cc.score)} linescores ${JSON.stringify(cc.linescores ?? null)} shootout ${String(cc.shootoutScore)} winner ${String(cc.winner)}`);
-      }
-      const details = arr(comp.details);
-      console.log(`    details ${details.length}: ${[...new Set(details.map((d) => String(rec(rec(d).type).text)))].join(", ")}`);
-      for (const d of details.filter((d) => rec(d).scoringPlay === true || /goal|penalty/i.test(String(rec(rec(d).type).text)))) console.log(`      ${detailLine(d)}`);
+      const goals = arr(comp.details).filter((d) => rec(d).scoringPlay === true);
+      const shown = all ? goals : goals.filter(interesting);
+      if (shown.length === 0) continue;
+      const score = arr(comp.competitors).map((c) => `${String(rec(rec(c).team).id)}:${String(rec(c).homeAway)}:${String(rec(c).score)}`).join(" ");
+      console.log(`  ${league} ${date} ${String(ev.id)} ${String(ev.shortName)} [${score}] ${statusLine(comp.status ?? ev.status)}`);
+      for (const d of shown) console.log(`      ${detailLine(d)}`);
     }
-    return events;
   }
+  const weekends = ["20250816", "20250817", "20250823", "20250830", "20250913", "20250920", "20250927", "20251004", "20251018", "20251025", "20251101", "20251108", "20251122", "20251129", "20251206", "20251213", "20251220", "20251227", "20260103", "20260117", "20260131", "20260214", "20260228", "20260314", "20260404", "20260418", "20260502", "20260516", "20261017", "20261018"];
+
+  it.each(["eng.1", "esp.1", "usa.1", "usa.nwsl", "mex.1"])("%s: stoppage-time, extra-time and own goals over a season", async (league) => {
+    for (const date of weekends) {
+      try {
+        await scan(league, date, false);
+      } catch (err) {
+        console.log(`${league} ${date}: ${String(err)}`);
+      }
+    }
+  }, 120_000);
 
   it.each([
-    ["eng.1", "20251018-20251020"],
-    ["usa.1", "20251018-20251020"],
-    ["usa.nwsl", "20251018-20251020"],
-    ["esp.1", "20251018-20251020"],
-    ["mex.1", "20251018-20251020"],
-    // Liverpool vs PSG went to extra time and penalties.
+    // Inter 4-3 Barcelona after extra time (Frattesi in the 99th minute).
+    ["uefa.champions", "20250506"],
+    // Liverpool vs PSG: extra time, then penalties.
     ["uefa.champions", "20250311"],
-    ["uefa.champions", "20251021-20251022"],
-    ["fifa.world", "20260718-20260719"],
-  ])("%s %s: events, goals and their minutes", async (league, dates) => {
+    // MLS Cup playoffs, extra time and shootouts.
+    ["usa.1", "20251122"],
+    ["usa.1", "20251123"],
+    ["usa.1", "20251129"],
+    ["usa.1", "20251206"],
+  ])("%s %s: every goal", async (league, date) => {
     try {
-      await logEvents(league, dates, 4);
+      await scan(league, date, true);
     } catch (err) {
-      console.log(`${league} ${dates}: ${String(err)}`);
+      console.log(`${league} ${date}: ${String(err)}`);
     }
   }, 60_000);
 
   it("the summary endpoint for a finished match, and anything on now", async () => {
-    for (const league of ["eng.1", "uefa.champions"]) {
+    for (const [league, date] of [["eng.1", "20251018"], ["uefa.champions", "20250506"]]) {
       try {
-        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${league === "eng.1" ? "20251018" : "20250311"}`, 15_000));
+        const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${date}`, 15_000));
         const ev = rec(arr(board.events)[0]);
         if (!ev.id) continue;
         const sum = rec(await fetchEspnJson(`${SOCCER}/${league}/summary?event=${String(ev.id)}`, 15_000));
@@ -312,12 +323,13 @@ describe("soccer: what ESPN sends", () => {
       }
     }
     const today = espnDate(NOW - 6 * 3_600_000);
-    for (const league of ["eng.1", "esp.1", "usa.1", "uefa.champions", "mex.1"]) {
+    for (const league of ["eng.1", "esp.1", "usa.1", "uefa.champions", "uefa.europa", "uefa.europa.conf", "mex.1", "usa.nwsl"]) {
       try {
         const board = rec(await fetchEspnJson(`${SOCCER}/${league}/scoreboard?dates=${today}`, 15_000));
         for (const e of arr(board.events)) {
           const comp = rec(arr(rec(e).competitions)[0]);
-          if (rec(rec(comp.status).type).state === "in") console.log(`  LIVE ${league} ${String(rec(e).shortName)}: ${statusLine(comp.status)}; goals ${arr(comp.details).filter((d) => rec(d).scoringPlay === true).map(detailLine).join(" | ")}`);
+          const state = String(rec(rec(comp.status).type).state);
+          console.log(`  ${state === "in" ? "LIVE" : state} ${league} ${String(rec(e).shortName)}: ${statusLine(comp.status)}; goals ${arr(comp.details).filter((d) => rec(d).scoringPlay === true).map(detailLine).join(" | ")}`);
         }
       } catch (err) {
         console.log(`${league} today: ${String(err)}`);
