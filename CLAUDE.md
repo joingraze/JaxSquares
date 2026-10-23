@@ -1,7 +1,8 @@
 # JaxSquares — notes for Claude
 
-Mobile-first football squares app (web + Capacitor iOS shell). See README.md for
-the overview and docs/ARCHITECTURE.md for the API/module contract.
+Mobile-first sports squares app (football, basketball and soccer; web + Capacitor
+iOS shell). See README.md for the overview and docs/ARCHITECTURE.md for the
+API/module contract.
 
 ## Architecture at a glance
 

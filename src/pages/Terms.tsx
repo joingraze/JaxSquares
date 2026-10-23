@@ -94,7 +94,7 @@ export default function Terms() {
 
         <Section n={1} title="The game">
           <p>
-            JaxSquares lets a group of friends play football squares together: a host makes a board, shares the link, everyone claims squares, and
+            JaxSquares lets a group of friends play squares together on football, basketball and soccer games: a host makes a board, shares the link, everyone claims squares, and
             the numbers are drawn at random when the host locks the board. You don't need an account to play.
           </p>
         </Section>

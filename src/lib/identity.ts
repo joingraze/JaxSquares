@@ -27,7 +27,7 @@
 
 import { useSyncExternalStore } from "react";
 import { derivePlayerId, derivePlayerIdSync, isPlayerId } from "../../shared/playerId";
-import type { AccountInfo } from "../../shared/types";
+import type { AccountInfo, AuthProvider } from "../../shared/types";
 import { getStored, removeStored, setStored } from "./native";
 
 export const STORAGE_KEYS = {
@@ -44,6 +44,12 @@ export const STORAGE_KEYS = {
   cohosts: "jaxsquares.cohosts",
   /** The Annual Pass + Venue holder's club TV link, as made on this device (src/lib/club.ts): only its token's hash is on the server. */
   clubTv: "jaxsquares.clubTv",
+  /**
+   * The provider this device last signed in with ("apple" | "google"), kept
+   * through sign-out (not through deleting the account) so the create flow
+   * can offer sign-in up front. Only the provider: never an id, name or email.
+   */
+  signedInBefore: "jaxsquares.signedInBefore",
 } as const;
 
 /** Server limit for player names (worker cleanProfile). */
@@ -265,12 +271,24 @@ export function setServerIdentity(playerId: string, account: AccountInfo | null)
   const nextAccount = account ? JSON.stringify(account) : null;
   if (nextAccount) {
     if (nextAccount !== beforeAccount) persist(STORAGE_KEYS.account, nextAccount);
+    if (account && readLocal(STORAGE_KEYS.signedInBefore) !== account.provider) persist(STORAGE_KEYS.signedInBefore, account.provider);
   } else if (beforeAccount !== null) {
     unpersist(STORAGE_KEYS.account);
   }
   const changed = beforeId !== getPlayerId() || beforeAccount !== nextAccount;
   if (changed) emit();
   return changed;
+}
+
+/** The provider this device has signed in with before (it may be signed out now), or null. */
+export function signedInBeforeWith(): AuthProvider | null {
+  const raw = readLocal(STORAGE_KEYS.signedInBefore);
+  return raw === "apple" || raw === "google" ? raw : null;
+}
+
+/** After deleting the account: there's nothing to sign back in to. */
+export function forgetSignedInBefore(): void {
+  unpersist(STORAGE_KEYS.signedInBefore);
 }
 
 /** Keys in localStorage starting with `prefix` (admin tokens kept for boards no longer listed, say). */
@@ -726,8 +744,8 @@ async function hydrateFrom(store: PersistentStore): Promise<void> {
     await store.setStored(STORAGE_KEYS.clientId, id);
   }
 
-  // The profile, the server-confirmed player id and account when signed in, and the co-hosted boards.
-  for (const key of [STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts]) {
+  // The profile, the server-confirmed player id and account when signed in, the co-hosted boards, and whether it signed in before.
+  for (const key of [STORAGE_KEYS.profile, STORAGE_KEYS.playerId, STORAGE_KEYS.account, STORAGE_KEYS.cohosts, STORAGE_KEYS.signedInBefore]) {
     const value = await store.getStored(key);
     if (value) writeLocal(key, value);
   }

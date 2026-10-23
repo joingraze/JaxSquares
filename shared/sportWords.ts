@@ -1,7 +1,7 @@
 // How a board talks about its game: "Kickoff" or "Tip-off", "the final
 // whistle" or "the final buzzer". Board-level copy (the scorebug, pushes, the
 // TV view, link previews) reads these through the board's sport; the app's
-// own brand stays "football squares". Pure, no imports beyond types, so both
+// own brand is sports squares. Pure, no imports beyond types, so both
 // shared/formats.ts and shared/sports.ts can use it.
 
 import type { Sport } from "./types";

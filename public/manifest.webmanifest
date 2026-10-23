@@ -2,7 +2,7 @@
   "id": "/",
   "name": "JaxSquares",
   "short_name": "JaxSquares",
-  "description": "Football squares with your friends. Make a board, share the link, and follow every score live.",
+  "description": "Sports squares with your friends, for football, basketball and soccer. Make a board, share the link, and follow every score live.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -9,7 +9,7 @@
 **JaxSquares Privacy Policy**
 Last updated: <date>
 
-JaxSquares lets friends play football squares together. We built it to need as
+JaxSquares lets friends play squares together on football, basketball and soccer games. We built it to need as
 little of your information as possible. You don't need an account, and there
 are no ads and no tracking.
 

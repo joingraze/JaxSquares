@@ -188,7 +188,7 @@ function render(frame: EmailFrame, email: Email): Rendered {
     `</td></tr></table>` +
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;"><tr><td style="padding:18px 24px 8px;font:400 13px/1.5 ${SANS};color:${C.subtle};">` +
     `${escapeHtml(reason)} <a href="${escapeHtml(frame.unsubscribeUrl)}" style="color:${C.muted};font-weight:700;text-decoration:underline;">Unsubscribe</a>` +
-    `<br>JaxSquares · Football squares with friends</td></tr></table>` +
+    `<br>JaxSquares · Sports squares with friends</td></tr></table>` +
     `</td></tr></table></body></html>`;
   const text = [
     board,

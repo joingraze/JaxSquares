@@ -754,7 +754,8 @@ score, q1, q2, q3, final.
   buzzer", in the board, Home, alerts, push (`worker/push/copy.ts`), email,
   TV, print and the recap card (a court's center circle instead of yard
   lines). Link previews (`worker/og.ts`) add "🏀 Basketball squares" to a
-  basketball board's description. The brand stays "football squares".
+  basketball board's description. The brand is "sports squares" (the welcome
+  screen, `index.html` and the manifest name no one sport).
 - "How close am I" on the board (`playBookFor`): baskets (2), threes (3) and
   free throws (1) instead of touchdowns and field goals.
 

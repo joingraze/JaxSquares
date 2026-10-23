@@ -234,6 +234,18 @@ In the app:
 - **Create** (`src/pages/CreateGame.tsx`): Review says "You'll sign in with
   Google or Apple to create it"; Create opens `SignInSheet` and makes the board
   right after the sign-in. An `account_required` answer opens the same sheet.
+  A first-time host sees what they're making before being asked.
+- **A host who signed in here before** (and has signed out since) is asked up
+  front instead: "Sign in before you start?" opens over the first step, with
+  "Not now" (asked once a visit, `sessionStorage`
+  `jaxsquares.signInFirstAsked`; Create still asks as usual). The device keeps
+  only the provider it last signed in with (`jaxsquares.signedInBefore`,
+  "apple" or "google", `signedInBeforeWith()` in `src/lib/identity.ts`):
+  sign-out keeps it, deleting the account forgets it, and it's never an id,
+  name or email.
+- **Home**: a "Sign in" button at the top right of the welcome screen and of
+  the dashboard (`SignInPill`), on a device that isn't signed in where sign-in
+  is set up.
 - **Hosts from before the rule**: the host sheet's "Run it from any device"
   (`SignInToHostRow` in `HostSheet.tsx`) signs them in, which puts the board's
   host controls on their account.

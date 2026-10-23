@@ -175,9 +175,11 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `account-signed-in` | the "Signed in with Apple / Google" row (email underneath) |
 | `account-sign-out`, `account-sign-out-confirm` | Profile → Account "Sign out", and the confirm sheet's "Sign out" (actually signs out; the device starts fresh) |
 | `account-delete`, `account-delete-sheet`, `account-delete-confirm` | "Delete account", its confirm sheet's body (what's deleted, what stays), and "Delete account" in it (actually deletes) |
-| `signin-sheet` | the reusable sign-in sheet's body (`SignInSheet`: Home's card, the welcome screen) |
+| `signin-sheet` | the reusable sign-in sheet's body (`SignInSheet`: Home's card and Sign in button, the welcome screen) |
+| `signin-dismiss` | "Not now" in a sign-in sheet that can be skipped (the create flow's up-front offer to a device that signed in before) |
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
-| `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
+| `welcome-signin` | the welcome screen's "Sign in" at the top right (opens `signin-sheet`); not shown when signed in or when no sign-in is set up |
+| `home-signin` | the dashboard's "Sign in" next to the bell (`SignInPill`), on a device that isn't signed in |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
 | `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the two ways onto a TV, `show-on-tv`) and "Print board" (opens `/g/:id/print`) |
 | `show-on-tv`, `show-on-tv-smart`, `show-on-tv-cast`, `show-on-tv-here` | the two ways onto a TV (share sheet, venue card, Host tools): "Smart TV with a web browser", "AirPlay, Chromecast or a cable", and its "Open TV mode here" |

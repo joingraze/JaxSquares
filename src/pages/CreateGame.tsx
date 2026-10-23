@@ -74,7 +74,7 @@ import { ApiError, api, errorMessage } from "../lib/api";
 import { readableTeamColor } from "../lib/format";
 import { hostRoleNow } from "../lib/hostRole";
 import { PROVIDER_LABEL, useAuthSetup } from "../lib/auth";
-import { NAME_MAX_LENGTH, setProfile, useAccount, useProfile } from "../lib/identity";
+import { NAME_MAX_LENGTH, setProfile, signedInBeforeWith, useAccount, useProfile } from "../lib/identity";
 import { peekGame, primeGame } from "../lib/live";
 import { haptic } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
@@ -312,6 +312,15 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const mustSignIn = !account && authSetup.providers.length > 0;
   const signInNames = authSetup.providers.map((p) => PROVIDER_LABEL[p]).join(" or ");
   const [signingIn, setSigningIn] = useState(false);
+  // A device that signed in before and has signed out since is asked up front (once a visit), so the
+  // board is the account's from the start. "Not now" keeps the usual order: sign in at Create.
+  const [returning] = useState(() => signedInBeforeWith());
+  const [askedFirst, setAskedFirst] = useState(() => signInFirstAsked());
+  const offerSignInFirst = mustSignIn && returning !== null && !askedFirst && !signingIn;
+  const skipSignInFirst = () => {
+    markSignInFirstAsked();
+    setAskedFirst(true);
+  };
   const liveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** False once the host has left the page: a create still in flight then doesn't pull them back. */
   const mounted = useRef(true);
@@ -1031,6 +1040,17 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
           </p>
         )}
       </ActionBar>
+      {offerSignInFirst && (
+        <Suspense fallback={null}>
+          <SignInSheet
+            open
+            onClose={skipSignInFirst}
+            title="Sign in before you start?"
+            description={`You've signed in with ${PROVIDER_LABEL[returning]} on this device before. Sign in now and this board joins your account with your other boards. Players never need an account.`}
+            dismissLabel="Not now"
+          />
+        </Suspense>
+      )}
       {signingIn && (
         <Suspense fallback={null}>
           <SignInSheet
@@ -1044,6 +1064,25 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
       )}
     </>
   );
+}
+
+/** This visit already asked a returning host to sign in up front (sessionStorage: a new visit asks again). */
+const SIGN_IN_FIRST_KEY = "jaxsquares.signInFirstAsked";
+
+function signInFirstAsked(): boolean {
+  try {
+    return sessionStorage.getItem(SIGN_IN_FIRST_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markSignInFirstAsked(): void {
+  try {
+    sessionStorage.setItem(SIGN_IN_FIRST_KEY, "1");
+  } catch {
+    // storage unavailable: this page's state still remembers it
+  }
 }
 
 /** DOM id of the field (or section) a blocker points at. */

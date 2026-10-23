@@ -1,7 +1,7 @@
 # JaxSquares 🏈🟩
 
-A mobile-first app for playing football squares with friends. Create a board,
-share a link, and friends claim squares from their phones. Players need no
+A mobile-first app for playing sports squares (football, basketball and soccer)
+with friends. Create a board, share a link, and friends claim squares from their phones. Players need no
 account or app install; hosts sign in with Apple or Google (it keeps their
 boards and host controls on every device, and players can sign in too), and
 every change shows up on every
