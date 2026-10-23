@@ -180,6 +180,8 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
 | `welcome-signin` | the welcome screen's "Sign in" at the top right (opens `signin-sheet`); not shown when signed in or when no sign-in is set up |
 | `home-signin` | the dashboard's "Sign in" next to the bell (`SignInPill`), on a device that isn't signed in |
+| `welcome-links` | the welcome screen's Pricing · Terms · Privacy · Support links |
+| `pricing-board`, `pricing-pass`, `pricing-club` (each with `-price`), `pricing-venue` | `/pricing`'s plans: per game, the Annual Pass, the Annual Pass + Venue (web only), and the Venue add-on line (web only) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
 | `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the two ways onto a TV, `show-on-tv`) and "Print board" (opens `/g/:id/print`) |
 | `show-on-tv`, `show-on-tv-smart`, `show-on-tv-cast`, `show-on-tv-here` | the two ways onto a TV (share sheet, venue card, Host tools): "Smart TV with a web browser", "AirPlay, Chromecast or a cable", and its "Open TV mode here" |

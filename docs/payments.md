@@ -200,6 +200,16 @@ Pass: there's no per-game fee for it (see "Pricing").
   `purchases` row, and the cron never sends it a draw reminder.
 - Single boards' prices and copy are unchanged.
 
+## Where the prices show
+
+`/pricing` (`src/pages/Pricing.tsx`, linked from the welcome screen's footer,
+Profile and the landing pages' footers) lists what's free and each product
+at the server's prices (`/api/config`), with refunds and cancelling pointing
+to Terms. Stripe's account review looks for exactly this on the public site:
+the prices, the refund and cancellation policies, Terms, Privacy and a
+contact address. In the iOS app it shows only the App Store's prices and
+leaves out the web-only Venue add-on and Annual Pass + Venue.
+
 ## Setup checklist
 
 **The quick way: the Stripe setup workflow.** Only the account itself and

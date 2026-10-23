@@ -102,11 +102,11 @@ describe("landing pages", () => {
     expect(links).toContainEqual(["/", "Join with a code"]);
   });
 
-  it("links the pages to each other and to Terms, Privacy and Support", () => {
+  it("links the pages to each other and to Pricing, Terms, Privacy and Support", () => {
     for (const { page, doc } of rendered) {
       const hrefs = new Set([...doc.querySelectorAll("a")].map((a) => a.getAttribute("href")));
       for (const slug of LANDING_SLUGS) expect(hrefs).toContain(`/${slug}`);
-      for (const path of ["/terms", "/privacy", "/support"]) expect(hrefs).toContain(path);
+      for (const path of ["/pricing", "/terms", "/privacy", "/support"]) expect(hrefs).toContain(path);
       // Linked from the copy too, not just the footer.
       const inMain = [...doc.querySelectorAll(".content a")].map((a) => a.getAttribute("href"));
       expect(inMain.filter((h) => h !== `/${page.slug}` && LANDING_SLUGS.some((s) => h === `/${s}`)).length).toBeGreaterThanOrEqual(3);

@@ -16,6 +16,13 @@ import { detectHelpEnv } from "../notifications/platformHelp";
 import { JoinCodeSheet } from "./JoinCodeSheet";
 import { MiniBoard } from "./MiniBoard";
 
+const WELCOME_LINKS = [
+  ["/pricing", "Pricing"],
+  ["/terms", "Terms"],
+  ["/privacy", "Privacy"],
+  ["/support", "Support"],
+] as const;
+
 export function Welcome() {
   useHideTabBar();
   const [joining, setJoining] = useState(false);
@@ -90,6 +97,17 @@ export function Welcome() {
             signing in? Open it on the phone or browser you made it on and sign in there too: it joins your account.
           </p>
         )}
+        {/* What it costs and the fine print, one tap from the front door. */}
+        <nav aria-label="About JaxSquares" data-testid="welcome-links" className="flex flex-wrap items-center justify-center gap-x-1 text-footnote font-semibold text-ink-subtle">
+          {WELCOME_LINKS.map(([to, label], i) => (
+            <span key={to} className="flex items-center gap-x-1">
+              {i > 0 && <span aria-hidden>·</span>}
+              <Link to={to} className="inline-flex min-h-11 items-center px-1.5 hover:text-ink">
+                {label}
+              </Link>
+            </span>
+          ))}
+        </nav>
       </div>
 
       <JoinCodeSheet open={joining} onClose={() => setJoining(false)} />

@@ -158,6 +158,14 @@ describe("Home", () => {
     expect(cta).toHaveTextContent("Make a board");
     expect(screen.getByRole("button", { name: "Join with a code" })).toBeInTheDocument();
     expect(screen.getByTestId("welcome-note")).toHaveTextContent("Friends join from a link, no account needed.");
+    // Pricing and the fine print, one tap away (what Stripe's and Google's reviews look for on the home page).
+    const links = within(screen.getByTestId("welcome-links")).getAllByRole("link");
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Pricing", "/pricing"],
+      ["Terms", "/terms"],
+      ["Privacy", "/privacy"],
+      ["Support", "/support"],
+    ]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.getAllByTestId("new-board")).toHaveLength(1);
   });

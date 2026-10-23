@@ -33,7 +33,8 @@ export function SignInPill({ title, description, className, "data-testid": testI
           setOpen(true);
         }}
         className={cx(
-          "pressable inline-flex h-11 items-center rounded-full bg-surface-3 px-4 text-subhead font-extrabold text-ink ring-1 ring-inset ring-line-strong transition-colors hover:bg-surface-4",
+          // 32pt tall so it sits inside the 44pt top bar with room above and below; tap-target keeps the 44pt hit area.
+          "pressable tap-target inline-flex h-8 items-center rounded-full bg-surface-3 px-3.5 text-subhead font-extrabold text-ink ring-1 ring-inset ring-line-strong transition-colors hover:bg-surface-4",
           className,
         )}
       >

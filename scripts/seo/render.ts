@@ -287,6 +287,7 @@ function footer(page: LandingPage, all: readonly LandingPage[], ctx: RenderConte
   const app = [
     ["/new", "Make a board"],
     ["/", "Join with a code"],
+    ["/pricing", "Pricing"],
     ["/support", "Support"],
     ["/terms", "Terms"],
     ["/privacy", "Privacy"],

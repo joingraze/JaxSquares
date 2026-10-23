@@ -34,6 +34,7 @@ const screens = {
   privacy: () => import("./pages/Privacy"),
   terms: () => import("./pages/Terms"),
   support: () => import("./pages/Support"),
+  pricing: () => import("./pages/Pricing"),
 } satisfies Record<string, () => Promise<PageModule>>;
 type Screen = keyof typeof screens;
 const isScreen = (id: string | undefined): id is Screen => !!id && Object.prototype.hasOwnProperty.call(screens, id);
@@ -164,6 +165,7 @@ export function appRoutes(): RouteObject[] {
             { path: "privacy", ...screen("privacy") },
             { path: "terms", ...screen("terms") },
             { path: "support", ...screen("support") },
+            { path: "pricing", ...screen("pricing") },
             // Component gallery for building screens; dev server only.
             ...(import.meta.env.DEV
               ? [{ path: "kit", lazy: async () => ({ Component: (await import("./pages/Kit")).default }) }]

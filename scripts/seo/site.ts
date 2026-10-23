@@ -26,10 +26,10 @@ export const HUB: LandingSlug = "football-squares";
  * First path segments the SPA owns (src/App.tsx). A landing page must never
  * shadow one: the asset server answers a matching file before the SPA fallback.
  */
-export const SPA_SEGMENTS = ["", "new", "g", "me", "privacy", "terms", "support", "kit"] as const;
+export const SPA_SEGMENTS = ["", "new", "g", "me", "privacy", "terms", "support", "pricing", "kit"] as const;
 
 /** App pages listed in the sitemap next to the landing pages. */
-export const APP_PAGES = ["/", "/terms", "/privacy", "/support"] as const;
+export const APP_PAGES = ["/", "/pricing", "/terms", "/privacy", "/support"] as const;
 
 /**
  * Betting vocabulary the product never uses (CLAUDE.md "Product rules"), with

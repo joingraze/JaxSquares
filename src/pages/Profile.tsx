@@ -120,6 +120,7 @@ export default function Profile() {
           }
         >
           <ListRow title="Support" subtitle="Questions, bugs and ideas" to="/support" />
+          <ListRow title="Pricing" to="/pricing" />
           <ListRow title="Privacy" to="/privacy" />
           <ListRow title="Terms" to="/terms" />
         </ListGroup>
