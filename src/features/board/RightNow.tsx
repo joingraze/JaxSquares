@@ -3,6 +3,8 @@
 // period if it ended now, and how close am I (in plain football terms).
 // Every-score boards ask a different question, "where does the next score
 // land?", so they get the four likeliest scores and whose square each hits.
+// A soccer board's squares are minutes: the card shows the square a goal now
+// would land on (the match clock's minute), and my next minute.
 //
 // Kept to two short rows so the whole grid still fits on the first screen.
 
@@ -11,7 +13,7 @@ import { formatAmount, formatRange, periodPhrase } from "../../../shared/formats
 import type { Player, Team } from "../../../shared/types";
 import { SportIcon, TrophyIcon } from "../../components/icons";
 import { Avatar, cx } from "../../components/ui";
-import { nowSentence, playName as nameOfPlay, type NowView, type ScoringPlay } from "./boardModel";
+import { goalNowSentence, nowSentence, playName as nameOfPlay, type NowView, type ScoringPlay } from "./boardModel";
 
 export interface RightNowProps {
   now: NowView;
@@ -81,14 +83,29 @@ export function RightNow({ now, players, me, teamX, teamY, onShow }: RightNowPro
               <span className={cx("min-w-0 truncate font-display text-headline font-extrabold leading-tight", now.mine ? "text-ink-brand" : "text-ink")}>
                 {now.mine ? "You!" : owner ? owner.name : "Empty square"}
               </span>
-              {/* The square's numbers, labeled by team (never by color alone). */}
-              <span aria-label={`${teamX.name} ${now.digits.x}, ${teamY.name} ${now.digits.y}`} className="ml-auto flex shrink-0 items-center gap-1">
-                <DigitTag abbr={abbrOf(teamX)} digit={now.digits.x} side="x" hot={now.live} />
-                <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
-              </span>
+              {now.goal ? (
+                // A soccer square is a minute: the minute itself, not two teams' digits.
+                <span aria-label={`Minute ${now.goal.text}`} className="ml-auto shrink-0">
+                  <span
+                    aria-hidden
+                    className={cx(
+                      "grid h-6 min-w-9 place-items-center rounded-lg px-1.5 font-display text-footnote font-extrabold tabular-nums",
+                      now.live ? "bg-live-500 text-white" : "bg-ink text-canvas",
+                    )}
+                  >
+                    {now.goal.text}
+                  </span>
+                </span>
+              ) : (
+                /* The square's numbers, labeled by team (never by color alone). */
+                <span aria-label={`${teamX.name} ${now.digits.x}, ${teamY.name} ${now.digits.y}`} className="ml-auto flex shrink-0 items-center gap-1">
+                  <DigitTag abbr={abbrOf(teamX)} digit={now.digits.x} side="x" hot={now.live} />
+                  <DigitTag abbr={abbrOf(teamY)} digit={now.digits.y} side="y" hot={now.live} />
+                </span>
+              )}
             </span>
             <span className="mt-0.5 block text-footnote font-semibold leading-snug text-ink-muted">
-              {nowSentence(now)}
+              {now.goal ? goalNowSentence(now) : nowSentence(now)}
               {now.rest ? (
                 <b className="font-extrabold tabular-nums text-ink-gold">
                   {" "}
@@ -213,6 +230,7 @@ function playsPhrase(plays: ScoringPlay[], teamOf: TeamOf, sport?: NowView["spor
 }
 
 function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, Player>; me: string; teamOf: TeamOf }) {
+  if (now.goal) return <MinuteLine now={now} />;
   const nameOf = (id: string | null) => (id === me ? "you" : (byId.get(id ?? "")?.name ?? (id ? "someone" : "an empty square")));
   const leading = now.mine && !now.everyScore;
 
@@ -263,6 +281,32 @@ function PathLine({ now, byId, me, teamOf }: { now: NowView; byId: Map<string, P
           ))}
         </span>
       )}
+    </div>
+  );
+}
+
+/** A soccer board's second row: a goal now is mine, or my next minute on the clock. */
+function MinuteLine({ now }: { now: NowView }) {
+  const goal = now.goal!;
+  let text: ReactNode;
+  if (now.mine) text = <b className="font-extrabold text-ink-brand">{goal.basis === "now" ? "Hold on! A goal now is yours." : "Hold on! It's yours if no more goals come."}</b>;
+  else if (goal.next)
+    text = (
+      <>
+        <b className="font-extrabold text-ink">Your next minute: {goal.next.text}</b> · in {goal.next.inMinutes} {goal.next.inMinutes === 1 ? "minute" : "minutes"}
+      </>
+    );
+  else if (now.mineCount > 0 && goal.basis !== "now") text = <>Each of your squares is a minute. A goal in one wins it.</>;
+  else return null;
+  return (
+    <div className="jx-now-path flex items-center gap-2 border-t border-line bg-canvas/40 px-3 py-1.5">
+      <span
+        aria-hidden
+        className={cx("grid h-6 w-6 shrink-0 place-items-center rounded-full", now.mine ? "bg-brand-400 text-ink-inverse" : "bg-surface-4 text-ink")}
+      >
+        {now.mine ? <TrophyIcon size={13} filled /> : <SportIcon sport={now.sport} size={13} />}
+      </span>
+      <p className="min-w-0 flex-1 text-caption leading-snug text-ink-muted">{text}</p>
     </div>
   );
 }

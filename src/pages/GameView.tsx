@@ -1110,7 +1110,7 @@ export default function GameView() {
         {/* A season's game board: which game of how many, the season board and the games either side. */}
         {state.seasonGame && <SeasonNav position={state.seasonGame} />}
 
-        {/* A Club Pass holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
+        {/* An Annual Pass + Venue holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
         <ClubBanner game={game} />
 
         {/* A newcomer gets the invite hero (matchup, who's in, squares left) in place of the scoreboard; a season board, its season. */}
@@ -1120,7 +1120,7 @@ export default function GameView() {
           ) : newcomer ? (
             <InviteHero state={state} watching={watching} onJoin={() => setJoinOpen(true)} />
           ) : (
-            <Scorebug state={state} watching={watching} connection={connection} nextLabel={next?.label ?? null} now={now} />
+            <Scorebug state={state} watching={watching} connection={connection} nextLabel={next && !(game.sport === "soccer" && next.key === "final") ? next.label : null} now={now} />
           )}
         </div>
 
@@ -1293,6 +1293,7 @@ export default function GameView() {
               <PlayerFinder players={state.players} counts={squareCounts} me={me} selected={playerSpot} onSelect={(pid) => selectPlayer(pid)} />
               <MySquares
                 numbers={numbers}
+                minutes={game.sport === "soccer"}
                 now={nowOnBoard}
                 teamX={game.teamX}
                 teamY={game.teamY}
@@ -1356,7 +1357,7 @@ export default function GameView() {
               teamY={game.teamY}
               unit={unit}
               predraw={!game.numbers}
-              liveNow={nowView?.live ? { playerId: nowView.ownerId, scoreX: nowView.scoreX, scoreY: nowView.scoreY } : null}
+              liveNow={nowView?.live ? { playerId: nowView.ownerId, scoreX: nowView.scoreX, scoreY: nowView.scoreY, ...(nowView.goal ? { minute: nowView.goal.text } : {}) } : null}
               selectedKey={spot?.kind === "period" ? spot.id : null}
               grid={!hasScoreMoment(rulesOf(game.format))}
               newestFirst={fixedPeriodsOf(game).length === 0}

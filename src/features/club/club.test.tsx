@@ -1,4 +1,4 @@
-// The Club Pass on the client: Profile's club settings (name, logo, TV link,
+// The Annual Pass + Venue on the client: Profile's club settings (name, logo, TV link,
 // boards, Manage) for a holder, the one-line pitch for everyone else on the
 // web, the iOS rules (nothing offered, priced or linked to buying or
 // managing it; a holder's features still work), the club's branding on the
@@ -8,7 +8,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLUB_NAME_MONEY_ERROR } from "../../../shared/clubs";
-import type { AppConfig, ClubBrand, ClubSettings, ClubTvLink, GameState, HostPass, HostPassOffer, PaymentConfig } from "../../../shared/types";
+import type { AppConfig, ClubBrand, ClubSettings, ClubTvLink, GameFormat, GameState, HostPass, HostPassOffer, PaymentConfig } from "../../../shared/types";
 
 const env = vi.hoisted(() => ({ platform: "web" as "web" | "ios" }));
 vi.mock("../../lib/native", async (orig) => {
@@ -16,7 +16,7 @@ vi.mock("../../lib/native", async (orig) => {
   return { ...real, haptic: vi.fn(async () => {}), platform: () => env.platform, isNative: () => env.platform === "ios", copyText: vi.fn(async () => "copied") };
 });
 vi.mock("../../components/ui/confetti", () => ({ celebrate: vi.fn(), CELEBRATION_COLORS: [], prefersReducedMotion: () => true }));
-// StoreKit (the Host Pass's App Store price in the iOS app): the Club Pass never asks it anything.
+// StoreKit (the Annual Pass's App Store price in the iOS app): the Annual Pass + Venue never asks it anything.
 vi.mock("@capgo/native-purchases", () => ({
   NativePurchases: {
     configure: vi.fn(async () => {}),
@@ -47,7 +47,7 @@ const TEST: PaymentConfig = {
   stripePublishableKey: null,
   iapProductId: "com.jaxsquares.app.board",
   hostPass: HOST_OFFER,
-  clubPass: { priceCents: 4900, currency: "usd", web: true },
+  clubPass: { priceCents: 9999, currency: "usd", web: true },
 };
 const LIVE: PaymentConfig = { ...TEST, mode: "live", stripePublishableKey: "pk_test_123" };
 const RENEWS = Date.UTC(2027, 9, 19, 18);
@@ -126,7 +126,7 @@ const calls = (method: string, suffix: string) => fetchMock.mock.calls.filter(([
 
 // ---- Profile ----
 
-describe("Profile → Club Pass, for a holder", () => {
+describe("Profile → Venue add-on, for a holder", () => {
   it("shows the pass, the club's name, logo, TV link and boards, and Manage on the web", async () => {
     serve(LIVE);
     holder();
@@ -138,9 +138,9 @@ describe("Profile → Club Pass, for a holder", () => {
     expect(screen.getByTestId("club-logo-upload")).toHaveTextContent("Replace");
     expect(screen.getAllByTestId("club-board").map((r) => r.textContent)).toEqual(["Sunday Squares42 squares left", "Monday NightNumbers drawn"]);
     expect(screen.getByTestId("club-tv")).toHaveAttribute("data-state", "none");
-    // The Host Pass needs no selling to a Club Pass holder.
+    // The Annual Pass needs no selling to an Annual Pass + Venue holder.
     expect(screen.getByTestId("host-pass-section")).toHaveAttribute("data-state", "club");
-    expect(screen.getByTestId("host-pass-section")).toHaveTextContent("Included with your Club Pass");
+    expect(screen.getByTestId("host-pass-section")).toHaveTextContent("Active, with the Venue add-on");
     expect(screen.queryByTestId("pass-get")).toBeNull();
     expect(screen.queryByTestId("club-get")).toBeNull();
   });
@@ -159,7 +159,7 @@ describe("Profile → Club Pass, for a holder", () => {
     fireEvent.click(screen.getByTestId("club-name-save"));
     await waitFor(() => expect(calls("PATCH", "/api/clubs/mine")).toHaveLength(1));
     expect(JSON.parse(String((calls("PATCH", "/api/clubs/mine")[0][1] as RequestInit).body))).toEqual({ name: "The Salty Dog" });
-    expect(await screen.findByText("Club name saved")).toBeInTheDocument();
+    expect(await screen.findByText("Venue name saved")).toBeInTheDocument();
   });
 
   it("uploads a logo the browser resized, as its own type", async () => {
@@ -205,7 +205,7 @@ describe("Profile → Club Pass, for a holder", () => {
     expect(screen.getByTestId("club-tv-rotate")).toBeInTheDocument();
   });
 
-  it("opens the Stripe Customer Portal from Manage, or ends a test Club Pass", async () => {
+  it("opens the Stripe Customer Portal from Manage, or ends a test Annual Pass + Venue", async () => {
     serve(LIVE);
     holder();
     const assign = vi.fn();
@@ -216,15 +216,41 @@ describe("Profile → Club Pass, for a holder", () => {
   });
 });
 
-describe("Profile → Club Pass, for everyone else on the web", () => {
+describe("Profile → Venue add-on, for everyone else on the web", () => {
   it("is one line: who it's for and the price", async () => {
     serve(LIVE);
     passStore.setHostPassState({ pass: null, offer: HOST_OFFER, club: null, clubOffer: LIVE.clubPass });
     profile();
     const pitch = await screen.findByTestId("club-get");
-    expect(pitch).toHaveTextContent("Running squares for a bar, club or office?");
-    expect(pitch).toHaveTextContent("Club Pass · $49/year");
+    expect(pitch).toHaveTextContent("Running squares for a bar or restaurant?");
+    expect(pitch).toHaveTextContent("Annual Pass + Venue · $99.99/year");
     expect(screen.queryByTestId("club-section")).toBeNull();
+  });
+
+  it("adds the Venue add-on to a web Annual Pass instead of selling a second pass", async () => {
+    serve(LIVE);
+    identity.setServerIdentity(identity.getPlayerId(), { provider: "google", email: "jordan@example.com", name: "Jordan", since: 1 });
+    const annual = active();
+    passStore.setHostPassState({ pass: annual, offer: HOST_OFFER, club: null, clubOffer: LIVE.clubPass });
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      url.endsWith("/api/payments/pass/stripe/venue") && init?.method === "POST"
+        ? Response.json({ pass: null, offer: HOST_OFFER, club: annual, clubOffer: LIVE.clubPass })
+        : base(url, init),
+    );
+    profile();
+    const pitch = await screen.findByTestId("club-get");
+    // $99.99 for the pass with the add-on, less the $19.99 Annual Pass.
+    expect(pitch).toHaveTextContent("Add the Venue add-on · +$80/year");
+    fireEvent.click(pitch);
+    const sheet = await screen.findByRole("dialog", { name: "Venue add-on" });
+    expect(within(sheet).getByTestId("club-disclosure")).toHaveTextContent("Today you pay for what's left of your pass's year");
+    // No new subscription: nothing to type a card into.
+    expect(calls("POST", "/api/payments/pass/stripe")).toEqual([]);
+    fireEvent.click(within(sheet).getByRole("button", { name: "Add it · +$80/year" }));
+    expect(await screen.findByText("You've got the Venue add-on")).toBeInTheDocument();
+    expect(calls("POST", "/api/payments/pass/stripe/venue")).toHaveLength(1);
+    expect(calls("POST", "/api/payments/pass/stripe")).toEqual([]);
   });
 
   it("asks a signed-out browser to sign in first; in test mode it's a no-charge test pass", async () => {
@@ -232,7 +258,7 @@ describe("Profile → Club Pass, for everyone else on the web", () => {
     passStore.setHostPassState({ pass: null, offer: HOST_OFFER, club: null, clubOffer: LIVE.clubPass });
     const live = profile();
     fireEvent.click(await screen.findByTestId("club-get"));
-    expect(await screen.findByRole("dialog", { name: "Sign in to get the Club Pass" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Sign in to get the Venue add-on" })).toBeInTheDocument();
     live.unmount();
 
     serve(TEST);
@@ -240,15 +266,15 @@ describe("Profile → Club Pass, for everyone else on the web", () => {
     vi.setSystemTime(clock);
     profile();
     fireEvent.click(await screen.findByTestId("club-get"));
-    const sheet = await screen.findByRole("dialog", { name: "Club Pass" });
+    const sheet = await screen.findByRole("dialog", { name: "Annual Pass + Venue" });
     expect(within(sheet).getByTestId("club-perks")).toHaveTextContent("Up to 10 co-hosts on each board");
-    expect(within(sheet).getByTestId("pay-confirm")).toHaveTextContent("Start test Club Pass");
+    expect(within(sheet).getByTestId("pay-confirm")).toHaveTextContent("Start test pass");
     expect(within(sheet).getByTestId("club-disclosure")).toHaveTextContent("Test pass: no charge");
   });
 });
 
 describe("the iOS app", () => {
-  it("never offers, prices or links to buying the Club Pass", async () => {
+  it("never offers, prices or links to buying the Annual Pass + Venue", async () => {
     env.platform = "ios";
     serve(LIVE);
     passStore.setHostPassState({ pass: null, offer: HOST_OFFER, club: null, clubOffer: LIVE.clubPass });
@@ -257,16 +283,16 @@ describe("the iOS app", () => {
     await act(async () => {});
     expect(screen.queryByTestId("club-get")).toBeNull();
     expect(screen.queryByTestId("club-pitch")).toBeNull();
-    expect(document.body).not.toHaveTextContent(/Club Pass|\$49/);
+    expect(document.body).not.toHaveTextContent(/Annual Pass \+ Venue|Venue add-on|\$99\.99/);
   });
 
-  it("lets a holder's club work, says 'Club Pass · Active', and has no purchase or manage links", async () => {
+  it("lets a holder's venue work, says 'Annual Pass + Venue · Active', and has no purchase or manage links", async () => {
     env.platform = "ios";
     serve(LIVE);
     holder();
     profile();
     const status = await screen.findByTestId("club-status");
-    expect(status).toHaveTextContent("Club Pass");
+    expect(status).toHaveTextContent("Annual Pass + Venue");
     expect(within(status).getByText("Active")).toBeInTheDocument();
     expect(await screen.findByTestId("club-name")).toHaveValue("The Rusty Anchor");
     expect(screen.queryByTestId("club-manage")).toBeNull();
@@ -347,7 +373,7 @@ describe("the club's branding", () => {
 // ---- The players CSV ----
 
 describe("the players list (CSV)", () => {
-  it("is in host tools on a Club Pass board only, and downloads on the web", async () => {
+  it("is in host tools on a venue's board only (a venue board, or the Venue add-on), and downloads on the web", async () => {
     const created: Blob[] = [];
     vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: (b: Blob) => (created.push(b), "blob:csv"), revokeObjectURL: () => {} }));
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
@@ -359,6 +385,13 @@ describe("the players list (CSV)", () => {
       </ToastProvider>,
     );
     expect(screen.queryByTestId("host-export")).toBeNull();
+    // A venue board has it without the pass.
+    rerender(
+      <ToastProvider>
+        <ExportPlayersRow game={{ id: "brd111", name: "Sunday Squares", club: null, format: { venue: true } as Pick<GameFormat, "venue"> }} />
+      </ToastProvider>,
+    );
+    expect(screen.getByTestId("host-export")).toBeInTheDocument();
     rerender(
       <ToastProvider>
         <ExportPlayersRow game={{ id: "brd111", name: "Sunday Squares", club: CLUB }} />

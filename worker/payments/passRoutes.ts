@@ -1,28 +1,33 @@
-// The Host Pass routes (mounted under /api with the rest of the payments
+// The Annual Pass routes (mounted under /api with the rest of the payments
 // module). Every route acts as the request's canonical clientId (the
 // account's when signed in; worker/auth/canonical.ts), never answers with a
 // clientId or a payment reference, and returns the identity's HostPassState.
 //
-//   GET  /payments/pass                 HostPassState (the Host Pass and the Club Pass)
+//   GET  /payments/pass                 HostPassState (the Annual Pass, and with the Venue add-on)
 //   POST /payments/pass/test            the no-charge test pass (test mode only)
 //   POST /payments/pass/test/end        ends the test pass (test mode only)
 //   POST /payments/pass/stripe          HostPassIntent (web; needs a signed-in account: 409 account_required)
 //   POST /payments/pass/stripe/confirm  HostPassState, read back from Stripe after the browser paid
+//   POST /payments/pass/stripe/venue    HostPassState: the Venue add-on added to a running web Annual Pass (prorated, charged now)
 //   POST /payments/pass/portal          { url } of a Stripe Customer Portal session (Manage on the web)
 //   POST /payments/pass/iap             HostPassState (iOS: { transactionId, jws? })
 //   POST /payments/pass/iap/restore     HostPassState & { restored } (iOS: { transactions: [{ transactionId, jws? }] })
 //   POST /payments/apple/notifications  App Store Server Notifications V2 ({ signedPayload })
 //
-// test, test/end, stripe and stripe/confirm take { plan: "club" } for the Club
-// Pass (web only: the iOS app never sells it); without it they're the Host
-// Pass's, as before. The portal is the same for both (one Stripe Customer).
+// test, test/end, stripe and stripe/confirm take { plan: "club" } for the
+// Annual Pass + Venue (web only: the iOS app never sells it); without it
+// they're the Annual Pass's. The portal is the same for both (one Stripe
+// Customer). A holder of a web Annual Pass adds the Venue add-on to it
+// (stripe/venue); /stripe answers 409 with UPGRADE_PASS_CODE rather than sell
+// them a second pass.
 //
 // Rate limited per device (by its resolved public id) and per address, like
 // the other endpoints worth abusing (worker/rateLimit.ts).
 
 import { Hono, type Context } from "hono";
 import { isClientId } from "../../shared/playerId";
-import { ACCOUNT_REQUIRED_CODE, type HostPassState, type HostPassTransaction, type PassPlan } from "../../shared/types";
+import { PASS_NAME as PASS_NAME_HOST, VENUE_PASS_NAME } from "../../shared/pricing";
+import { ACCOUNT_REQUIRED_CODE, UPGRADE_PASS_CODE, type HostPassState, type HostPassTransaction, type PassPlan } from "../../shared/types";
 import { canonicalClientId, freshLink, SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
 import { forgetClubBrand } from "../clubs/brand";
 import type { Env } from "../env";
@@ -33,7 +38,7 @@ import { AppleJwsError } from "./appleJws";
 import { getPaymentConfig } from "./config";
 import { activeClubPass, activePass, passState } from "./pass";
 import { appStoreCredentials, attachAppleTransaction, handleAppleNotification } from "./passApple";
-import { confirmStripePass, portalUrl, startStripePass } from "./passStripe";
+import { confirmStripePass, portalUrl, startStripePass, upgradeStripePassToVenue } from "./passStripe";
 import * as store from "./store";
 import { StripeApiError } from "./stripe";
 
@@ -46,9 +51,8 @@ const MAX_RESTORE = 20;
 const MAX_JWS_LENGTH = 16 * 1024;
 const NO_STORE = { "cache-control": "no-store" };
 
-const SIGN_IN_FIRST = "Sign in first, so your Host Pass stays with your account on every device.";
-const SIGN_IN_FIRST_CLUB = "Sign in first, so your Club Pass stays with your account on every device.";
-const PASS_NAME: Record<PassPlan, string> = { host: "Host Pass", club: "Club Pass" };
+const SIGN_IN_FIRST = "Sign in first, so your Annual Pass stays with your account on every device.";
+const PASS_NAME: Record<PassPlan, string> = { host: PASS_NAME_HOST, club: VENUE_PASS_NAME };
 
 /** The device's own x-client-id, or null when missing or malformed. */
 function deviceOf(c: Ctx): string | null {
@@ -96,7 +100,7 @@ async function readBody(c: Ctx): Promise<Record<string, unknown>> {
   return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
 }
 
-/** Which pass a purchase route is for: `{ plan: "club" }` is the Club Pass, anything else the Host Pass. */
+/** Which pass a purchase route is for: `{ plan: "club" }` is the Annual Pass + Venue, anything else the Annual Pass. */
 async function planOf(c: Ctx): Promise<PassPlan> {
   return (await readBody(c)).plan === "club" ? "club" : "host";
 }
@@ -125,7 +129,7 @@ passRoutes.post("/payments/pass/test", (c) =>
     if (getPaymentConfig(c.env).mode !== "test") return c.json({ error: "Test checkout is off" }, 403);
     const plan = await planOf(c);
     const now = Date.now();
-    // A Club Pass test pass is given to a Host Pass holder too (it adds the club features).
+    // An Annual Pass + Venue test pass is given to an Annual Pass holder too (it adds the Venue add-on).
     const held = plan === "club" ? await activeClubPass(c.env.DB, clientId, now) : await activePass(c.env.DB, [clientId], now);
     if (!held) {
       await store.upsertPass(
@@ -143,7 +147,7 @@ passRoutes.post("/payments/pass/test", (c) =>
         },
         { now },
       );
-      // A new Club Pass brands the holder's boards.
+      // The Venue add-on brands the holder's boards.
       forgetClubBrand(c.env.DB, clientId);
     }
     return stateResponse(c, clientId);
@@ -174,26 +178,24 @@ passRoutes.post("/payments/pass/stripe", async (c) => {
     console.error("account link lookup failed", err);
     return c.json({ error: "Couldn't check your sign-in. Try again in a moment." }, 503);
   }
-  if (!link) return c.json({ error: plan === "club" ? SIGN_IN_FIRST_CLUB : SIGN_IN_FIRST, code: ACCOUNT_REQUIRED_CODE }, 409);
+  if (!link) return c.json({ error: SIGN_IN_FIRST, code: ACCOUNT_REQUIRED_CODE }, 409);
   const clientId = link.canonical;
   const tooMany = await limited(c, clientId);
   if (tooMany) return tooMany;
   try {
     const outcome = await startStripePass(c.env, clientId, Date.now(), plan);
     if (outcome.kind === "unavailable") return c.json({ error: `The ${PASS_NAME[plan]} isn't on sale here yet.` }, 503);
+    if (outcome.kind === "upgrade") {
+      return stateResponse(c, clientId, { error: "You have an Annual Pass. Add the Venue add-on to it instead.", code: UPGRADE_PASS_CODE }, 409);
+    }
     if (outcome.kind === "active") {
-      const error =
-        plan === "club"
-          ? "You already have a Club Pass."
-          : (await activeClubPass(c.env.DB, clientId))
-            ? "Your Club Pass already covers every board you host."
-            : "You already have a Host Pass.";
+      const error = plan === "club" || (await activeClubPass(c.env.DB, clientId)) ? "Your pass already has the Venue add-on." : "You already have an Annual Pass.";
       return stateResponse(c, clientId, { error }, 409);
     }
     return c.json(outcome.intent, 200, NO_STORE);
   } catch (err) {
     if (!(err instanceof StripeApiError)) throw err;
-    console.error(`host pass subscription failed: ${err.status} ${err.code ?? ""} ${err.message}`);
+    console.error(`pass subscription failed: ${err.status} ${err.code ?? ""} ${err.message}`);
     return c.json({ error: "Couldn't start checkout. Try again." }, 502);
   }
 });
@@ -204,10 +206,33 @@ passRoutes.post("/payments/pass/stripe/confirm", (c) =>
       await confirmStripePass(c.env, clientId, Date.now(), await planOf(c));
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err;
-      console.error(`host pass confirm failed: ${err.status} ${err.message}`);
+      console.error(`pass confirm failed: ${err.status} ${err.message}`);
       return c.json({ error: "Couldn't check with Stripe. Try again." }, 502);
     }
     return stateResponse(c, clientId);
+  }),
+);
+
+passRoutes.post("/payments/pass/stripe/venue", (c) =>
+  asIdentity(c, async (clientId) => {
+    let outcome: Awaited<ReturnType<typeof upgradeStripePassToVenue>>;
+    try {
+      outcome = await upgradeStripePassToVenue(c.env, clientId, Date.now());
+    } catch (err) {
+      if (!(err instanceof StripeApiError)) throw err;
+      console.error(`venue upgrade failed: ${err.status} ${err.code ?? ""} ${err.message}`);
+      return c.json({ error: "Couldn't add the Venue add-on. Try again." }, 502);
+    }
+    switch (outcome.kind) {
+      case "unavailable":
+        return c.json({ error: `The ${VENUE_PASS_NAME} isn't on sale here yet.` }, 503);
+      case "none":
+        return c.json({ error: "There's no Annual Pass bought on the web here to add it to." }, 404);
+      case "declined":
+        return c.json({ error: `Your card wasn't charged, so nothing changed: ${outcome.message} Update it in Manage, then try again.` }, 402);
+      default:
+        return stateResponse(c, clientId);
+    }
   }),
 );
 
@@ -216,7 +241,7 @@ passRoutes.post("/payments/pass/portal", (c) =>
     const origin = (c.env.APP_ORIGIN ?? new URL(c.req.url).origin).replace(/\/+$/, "");
     try {
       const url = await portalUrl(c.env, clientId, `${origin}/me`);
-      if (!url) return c.json({ error: "There's no web Host Pass to manage here." }, 404);
+      if (!url) return c.json({ error: "There's no web Annual Pass to manage here." }, 404);
       return c.json({ url }, 200, NO_STORE);
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err;
@@ -239,7 +264,7 @@ passRoutes.post("/payments/pass/iap", (c) =>
       if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status);
     } catch (err) {
       if (!(err instanceof AppStoreApiError)) throw err;
-      console.error(`App Store lookup for the Host Pass failed: ${err.status} ${err.message}`);
+      console.error(`App Store lookup for the Annual Pass failed: ${err.status} ${err.message}`);
       return c.json({ error: "Couldn't reach the App Store. Try again." }, 502);
     }
     return stateResponse(c, clientId);
@@ -264,7 +289,7 @@ passRoutes.post("/payments/pass/iap/restore", (c) =>
       }
     } catch (err) {
       if (!(err instanceof AppStoreApiError)) throw err;
-      console.error(`App Store lookup for a Host Pass restore failed: ${err.status} ${err.message}`);
+      console.error(`App Store lookup for an Annual Pass restore failed: ${err.status} ${err.message}`);
       return c.json({ error: "Couldn't reach the App Store. Try again." }, 502);
     }
     if (restored === 0 && refused) return c.json({ error: refused }, 409);

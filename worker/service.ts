@@ -3,6 +3,7 @@
 
 import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
+import { feeDue } from "../shared/pricing";
 import {
   drawNumbers,
   liveChanged,
@@ -13,15 +14,17 @@ import {
   resultNote,
   retractedEntries,
   winnersOf,
-  type PeriodScore,
 } from "../shared/squares";
+import { goalsFromFeed, periodsDecidedBy } from "../shared/soccer";
+import { isSoccer } from "../shared/sports";
 import type { Activity, ActivityType, GameState, LiveStatus, LiveUpdate, Score } from "../shared/types";
 import { isClientId } from "../shared/playerId";
 import { canonicalClientId } from "./auth/canonical";
 import * as db from "./db";
 import { emailNotices } from "./email/notices";
 import type { Env } from "./env";
-import { activePass } from "./payments/pass";
+import { boardPrices } from "./payments/config";
+import { passCover } from "./payments/pass";
 import { notify, type NotifyEvent } from "./push";
 
 export type Deliver = (state: GameState, activities: Activity[]) => Promise<void>;
@@ -162,14 +165,24 @@ export async function isHostOrCohost(
   return db.isCohost(env.DB, gameId, await canonicalClientId(env.DB, req.clientId, { signedIn: req.signedIn }));
 }
 
+/** A score just recorded: a period's, or a soccer goal's with its minute. */
+export interface ChangedScore {
+  periodKey: string;
+  label: string;
+  scoreX: number;
+  scoreY: number;
+  minute?: number;
+  added?: number;
+}
+
 /**
  * Activities + notifications for periods whose score just changed: one "score"
- * event each, plus a "winner" event when the square is owned. `projected` is
- * the state as it will be once the writes land.
+ * event each, plus a "winner" event for each period it decides whose square
+ * is owned. `projected` is the state as it will be once the writes land.
  */
 export function scoreEvents(
   projected: Pick<GameState, "game" | "squares" | "scores" | "manualWinners">,
-  changed: { periodKey: string; label: string; scoreX: number; scoreY: number }[],
+  changed: ChangedScore[],
   source: Score["source"],
   actor: string | null,
   now: number,
@@ -177,11 +190,48 @@ export function scoreEvents(
   const activities: Activity[] = [];
   const notifications: NotifyEvent[] = [];
   const results = resolveResults(projected);
+  const soccer = isSoccer(projected.game);
+  const announced = new Set<string>();
   for (const c of changed) {
+    const goal = typeof c.minute === "number" ? { minute: c.minute, added: c.added ?? 0 } : {};
     activities.push(
-      newActivity("score", actor, { periodKey: c.periodKey, label: c.label, scoreX: c.scoreX, scoreY: c.scoreY, source }, now),
+      newActivity("score", actor, { periodKey: c.periodKey, label: c.label, scoreX: c.scoreX, scoreY: c.scoreY, source, ...goal }, now),
     );
-    const r = results.find((x) => x.periodKey === c.periodKey);
+    // A soccer board's goal can decide more than its own entry: the first goal,
+    // and with no goals at full time, square 00's moments (shared/soccer.ts).
+    const keys = (soccer ? periodsDecidedBy([c.periodKey], projected.scores) : [c.periodKey]).filter((k) => !announced.has(k));
+    for (const k of keys) announced.add(k);
+    const winners = winnerEvents(results, keys, actor, now);
+    activities.push(...winners.activities);
+    notifications.push(...winners.notifications);
+  }
+  return { activities, notifications };
+}
+
+/**
+ * The periods a soccer board decides when it ends without a full-time score
+ * (the host ending it): the last goal, and with no goals square 00's moments.
+ * Empty on any other board, whose periods are decided by their scores.
+ */
+export function decidedByEnding(state: Pick<GameState, "game" | "squares" | "scores" | "manualWinners">): string[] {
+  if (!isSoccer(state.game)) return [];
+  const before = new Set(resolveResults(state).map((r) => r.periodKey));
+  return resolveResults({ ...state, game: { ...state.game, status: "final" } })
+    .map((r) => r.periodKey)
+    .filter((key) => !before.has(key));
+}
+
+/** A "winner" activity and push for each of these periods whose square (or reverse square) someone holds. */
+export function winnerEvents(
+  results: ReturnType<typeof resolveResults>,
+  keys: readonly string[],
+  actor: string | null,
+  now: number,
+): { activities: Activity[]; notifications: NotifyEvent[] } {
+  const activities: Activity[] = [];
+  const notifications: NotifyEvent[] = [];
+  for (const key of keys) {
+    const r = results.find((x) => x.periodKey === key);
     if (!r) continue;
     const playerIds = winnersOf(r);
     if (playerIds.length === 0) continue;
@@ -198,11 +248,15 @@ export function scoreEvents(
   return { activities, notifications };
 }
 
-function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Score[] {
+function upsertScores(scores: Score[], changed: ChangedScore[], now: number): Score[] {
   const by = new Map(scores.map((s) => [s.periodKey, s]));
   for (const c of changed) {
     const s: Score = { periodKey: c.periodKey, scoreX: c.scoreX, scoreY: c.scoreY, source: "live", updatedAt: now };
     if (everyScoreIndex(c.periodKey) !== null) s.label = c.label;
+    if (typeof c.minute === "number") {
+      s.minute = c.minute;
+      s.added = c.added ?? 0;
+    }
     by.set(c.periodKey, s);
   }
   return [...by.values()];
@@ -215,7 +269,7 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
  * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
  * when it's corrected down, lock at kickoff if the host hasn't (only once the
  * host fee is paid, the board is free (5 or fewer players hold squares), or
- * the host's Host Pass covers it: an unpaid board stays open, still taking the
+ * the host's Annual Pass covers it: an unpaid board stays open, still taking the
  * feed's scores, until its host pays and draws), and mark the board final
  * when the game ends. Pushes the new state and sends pushes.
  *
@@ -278,8 +332,9 @@ export async function applyLiveUpdate(
   }
 
   // Boards linked to a real game lock at kickoff so every period can be decided,
-  // once their host fee is paid, or the host's Host Pass covers it (the board
-  // is marked paid through the pass in the same write); until then the host
+  // once what they cost is paid, or the host's Annual Pass covers all of it
+  // (with the Venue add-on on a venue board: shared/pricing.ts; the board is
+  // marked paid through the pass in the same write); until then the host
   // draws when they pay. (Not on a "post" that isn't final: that's a
   // postponed/canceled game.)
   let numbers = game.numbers;
@@ -287,7 +342,9 @@ export async function applyLiveUpdate(
   let pass: { id: string } | null = null;
   if (status === "open" && !game.paid && kickoff) {
     const host = await db.hostClientIdOf(env.DB, gameId);
-    pass = host ? await activePass(env.DB, [host], now) : null;
+    const held = host ? await passCover(env.DB, [host], now) : null;
+    const due = held ? feeDue(game, boardPrices(env), held.cover) : null;
+    if (held?.pass && due && due.cents === 0 && !due.needsPass) pass = held.pass;
   }
   if (status === "open" && (game.paid || pass) && kickoff) {
     numbers = drawNumbers(game.format);
@@ -299,13 +356,23 @@ export async function applyLiveUpdate(
     status = "locked";
   }
 
-  const changed: PeriodScore[] = [];
+  const changed: ChangedScore[] = [];
   // Every-score entries the feed took back (a score overturned on review). They
   // are deleted ahead of the upsert below, which may reuse the same index.
   let retracted: string[] = [];
   let scores = prev.scores;
-  // A board can award both: every score change (entries) and fixed moments (quarter-ends).
-  if (hasScoreMoment(rulesOf(game.format)) && live.state !== "pre") {
+  if (isSoccer(game)) {
+    // A soccer board records every goal with its minute, whatever wins: its
+    // first and last goals are read from them (shared/soccer.ts).
+    if (live.state !== "pre" && update.goals) {
+      const feed = goalsFromFeed(prev.scores, update.goals, live);
+      retracted = feed.retracted;
+      for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
+      scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));
+      changed.push(...feed.entries);
+    }
+  } else if (hasScoreMoment(rulesOf(game.format)) && live.state !== "pre") {
+    // A board can award both: every score change (entries) and fixed moments (quarter-ends).
     retracted = retractedEntries(prev.scores, live.scoreX, live.scoreY);
     for (const key of retracted) writes.push(...db.deleteLiveEntry(env.DB, gameId, key));
     scores = prev.scores.filter((s) => !retracted.includes(s.periodKey));

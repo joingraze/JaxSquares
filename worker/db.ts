@@ -138,6 +138,9 @@ interface ScoreRow {
   score_y: number;
   source: string;
   updated_at: number;
+  /** A soccer goal's minute and stoppage time (migration 0022); NULL elsewhere. */
+  minute?: number | null;
+  added?: number | null;
 }
 
 interface ManualWinnerRow {
@@ -236,6 +239,10 @@ function rowToScore(r: ScoreRow): Score {
     updatedAt: r.updated_at,
   };
   if (r.label) s.label = r.label;
+  if (typeof r.minute === "number") {
+    s.minute = r.minute;
+    s.added = r.added ?? 0;
+  }
   return s;
 }
 
@@ -360,7 +367,7 @@ function stateReads(db: D1Database, id: string): D1PreparedStatement[] {
     db.prepare(`SELECT * FROM games WHERE id = ?`).bind(id),
     db.prepare(`SELECT client_id, name, color, emoji, joined_at FROM players WHERE game_id = ? ORDER BY joined_at, rowid`).bind(id),
     db.prepare(`SELECT row, col, client_id, claimed_at FROM squares WHERE game_id = ?`).bind(id),
-    db.prepare(`SELECT period_key, label, score_x, score_y, source, updated_at FROM scores WHERE game_id = ?`).bind(id),
+    db.prepare(`SELECT period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE game_id = ?`).bind(id),
     db.prepare(`SELECT period_key, row, col, updated_at FROM manual_winners WHERE game_id = ?`).bind(id),
     db.prepare(`SELECT state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE game_id = ?`).bind(id),
     db
@@ -389,7 +396,7 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
     playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts, ...claimRows.map((r) => r.client_id)]),
     // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
     row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
-    // The host's club while their Club Pass is active (worker/clubs, cached per isolate): its public branding only.
+    // The host's club while their Annual Pass + Venue is active (worker/clubs, cached per isolate): its public branding only.
     clubBrandOf(db, row.host_client_id),
     // A season's game board (migration 0017): where it sits in its season, one more round trip.
     row.season_id ? seasonPositionFor(db, row.id, row.season_id) : null,
@@ -760,7 +767,7 @@ async function seasonOf(db: D1Database, row: GameRow, squares: Square[]): Promis
   const { events, ...spec } = stored;
   const [kids, scores, manual, live] = await db.batch([
     db.prepare(`SELECT ${SEASON_GAME_COLUMNS} FROM games WHERE season_id = ?1 ORDER BY starts_at, id`).bind(row.id),
-    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inSeason}`).bind(row.id),
+    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE ${inSeason}`).bind(row.id),
     db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inSeason}`).bind(row.id),
     db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inSeason}`).bind(row.id),
   ]);
@@ -1212,7 +1219,7 @@ const MARK_PAID = `UPDATE games SET paid_at = ?1, payment_provider = ?2, payment
 /**
  * Records the board's host fee: stamps paid_at with the purchase that paid
  * it (the ledger, worker/payments/store.ts, decides which one that is), or
- * with the Host Pass that covered it (provider "pass", reference = the pass
+ * with the Annual Pass that covered it (provider "pass", reference = the pass
  * id, amount 0). A legacy draft opens too. No-op once the board is paid.
  */
 export function markPaid(
@@ -1258,41 +1265,36 @@ export function reopenFinal(db: D1Database, gameId: string): D1PreparedStatement
   return db.prepare(`UPDATE games SET status = 'locked' WHERE id = ? AND status = 'final'`).bind(gameId);
 }
 
+/** A score to write: a soccer goal carries its minute and stoppage time (null elsewhere). */
+type ScoreWrite = { periodKey: string; label?: string | null; scoreX: number; scoreY: number; minute?: number | null; added?: number | null };
+
 /** A host-entered score always wins over (and replaces) a live one. */
-export function upsertHostScore(
-  db: D1Database,
-  gameId: string,
-  s: { periodKey: string; label?: string | null; scoreX: number; scoreY: number },
-  now: number,
-): D1PreparedStatement {
+export function upsertHostScore(db: D1Database, gameId: string, s: ScoreWrite, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'host', ?)
+      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at, minute, added)
+       VALUES (?, ?, ?, ?, ?, 'host', ?, ?, ?)
        ON CONFLICT (game_id, period_key) DO UPDATE SET
          label = COALESCE(excluded.label, scores.label), score_x = excluded.score_x,
-         score_y = excluded.score_y, source = 'host', updated_at = excluded.updated_at`,
+         score_y = excluded.score_y, source = 'host', updated_at = excluded.updated_at,
+         minute = excluded.minute, added = excluded.added`,
     )
-    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now);
+    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now, s.minute ?? null, s.minute == null ? null : (s.added ?? 0));
 }
 
 /** A provider score; never overwrites a host-entered score for the same period. */
-export function upsertLiveScore(
-  db: D1Database,
-  gameId: string,
-  s: { periodKey: string; label?: string | null; scoreX: number; scoreY: number },
-  now: number,
-): D1PreparedStatement {
+export function upsertLiveScore(db: D1Database, gameId: string, s: ScoreWrite, now: number): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'live', ?)
+      `INSERT INTO scores (game_id, period_key, label, score_x, score_y, source, updated_at, minute, added)
+       VALUES (?, ?, ?, ?, ?, 'live', ?, ?, ?)
        ON CONFLICT (game_id, period_key) DO UPDATE SET
          label = COALESCE(excluded.label, scores.label), score_x = excluded.score_x,
-         score_y = excluded.score_y, updated_at = excluded.updated_at
+         score_y = excluded.score_y, updated_at = excluded.updated_at,
+         minute = excluded.minute, added = excluded.added
        WHERE scores.source = 'live'`,
     )
-    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now);
+    .bind(gameId, s.periodKey, s.label ?? null, s.scoreX, s.scoreY, now, s.minute ?? null, s.minute == null ? null : (s.added ?? 0));
 }
 
 export function deleteScore(db: D1Database, gameId: string, periodKey: string): D1PreparedStatement {
@@ -1452,7 +1454,7 @@ export async function listGamesForClient(
   const inIds = `game_id IN (SELECT value FROM json_each(?1))`;
   const [live, scores, manual, drawnSquares] = await db.batch([
     db.prepare(`SELECT game_id, state, period, clock, detail, score_x, score_y, updated_at FROM live_status WHERE ${inIds}`).bind(ids),
-    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at FROM scores WHERE ${inIds}`).bind(ids),
+    db.prepare(`SELECT game_id, period_key, label, score_x, score_y, source, updated_at, minute, added FROM scores WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, period_key, row, col, updated_at FROM manual_winners WHERE ${inIds}`).bind(ids),
     db.prepare(`SELECT game_id, row, col, client_id, claimed_at FROM squares WHERE ${inIds}`).bind(drawnIds),
   ]);
@@ -1640,7 +1642,7 @@ export async function hostTokensFor(db: D1Database, clientId: string): Promise<R
   return Object.fromEntries(results.map((r) => [r.id, r.admin_token]));
 }
 
-// ---- The Club Pass (worker/clubs): a holder's boards ----
+// ---- The Annual Pass + Venue (worker/clubs): a holder's boards ----
 
 /** A board that hasn't moved in this long, with its kickoff past (or none), no longer goes round on the club's TV. */
 const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
@@ -1648,7 +1650,7 @@ const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
 const CLUB_SEASON_SOON_MS = 6 * 60 * 60_000;
 
 /**
- * The open and live boards `clientId` (a Club Pass holder's canonical
+ * The open and live boards `clientId` (an Annual Pass + Venue holder's canonical
  * clientId: the caller's own, or the owner of a club whose TV link checked
  * out) hosts, as their club settings list them and their TV goes round:
  * live games first, then drawn boards, then boards being picked, each by
@@ -1734,19 +1736,20 @@ export async function claimDrawReminders(
   leadMs: number,
   minAgeMs: number,
   freeHolders: number,
-): Promise<{ id: string; hostClientId: string }[]> {
+): Promise<{ id: string; hostClientId: string; venue: boolean }[]> {
   const { results } = await db
     .prepare(
       `UPDATE games SET draw_reminder_at = ?1
        WHERE linked_event IS NOT NULL AND starts_at IS NOT NULL AND starts_at > ?1 AND starts_at <= ?2
          AND status = 'open' AND paid_at IS NULL AND draw_reminder_at IS NULL AND created_at <= ?3
          AND (SELECT COUNT(DISTINCT s.client_id) FROM squares s WHERE s.game_id = games.id) > ?4
-       RETURNING id, host_client_id`,
+       RETURNING id, host_client_id, json_extract(format, '$.venue') AS venue`,
     )
     .bind(now, now + leadMs, now - minAgeMs, freeHolders)
-    .all<{ id: string; host_client_id: string }>();
-  // Server-only: the cron skips hosts whose Host Pass covers the board (worker/payments).
-  return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id }));
+    .all<{ id: string; host_client_id: string; venue: number | null }>();
+  // Server-only: the cron skips hosts whose Annual Pass covers the board (worker/payments; a venue
+  // board only with the Venue add-on).
+  return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id, venue: r.venue === 1 }));
 }
 
 // ---- Housekeeping (cron) ----

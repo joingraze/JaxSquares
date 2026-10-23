@@ -2,7 +2,7 @@
 // The free tier end to end against real SQL (node:sqlite, migrations
 // 0001-0011): a board whose squares are held by FREE_PLAYER_LIMIT (5) or fewer
 // players draws for free, marked paid with provider "free" in the same batch
-// as the draw; a 6th player brings back the 402 (or the Host Pass); a free
+// as the draw; a 6th player brings back the 402 (or the Annual Pass); a free
 // linked board draws itself at kickoff and gets no "kickoff soon" reminder;
 // and a 6th player whose claim lands while the host draws can't slip in for
 // free. Only the GameRoom (sockets) and push delivery are faked.
@@ -48,6 +48,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 let t: TestD1;

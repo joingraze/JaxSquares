@@ -13,11 +13,11 @@ import { HOME_FILE, LANDING_SLUGS, ORIGIN, SITE_NAME, SOCIAL } from "./site.ts";
 
 export { HOME_FILE };
 
-export const HOME_TITLE = "JaxSquares: Football & Basketball Squares, Live on Every Phone";
+export const HOME_TITLE = "JaxSquares: Football, Basketball & Soccer Squares, Live";
 export const HOME_DESCRIPTION =
-  "Football and basketball squares on every phone. Make a board, text one link, friends tap their squares, and live scores light up each winner. Free to set up.";
+  "Football, basketball and soccer squares on every phone. Make a board, text one link, friends tap their squares, and live scores light up each winner. Free to set up.";
 /** The link preview's headline: the homepage isn't an invite. */
-const HOME_SHARE_TITLE = "Football & basketball squares, live on every phone";
+const HOME_SHARE_TITLE = "Sports squares, live on every phone";
 
 const MONEY_NOTICE =
   "JaxSquares never collects, holds or sends money between players. A square price or prize a host shows is information only.";
@@ -63,14 +63,14 @@ export function homeContent(pages: readonly LandingPage[]): string {
   return (
     `<div class="prerender"><header><a href="/"><strong>${SITE_NAME}</strong></a></header><main>` +
     `<h1>Sports squares, live with your crew.</h1>` +
-    `<p>Football and basketball. Make a board, text the link, and watch the squares fill up. Scores and winners land live.</p>` +
+    `<p>Football, basketball or soccer: make a board, text the link, and watch the squares fill up. Scores and winners land live.</p>` +
     `<p><a href="/new">Make a board</a> · <a href="/how-to-play-football-squares">How to play squares</a></p>` +
     `<p class="fine">Friends join from a link, no account needed. Free to set up and invite.</p>` +
     `<h2>How it works</h2><ol>` +
-    `<li><strong>Make a board.</strong> Sign in with Google or Apple, pick an NFL, college football, NBA, WNBA or college basketball game (or type in any two teams), and choose when squares win: every quarter, halftime, the final or every score.</li>` +
+    `<li><strong>Make a board.</strong> Sign in with Google or Apple, pick a game (NFL, college football, NBA, WNBA, college basketball, MLS, NWSL, the Premier League, LaLiga, Liga MX or the Champions League) or type in any two teams, and choose when squares win.</li>` +
     `<li><strong>Text one link.</strong> Friends open it in their phone's browser and tap their squares. Players never need an app or an account.</li>` +
     `<li><strong>Draw the numbers.</strong> Once the board is full, Jax shuffles the digits 0 to 9 across the top and down the side, live on every phone.</li>` +
-    `<li><strong>Watch it live.</strong> Scores fill in on their own, and the winning square lights up for everyone the moment each quarter ends.</li>` +
+    `<li><strong>Watch it live.</strong> Scores fill in on their own, and the winning square lights up for everyone the moment a quarter ends (or, in soccer, a goal goes in).</li>` +
     `</ol>` +
     `<h2>Squares guides</h2><ul>${guides}</ul>` +
     `<h2>Good to know</h2><ul>` +

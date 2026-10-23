@@ -1,13 +1,13 @@
 // Live schedule + live score provider (ESPN). Mounted under /api by worker/index.ts;
 // fetchLiveForEvent is polled by the GameRoom Durable Object while a linked game is on.
 //
-// Football is picked a week of the season at a time; basketball has no weeks,
-// so its leagues (shared/sports.ts `isDayLeague`) are picked by day: the next
-// 7 days, today first, or one day further out (`date=YYYYMMDD`), one cached
-// scoreboard per day.
+// Football is picked a week of the season at a time; basketball and soccer have
+// no weeks, so their leagues (shared/sports.ts `isDayLeague`) are picked by
+// day: the next 7 days, today first, or one day further out
+// (`date=YYYYMMDD`), one cached scoreboard per day.
 
 import { Hono } from "hono";
-import { isDayLeague, isLinkedLeague as isKnownLeague } from "../../shared/sports";
+import { isDayLeague, isLinkedLeague as isKnownLeague, LEAGUE_INFO, LINKED_LEAGUES } from "../../shared/sports";
 import type {
   LinkedEvent,
   LiveUpdate,
@@ -55,14 +55,14 @@ const SCHEDULE_STALE_S = 6 * 60 * 60;
 const SCHEDULE_TIMEOUT_MS = 8000;
 const LIVE_TTL_S = 10;
 const LIVE_TIMEOUT_MS = 4000;
-/** No football or basketball game runs this long, so an older "pre"/"in" entry is stale data. */
+/** No football, basketball or soccer game runs this long, so an older "pre"/"in" entry is stale data. */
 const MAX_GAME_SPAN_MS = 6 * HOUR_MS;
-/** Basketball's default schedule: this many days, today first. */
+/** Basketball's and soccer's default schedule: this many days, today first. */
 export const SCHEDULE_DAYS = 7;
-/** Furthest ahead a basketball day can be asked for (a linked game can be up to 400 days out). */
+/** Furthest ahead a basketball or soccer day can be asked for (a linked game can be up to 400 days out). */
 const MAX_DAYS_AHEAD = 400;
 /** Bump when the cached (parsed) shape changes so old entries are ignored after a deploy. */
-const CACHE_VERSION = "4";
+const CACHE_VERSION = "5";
 
 /**
  * The schedule and live scores read the same ESPN scoreboard URLs but cache
@@ -83,13 +83,13 @@ function slateDay(startsAt: number): number {
   return Math.floor((startsAt - 10 * HOUR_MS) / DAY_MS) * DAY_MS;
 }
 
-/** A league with a live feed: NFL and college football, the NBA, the WNBA and men's and women's college basketball. */
+/** A league with a live feed: football's, basketball's and soccer's (shared/sports.ts LINKED_LEAGUES). */
 export function isLinkedLeague(v: string): v is LinkedLeague {
   return isKnownLeague(v);
 }
 
 /**
- * A basketball day someone may ask for: a real date (YYYYMMDD, US Eastern as
+ * A basketball or soccer day someone may ask for: a real date (YYYYMMDD, US Eastern as
  * ESPN files games) from yesterday's slate (late games still on) to about a
  * year ahead. null otherwise.
  */
@@ -204,7 +204,7 @@ function loadDayBoard(league: LinkedLeague, day: number, now: number, opts: Scor
 }
 
 /**
- * Basketball's games to link, by day, or null if ESPN is unavailable.
+ * Basketball's and soccer's games to link, by day, or null if ESPN is unavailable.
  *
  * Without `date`: the next SCHEDULE_DAYS days, today's slate first (ESPN files
  * games by US date; a late game still on counts toward its own day). With
@@ -232,7 +232,7 @@ export async function getDaySchedule(league: LinkedLeague, date?: string, opts: 
   return { events, week: null, weeks: [], dates: days.map(espnDate) };
 }
 
-/** The schedule for any league: by week (football) or by day (basketball). */
+/** The schedule for any league: by week (football) or by day (basketball, soccer). */
 export function scheduleFor(league: LinkedLeague, query: { week?: string; date?: string }, opts: ScoresOptions = {}): Promise<ScheduleResult | null> {
   return isDayLeague(league) ? getDaySchedule(league, query.date, opts) : getSchedule(league, query.week, opts);
 }
@@ -335,7 +335,7 @@ function hubFor(env: Env | undefined, league: LinkedLeague): DurableObjectStub |
   return ns ? ns.get(ns.idFromName(`espn:${league}`)) : null;
 }
 
-/** getSchedule (football, by week) or getDaySchedule (basketball, by day) through the league's ScoreHub. */
+/** getSchedule (football, by week) or getDaySchedule (basketball and soccer, by day) through the league's ScoreHub. */
 export async function scheduleVia(env: Env | undefined, league: LinkedLeague, week?: string, date?: string): Promise<ScheduleResult | null> {
   const hub = hubFor(env, league);
   if (hub) {
@@ -407,15 +407,18 @@ export async function liveVia(env: Env, event: LinkedEvent): Promise<LiveUpdate 
 
 export const scheduleRoutes = new Hono<{ Bindings: Env }>();
 
+/** The 400 for an unknown league. */
+const LEAGUE_ERROR = `league must be one of ${LINKED_LEAGUES.join(", ")}`;
+
 scheduleRoutes.get("/schedule", async (c) => {
   const league = c.req.query("league") ?? "nfl";
-  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
+  if (!isLinkedLeague(league)) return c.json({ error: LEAGUE_ERROR }, 400);
   const week = c.req.query("week");
   const date = c.req.query("date");
 
   if (isDayLeague(league)) {
-    // Basketball has no weeks: a day at a time.
-    if (week !== undefined) return c.json({ error: "Basketball games go by date: use date=20260320" }, 400);
+    // Basketball and soccer have no weeks: a day at a time.
+    if (week !== undefined) return c.json({ error: "Basketball and soccer games go by date: use date=20260320" }, 400);
     if (date !== undefined && dayInRange(date) === null) {
       return c.json({ error: "date must look like 20260320, from today to a year ahead" }, 400);
     }
@@ -447,7 +450,7 @@ scheduleRoutes.get("/schedule", async (c) => {
 
 scheduleRoutes.get("/season/teams", async (c) => {
   const league = c.req.query("league") ?? "";
-  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
+  if (!isLinkedLeague(league)) return c.json({ error: LEAGUE_ERROR }, 400);
   const teams = await seasonTeamsVia(c.env, league);
   if (!teams) {
     c.header("cache-control", "no-store");
@@ -459,7 +462,7 @@ scheduleRoutes.get("/season/teams", async (c) => {
 
 scheduleRoutes.get("/season/schedule", async (c) => {
   const league = c.req.query("league") ?? "";
-  if (!isLinkedLeague(league)) return c.json({ error: "league must be nfl, ncaaf, nba, wnba, ncaab or ncaaw" }, 400);
+  if (!isLinkedLeague(league)) return c.json({ error: LEAGUE_ERROR }, 400);
   const team = c.req.query("team") ?? "";
   if (!isTeamId(team)) return c.json({ error: "team must be a team id, like 30" }, 400);
   const rawYear = c.req.query("year");
@@ -499,6 +502,8 @@ export async function fetchLiveForEvent(event: LinkedEvent, opts: ScoresOptions 
 
 async function findSnapshot(event: LinkedEvent, opts: ScoresOptions): Promise<CachedValue<GameSnapshot> | null> {
   if (!isLinkedLeague(event.league) || !event.eventId) return null;
+  // A soccer board wins on goal minutes: its snapshots carry the match's goals.
+  const goals = LEAGUE_INFO[event.league].sport === "soccer";
 
   if (Number.isFinite(event.startsAt) && event.startsAt > 0) {
     const url = scoreboardUrl(event.league, slateDay(event.startsAt));
@@ -509,7 +514,7 @@ async function findSnapshot(event: LinkedEvent, opts: ScoresOptions): Promise<Ca
       load: async () => {
         const json = await fetchEspnJson(url, LIVE_TIMEOUT_MS);
         if (!isScoreboard(json)) throw new Error("ESPN scoreboard response had no events array");
-        return parseScoreboardSnapshots(json);
+        return parseScoreboardSnapshots(json, { goals });
       },
     });
     // ESPN itself is down; the summary lives on the same host, so don't wait on it too.
@@ -524,7 +529,7 @@ async function findSnapshot(event: LinkedEvent, opts: ScoresOptions): Promise<Ca
     ttlSeconds: LIVE_TTL_S,
     inflight: opts.inflight,
     load: async () => {
-      const snap = parseSummarySnapshot(await fetchEspnJson(url, LIVE_TIMEOUT_MS));
+      const snap = parseSummarySnapshot(await fetchEspnJson(url, LIVE_TIMEOUT_MS), { goals });
       if (!snap) throw new Error("ESPN summary response had no competition");
       return snap;
     },

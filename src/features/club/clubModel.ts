@@ -1,4 +1,4 @@
-// How the Club Pass reads in the app (docs/payments.md "Club Pass"): its
+// How the Annual Pass + Venue reads in the app (docs/payments.md "Annual Pass + Venue"): its
 // status line, the club's boards, the club TV's rotation. Pure, apart from
 // the API origin in logoSrc.
 
@@ -12,7 +12,7 @@ export function logoSrc(club: ClubBrand): string | null {
   return clubLogoUrl(club, API_BASE);
 }
 
-/** "Club Pass · Active", with its date when it has one: "Active · renews Oct 19, 2027", "Ends Oct 19, 2027". */
+/** "Annual Pass + Venue · Active", with its date when it has one: "Active · renews Oct 19, 2027", "Ends Oct 19, 2027". */
 export function clubStatusLine(pass: Pick<HostPass, "active" | "status" | "renewsAt" | "endsAt">): string {
   if (pass.status === "past_due") return "Payment didn't go through · update it in Manage";
   if (pass.status === "revoked") return "Refunded";

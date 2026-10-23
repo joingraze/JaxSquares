@@ -269,7 +269,7 @@ describe("host tools for a co-host", () => {
         return new Response("{}", { status: 404 });
       });
 
-    it("asks the server first (the host's Host Pass may cover it), and draws with no checkout when it does", async () => {
+    it("asks the server first (the host's Annual Pass may cover it), and draws with no checkout when it does", async () => {
       vi.stubGlobal("fetch", server());
       const me = identity.getPlayerId();
       const players = [player("host", "Jordan"), player(me, "Ana")];

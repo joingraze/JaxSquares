@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The Host Pass routes end to end (the real Worker, real SQL with every
+// The Annual Pass routes end to end (the real Worker, real SQL with every
 // migration): the web subscription (Stripe Billing, behind a mocked fetch) with
 // its account gate, confirm, webhooks and Manage; the App Store subscription
 // (the App Store Server API behind a mocked fetch) with purchase, restore and
@@ -63,6 +63,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 let t: TestD1;
@@ -275,6 +276,16 @@ describe("POST /payments/pass/portal (Manage on the web)", () => {
     const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/billing_portal/sessions"))! as [string, RequestInit];
     expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ customer: "cus_1", return_url: "https://jaxsquares.com/me" });
   });
+
+  it("opens the portal settings stripe-setup made, when they're named", async () => {
+    env = { ...env, STRIPE_PORTAL_CONFIGURATION_ID: "bpc_jax" };
+    signedIn(PHONE);
+    stripeAnswers({ sub: subscription() });
+    await call("POST", "/payments/pass/stripe");
+    expect((await call("POST", "/payments/pass/portal")).status).toBe(200);
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/billing_portal/sessions"))! as [string, RequestInit];
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({ customer: "cus_1", return_url: "https://jaxsquares.com/me", configuration: "bpc_jax" });
+  });
 });
 
 describe("the Stripe webhook keeps a web pass current", () => {
@@ -360,7 +371,7 @@ describe("the Stripe webhook keeps a web pass current", () => {
     expect((await call<HostPassState>("GET", "/payments/pass")).body.pass).toMatchObject({ active: false, status: "past_due" });
   });
 
-  it("ignores subscriptions that aren't the Host Pass, and refuses a bad signature", async () => {
+  it("ignores subscriptions that aren't the Annual Pass, and refuses a bad signature", async () => {
     const state = await activePass();
     fetchMock.mockClear();
     const sub = changeTo(state, { status: "canceled", metadata: {} });

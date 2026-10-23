@@ -60,7 +60,7 @@ export const PLAN = {
 
   strategy: {
     positioning:
-      "Football and basketball squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Host Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
+      "Football and basketball squares, run by Jax and live now at jaxsquares.com. No app or account for players, no math, and no money between players: JaxSquares never collects or sends it. Free to set up and invite; boards with up to 5 players draw free, bigger boards are a $4.99 host fee (or the $19.99/yr Annual Pass). Competitors charge per grid ($10–$13), need a download, or need an account. Nobody in the category has a personality-led Instagram, and nobody else has a dog.",
     pillars: [
       { name: "Show the product", share: "35%", what: "Real-app demos: the 30-second setup, Let Jax pick, the live draw, winners lighting up, and the use cases (TV mode at the bar, basketball boards, joining from a link, every phone live). Every video is screen footage of the real app." },
       { name: "Squares nerdery", share: "25%", what: "Real numbers from 7,276 NFL finals: best/worst squares, digit tiers, most common scores. Built to be saved and sent." },
@@ -85,7 +85,7 @@ export const PLAN = {
       "Say 'the big game', never 'Super Bowl', in posts and ads (NFL trademark). Team names are fine to identify a game. No logos, uniforms, team colors, broadcast footage or player photos.",
       "Never use the words the app bans: bet, wager, pot, payout, buy-in, jackpot, odds, stakes, gamble (and 'cash out'). Say 'board', 'square price', 'prize', 'bragging rights'.",
       "No money between players, ever. JaxSquares never collects, holds or sends it, so never imply it handles winnings. Prizes in captions are notes: 'loser buys wings', 'winner skips dish duty'.",
-      "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Host Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
+      "'Free' means free to set up, invite and pick squares, and free to draw with up to 5 players. Bigger boards have a $4.99 host fee at the draw (the Annual Pass covers it). Say 'free to set up'; never call a big board totally free. Players never pay.",
       "Paid boosts: only creatives with no amounts on screen (the Just for fun ones are safest; skip any that show the create flow's review step, which carries the host-fee line). Meta requires prior written permission for ads where money is part of both entry and prize. Boost candidates (no review step or host-fee line on screen): 02-let-jax-pick (Grid 5), u4-every-phone (Grid 2), u6-join-from-link (Grid 8), and after the launch u2-bar-big-screen, 04-best-worst-squares and 07-features. Not 01-how-it-works or u1-speedrun: they show the create flow's host-fee line.",
       "Bars and offices: pitch Just for fun boards with no purchase needed to pick a square.",
       "Giveaways need official rules, eligibility, and a 'not sponsored by Instagram' line. Don't require follows or tags to enter. Skip them for this launch.",

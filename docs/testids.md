@@ -18,9 +18,9 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `week-toggle` | each week row in the game picker (also `data-week=<season type>-<week>`, e.g. `2-7`); `aria-expanded` when open |
 | `week-see-all` | "See all N games" in the lead week |
 | `week-more` | "Full schedule · N more weeks" |
-| `sport-picker` | the game step's Football / Basketball switch (segments `sport-football`, `sport-basketball`) |
-| `league-picker`, `league-option` | the league chips under it (`role=radiogroup`; each chip `data-league=nfl\|ncaaf\|nba\|wnba\|ncaab\|ncaaw`, `aria-checked`); the Custom chip is `custom-matchup` (`data-league=custom`) |
-| `day-list` | basketball's games, a day at a time: the next 7 days (local), then the date picker |
+| `sport-picker` | the game step's Football / Basketball / Soccer switch (segments `sport-football`, `sport-basketball`, `sport-soccer`) |
+| `league-picker`, `league-option` | the league chips under it (`role=radiogroup`; each chip `data-league=nfl\|ncaaf\|nba\|wnba\|ncaab\|ncaaw\|mls\|nwsl\|epl\|laliga\|ligamx\|ucl`, `aria-checked`); the Custom chip is `custom-matchup` (`data-league=custom`) |
+| `day-list` | basketball's and soccer's games, a day at a time: the next 7 days (local), then the date picker |
 | `day-toggle` | each day row in it ("Today", "Tomorrow", "Fri, Mar 20"; `data-week=<the day, slugged>`, `aria-expanded` when open) |
 | `day-see-all` | "See all N games" in an open day with more than 6 |
 | `day-picker` | "Another date": the date input (`type=date`) that loads one day's games, up to a year ahead |
@@ -96,33 +96,33 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `invite-hide` | "Not for me" on an invite I only opened (not joined): hides it from Home (drops it from the seen list) with an Undo toast |
 | `create-submit` | Review's "Create board": creates the board and opens it (free; no checkout) |
 | `create-fee` | the line under it: "Free to set up and invite. Free to draw with up to 5 players, $4.99 for bigger boards." (the App Store's price in the iOS app; with no price: "...; bigger boards have a host fee when you draw.") |
-| `pay-confirm` | the confirm button in the checkout sheet for the host fee, opened by the host tools when the host draws (or pays ahead on a linked board), or for the Host Pass (Profile's Get, or the pass picked at the draw: "Start test pass", "Subscribe", "Subscribe · $19.99/year"); every method: test, wallet, card, App Store |
-| `plan-picker`, `plan-board`, `plan-pass` | the checkout sheet's choice at the draw (`role=radiogroup`, each `role=radio` with `aria-checked`): "This board · $4.99" (the default) and "Host Pass · $19.99/year" (the App Store's prices in the iOS app). Shown where the pass is sold |
-| `pass-pays-off` | under the Host Pass choice: "Pays for itself by your fifth board", worked out from the two prices this device shows (StoreKit's in the iOS app); absent when either price is unknown |
+| `pay-confirm` | the confirm button in the checkout sheet for the host fee, opened by the host tools when the host draws (or pays ahead on a linked board), or for the Annual Pass (Profile's Get, or the pass picked at the draw: "Start test pass", "Subscribe", "Subscribe · $19.99/year"); every method: test, wallet, card, App Store |
+| `plan-picker`, `plan-board`, `plan-pass` | the checkout sheet's choice at the draw (`role=radiogroup`, each `role=radio` with `aria-checked`): "This board · $4.99" (the default) and "Annual Pass · $19.99/year" (the App Store's prices in the iOS app). Shown where the pass is sold |
+| `pass-pays-off` | under the Annual Pass choice: "Pays for itself by your fifth board", worked out from the two prices this device shows (StoreKit's in the iOS app); absent when either price is unknown |
 | `pass-disclosure` | the subscription disclosure beside the pass's button: name, length, price per period, auto-renews until canceled, how to cancel, Terms and Privacy links |
-| `pass-signin` | "Sign in to continue" in the checkout sheet when a signed-out browser picks the Host Pass (opens `signin-sheet`, then the purchase continues) |
-| `pass-card` | the Host Pass card at the top of Profile's Get sheet |
-| `host-pass-note` | "Included with your Host Pass" under the draw (host bar, the Now card) on a board the host's active pass covers ("Included with your Club Pass" when that's the one covering it) |
+| `pass-signin` | "Sign in to continue" in the checkout sheet when a signed-out browser picks the Annual Pass (opens `signin-sheet`, then the purchase continues) |
+| `pass-card` | the Annual Pass card at the top of Profile's Get sheet |
+| `host-pass-note` | "Included with your Annual Pass" under the draw (host bar, the Now card) on a board the host's active pass covers ("Included with your Annual Pass + Venue" when that's the one covering it) |
 | `host-free-note` | "Free for up to 5 players" under the draw (host bar, the Now card, the lock confirm) on an unpaid board 5 or fewer players hold squares on; the draw reads "Draw the numbers · Free" |
-| `host-pass-section` | Profile → Host Pass (`data-state=none\|active\|club\|ended\|past_due\|revoked`; `club`: no Host Pass, the Club Pass covers it, "Included with your Club Pass"); absent on the web when the pass isn't sold there and was never held |
-| `pass-get` | Profile → Host Pass "Get the Host Pass · $19.99/year" ("Get a test pass · no charge" in test mode); goes through the sign-in gate on the web |
-| `pass-status` | Profile → Host Pass status: "Active · renews Oct 19, 2027", "Ends Oct 19, 2027", "Ended …" |
-| `pass-manage` | Profile → Host Pass "Manage" (Apple's subscription management in the iOS app, a Stripe Customer Portal on the web) or "End test pass" in test mode |
-| `pass-restore` | Profile → Host Pass "Restore purchases" (iOS app only) |
-| `club-pitch`, `club-get` | Profile → under the Host Pass, for everyone on the web without an active Club Pass: "Running squares for a bar, club or office? Club Pass · $49/year" (`data-state=none\|ended\|past_due\|revoked`); opens the Club Pass checkout (signing in first). Never in the iOS app |
-| `club-perks`, `club-disclosure` | the Club Pass checkout sheet: what it includes, and its subscription disclosure (name, length, price per year, renews until canceled, how to cancel, Terms and Privacy); its confirm is `pay-confirm` |
-| `club-section` | Profile → Club Pass, for a holder (an active Club Pass) |
-| `club-status` | Profile → Club Pass: the club's logo and "Active · renews Oct 19, 2027" ("Active" alone in the iOS app) |
-| `club-manage` | Profile → Club Pass "Manage" (the Stripe Customer Portal) or "End test Club Pass"; web only, never in the iOS app |
+| `host-pass-section` | Profile → Annual Pass (`data-state=none\|active\|club\|ended\|past_due\|revoked`; `club`: no Annual Pass, the Annual Pass + Venue covers it, "Included with your Annual Pass + Venue"); absent on the web when the pass isn't sold there and was never held |
+| `pass-get` | Profile → Annual Pass "Get the Annual Pass · $19.99/year" ("Get a test pass · no charge" in test mode); goes through the sign-in gate on the web |
+| `pass-status` | Profile → Annual Pass status: "Active · renews Oct 19, 2027", "Ends Oct 19, 2027", "Ended …" |
+| `pass-manage` | Profile → Annual Pass "Manage" (Apple's subscription management in the iOS app, a Stripe Customer Portal on the web) or "End test pass" in test mode |
+| `pass-restore` | Profile → Annual Pass "Restore purchases" (iOS app only) |
+| `club-pitch`, `club-get` | Profile → under the Annual Pass, for everyone on the web without an active Annual Pass + Venue: "Running squares for a bar, club or office? Annual Pass + Venue · $49/year" (`data-state=none\|ended\|past_due\|revoked`); opens the Annual Pass + Venue checkout (signing in first). Never in the iOS app |
+| `club-perks`, `club-disclosure` | the Annual Pass + Venue checkout sheet: what it includes, and its subscription disclosure (name, length, price per year, renews until canceled, how to cancel, Terms and Privacy); its confirm is `pay-confirm` |
+| `club-section` | Profile → Annual Pass + Venue, for a holder (an active Annual Pass + Venue) |
+| `club-status` | Profile → Annual Pass + Venue: the club's logo and "Active · renews Oct 19, 2027" ("Active" alone in the iOS app) |
+| `club-manage` | Profile → Annual Pass + Venue "Manage" (the Stripe Customer Portal) or "End test Annual Pass + Venue"; web only, never in the iOS app |
 | `club-name`, `club-name-save` | the club name field (40 characters; a name that talks money is refused) and its Save |
 | `club-logo-file`, `club-logo-upload`, `club-logo-remove` | the logo's file input (hidden), its Upload / Replace button and Remove |
 | `club-tv` | the TV link card (`data-state=none\|known\|elsewhere`: no link yet, made on this device, made on another device) |
 | `club-tv-url`, `club-tv-copy`, `club-tv-open` | the TV link this device made (shortened, its token hidden), Copy link, and Open (web only) |
 | `club-tv-make`, `club-tv-rotate`, `club-tv-confirm`, `club-tv-rotate-confirm` | "Make a TV link", "New link", and the confirm saying the old link stops working ("Make a new link") |
 | `club-board`, `club-boards-empty` | each of the club's open and live boards in Profile, or the empty line |
-| `club-banner` | "Hosted by <club>" with its logo above a Club Pass holder's board (and its invite view) |
+| `club-banner` | "Hosted by <club>" with its logo above an Annual Pass + Venue holder's board (and its invite view) |
 | `club-logo`, `club-initial` | the club's logo image, or its initial on gold when it has none (banner, Profile, TV, printout) |
-| `host-export` | host tools → Board → "Players list (CSV)" on a Club Pass board (host and co-hosts): a download on the web, the share sheet in the iOS app |
+| `host-export` | host tools → Board → "Players list (CSV)" on an Annual Pass + Venue board (host and co-hosts): a download on the web, the share sheet in the iOS app |
 | `invite-share` | the share-invite button in the invite sheet |
 | `invite-copy` | the link preview card in the invite sheet (tap to copy) |
 | `invite-code-toggle` | "Same room? Show code" toggle in the invite sheet |
@@ -133,15 +133,15 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `jax-pick` | "Let Jax pick" on an open board (next to the hint above the grid). Asks how many (`jax-count-sheet`) when more than one square is allowed, then claims that many random open squares for me (joined), or picks them and opens the join sheet (newcomer). Hidden while squares are picked by hand, at my max, or when the board is full |
 | `jax-count-sheet`, `jax-count-chip`, `jax-count-confirm` | "How many squares?" for Let Jax pick: the sheet, its quick counts (`data-count`), and "Pick N squares" |
 | `jax-cheer` | not a control: the Jax cheer overlay while it plays after one of my squares wins (board and Home), for screenshot harnesses |
-| `host-lock` | lock board + draw numbers ("Draw the numbers · $4.99" while the host fee is due; "Draw the numbers · Free" with `host-free-note` on a board of 5 or fewer players; "Draw the numbers" with `host-pass-note` when the Host Pass covers it) |
+| `host-lock` | lock board + draw numbers ("Draw the numbers · $4.99" while the host fee is due; "Draw the numbers · Free" with `host-free-note` on a board of 5 or fewer players; "Draw the numbers" with `host-pass-note` when the Annual Pass covers it) |
 | `host-pay-ahead` | linked boards whose host fee is due, before kickoff: "Pay now and Jax draws the numbers at kickoff" (opens the checkout sheet) |
 | `board-waiting` | the board hint for players on an open board that's full, or a linked game on without its numbers: "Waiting on the host to draw the numbers." |
 | `score-x`, `score-y`, `score-save` | host score entry |
 | `score-quick-adds`, `score-quick-add` | the every-score pad's one-tap points (`data-play=TD\|FG\|XP\|2-PT\|Safety`: +6, +3, +1, +2, +2) for the team being typed |
 | `host-open` | the host bar button that opens the host sheet |
-| `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step ("Draw the numbers · $4.99" while the host fee is due: opens the checkout sheet, then draws; "Draw the numbers · Free" on a board of 5 or fewer players: it just draws, the confirm saying "No host fee." with `host-free-note`; with an active Host Pass it just draws, the confirm saying "Included with your Host Pass.") |
+| `host-lock-confirm` | "Draw the numbers" — actually locks, after the `host-lock` confirm step ("Draw the numbers · $4.99" while the host fee is due: opens the checkout sheet, then draws; "Draw the numbers · Free" on a board of 5 or fewer players: it just draws, the confirm saying "No host fee." with `host-free-note`; with an active Annual Pass it just draws, the confirm saying "Included with your Annual Pass.") |
 | `reveal-close`, `reveal-done` | the number reveal (host, after the draw): the X at the top (closes it any time, even mid-shuffle) and "See the board" (pinned at the bottom once the numbers land) |
-| `host-bar-action` | the host bar's next-action pill (full width, "Draw the numbers · $4.99", when it's time to draw and the host fee is due; full width "Draw the numbers · Free" with `host-free-note` on a board of 5 or fewer players; full width "Draw the numbers" with `host-pass-note` when the Host Pass covers it) |
+| `host-bar-action` | the host bar's next-action pill (full width, "Draw the numbers · $4.99", when it's time to draw and the host fee is due; full width "Draw the numbers · Free" with `host-free-note` on a board of 5 or fewer players; full width "Draw the numbers" with `host-pass-note` when the Annual Pass covers it) |
 | `notify-enable` | "Turn on notifications" in the notify sheet and on Profile |
 | `notify-email-instead`, `notify-email-close` | the notify sheet after a claim, when the server has email notices (docs/email.md): "Get email instead" under the Home Screen guide and the blocked fix (opens the email step); the email step's "Not now" / "Done" |
 | `board-notify`, `board-notify-sheet`, `board-notify-done` | a board's bell in its top bar (players only, when email is set up), the notification settings sheet it opens (this device's mute when notifications are on, and email), and its Close / Done |
@@ -153,6 +153,12 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `email-confirm`, `email-unsubscribe-board`, `email-unsubscribe-all`, `email-page-open` | on that page: "Confirm my email", "Unsubscribe from this board", "Unsubscribe from all JaxSquares email" (also "Stop all JaxSquares email too"), "Open the board" / "Open JaxSquares" |
 | `profile-edit`, `profile-name`, `look-done` | Profile hero, name field in the look sheet, its done button |
 | `score-saved` | footer confirmation after a host saves a score |
+| `goal-entry` | a soccer board's goal pad in the host sheet (in place of the score pad): the goals so far, then the next goal |
+| `goal-row` | each goal so far (`data-key=s1`...; `aria-pressed` while it's being fixed); tapping one fixes it |
+| `goal-team-x`, `goal-team-y` | who scored (`role=radio`) |
+| `goal-minute`, `goal-added` | the minute the match showed and its stoppage time (blank: none) |
+| `goal-preview` | the footer line before saving a goal: the minute, whose square it is and what it would win |
+| `goal-full-time` | "Full time": ends a soccer match (the last goal, or 00 with no goals) |
 | `player-remove` | host only, while squares are being picked: the remove button on another player's row (board players list and the host sheet's Players view) |
 | `remove-player-confirm` | "Remove Maya" in the host sheet's remove confirm — actually removes the player |
 | `cohost-invite` | host only: "Invite a co-host" in the host sheet's Co-hosts section ("They can do everything you can, except remove you."); makes a single-use link and opens "Co-host invite ready". Disabled at 3 co-hosts |
@@ -169,9 +175,13 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `account-signed-in` | the "Signed in with Apple / Google" row (email underneath) |
 | `account-sign-out`, `account-sign-out-confirm` | Profile → Account "Sign out", and the confirm sheet's "Sign out" (actually signs out; the device starts fresh) |
 | `account-delete`, `account-delete-sheet`, `account-delete-confirm` | "Delete account", its confirm sheet's body (what's deleted, what stays), and "Delete account" in it (actually deletes) |
-| `signin-sheet` | the reusable sign-in sheet's body (`SignInSheet`: Home's card, the welcome screen) |
+| `signin-sheet` | the reusable sign-in sheet's body (`SignInSheet`: Home's card and Sign in button, the welcome screen) |
+| `signin-dismiss` | "Not now" in a sign-in sheet that can be skipped (the create flow's up-front offer to a device that signed in before) |
 | `home-signin-card`, `home-signin-open`, `home-signin-dismiss` | Home's one sign-in card (a device with boards, not signed in, a provider set up), its "Sign in" (opens `signin-sheet`) and "Not now" (hides it for good on this device) |
-| `welcome-signin` | "Playing on another device? Sign in" on the welcome screen (opens `signin-sheet`) |
+| `welcome-signin` | the welcome screen's "Sign in" at the top right (opens `signin-sheet`); not shown when signed in or when no sign-in is set up |
+| `home-signin` | the dashboard's "Sign in" next to the bell (`SignInPill`), on a device that isn't signed in |
+| `welcome-links` | the welcome screen's Pricing · Terms · Privacy · Support links |
+| `pricing-board`, `pricing-pass`, `pricing-club` (each with `-price`), `pricing-venue` | `/pricing`'s plans: per game, the Annual Pass, the Annual Pass + Venue (web only), and the Venue add-on line (web only) |
 | `board-theme-toggle` | the sun/moon button in a board's top bar: switches to light or dark (saved like the Profile choice) |
 | `invite-tv`, `invite-print` | the invite sheet's "Show on TV" (opens the two ways onto a TV, `show-on-tv`) and "Print board" (opens `/g/:id/print`) |
 | `show-on-tv`, `show-on-tv-smart`, `show-on-tv-cast`, `show-on-tv-here` | the two ways onto a TV (share sheet, venue card, Host tools): "Smart TV with a web browser", "AirPlay, Chromecast or a cable", and its "Open TV mode here" |
@@ -198,7 +208,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `tv-upcoming` | TV "Still to play": the moments to come with what each can show ("Q3 $200", "Final the rest") |
 | `tv-celebrate` | the winner card over the TV board after a winner lands (`data-period`), with Jax cheering (`jax-cheer`); it goes by itself after 7 s |
 | `tv-offline`, `tv-brand` | TV mode's "Offline · showing the last update" pill, and its small JaxSquares mark |
-| `tv-club` | TV mode's panel corner on a Club Pass holder's board: the club's logo and name (in place of `tv-brand`) |
+| `tv-club` | TV mode's panel corner on an Annual Pass + Venue holder's board: the club's logo and name (in place of `tv-brand`) |
 | `club-tv` | the club TV (`/club/:clubId/tv#k=<token>`): `data-board` (the board on screen), `data-boards` (how many go round); `data-state=loading\|missing\|offline\|empty\|inactive` when no board is up |
 | `club-tv-corner`, `club-tv-progress` | the club TV's corner at the foot of the panel: the club's logo and name, and "Board 2 of 4" with dots |
 | `club-tv-title` | the club's logo and name, big, when the club TV has no board to show |
@@ -206,7 +216,7 @@ Keep these `data-testid`s stable; the floors measurements depend on them.
 | `print-amounts`, `print-button` | on screen only (never printed): the "Include square price and prizes" switch (off by default; absent on a board with no price or amounts) and "Print" ("Send to a computer to print" in the native app, which shares the print link) |
 | `print-cell` | each printed square (`data-row`, `data-col`, `data-winner` on a decided one): its owner's name fitted to the box, empty for open squares |
 | `print-subtitle`, `print-price` | the sheet's title row: "Chiefs vs Bills · Sun, Oct 25, 2026 · 1:00 PM PDT", and "$10 a square" (amounts on only) |
-| `print-club` | on a Club Pass holder's board, " · Hosted by <club>" in the subtitle, with the club's logo (`club-logo`) beside the title |
+| `print-club` | on an Annual Pass + Venue holder's board, " · Hosted by <club>" in the subtitle, with the club's logo (`club-logo`) beside the title |
 | `print-rules`, `print-amount` | "Who wins": one line per moment (`data-moment`), with each square's amount (`print-amount`) only when amounts are on |
 | `print-winners` | a line per fixed moment to write each winner on, filled in once decided |
 | `print-qr`, `print-follow`, `print-signup` | the QR code to the live board, "Follow it live: jaxsquares.com/g/…", and (while squares are open) "Grab a square on your phone, or write your name in a box." |

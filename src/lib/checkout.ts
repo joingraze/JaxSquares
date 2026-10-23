@@ -10,7 +10,8 @@
 import type { NativePurchasesPlugin, Transaction } from "@capgo/native-purchases";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { Appearance, ClickResolveDetails, Stripe, StripeExpressCheckoutElement, StripePaymentElement } from "@stripe/stripe-js";
-import type { AppConfig, BoardKind, GameState, HostPassIntent, HostPassState, HostPassTransaction, PassPlan, PaymentConfig } from "../../shared/types";
+import { feeDue, type BoardPrices, type FeeDue, type PassCover, type PricedBoard } from "../../shared/pricing";
+import type { AppConfig, GameState, HostPassIntent, HostPassState, HostPassTransaction, PassPlan, PaymentConfig } from "../../shared/types";
 import { getClientId, isSignedIn } from "./identity";
 import { getResolvedTheme, type ResolvedTheme } from "./theme";
 
@@ -34,7 +35,7 @@ export class CheckoutError extends Error {
     public status: number,
     public state?: GameState,
     public unused = false,
-    /** The server's `code` (e.g. ACCOUNT_REQUIRED_CODE), and its Host Pass state when it sent one. */
+    /** The server's `code` (e.g. ACCOUNT_REQUIRED_CODE), and its Annual Pass state when it sent one. */
     public code?: string,
     public pass?: HostPassState,
   ) {
@@ -141,25 +142,31 @@ export function formatPrice(cents: number, currency = "usd", locale?: string): s
   }).format(amount);
 }
 
-/**
- * The host fee to show on this device ("Draw the numbers · $4.99"), or null
- * when it can't be said. Web: the server's price, test mode included (the
- * checkout itself says it charges nothing then). iOS: only the App Store's own
- * localized string (App Store guideline 3.1.1: the in-app price is Apple's;
- * never the web price), null when StoreKit can't say.
- */
-export async function hostFeePrice(config: PaymentConfig, platform: Platform, kind: BoardKind = "board"): Promise<string | null> {
-  const fee = feeOf(config, kind);
-  if (platform === "ios") return appStorePrice(platform, fee.iapProductId);
-  return formatPrice(fee.priceCents, config.currency);
+/** One board's prices on this deployment: its host fee and the Venue add-on (shared/pricing.ts). */
+export function boardPricesOf(config: PaymentConfig): BoardPrices {
+  return { boardCents: config.priceCents, venueCents: config.venuePriceCents ?? 0 };
+}
+
+/** What drawing this board costs with this pass cover (the free tier aside): shared/pricing.ts feeDue. */
+export function boardDue(config: PaymentConfig, board: PricedBoard, cover: PassCover = "none"): FeeDue {
+  return feeDue(board, boardPricesOf(config), cover);
 }
 
 /**
- * What a board's host fee is and its App Store product: a season board's one
- * fee for the whole season (PaymentConfig.season), else one board's.
+ * What drawing a board costs as this device shows it ("Draw the numbers ·
+ * $4.99", "$14.99" with the Venue add-on), or null when it can't be said or
+ * nothing per board is sold (a season board without the Annual Pass). Web:
+ * the server's prices, test mode included (the checkout itself says it
+ * charges nothing then). iOS: only the App Store's own localized string for
+ * one board's host fee (App Store guideline 3.1.1: the in-app price is
+ * Apple's; never the web price), null when StoreKit can't say or the Venue
+ * add-on is due (it isn't sold in the app).
  */
-export function feeOf(config: PaymentConfig, kind: BoardKind = "board"): { priceCents: number; iapProductId: string } {
-  return kind === "season" && config.season ? config.season : { priceCents: config.priceCents, iapProductId: config.iapProductId };
+export async function hostFeePrice(config: PaymentConfig, platform: Platform, board: PricedBoard = { format: {} }, cover: PassCover = "none"): Promise<string | null> {
+  const due = boardDue(config, board, cover);
+  if (due.needsPass || due.cents === 0) return null;
+  if (platform === "ios") return due.venueCents > 0 ? null : appStorePrice(platform, config.iapProductId);
+  return formatPrice(due.cents, config.currency);
 }
 
 /** A price to compare with another one in the same currency: cents on the web, StoreKit's decimal amount in the iOS app. */
@@ -211,7 +218,7 @@ export function appStorePrice(platform: Platform, productId: string): Promise<st
 }
 
 /**
- * The board fee and the Host Pass as amounts this device can compare (for
+ * The board fee and the Annual Pass as amounts this device can compare (for
  * "Pays for itself by your fifth board"): the server's prices on the web,
  * only the App Store's in the iOS app (never the web price there). Either is
  * null when it can't be said.
@@ -230,10 +237,10 @@ export async function hostPrices(config: PaymentConfig, platform: Platform): Pro
   };
 }
 
-// ---- The Host Pass: what's sold here, at what price ----
+// ---- The Annual Pass: what's sold here, at what price ----
 
 /**
- * How this device buys the Host Pass, or null when it isn't sold here: the
+ * How this device buys the Annual Pass, or null when it isn't sold here: the
  * no-charge test pass in test mode, the App Store subscription in the iOS app,
  * Stripe on the web only once the server has a Stripe price for it.
  */
@@ -247,7 +254,7 @@ export function passCheckoutMethod(config: PaymentConfig, platform: Platform): C
 }
 
 /**
- * How this device buys the Club Pass, or null when it isn't sold here: never
+ * How this device buys the Annual Pass + Venue, or null when it isn't sold here: never
  * in the iOS app (it may unlock what was bought on the web, but never offers
  * or points to buying it: App Store guidelines 3.1.1 and 3.1.3(b)); the
  * no-charge test pass in test mode; Stripe on the web once the server has the
@@ -261,7 +268,7 @@ export function clubCheckoutMethod(config: PaymentConfig, platform: Platform): C
   return hasWalletApi() ? "wallet" : "card";
 }
 
-/** The Club Pass's yearly price on the web ("$49"); null in the iOS app, which never shows it. */
+/** The Annual Pass + Venue's yearly price on the web ("$49"); null in the iOS app, which never shows it. */
 export function clubPassPrice(config: PaymentConfig, platform: Platform): string | null {
   const offer = config.clubPass;
   if (!offer || platform === "ios") return null;
@@ -419,7 +426,7 @@ async function confirmTransaction(
 
 /**
  * Confirms the purchases among `transactions` that nothing else is handling:
- * board host fees (returns the boards they paid for) and Host Pass
+ * board host fees (returns the boards they paid for) and Annual Pass
  * transactions (a purchase that landed later, or a renewal; `onPass` hears the
  * pass's new state).
  */
@@ -440,8 +447,8 @@ async function redeemBoardPurchases(
       await redeemPassTransaction(store, tx).then(onPass, () => {});
       continue;
     }
-    // A board's fee or a season board's: both pay for one board (its id rides in the purchase).
-    const gameId = boardOf(tx, [payments.iapProductId, ...(payments.season ? [payments.season.iapProductId] : [])]);
+    // A board's host fee: its id rides in the purchase.
+    const gameId = boardOf(tx, [payments.iapProductId]);
     if (!gameId || redeeming.has(tx.transactionId) || settled.has(tx.transactionId)) continue;
     try {
       // Sent even without this device's admin token (the board was deleted here): if
@@ -479,7 +486,7 @@ export interface IAPWatchOptions {
   onPaid: (state: GameState) => void;
   /** A purchase was kept but paid for nothing (board already paid for, or deleted); the message says what to do. */
   onUnused?: (message: string) => void;
-  /** A Host Pass transaction (a purchase that landed later, or a renewal) is confirmed: the identity's pass now. */
+  /** An Annual Pass transaction (a purchase that landed later, or a renewal) is confirmed: the identity's pass now. */
   onPass?: (state: HostPassState) => void;
   /** Subscribes to the app returning to the foreground (onAppResume in lib/native). */
   onResume?: (cb: () => void) => () => void;
@@ -623,7 +630,7 @@ export interface WalletButtonOptions {
   publishableKey?: string | null;
   /** 40–55 px. */
   buttonHeight?: number;
-  /** Apple Pay's recurring payment request, for the Host Pass (Apple shows the yearly billing in the sheet). */
+  /** Apple Pay's recurring payment request, for the Annual Pass (Apple shows the yearly billing in the sheet). */
   applePay?: ClickResolveDetails["applePay"];
 }
 
@@ -714,19 +721,29 @@ export async function mountCardForm(el: HTMLElement, opts: CardFormOptions): Pro
   };
 }
 
-// ---- The Host Pass: buying, confirming, restoring, managing ----
-// One yearly subscription that covers the host fee of every board its holder
-// hosts. The server activates it only from Stripe's or Apple's own data.
+// ---- The Annual Pass: buying, confirming, restoring, managing ----
+// The Annual Pass: one yearly subscription that covers the host fee of every
+// board its holder hosts (with the Venue add-on, venue boards too). The server
+// activates it only from Stripe's or Apple's own data.
 
 /** This identity's pass and how it's sold here. */
 export function fetchPassState(): Promise<HostPassState> {
   return request<HostPassState>("GET", "/payments/pass");
 }
 
-/** What the purchase routes take for a plan: nothing for the Host Pass (as before), `{ plan: "club" }` for the Club Pass. */
+/** What the purchase routes take for a plan: nothing for the Annual Pass, `{ plan: "club" }` for the Annual Pass + Venue. */
 const planBody = (plan: PassPlan) => (plan === "club" ? { body: { plan } } : {});
 
-/** Test mode: a no-charge pass that lasts a year (the Club Pass with `plan` "club"). */
+/**
+ * Adds the Venue add-on to this identity's web Annual Pass: Stripe charges
+ * what's left of this year's difference now, to the card the pass renews on.
+ * A CheckoutError 402 means the card was refused (nothing changed).
+ */
+export function upgradePassToVenue(): Promise<HostPassState> {
+  return request<HostPassState>("POST", "/payments/pass/stripe/venue");
+}
+
+/** Test mode: a no-charge pass that lasts a year (the Annual Pass + Venue with `plan` "club"). */
 export function startTestPass(plan: PassPlan = "host"): Promise<HostPassState> {
   return request<HostPassState>("POST", "/payments/pass/test", planBody(plan));
 }
@@ -783,7 +800,7 @@ export async function manageAppStoreSubscriptions(): Promise<void> {
 
 export type PassPurchaseOutcome = { status: "active"; state: HostPassState } | { status: "cancelled" } | { status: "pending" };
 
-const PASS_UNCONFIRMED = "Your Host Pass went through but isn't confirmed yet. Open Profile in a moment, or tap Restore purchases. You won't be charged twice.";
+const PASS_UNCONFIRMED = "Your Annual Pass went through but isn't confirmed yet. Open Profile in a moment, or tap Restore purchases. You won't be charged twice.";
 
 /** Pass confirmations in flight, by transaction id. */
 const passRedeeming = new Map<string, Promise<HostPassState>>();
@@ -825,14 +842,14 @@ async function confirmPassTransaction(store: NativePurchasesPlugin, tx: Pick<Tra
 }
 
 /**
- * iOS: buys the yearly Host Pass in the App Store sheet (the App Store shows
+ * iOS: buys the yearly Annual Pass in the App Store sheet (the App Store shows
  * its own price and terms), has the server verify it with Apple, then
  * finishes the transaction. No sign-in needed: Apple keeps the subscription,
  * and Restore purchases brings it back.
  */
 export async function buyPassWithIAP(productId?: string): Promise<PassPurchaseOutcome> {
   const [store, productIdentifier] = await Promise.all([nativePurchases(), productId ?? fetchAppConfig().then((c) => c.payments.hostPass?.iapProductId ?? "")]);
-  if (!productIdentifier) throw new CheckoutError("The Host Pass isn't available right now.", 0);
+  if (!productIdentifier) throw new CheckoutError("The Annual Pass isn't available right now.", 0);
   let tx: Transaction;
   try {
     tx = await store.purchaseProduct({ productIdentifier, quantity: 1, autoAcknowledgePurchases: false });
@@ -847,7 +864,7 @@ export async function buyPassWithIAP(productId?: string): Promise<PassPurchaseOu
 
 /**
  * iOS "Restore purchases" (App Store guideline 3.1.1): syncs with the App
- * Store, then sends this Apple ID's current Host Pass transactions (with
+ * Store, then sends this Apple ID's current Annual Pass transactions (with
  * StoreKit's signed copy of each) for the server to verify and attach to
  * this identity. `restored` is how many it attached.
  */

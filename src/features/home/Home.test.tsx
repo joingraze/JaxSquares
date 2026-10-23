@@ -3,7 +3,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameState, GameSummary } from "../../../shared/types";
 import { ToastProvider } from "../../components/ui";
+import { resetAuthConfig } from "../../lib/auth";
 import { getPlayerId, setServerIdentity } from "../../lib/identity";
+import { resetMyGames } from "../../lib/live";
 import { markCelebrated } from "../board/storage";
 import Home from "../../pages/Home";
 
@@ -99,10 +101,18 @@ class FakeSocket {
   }
 }
 
-function serve(games: GameSummary[], states: Record<string, GameState> = {}) {
+/** GET /api/config with Google and Apple sign-in set up. */
+const SIGN_IN_CONFIG = {
+  payments: { mode: "test", priceCents: 499, currency: "usd", stripePublishableKey: null, iapProductId: "com.jaxsquares.app.board" },
+  vapidPublicKey: null,
+  auth: { googleWebClientId: "web.apps.googleusercontent.com", googleIosClientId: null, appleServicesId: "com.jaxsquares.web", appleNative: true },
+};
+
+function serve(games: GameSummary[], states: Record<string, GameState> = {}, opts: { signIn?: boolean } = {}) {
   fetchMock.mockImplementation((url: string) => {
     const json = (body: unknown, status = 200) =>
       Promise.resolve(new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } }));
+    if (opts.signIn && url.endsWith("/api/config")) return json(SIGN_IN_CONFIG);
     if (/\/api\/me\/games(\?|$)/.test(url)) return json({ games });
     const id = /\/api\/games\/([^/?]+)$/.exec(url)?.[1];
     if (id && states[id]) return json(states[id]);
@@ -126,6 +136,8 @@ function renderHome() {
 
 beforeEach(() => {
   localStorage.clear();
+  resetAuthConfig();
+  resetMyGames(true);
   sockets.clear();
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
@@ -140,20 +152,29 @@ describe("Home", () => {
   it("welcomes a brand-new device with one primary call to action", async () => {
     serve([]);
     renderHome();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Sports squares,/);
     const cta = screen.getByTestId("new-board");
     expect(cta).toHaveAttribute("href", "/new");
     expect(cta).toHaveTextContent("Make a board");
     expect(screen.getByRole("button", { name: "Join with a code" })).toBeInTheDocument();
     expect(screen.getByTestId("welcome-note")).toHaveTextContent("Friends join from a link, no account needed.");
+    // Pricing and the fine print, one tap away (what Stripe's and Google's reviews look for on the home page).
+    const links = within(screen.getByTestId("welcome-links")).getAllByRole("link");
+    expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Pricing", "/pricing"],
+      ["Terms", "/terms"],
+      ["Privacy", "/privacy"],
+      ["Support", "/support"],
+    ]);
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.getAllByTestId("new-board")).toHaveLength(1);
   });
 
-  it("says it's for football and basketball, and links the web's rules guide as a full page", async () => {
+  it("names the sports, and links the web's rules guide as a full page", async () => {
     serve([]);
     renderHome();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/^Sports squares,\s*live with your\s*crew\.$/);
-    expect(screen.getByText(/^Football and basketball\./)).toBeInTheDocument();
+    expect(screen.getByText(/^Football, basketball or soccer:/)).toBeInTheDocument();
     // A plain link, not the router's: the guide is a static page, not an app screen.
     expect(screen.getByTestId("welcome-guide")).toHaveAttribute("href", "/how-to-play-football-squares");
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
@@ -171,6 +192,21 @@ describe("Home", () => {
       delete (navigator as Navigator & { standalone?: boolean }).standalone;
       ua.mockRestore();
     }
+  });
+
+  it("puts Sign in at the top right of the welcome screen and the dashboard, where sign-in is set up", async () => {
+    serve([], {}, { signIn: true });
+    const view = renderHome();
+    const pill = await screen.findByTestId("welcome-signin");
+    expect(pill).toHaveTextContent("Sign in");
+    expect(pill.closest("header")).not.toBeNull();
+    view.unmount();
+
+    localStorage.setItem("jaxsquares.games", JSON.stringify(["g1"]));
+    serve([summary({ id: "g1", name: "Sunday Funday", mySquares: 3, claimed: 37 })], {}, { signIn: true });
+    renderHome();
+    expect(await screen.findByTestId("home-signin")).toHaveTextContent("Sign in");
+    expect(screen.getByTestId("home-signin").closest("header")).not.toBeNull();
   });
 
   it("tells someone signed in with no boards yet where a board made before signing in is", async () => {

@@ -1,19 +1,21 @@
 // Terms of use (https://jaxsquares.com/terms). Plain language on purpose; have it
 // reviewed before launch. The product rule it encodes: no money between players.
-// The only charge is the host fee, due when the host draws the numbers of a
-// board more than 5 players hold squares on (smaller boards draw free), or the
-// yearly Host Pass that covers it. Prices show as this device shows
-// them (useHostFee, useHostPassPrice): inside the iOS app only the App Store's
+// The only charges are the host's (shared/pricing.ts): the host fee, due when
+// the host draws the numbers of a board more than 5 players hold squares on
+// (smaller boards draw free), plus the Venue add-on on a venue board, or the
+// yearly Annual Pass that covers them. Prices show as this device shows them
+// (useHostFee, useHostPassPrice): inside the iOS app only the App Store's
 // price and Apple's billing, never the web price or Stripe (App Store
-// guideline 3.1.1). /terms#host-pass is linked from the subscription disclosure.
-// The Club Pass (section 6, /terms#club-pass) is sold on the web only: in the
-// iOS app this section describes what it unlocks and never its price or how to
-// buy it (App Store guidelines 3.1.1 / 3.1.3(b)).
+// guideline 3.1.1). /terms#host-pass is linked from the subscription
+// disclosure. The Venue add-on (section 6, /terms#club-pass) is sold on the
+// web only: in the iOS app this section describes what it unlocks and never
+// its price or how to buy it (App Store guidelines 3.1.1 / 3.1.3(b)).
 import { useEffect, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { FREE_PLAYER_LIMIT } from "../../shared/hostFee";
 import { CheckIcon, GiftIcon, UsersIcon, XIcon } from "../components/icons";
 import { Card, ListGroup, TopBar } from "../components/ui";
+import { formatPrice } from "../lib/checkout";
 import { platform } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
 import { useClubPassPrice, useHostPassPrice } from "../lib/useHostPass";
@@ -56,10 +58,12 @@ function Point({ children, no }: { children: ReactNode; no?: boolean }) {
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
 export default function Terms() {
-  const { price } = useHostFee();
+  const { price, payments } = useHostFee();
   const { price: passPrice } = useHostPassPrice();
   const clubPrice = useClubPassPrice();
   const inApp = platform() === "ios";
+  // The Venue add-on on one board, on the web only (the app never shows it).
+  const venuePrice = !inApp && payments?.venuePriceCents ? formatPrice(payments.venuePriceCents, payments.currency) : null;
   // The subscription disclosures link here as /terms#host-pass and /terms#club-pass.
   const { hash } = useLocation();
   useEffect(() => {
@@ -90,7 +94,7 @@ export default function Terms() {
 
         <Section n={1} title="The game">
           <p>
-            JaxSquares lets a group of friends play football squares together: a host makes a board, shares the link, everyone claims squares, and
+            JaxSquares lets a group of friends play squares together on football, basketball and soccer games: a host makes a board, shares the link, everyone claims squares, and
             the numbers are drawn at random when the host locks the board. You don't need an account to play.
           </p>
         </Section>
@@ -125,10 +129,12 @@ export default function Terms() {
 
         <Section n={4} title="The host fee">
           <p>
-            The only charge in JaxSquares is the host fee for creating and managing a board: {price ? `${price} per board` : "once per board"},
-            charged when the host draws the numbers of a board whose squares are held by more than {FREE_PLAYER_LIMIT} players, unless the host's
-            Host Pass covers it (section 5). Drawing the numbers of a board held by {FREE_PLAYER_LIMIT} or fewer players is free, and so are setting
-            up a board, inviting friends and picking squares.
+            The only charges in JaxSquares are the host's, for creating and managing boards: the host fee for a board,{" "}
+            {price ? `${price} per board` : "once per board"}, charged when the host draws the numbers of a board whose squares are held by more
+            than {FREE_PLAYER_LIMIT} players, unless the host's Annual Pass covers it (section 5).
+            {inApp ? "" : ` A venue's board (venue mode) adds the Venue add-on${venuePrice ? `, ${venuePrice}` : ""}, charged with its host fee, unless the host's Annual Pass has the Venue add-on (section 6).`}{" "}
+            Season boards come with the Annual Pass. Drawing the numbers of a board held by {FREE_PLAYER_LIMIT} or fewer players is free, and so are
+            setting up a board, inviting friends and picking squares.
           </p>
           <p>
             {inApp ? "In the iPhone app, the fee is an In-App Purchase billed by Apple." : "In the iPhone app, the fee is an In-App Purchase billed by Apple. On the web, it's charged through Stripe."}{" "}
@@ -151,21 +157,21 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section n={5} title="The Host Pass" id="host-pass">
+        <Section n={5} title="The Annual Pass" id="host-pass">
           <p>
-            The Host Pass is an optional yearly subscription: {passPrice ? `${passPrice} a year` : "a yearly price shown before you buy"}. While
-            it's active, it covers the host fee on every board you host, so drawing the numbers costs nothing more. Boards you drew while it was
-            active stay drawn after it ends.
+            The Annual Pass is an optional yearly subscription: {passPrice ? `${passPrice} a year` : "a yearly price shown before you buy"}, for a
+            year from the day you buy it. While it's active, it covers the host fee on every board you host, season boards included, so drawing the
+            numbers costs nothing more. Boards you drew while it was active stay drawn after it ends.
           </p>
           <p>
             It renews automatically every year until you cancel.{" "}
             {inApp
               ? "In the iPhone app it's an App Store subscription billed by Apple. Cancel any time in Settings › your name › Subscriptions, at least 24 hours before it renews to avoid the next charge."
-              : "In the iPhone app it's an App Store subscription billed by Apple: cancel it in Settings › your name › Subscriptions, at least 24 hours before it renews to avoid the next charge. On the web it's billed through Stripe: cancel any time in Profile › Host Pass › Manage, before it renews to avoid the next charge."}{" "}
+              : "In the iPhone app it's an App Store subscription billed by Apple: cancel it in Settings › your name › Subscriptions, at least 24 hours before it renews to avoid the next charge. On the web it's billed through Stripe: cancel any time in Profile › Annual Pass › Manage, before it renews to avoid the next charge."}{" "}
             Canceling stops the next renewal; the pass stays active until the end of the year you've paid for.
           </p>
           <p>
-            Except where the law or the platform's rules require a refund, the Host Pass isn't refundable. App Store subscriptions are refunded by
+            Except where the law or the platform's rules require a refund, the Annual Pass isn't refundable. App Store subscriptions are refunded by
             Apple at{" "}
             <a href="https://reportaproblem.apple.com" target="_blank" rel="noopener noreferrer" className={link}>
               reportaproblem.apple.com
@@ -185,12 +191,12 @@ export default function Terms() {
           </p>
         </Section>
 
-        <Section n={6} title="The Club Pass" id="club-pass">
+        <Section n={6} title="The Venue add-on" id="club-pass">
           {inApp ? (
             <p>
-              The Club Pass is a yearly plan for bars, booster clubs, offices and fundraisers. If your account has one, it covers the host fee like
-              the Host Pass, and its club features work in the app too: your club's name and logo on the boards you host, up to 10 co-hosts per
-              board, each board's players list, and a TV link that rotates your boards. Questions about it? Contact{" "}
+              The Venue add-on is for bars and restaurants. If your account's Annual Pass has it, it covers venue boards too, and its venue
+              features work in the app too: your venue's name and logo on the boards you host, up to 10 co-hosts per board, each board's players
+              list, and a TV link that rotates your boards. Questions about it? Contact{" "}
               <Link to="/support" className={link}>
                 Support
               </Link>
@@ -199,17 +205,19 @@ export default function Terms() {
           ) : (
             <>
               <p>
-                The Club Pass is an optional yearly subscription for bars, booster clubs, offices and fundraisers:{" "}
-                {clubPrice ? `${clubPrice} a year` : "a yearly price shown before you buy"}, sold on the web and billed through Stripe. It needs a
-                signed-in account. While it's active it covers the host fee on every board you host, like the Host Pass, and adds your club's name
-                and logo on those boards (their TV view, printout, invite and link previews), up to 10 co-hosts per board, a download of each
-                board's players list (names, squares, numbers and when they joined; never who paid), and a TV link that rotates your open and live
-                boards. Boards you drew while it was active stay drawn after it ends; the club features stop when it ends.
+                The Venue add-on is for bars and restaurants, sold on the web and billed through Stripe. On one board, it's charged with the host
+                fee when the numbers are drawn (section 4): a venue board is free to play and gets house rules, prize pickup, up to 10 co-hosts and
+                a download of its players list (names, squares, numbers and when they joined; never who paid). On the Annual Pass, the Annual Pass +
+                Venue is an optional yearly subscription: {clubPrice ? `${clubPrice} a year` : "a yearly price shown before you buy"}, for a year
+                from the day you buy it. It needs a signed-in account. While it's active it covers every board you host, venue boards included, and
+                adds your venue's name and logo on those boards (their TV view, printout, invite and link previews) and a TV link that rotates your
+                open and live boards. Adding it to an Annual Pass you already have charges what's left of your pass's year at once, to the card the
+                pass renews on. Boards you drew while it was active stay drawn after it ends; the venue features stop when it ends.
               </p>
               <p>
-                It renews automatically every year until you cancel. Cancel any time in Profile › Club Pass › Manage, before it renews to avoid the
-                next charge; it stays active until the end of the year you've paid for. Except where the law requires a refund, it isn't refundable.
-                To ask about a refund, contact{" "}
+                It renews automatically every year until you cancel. Cancel any time in Profile › Venue add-on › Manage, before it renews to avoid
+                the next charge; it stays active until the end of the year you've paid for. Except where the law requires a refund, it isn't
+                refundable. To ask about a refund, contact{" "}
                 <Link to="/support" className={link}>
                   Support
                 </Link>
@@ -218,9 +226,9 @@ export default function Terms() {
             </>
           )}
           <p>
-            Your club's name and logo must be yours to use: don't upload someone else's logo or trademark. Like board names, a club name can't
-            mention money. Anyone with your club's TV link can watch the boards it shows, so share it only with your own screens; making a new link
-            stops the old one.
+            Your venue's name and logo must be yours to use: don't upload someone else's logo or trademark. Like board names, a venue name can't
+            mention money. Anyone with your venue's TV link can watch the boards it shows, so share it only with your own screens; making a new
+            link stops the old one.
           </p>
         </Section>
 

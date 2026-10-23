@@ -1,5 +1,5 @@
 // A club's logo and name in TV units (--u, 1% of the screen's short side): the
-// TV panel's corner on a Club Pass holder's board (TvBrand), and the club TV's
+// TV panel's corner on an Annual Pass + Venue holder's board (TvBrand), and the club TV's
 // own corner (/club/:id/tv, `corner`).
 
 import type { ClubBrand } from "../../../shared/types";

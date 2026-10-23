@@ -184,7 +184,7 @@ describe("the club TV", () => {
     renderTv();
     await flush();
     expect(screen.getByTestId("club-tv")).toHaveAttribute("data-state", "inactive");
-    expect(screen.getByTestId("club-tv")).toHaveTextContent("while its Club Pass is active");
+    expect(screen.getByTestId("club-tv")).toHaveTextContent("while its Venue add-on is active");
   });
 
   it("says a wrong or old link doesn't work, and never asks without a token", async () => {

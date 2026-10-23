@@ -145,7 +145,7 @@ interface StatusResponse {
 }
 
 /**
- * The current state of an auto-renewable subscription (the Host Pass) by its
+ * The current state of an auto-renewable subscription (the Annual Pass) by its
  * originalTransactionId, from the environment the purchase was made in: its
  * status, latest transaction (expiry, refund) and renewal info (auto-renew,
  * grace period). Null when Apple doesn't know it there. Like the transaction

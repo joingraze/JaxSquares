@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The Host Pass end to end against real SQL (node:sqlite, every migration
+// The Annual Pass end to end against real SQL (node:sqlite, every migration
 // applied): a test pass activates, drawing with an active pass marks the
 // board paid through the pass and locks it in one call, an expired pass gets
 // the 402, a pass holder's linked board draws itself at kickoff, the "kickoff
@@ -49,6 +49,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 let t: TestD1;
@@ -160,9 +161,9 @@ describe("the test pass", () => {
     expect(before.body).toEqual({
       pass: null,
       offer: { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true },
-      // The Club Pass is shown apart (worker/club.test.ts).
+      // The Annual Pass + Venue is shown apart (worker/club.test.ts).
       club: null,
-      clubOffer: { priceCents: 4900, currency: "usd", web: true },
+      clubOffer: { priceCents: 9999, currency: "usd", web: true },
     });
 
     const res = await call<HostPassState>("POST", "/payments/pass/test");
@@ -205,7 +206,7 @@ describe("the test pass", () => {
   });
 });
 
-describe("drawing with a Host Pass", () => {
+describe("drawing with an Annual Pass", () => {
   /** A board past the free tier: six friends hold squares. */
   async function crowded(over: Record<string, unknown> = {}, client = HOST): Promise<{ id: string; admin: string }> {
     const board = await create(over, client);
@@ -285,7 +286,7 @@ describe("drawing with a Host Pass", () => {
   });
 });
 
-describe("linked boards and a Host Pass", () => {
+describe("linked boards and an Annual Pass", () => {
   const feed = (state: "in" | "pre"): LiveUpdate => ({
     live: { state, period: state === "in" ? 1 : 0, clock: "15:00", detail: "", scoreX: 0, scoreY: 0, updatedAt: Date.now() },
     linescoresX: [],

@@ -7,7 +7,7 @@ import { encodeQr, isDark } from "../../src/features/invite/qr.ts";
 import { esc } from "./blocks.ts";
 import { PRINT_QR_LABEL, PRINT_QR_URL } from "./site.ts";
 
-export type SheetKind = "board-10x10-letter" | "board-10x10-a4" | "board-5x5" | "prize-sheet" | "basketball-10x10-letter";
+export type SheetKind = "board-10x10-letter" | "board-10x10-a4" | "board-5x5" | "prize-sheet" | "basketball-10x10-letter" | "soccer-10x10-letter";
 
 export interface SheetAssets {
   /** data: URLs for the woff2 fonts. */
@@ -35,6 +35,7 @@ export const SHEETS: Record<SheetKind, { paper: Paper; file: string; title: stri
   "board-5x5": { paper: LETTER_LANDSCAPE, file: "football-squares-5x5", title: "Football squares board (5×5)" },
   "prize-sheet": { paper: LETTER_PORTRAIT, file: "football-squares-prize-sheet", title: "Football squares quarters prize sheet" },
   "basketball-10x10-letter": { paper: LETTER_LANDSCAPE, file: "basketball-squares-10x10-letter", title: "Basketball squares board (10×10, Letter)" },
+  "soccer-10x10-letter": { paper: LETTER_LANDSCAPE, file: "soccer-squares-10x10-letter", title: "Soccer squares board (10×10, Letter)" },
 };
 
 const INK = "#0f1a14";
@@ -123,11 +124,11 @@ const head = (title: string, a: SheetAssets) =>
 
 const line = (label: string) => `<div class="line"><span class="label">${label}</span><i></i></div>`;
 
-/** Lines for the square price and each period's prize. */
-function amounts(): string {
+/** Lines for the square price and each period's prize (a soccer board's goals). */
+function amounts(periods: readonly string[] = ["Q1", "Half", "Q3", "Final"]): string {
   return (
     `<div class="box">${line("Square price")}` +
-    `<h2 style="margin-top:.08in">Prizes</h2>${["Q1", "Half", "Q3", "Final"].map((p) => line(p)).join("")}</div>`
+    `<h2 style="margin-top:.08in">Prizes</h2>${periods.map((p) => line(p)).join("")}</div>`
   );
 }
 
@@ -140,8 +141,12 @@ function qrBlock(a: SheetAssets, sizeIn = 0.9, wide = false): string {
   );
 }
 
-/** The squares grid: a header row and column of blank number boxes (two per box on 5x5) and the playing squares. */
-function grid(n: 5 | 10, boardIn: number): string {
+/**
+ * The squares grid: a header row and column of blank number boxes (two per
+ * box on 5x5) and the playing squares. `bands` names the axes (the teams by
+ * default; a soccer board's minute ones and tens).
+ */
+function grid(n: 5 | 10, boardIn: number, bands = { x: "Team across the top", y: "Team down the side" }): string {
   const band = 0.34;
   const gridIn = boardIn - band;
   const cell = gridIn / (n + 1);
@@ -156,8 +161,8 @@ function grid(n: 5 | 10, boardIn: number): string {
   }
   return (
     `<div style="display:grid;grid-template-columns:${band}in ${gridIn}in;grid-template-rows:${band}in ${gridIn}in;width:${boardIn}in;height:${boardIn}in;flex:none">` +
-    `<div></div><div class="team-line" style="padding:0 0 .07in ${cell}in"><span class="team">Team across the top</span><i></i></div>` +
-    `<div class="side"><div class="team-line" style="top:${gridIn}in;width:${gridIn}in;height:${band}in;padding:0 ${cell}in .07in 0"><span class="team">Team down the side</span><i></i></div></div>` +
+    `<div></div><div class="team-line" style="padding:0 0 .07in ${cell}in"><span class="team">${bands.x}</span><i></i></div>` +
+    `<div class="side"><div class="team-line" style="top:${gridIn}in;width:${gridIn}in;height:${band}in;padding:0 ${cell}in .07in 0"><span class="team">${bands.y}</span><i></i></div></div>` +
     `<table class="grid">${rows}</table></div>`
   );
 }
@@ -184,6 +189,30 @@ function boardSheet(kind: SheetKind, a: SheetAssets): string {
     `<div class="sheet">${head(n === 5 ? `Football squares <span>5×5</span>` : hoops ? `Basketball <span>squares</span>` : `Football <span>squares</span>`, a)}` +
     `<div class="body">${grid(n, boardIn)}<div class="panel" style="flex:1">` +
     `<div class="pair-lines">${line("Game")}${line("Date")}</div>${amounts()}${winners}${n === 5 ? how : ""}${hoops ? halves : ""}${qrBlock(a)}</div></div></div>`
+  );
+}
+
+/**
+ * A goal-minute soccer board (shared/soccer.ts): the number boxes are the
+ * minute's ones (across the top) and tens (down the side), and the winners
+ * are the first goal, each goal and the last goal, by minute.
+ */
+function soccerSheet(a: SheetAssets): string {
+  const { paper } = SHEETS["soccer-10x10-letter"];
+  const headIn = 0.62;
+  const contentW = paper.width - MARGIN * 2;
+  const boardIn = Math.min(paper.height - MARGIN * 2 - headIn, contentW - 2.75 - 0.3);
+  const winners =
+    `<div class="box"><h2>Winners</h2><table class="winners"><tr><th style="width:.75in"></th><th style="width:.6in">Minute</th><th>Name</th></tr>` +
+    ["1st goal", "Goal", "Goal", "Goal", "Last goal"].map((p) => `<tr><td>${p}</td><td></td><td></td></tr>`).join("") +
+    `</table></div>`;
+  const how =
+    `<p class="fine" style="margin:0">Each square is a minute: the row's number is the tens, the column's the ones, so the square for a goal in the 43rd minute is row 4, column 3. ` +
+    `First-half stoppage time counts as the 45th minute, second-half stoppage time runs on (90+3' is 93). No goals? 00 wins.</p>`;
+  return (
+    `<div class="sheet">${head(`Soccer <span>squares</span>`, a)}` +
+    `<div class="body">${grid(10, boardIn, { x: "Minute · ones", y: "Minute · tens" })}<div class="panel" style="flex:1">` +
+    `<div class="pair-lines">${line("Match")}${line("Date")}</div>${amounts(["1st goal", "Each goal", "Last goal"])}${winners}${how}${qrBlock(a)}</div></div></div>`
   );
 }
 
@@ -214,6 +243,6 @@ function prizeSheet(a: SheetAssets): string {
 
 export function sheetHtml(kind: SheetKind, a: SheetAssets): string {
   const { paper, title } = SHEETS[kind];
-  const body = kind === "prize-sheet" ? prizeSheet(a) : boardSheet(kind, a);
+  const body = kind === "prize-sheet" ? prizeSheet(a) : kind === "soccer-10x10-letter" ? soccerSheet(a) : boardSheet(kind, a);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css(paper, a)}</style></head><body>${body}</body></html>`;
 }

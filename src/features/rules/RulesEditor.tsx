@@ -15,11 +15,11 @@
 // shown disabled with the reason; amounts and notes stay editable.
 
 import { useState, type ReactNode } from "react";
-import { AMOUNTS_DISCLAIMER, MOMENT_INFO, PRIZE_MAX_LENGTH, formatAmount, withoutRest } from "../../../shared/formats";
-import { momentsFor, type GameKind } from "../../../shared/sports";
+import { AMOUNTS_DISCLAIMER, PRIZE_MAX_LENGTH, formatAmount, momentInfo, withoutRest } from "../../../shared/formats";
+import { momentsFor, sportOf, type GameKind } from "../../../shared/sports";
 import { totalSquares } from "../../../shared/squares";
-import type { BoardSize, Moment, MomentRule } from "../../../shared/types";
-import { AlertIcon, CheckIcon, CopyIcon, FootballIcon, InfoIcon, LockIcon, PlusIcon, SparklesIcon } from "../../components/icons";
+import type { BoardSize, Moment, MomentRule, Sport } from "../../../shared/types";
+import { AlertIcon, CheckIcon, CopyIcon, InfoIcon, LockIcon, PlusIcon, SparklesIcon, SportIcon } from "../../components/icons";
 import { Badge, SegmentedControl, Switch, TextField, cx } from "../../components/ui";
 import { haptic } from "../../lib/native";
 import { AmountField } from "./AmountField";
@@ -75,10 +75,13 @@ export interface RulesEditorProps {
   kind?: GameKind;
   /** The "Venue mode" switch at the top (the create flow asks who's playing on its first step instead). */
   venueSwitch?: boolean;
+  /** Why venue mode can't change any more (the board is paid for or drawn): the switch is shown off-limits. */
+  venueLocked?: string | null;
 }
 
 /** Fun ideas for notes, one per moment; none of them are money. */
 const NOTE_IDEAS: Record<Moment, string> = {
+  first: "Winner picks the music",
   score: "Loser does a pushup",
   q1: "Loser buys wings",
   q2: "Winner picks the music",
@@ -88,6 +91,7 @@ const NOTE_IDEAS: Record<Moment, string> = {
 
 /** A venue's prizes, one per moment (venue mode leads with these). */
 const VENUE_PRIZE_IDEAS: Record<Moment, string> = {
+  first: "Free appetizer",
   score: "Free appetizer",
   q1: "Free appetizer",
   q2: "Free wings",
@@ -97,16 +101,19 @@ const VENUE_PRIZE_IDEAS: Record<Moment, string> = {
 
 /** When each moment is decided, short enough for one line under its name. */
 const WHEN: Record<Moment, string> = {
+  first: "The first goal's minute",
   score: "Each time either team scores",
   q1: "Score after the 1st quarter",
   q2: "Score at halftime",
   q3: "Score after the 3rd quarter",
   final: "Overtime counts",
 };
+/** A soccer board's moments: its squares are the match's minutes. */
+const SOCCER_WHEN: Record<Moment, string> = { ...WHEN, score: "Each goal's minute, whoever scores", final: "The last goal's minute, at the final whistle" };
 
 const SIDE_LABEL: Record<Side, string> = { square: "Square", reverse: "Reverse" };
 
-export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind, venueSwitch = true }: RulesEditorProps) {
+export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind, venueSwitch = true, venueLocked = null }: RulesEditorProps) {
   const set = (patch: Partial<RulesDraft>) => onChange({ ...draft, ...patch });
   const setRules = (rules: MomentRule[]) => set({ rules });
   const amounts = draft.choice === "$" || draft.choice === "pts";
@@ -114,11 +121,12 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
   const problems = noteProblems(draft.rules);
   const custom = presetChoice(draft.rules) === null;
   const rows = editorRows(draft.rules, momentsFor(kind));
+  const sport = kind ? sportOf(kind) : null;
   const total = draft.squarePrice ? Math.round(draft.squarePrice * squares * 100) / 100 : null;
 
   return (
     <div data-testid="rules-editor" data-venue={draft.venue ? "true" : undefined} className="flex flex-col gap-5">
-      {venueSwitch && <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} />}
+      {venueSwitch && <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} locked={venueLocked} />}
 
       {draft.venue ? (
         // A venue leads with its prizes; what each is worth is optional, in dollars.
@@ -150,6 +158,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
           // No price, no total: the final can't take "the rest" of one.
           onPrice={(squarePrice) => set({ squarePrice, rules: squarePrice ? draft.rules : withoutRest(draft.rules) })}
           onRules={setRules}
+          sport={sport}
         />
       )}
 
@@ -189,6 +198,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
               onNeedAmounts={(rules) => set({ choice: "$", rules })}
               total={amounts ? total : null}
               venue={!!draft.venue}
+              sport={sport}
             />
           ))}
         </ul>
@@ -216,6 +226,7 @@ function SquarePrice({
   squares,
   onPrice,
   onRules,
+  sport,
 }: {
   draft: RulesDraft;
   unit: "$" | "pts";
@@ -223,6 +234,7 @@ function SquarePrice({
   squares: number;
   onPrice: (price: number | null) => void;
   onRules: (rules: MomentRule[]) => void;
+  sport: Sport | null;
 }) {
   const total = draft.squarePrice ? Math.round(draft.squarePrice * squares * 100) / 100 : null;
   return (
@@ -277,6 +289,7 @@ function SquarePrice({
           label={squares === totalSquares(boardSize) ? boardTotalLabel(boardSize) : `${squares} claimed ${squares === 1 ? "square" : "squares"}`}
           unit={unit}
           onRules={onRules}
+          sport={sport}
         />
       )}
     </section>
@@ -298,6 +311,7 @@ function BoardTotal({
   label,
   unit,
   onRules,
+  sport,
 }: {
   rules: MomentRule[];
   price: number;
@@ -306,12 +320,14 @@ function BoardTotal({
   label: string;
   unit: "$" | "pts";
   onRules: (rules: MomentRule[]) => void;
+  /** A soccer board's every score is its goals. */
+  sport: Sport | null;
 }) {
-  const budget = prizeBudget(rules, total);
+  const budget = prizeBudget(rules, total, sport);
   const text = budgetText(budget, unit);
-  const scoreText = everyScoreBudgetText(budget, unit);
-  const suggested = suggestedPrizes(rules, price, squares, unit);
-  const even = evenSplit(rules, total, unit, suggested?.rules ?? null);
+  const scoreText = everyScoreBudgetText(budget, unit, sport);
+  const suggested = suggestedPrizes(rules, price, squares, unit, sport);
+  const even = evenSplit(rules, total, unit, suggested?.rules ?? null, sport);
   const totalText = formatAmount(total, unit);
   const detailTone = budget.status === "over" ? "text-ink-danger" : budget.status === "exact" || budget.status === "rest" ? "text-ink-brand" : "text-ink-gold";
   const pick = (next: MomentRule[]) => {
@@ -331,7 +347,7 @@ function BoardTotal({
           <p className="text-footnote leading-snug text-ink-muted">{scoreText.lead}</p>
           {scoreText.estimate && (
             <p data-testid="prize-estimate" className="flex items-start gap-1.5 text-footnote font-semibold leading-snug text-ink">
-              <FootballIcon size={14} className="mt-0.5 shrink-0 text-ink-brand" />
+              <SportIcon sport={sport} size={14} className="mt-0.5 shrink-0 text-ink-brand" />
               {scoreText.estimate}
             </p>
           )}
@@ -522,6 +538,7 @@ function MomentRow({
   onNeedAmounts,
   total,
   venue,
+  sport,
 }: {
   moment: Moment;
   rule: MomentRule | null;
@@ -537,8 +554,11 @@ function MomentRow({
   total: number | null;
   /** A venue's board: the prize itself leads, always open ("Prize", venue ideas). */
   venue: boolean;
+  /** A soccer board's moments read in goals. */
+  sport: Sport | null;
 }) {
   const on = !!rule;
+  const info = momentInfo(moment, sport);
   const [notesOpen, setNotesOpen] = useState(false);
   const hasNote = !!(rule?.square?.note || rule?.reverse?.note);
   const showNotes = on && (venue || notesOpen || hasNote || SIDES.some((s) => problems[`${moment}:${s}`]));
@@ -552,19 +572,19 @@ function MomentRow({
   const restChoice = moment === "final" && !!rule?.square && sideAmounts && total !== null;
   const rest = restChoice && finalRestOn(rules);
   const others = rules.filter((r) => r.moment !== "score" && r.moment !== moment);
-  const copyLabel = others.length === 1 ? `Same for ${MOMENT_INFO[others[0].moment].short}` : "Same for every quarter";
+  const copyLabel = others.length === 1 ? `Same for ${momentInfo(others[0].moment, sport).short}` : "Same for every quarter";
 
   return (
     <li data-testid="rule-row" data-moment={moment} data-on={on} className={cx("px-3.5 py-3 transition-colors", on ? "" : "bg-ink/4")}>
       <div className="flex items-center gap-3">
-        <MomentChip moment={moment} on={on} />
+        <MomentChip moment={moment} on={on} sport={sport} />
         <div className="min-w-0 flex-1">
-          <p className={cx("truncate text-callout font-bold", on ? "text-ink" : "text-ink-muted")}>{MOMENT_INFO[moment].label}</p>
-          <p className="truncate text-caption text-ink-subtle">{WHEN[moment]}</p>
+          <p className={cx("truncate text-callout font-bold", on ? "text-ink" : "text-ink-muted")}>{info.label}</p>
+          <p className="truncate text-caption text-ink-subtle">{(sport === "soccer" ? SOCCER_WHEN : WHEN)[moment]}</p>
         </div>
         <Switch
           data-testid="rule-toggle"
-          aria-label={`${MOMENT_INFO[moment].label} wins`}
+          aria-label={`${info.label} wins`}
           checked={on}
           disabled={locked || onlyRule}
           onChange={(next) => onRules(setMoment(rules, moment, next))}
@@ -575,7 +595,7 @@ function MomentRow({
         <div className="mt-3 flex flex-col gap-2.5 animate-fade-in">
           <SegmentedControl<Sides>
             size="sm"
-            aria-label={`Which squares win: ${MOMENT_INFO[moment].label}`}
+            aria-label={`Which squares win: ${info.label}`}
             data-testid="rule-sides"
             value={sides}
             onChange={(next) => onRules(setSides(rules, moment, next))}
@@ -588,10 +608,10 @@ function MomentRow({
           {restChoice && (
             <SegmentedControl<"rest" | "fixed">
               size="sm"
-              aria-label={onSides.length > 1 ? "The final's square prize" : "The final's prize"}
+              aria-label={onSides.length > 1 ? `The ${info.short.toLowerCase()}'s square prize` : `The ${info.short.toLowerCase()}'s prize`}
               data-testid="final-rest"
               value={rest ? "rest" : "fixed"}
-              onChange={(next) => onRules(setFinalRest(rules, next === "rest", total))}
+              onChange={(next) => onRules(setFinalRest(rules, next === "rest", total, sport))}
               options={[
                 { value: "rest", label: "The rest", testId: "final-rest-on" },
                 { value: "fixed", label: "Fixed amount", testId: "final-rest-off" },
@@ -611,7 +631,7 @@ function MomentRow({
                         key={side}
                         testId="rule-amount"
                         data={{ "data-moment": moment, "data-side": side }}
-                        label={`${MOMENT_INFO[moment].label}: ${SIDE_LABEL[side].toLowerCase()} amount`}
+                        label={`${info.label}: ${SIDE_LABEL[side].toLowerCase()} amount`}
                         caption={onSides.length > 1 ? SIDE_LABEL[side] : undefined}
                         value={rule[side]?.amount ?? null}
                         unit={unit}
@@ -657,7 +677,7 @@ function MomentRow({
               {copyLabel}
             </button>
           )}
-          {moment === "score" && (
+          {moment === "score" && sport !== "soccer" && (
             <EveryScoreOptions
               rules={rules}
               onRules={onRules}
@@ -705,7 +725,7 @@ function RestField({ caption, compact = false }: { caption?: string; compact?: b
   );
 }
 
-function MomentChip({ moment, on }: { moment: Moment; on: boolean }) {
+function MomentChip({ moment, on, sport }: { moment: Moment; on: boolean; sport: Sport | null }) {
   return (
     <span
       aria-hidden
@@ -714,7 +734,7 @@ function MomentChip({ moment, on }: { moment: Moment; on: boolean }) {
         on ? "bg-gold-400 text-ink-inverse shadow-[inset_0_1px_0_rgb(255_255_255/0.35)]" : "bg-surface-4 text-ink-subtle",
       )}
     >
-      {moment === "score" ? <FootballIcon size={18} /> : MOMENT_INFO[moment].short}
+      {moment === "score" ? <SportIcon sport={sport} size={18} /> : momentInfo(moment, sport).short}
     </span>
   );
 }

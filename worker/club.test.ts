@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The Club Pass end to end against real SQL (node:sqlite, every migration
+// The Annual Pass + Venue end to end against real SQL (node:sqlite, every migration
 // applied): buying it (the no-charge test pass, and the web's Stripe
 // subscription behind a mocked fetch, with the webhook mapping its Price to
 // the plan), what it covers (the draw, up to 10 co-hosts), the club's branding
@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLUB_LOGO_MAX_BYTES, CLUB_NAME_MONEY_ERROR, CLUB_TV_TOKEN_HEADER } from "../shared/clubs";
 import { CLUB_MAX_COHOSTS, MAX_COHOSTS } from "../shared/cohosts";
 import { FREE_PLAYER_LIMIT } from "../shared/hostFee";
+import { VENUE_LOCKED_ERROR } from "../shared/pricing";
 import { derivePlayerIdSync } from "../shared/playerId";
 import type {
   ClubSettings,
@@ -23,6 +24,7 @@ import type {
   HostPassState,
   MeResponse,
 } from "../shared/types";
+import { UPGRADE_PASS_CODE } from "../shared/types";
 import { CLUB_BRAND_TTL_MS } from "./clubs/brand";
 import { csvCell, playersCsv } from "./clubs/csv";
 import { checkLogo } from "./clubs/logo";
@@ -67,6 +69,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 let t: TestD1;
@@ -145,7 +148,7 @@ async function create(name = "Rusty Anchor Squares", client = HOST): Promise<{ i
 
 const stateOf = async (id: string) => (await call<GameState>("GET", `/games/${id}`, { client: null })).body;
 
-/** The no-charge test pass (test mode), the Club Pass with `plan: "club"`. */
+/** The no-charge test pass (test mode), the Annual Pass + Venue with `plan: "club"`. */
 async function testPass(client = HOST, plan: "host" | "club" = "club"): Promise<HostPassState> {
   const res = await call<HostPassState>("POST", "/payments/pass/test", { client, body: plan === "club" ? { plan } : {} });
   expect(res.status).toBe(200);
@@ -210,10 +213,10 @@ class FakeRewriter {
 
 // ---- Buying it ----
 
-describe("buying the Club Pass", () => {
-  it("test mode: a no-charge Club Pass, shown apart from the Host Pass, on GET /payments/pass and /me", async () => {
+describe("buying the Annual Pass + Venue", () => {
+  it("test mode: a no-charge Annual Pass + Venue, shown apart from the Annual Pass, on GET /payments/pass and /me", async () => {
     const before = await call<HostPassState>("GET", "/payments/pass");
-    expect(before.body).toMatchObject({ pass: null, club: null, clubOffer: { priceCents: 4900, currency: "usd", web: true } });
+    expect(before.body).toMatchObject({ pass: null, club: null, clubOffer: { priceCents: 9999, currency: "usd", web: true } });
     const state = await testPass();
     expect(state.pass).toBeNull();
     expect(state.club).toMatchObject({ active: true, status: "active", provider: "test", autoRenew: false });
@@ -221,7 +224,7 @@ describe("buying the Club Pass", () => {
     expect(me.body.clubPass).toMatchObject({ active: true, provider: "test" });
     expect(me.body.hostPass).toBeNull();
     expect(t.query("SELECT plan, provider, status FROM host_passes")).toEqual([{ plan: "club", provider: "test", status: "active" }]);
-    // Asking again keeps the one pass; ending it ends the Club Pass only.
+    // Asking again keeps the one pass; ending it ends the Annual Pass + Venue only.
     await testPass();
     await testPass(HOST, "host");
     expect(t.query("SELECT plan FROM host_passes ORDER BY plan")).toEqual([{ plan: "club" }]);
@@ -229,7 +232,7 @@ describe("buying the Club Pass", () => {
     expect(ended.body.club).toMatchObject({ active: false, status: "ended" });
   });
 
-  it("is sold to a Host Pass holder (it adds the club features); a Club Pass holder isn't sold a Host Pass", async () => {
+  it("is sold to an Annual Pass holder (it adds the club features); an Annual Pass + Venue holder isn't sold an Annual Pass", async () => {
     await testPass(ANA, "host");
     const both = await testPass(ANA, "club");
     expect(both.pass?.active).toBe(true);
@@ -237,15 +240,15 @@ describe("buying the Club Pass", () => {
     expect(t.query("SELECT plan FROM host_passes WHERE client_id = ? ORDER BY plan", ANA)).toEqual([{ plan: "club" }, { plan: "host" }]);
   });
 
-  it("GET /api/config says how it's sold: web only, $49 a year", async () => {
+  it("GET /api/config says how it's sold: web only, $99.99 a year", async () => {
     const config = await call<{ payments: { clubPass: unknown } }>("GET", "/config");
-    expect(config.body.payments.clubPass).toEqual({ priceCents: 4900, currency: "usd", web: true });
+    expect(config.body.payments.clubPass).toEqual({ priceCents: 9999, currency: "usd", web: true });
     env = { ...env, CLUB_PASS_PRICE_CENTS: "5900" };
     expect((await call<{ payments: { clubPass: { priceCents: number } } }>("GET", "/config")).body.payments.clubPass.priceCents).toBe(5900);
   });
 });
 
-describe("the Club Pass on the web (Stripe Billing)", () => {
+describe("the Annual Pass + Venue on the web (Stripe Billing)", () => {
   const PERIOD_END = Math.floor((Date.now() + 365 * DAY) / 1000);
   let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -323,12 +326,12 @@ describe("the Club Pass on the web (Stripe Billing)", () => {
   it("needs a signed-in account (409 account_required), and 503 until its Stripe Price is set", async () => {
     const res = await call<{ code: string; error: string }>("POST", "/payments/pass/stripe", { body: { plan: "club" } });
     expect(res.status).toBe(409);
-    expect(res.body).toMatchObject({ code: "account_required", error: expect.stringMatching(/Club Pass/) });
+    expect(res.body).toMatchObject({ code: "account_required", error: expect.stringMatching(/Annual Pass/) });
     signedIn(HOST);
     env = { ...env, STRIPE_CLUB_PASS_PRICE_ID: "" };
     const off = await call<{ error: string }>("POST", "/payments/pass/stripe", { body: { plan: "club" } });
     expect(off.status).toBe(503);
-    expect(off.body.error).toMatch(/Club Pass/);
+    expect(off.body.error).toMatch(/Annual Pass \+ Venue/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -344,7 +347,7 @@ describe("the Club Pass on the web (Stripe Billing)", () => {
       "items[0][price]": "price_club",
       "metadata[product]": "host_pass",
       "metadata[plan]": "club",
-      description: "JaxSquares Club Pass (yearly)",
+      description: "JaxSquares Annual Pass + Venue (yearly)",
     });
     expect((init.headers as Record<string, string>)["idempotency-key"]).toBe("clubpass-cus_1-price_club-0");
     expect(t.query("SELECT plan, status FROM host_passes")).toEqual([{ plan: "club", status: "pending" }]);
@@ -356,12 +359,12 @@ describe("the Club Pass on the web (Stripe Billing)", () => {
     // A second one isn't sold.
     const again = await call<{ error: string }>("POST", "/payments/pass/stripe", { body: { plan: "club" } });
     expect(again.status).toBe(409);
-    expect(again.body.error).toBe("You already have a Club Pass.");
+    expect(again.body.error).toBe("Your pass already has the Venue add-on.");
   });
 
-  it("the webhook maps the subscription's Price to the plan: a Host Pass moved to the club Price becomes a Club Pass", async () => {
+  it("the webhook maps the subscription's Price to the plan: an Annual Pass moved to the club Price becomes an Annual Pass + Venue", async () => {
     signedIn(HOST);
-    // A Host Pass, bought on the web.
+    // An Annual Pass, bought on the web.
     const state = { sub: subscription({ id: "sub_host", status: "active", metadata: { product: "host_pass", pass_id: "hp_y" } }, "price_pass") };
     stripeAnswers(state);
     expect((await call("POST", "/payments/pass/stripe")).status).toBe(409); // active straight away
@@ -380,12 +383,151 @@ describe("the Club Pass on the web (Stripe Billing)", () => {
     await deliver("invoice.paid", { id: "in_2", object: "invoice", subscription: "sub_host", amount_due: 4900, currency: "usd", livemode: false });
     expect(t.query("SELECT plan, status FROM host_passes")).toEqual([{ plan: "club", status: "active" }]);
   });
+
+  /** A web Annual Pass for HOST, active (bought straight away), at the Annual Pass Price. */
+  async function webAnnualPass(): Promise<{ sub: Record<string, unknown> }> {
+    signedIn(HOST);
+    const state = { sub: subscription({ id: "sub_host", status: "active", metadata: { product: "host_pass", pass_id: "hp_y" } }, "price_pass") };
+    stripeAnswers(state);
+    expect((await call("POST", "/payments/pass/stripe")).status).toBe(409); // active straight away
+    expect(t.query("SELECT plan, status FROM host_passes")).toEqual([{ plan: "host", status: "active" }]);
+    return state;
+  }
+
+  it("adds the Venue add-on to a running web Annual Pass, prorated and charged now, instead of selling a second pass", async () => {
+    const state = await webAnnualPass();
+    // Buying the Annual Pass + Venue on top: no second subscription, the app adds it instead.
+    const creates = () => fetchMock.mock.calls.filter(([u, i]) => String(u) === "https://api.stripe.com/v1/subscriptions" && (i as RequestInit).method === "POST").length;
+    const before = creates();
+    const buy = await call<{ code: string }>("POST", "/payments/pass/stripe", { body: { plan: "club" } });
+    expect(buy.status).toBe(409);
+    expect(buy.body.code).toBe(UPGRADE_PASS_CODE);
+    expect(creates()).toBe(before);
+
+    let update: Record<string, string> | null = null;
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://api.stripe.com/v1/subscriptions/sub_host" && init?.method === "POST") {
+        update = Object.fromEntries(new URLSearchParams(init.body as string));
+        state.sub = subscription({ id: "sub_host", status: "active", metadata: { product: "host_pass", pass_id: "hp_y", plan: "club" } }, "price_club");
+        return Response.json(state.sub);
+      }
+      if (url.startsWith("https://api.stripe.com/v1/subscriptions/sub_host")) return Response.json(state.sub);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const res = await call<HostPassState>("POST", "/payments/pass/stripe/venue");
+    expect(res.status).toBe(200);
+    // The same subscription's one item moves to the venue Price; what's left of the year is invoiced and charged now.
+    expect(update).toMatchObject({
+      "items[0][id]": "si_1",
+      "items[0][price]": "price_club",
+      proration_behavior: "always_invoice",
+      payment_behavior: "error_if_incomplete",
+      "metadata[plan]": "club",
+      description: "JaxSquares Annual Pass + Venue (yearly)",
+    });
+    expect(res.body.club).toMatchObject({ active: true, provider: "stripe" });
+    expect(t.query("SELECT plan, status FROM host_passes")).toEqual([{ plan: "club", status: "active" }]);
+    // Asking again changes nothing.
+    expect((await call("POST", "/payments/pass/stripe/venue")).status).toBe(200);
+  });
+
+  it("changes nothing when the card is refused, and has nothing to add it to without a web Annual Pass", async () => {
+    expect((await call("POST", "/payments/pass/stripe/venue")).status).toBe(404);
+    const state = await webAnnualPass();
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://api.stripe.com/v1/subscriptions/sub_host" && init?.method === "POST") {
+        return Response.json({ error: { type: "card_error", code: "card_declined", message: "Your card was declined." } }, { status: 402 });
+      }
+      if (url.startsWith("https://api.stripe.com/v1/subscriptions/sub_host")) return Response.json(state.sub);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const res = await call<{ error: string }>("POST", "/payments/pass/stripe/venue");
+    expect(res.status).toBe(402);
+    expect(res.body.error).toMatch(/Your card was declined/);
+    expect(t.query("SELECT plan, status FROM host_passes")).toEqual([{ plan: "host", status: "active" }]);
+  });
+});
+
+// ---- Venue boards, per board (shared/pricing.ts) ----
+
+describe("a venue board, without the Venue add-on on a pass", () => {
+  async function venueBoard(client = HOST): Promise<{ id: string; admin: string }> {
+    const created = await call<CreateGameResponse>("POST", "/games", {
+      client,
+      body: {
+        name: "Rusty Anchor · Chiefs vs Eagles",
+        sport: "football",
+        league: "custom",
+        teamX: { name: "Chiefs", abbr: "KC" },
+        teamY: { name: "Eagles", abbr: "PHI" },
+        format: { periods: "quarters", reverse: false, boardSize: 25, freshNumbers: false, venue: true },
+        maxPerPlayer: 1,
+        host: profile("Rusty Anchor"),
+      },
+    });
+    expect(created.status).toBe(201);
+    return { id: created.body.game.id, admin: created.body.adminToken };
+  }
+
+  async function crowd(id: string) {
+    for (let i = 0; i <= FREE_PLAYER_LIMIT; i++) await join(id, `crowd-player-${i}-of-${id}`, `Guest ${i}`, { row: Math.floor(i / 5), col: i % 5 });
+  }
+
+  it("pays its Venue add-on at the draw: an Annual Pass covers the host fee only, the pass with the Venue add-on all of it", async () => {
+    const { id, admin } = await venueBoard();
+    await crowd(id);
+    const due = await call<{ code: string }>("POST", `/games/${id}/lock`, { admin });
+    expect(due.status).toBe(402);
+    expect(due.body.code).toBe("payment_required");
+    // The Annual Pass covers the host fee; the Venue add-on for this board is still due.
+    await testPass(HOST, "host");
+    expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(402);
+    expect((await call("POST", `/games/${id}/pay/test`, { admin })).status).toBe(200);
+    expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(200);
+
+    // With the Venue add-on on the pass, another venue board draws through it.
+    await testPass(HOST, "club");
+    const next = await venueBoard();
+    await crowd(next.id);
+    expect((await call("POST", `/games/${next.id}/lock`, { admin: next.admin })).status).toBe(200);
+    expect(t.query("SELECT payment_provider FROM games WHERE id = ?", next.id)).toEqual([{ payment_provider: "pass" }]);
+  });
+
+  it("keeps venue mode as it was once the board is paid for", async () => {
+    const { id, admin } = await venueBoard();
+    const format = (await stateOf(id)).game.format;
+    // While nothing's paid, it can still change.
+    expect((await call("PATCH", `/games/${id}`, { admin, body: { format: { ...format, venue: false } } })).status).toBe(200);
+    expect((await call("PATCH", `/games/${id}`, { admin, body: { format: { ...format, venue: true } } })).status).toBe(200);
+    await crowd(id);
+    expect((await call("POST", `/games/${id}/pay/test`, { admin })).status).toBe(200);
+    const locked = await call<{ error: string }>("PATCH", `/games/${id}`, { admin, body: { format: { ...format, venue: false } } });
+    expect(locked.status).toBe(409);
+    expect(locked.body.error).toBe(VENUE_LOCKED_ERROR);
+  });
+
+  it(`takes up to ${CLUB_MAX_COHOSTS} co-hosts and gives its host the players list`, async () => {
+    const { id, admin } = await venueBoard(ANA);
+    expect((await stateOf(id)).game.club ?? null).toBeNull();
+    for (let i = 0; i < CLUB_MAX_COHOSTS; i++) {
+      const client = `staff-${i}-of-${id}`;
+      await join(id, client, `Staff ${i}`);
+      const invite = await call<CohostInviteResponse>("POST", `/games/${id}/cohost-invites`, { client: ANA, admin });
+      expect(invite.status).toBe(201);
+      seen.pop();
+      expect((await call("POST", `/games/${id}/cohosts/accept`, { client, body: { token: new URL(invite.body.url).searchParams.get("cohost") } })).status).toBe(200);
+    }
+    expect((await call("POST", `/games/${id}/cohost-invites`, { client: ANA, admin })).status).toBe(409);
+    expect((await call("GET", `/games/${id}/export.csv`, { client: ANA, admin })).status).toBe(200);
+  });
 });
 
 // ---- What it covers ----
 
-describe("what the Club Pass covers", () => {
-  it("covers the host fee at the draw, like the Host Pass", async () => {
+describe("what the Annual Pass + Venue covers", () => {
+  it("covers the host fee at the draw, like the Annual Pass", async () => {
     const { id, admin } = await create();
     for (let i = 0; i <= FREE_PLAYER_LIMIT; i++) await join(id, `crowd-player-${i}-of-${id}`, `Friend ${i}`, { row: Math.floor(i / 5), col: i % 5 });
     expect((await call("POST", `/games/${id}/lock`, { admin })).status).toBe(402);
@@ -409,7 +551,7 @@ describe("what the Club Pass covers", () => {
     return { status: 201 };
   }
 
-  it(`takes up to ${CLUB_MAX_COHOSTS} co-hosts on a Club Pass holder's board, ${MAX_COHOSTS} on any other`, async () => {
+  it(`takes up to ${CLUB_MAX_COHOSTS} co-hosts on an Annual Pass + Venue holder's board, ${MAX_COHOSTS} on any other`, async () => {
     const plain = await create("Plain Squares", ANA);
     expect(await cohostsUpTo(plain.id, plain.admin, MAX_COHOSTS)).toEqual({ status: 201 });
     expect(await cohostsUpTo(plain.id, plain.admin, 1)).toEqual({ status: 409, error: `A board can have up to ${MAX_COHOSTS} co-hosts. Remove one to invite someone new.` });
@@ -520,7 +662,7 @@ describe("the club logo", () => {
     const again = await put(png(128, 128), "image/png");
     expect(again.body.club.logoVersion).not.toBe(ok.body.club.logoVersion);
     expect(t.query("SELECT logo_type FROM clubs")).toEqual([{ logo_type: "image/png" }]);
-    // Nobody without a Club Pass uploads one.
+    // Nobody without an Annual Pass + Venue uploads one.
     expect((await call("PUT", "/clubs/mine/logo", { client: STRANGER, raw: png(64, 64), type: "image/png" })).status).toBe(404);
   });
 
@@ -617,7 +759,7 @@ describe("GET /api/games/:id/export.csv", () => {
     expect(lines((await call("GET", `/games/${id}/export.csv?tz=Not/AZone`, { admin })).text)[0]).toMatch(/Joined \(UTC\)$/);
   });
 
-  it("is for the board's host and co-hosts only, on a Club Pass holder's board", async () => {
+  it("is for the board's host and co-hosts only, on an Annual Pass + Venue holder's board", async () => {
     const { id, admin } = await clubBoard();
     expect((await call("GET", `/games/${id}/export.csv`, { client: ANA })).status).toBe(403);
     expect((await call("GET", `/games/${id}/export.csv`, { client: null, admin })).status).toBe(401);
@@ -626,11 +768,11 @@ describe("GET /api/games/:id/export.csv", () => {
     seen.pop();
     await call("POST", `/games/${id}/cohosts/accept`, { client: ANA, body: { token: new URL(invite.body.url).searchParams.get("cohost") } });
     expect((await call("GET", `/games/${id}/export.csv`, { client: ANA })).status).toBe(200);
-    // Any other board: not a Club Pass feature there.
+    // Any other board: not a venue's, so not there.
     const plain = await create("Plain Squares", STRANGER);
     const refused = await call<{ error: string }>("GET", `/games/${plain.id}/export.csv`, { client: STRANGER, admin: plain.admin });
     expect(refused.status).toBe(403);
-    expect(refused.body.error).toMatch(/Club Pass/);
+    expect(refused.body.error).toMatch(/Venue add-on/);
   });
 
   it("is rate limited", async () => {

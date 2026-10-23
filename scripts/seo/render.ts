@@ -63,7 +63,7 @@ export interface LandingPage {
   /** May wrap words in <span class="hl"> for the volt highlight. */
   h1: string;
   lede: string;
-  hero: { jax: JaxPose; win: { x: number; y: number }; art: string };
+  hero: { jax: JaxPose; win: { x: number; y: number }; art: string; bands?: { x: string; y: string } };
   sections: Section[];
   faqs: Faq[];
   howTo?: HowTo;
@@ -74,6 +74,8 @@ export interface LandingPage {
   nbaNotice?: boolean;
   /** The "not affiliated with the NCAA" line in the footer (pages that name the college tournament or the NCAA). */
   ncaaNotice?: boolean;
+  /** The "not affiliated with the soccer leagues" line in the footer. */
+  soccerNotice?: boolean;
   /**
    * The page this one sits under in the breadcrumbs. Absent: the hub. `null`:
    * none, for a page that heads its own group (the basketball page).
@@ -89,6 +91,7 @@ const NOTE_FREE = "Free to set up and invite. Players never need an app or an ac
 const NFL_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NFL.";
 const NBA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NBA or the WNBA.";
 const NCAA_NOTICE = "JaxSquares isn't affiliated with or endorsed by the NCAA.";
+const SOCCER_NOTICE = "JaxSquares isn't affiliated with or endorsed by MLS, the NWSL, the Premier League, LaLiga, Liga MX or UEFA.";
 const MONEY_NOTICE =
   "JaxSquares never collects, holds or sends money between players. A square price or prize a host shows is information only.";
 const OG_IMAGE = `${ORIGIN}/og-image.png`;
@@ -284,7 +287,7 @@ function hero(page: LandingPage, all: readonly LandingPage[], ctx: RenderContext
     `<section class="hero"><div class="wrap"><div>${crumbs}` +
     `<p class="eyebrow">${esc(page.eyebrow)}</p><h1>${page.h1}</h1><p class="lede">${page.lede}</p>` +
     `${ctas()}<p class="fine">${NOTE_FREE}</p></div>` +
-    `<div class="hero-art">${boardDiagram({ id: "hero-board", win: page.hero.win, title: page.hero.art })}${jaxArt(ctx.jax[page.hero.jax], 120)}</div>` +
+    `<div class="hero-art">${boardDiagram({ id: "hero-board", win: page.hero.win, bands: page.hero.bands, title: page.hero.art })}${jaxArt(ctx.jax[page.hero.jax], 120)}</div>` +
     `</div></section>`
   );
 }
@@ -327,6 +330,7 @@ function footer(page: LandingPage, all: readonly LandingPage[], ctx: RenderConte
   const app = [
     ["/new", "Make a board"],
     ["/", "Join with a code"],
+    ["/pricing", "Pricing"],
     ["/support", "Support"],
     ["/terms", "Terms"],
     ["/privacy", "Privacy"],
@@ -343,6 +347,7 @@ function footer(page: LandingPage, all: readonly LandingPage[], ctx: RenderConte
     (page.nflNotice ? `<p class="foot-note">${NFL_NOTICE}</p>` : "") +
     (page.nbaNotice ? `<p class="foot-note">${NBA_NOTICE}</p>` : "") +
     (page.ncaaNotice ? `<p class="foot-note">${NCAA_NOTICE}</p>` : "") +
+    (page.soccerNotice ? `<p class="foot-note">${SOCCER_NOTICE}</p>` : "") +
     `<p class="foot-note">© ${ctx.year} ${SITE_NAME}</p></div></footer>`
   );
 }

@@ -1,21 +1,59 @@
 # Payments
 
-The only money in JaxSquares is the **host fee**: the host pays JaxSquares once
-per board, when they draw its numbers, or takes the yearly **Host Pass**, which
-covers that fee on every board they host (see "Host Pass" below), or the
-web-only **Club Pass**, the Host Pass plus club features (see "Club Pass"). Setting up a
-board, inviting friends and picking squares are free, and so is drawing a
-**small board**: one whose squares 5 or fewer players hold (see "The free
-tier" below). Nothing ever moves between players. JaxSquares never sells
+The only money in JaxSquares is what the **host** pays JaxSquares for running
+boards (see "Pricing"): per game, the **host fee** for a board, when they draw
+its numbers, plus the **Venue add-on** on a venue board; or the yearly
+**Annual Pass**, which covers the host fee on every board they host (see
+"Annual Pass" below), and with the Venue add-on (the web-only **Annual Pass +
+Venue**, see "Annual Pass + Venue") venue boards and the venue features too.
+Setting up a board, inviting friends and picking squares are free, and so is
+drawing a **small board**: one whose squares 5 or fewer players hold (see "The
+free tier" below). Nothing ever moves between players. JaxSquares never sells
 squares; the fee is for creating and managing the board.
 
-| | Price | Where it's set |
+## Pricing
+
+Two products, each with a Venue add-on (`shared/pricing.ts`, the one place
+the Worker and the app decide what a board costs: `feeDue`, `coversBoard`):
+
+| | On its own | With the Venue add-on | Where it's set |
+|---|---|---|---|
+| **Per game**: one board, paid when its numbers are drawn | $4.99 | $14.99 ($4.99 + $10) | `BOARD_PRICE_CENTS` (499) and `VENUE_PRICE_CENTS` (1000) on the web; the board's App Store product in the iOS app (no Venue add-on there) |
+| **Annual Pass**: every board the host hosts, for a year from the day it's bought, renewing until canceled | $19.99 a year | $99.99 a year (+$80) | `HOST_PASS_PRICE_CENTS` (1999) and the App Store subscription; with the Venue add-on `CLUB_PASS_PRICE_CENTS` (9999), web only |
+| A board held by 5 or fewer players | Free | Free | `FREE_PLAYER_LIMIT` (`shared/hostFee.ts`) |
+
+- A **venue board** (`format.venue`, venue mode: docs/ARCHITECTURE.md "Venue
+  boards") adds the Venue add-on to its host fee. It brings the venue's staff
+  features on that board from the start (up to 10 co-hosts, the players list:
+  `hasVenueFeatures`); the add-on is due with the host fee at the draw, like
+  the fee itself. Venue mode can't change once the board is paid for or drawn
+  (409 `VENUE_LOCKED_ERROR`), so what was charged stays what the board is.
+- The **Annual Pass** covers every board's host fee. With the Venue add-on
+  (`plan` 'club') it covers venue boards' add-on too, and adds the venue's
+  name and logo on every board its holder hosts and the venue TV link (see
+  "Annual Pass + Venue"). An Annual Pass without it leaves a venue board's
+  $10 add-on to pay at that board's draw.
+- A **season board** runs all season, so it comes with the Annual Pass: no
+  per-game fee. Its draw answers 402 `PASS_REQUIRED_CODE` without a pass
+  (unless 5 or fewer players hold its squares), and the checkout sheet offers
+  only the pass.
+- What a board costs is computed when it's charged, from the passes of
+  whoever pays (the host or a co-host) and of the board's host: the draw,
+  `/pay/*` and a linked board's kickoff all use `feeDue`.
+
+| | Stripe | Where |
 |---|---|---|
-| A board held by 5 or fewer players | Free | `FREE_PLAYER_LIMIT` (`shared/hostFee.ts`) |
-| A bigger board, once | $4.99 | `BOARD_PRICE_CENTS` (499) on the web, the App Store product's price in the iOS app |
-| A bigger season board, once for the whole season | $14.99 | `SEASON_BOARD_PRICE_CENTS` (1499) on the web, the season App Store product's price in the iOS app (see "Season boards") |
-| Host Pass, every board for a year | $19.99 a year | `HOST_PASS_PRICE_CENTS` (1999) on the web, the App Store subscription's price in the iOS app |
-| Club Pass, the Host Pass plus club features, for a year | $49 a year | `CLUB_PASS_PRICE_CENTS` (4900), web only (see "Club Pass" below) |
+| Per game (host fee, Venue add-on) | A PaymentIntent for the amount due, no Product or Price: description "JaxSquares host fee (one board)", "… + Venue add-on (one board)" or "JaxSquares Venue add-on (one board)"; metadata `product=board`, `game_id` | `/pay/stripe` |
+| Annual Pass | Subscription to `STRIPE_HOST_PASS_PRICE_ID` | Product "Annual Pass", $19.99/year |
+| Annual Pass + Venue | Subscription to `STRIPE_CLUB_PASS_PRICE_ID` | Product "Annual Pass + Venue", $99.99/year |
+
+A holder of a web Annual Pass adds the Venue add-on to the same subscription
+(`POST /api/payments/pass/stripe/venue`: its item moves to the Annual Pass +
+Venue Price, `proration_behavior=always_invoice`, so what's left of this
+year's $80 is charged now to the card it renews on; `error_if_incomplete`, so
+a refused card changes nothing). They're never sold a second subscription:
+`POST /api/payments/pass/stripe` with `plan: "club"` answers 409
+`UPGRADE_PASS_CODE` for them.
 
 | Where the host is | How they pay | Server check |
 |---|---|---|
@@ -38,7 +76,7 @@ Support pages leave out Stripe and the web price there too.
    join and pick squares; nothing is charged.
 2. **Draw = pay, for a board of 6 or more.** `POST /api/games/:id/lock` on a
    board whose fee isn't paid draws it for free when 5 or fewer players hold
-   its squares (below). Otherwise, unless a Host Pass covers it, it answers
+   its squares (below). Otherwise, unless an Annual Pass covers it, it answers
    **402** `{ error: "Draw the numbers once the board's paid for.", code:
    "payment_required" }` (`PAYMENT_REQUIRED_CODE` in `shared/types.ts`). The
    host's "Draw the numbers · $4.99" opens the checkout sheet first; once a
@@ -46,7 +84,7 @@ Support pages leave out Stripe and the web price there too.
    again and plays the number reveal. Only the host (the board's admin token)
    or one of its co-hosts (by canonical clientId; docs/ARCHITECTURE.md
    "Co-hosts") can pay or draw. A co-host's app tries the draw first, since
-   the host's Host Pass may cover it, and opens the same checkout on the 402.
+   the host's Annual Pass may cover it, and opens the same checkout on the 402.
 3. **Paid.** A purchase is tied to its board when the host pays (not when the
    board was made). The ledger (`purchases`, below) decides which purchase pays
    for a board, and `markPaid` (`worker/service.ts` → `worker/db.ts`) stamps
@@ -69,7 +107,7 @@ lower the count (two devices of one account become one player).
 - **The draw.** `POST /lock` on an unpaid free board marks it paid with
   `payment_provider` **`free`**, `payment_reference` `free` and
   `payment_amount_cents` 0, in the same batch as the draw, before it looks
-  for a Host Pass or answers 402. No `purchases` row is written: nothing was
+  for an Annual Pass or answers 402. No `purchases` row is written: nothing was
   charged. A pass holder's small board is drawn free too (not through the
   pass). Once drawn it reads `Game.paid: true` like any drawn board.
 - **Race-safe.** The route decides from the board it read, but the mark
@@ -81,7 +119,7 @@ lower the count (two devices of one account become one player).
   does the lock) or commits after (then `claimSquares`, which re-checks
   `status = 'open'` in SQL, finds the board locked and inserts nothing). When
   the mark loses that race, the route decides once more with the board its
-  batch read back (6 or more holders): the host's Host Pass, or the 402. The
+  batch read back (6 or more holders): the host's Annual Pass, or the 402. The
   app then opens the checkout as for any 402.
 - **Kickoff.** A free linked board draws itself at kickoff like a paid one
   (`applyLiveUpdate`): the mark and the lock go in a batch of their own, with
@@ -112,7 +150,7 @@ before it deploys): a payment-opened board counts as paid, a draft opens.
 only.
 
 **Linked boards** (tied to an ESPN game) draw their own numbers at kickoff only
-once the fee is paid, the board is free (5 or fewer players) or a Host Pass
+once the fee is paid, the board is free (5 or fewer players) or an Annual Pass
 covers it (`applyLiveUpdate`, `worker/service.ts`). The host of a bigger board can pay
 ahead ("Pay now and Jax draws the numbers at kickoff", `purpose="ahead"` on the
 checkout sheet), and then Jax draws at kickoff unless the host draws first. An
@@ -126,7 +164,7 @@ already over when they do, the draw also ends the board (`final`), with one
 
 - *Board full* (once per board): on an unpaid linked board of 6 or more
   players, "Draw the numbers now, or pay ahead and Jax draws them at kickoff."
-  (A free board, or one a Host Pass covers: "Draw numbers now, or they'll draw
+  (A free board, or one an Annual Pass covers: "Draw numbers now, or they'll draw
   at kickoff.")
 - *Kickoff soon* (`draw-reminder`): the cron (every minute) claims linked boards
   that kick off within the hour, are still `open` with the fee unpaid, are held
@@ -139,30 +177,22 @@ already over when they do, the draw also ends the board (`final`), with one
 
 ### Season boards
 
-A season board (docs/ARCHITECTURE.md "Season boards") pays **one** host fee,
-at its own draw, for every game of the season: $14.99
-(`SEASON_BOARD_PRICE_CENTS`, 1499; below 50 or not a whole number falls back
-to 1499) on the web, the App Store product `com.jaxsquares.app.seasonboard`
-(`IAP_SEASON_PRODUCT_ID`) in the iOS app. Everything else is the board's
-pay-at-draw flow unchanged:
+A season board (docs/ARCHITECTURE.md "Season boards") comes with the Annual
+Pass: there's no per-game fee for it (see "Pricing").
 
-- `POST /api/games/:id/lock` on the season board answers 402 until it's paid,
-  draws free with 5 or fewer players holding its squares (the free tier counts
-  the season board's players), and an active Host Pass or Club Pass covers it
-  (provider `pass`), exactly like any board. The host's button reads "Draw the
-  numbers · $14.99 for the season" (`payToDrawLabel(price, true)`).
-- `GET /api/config` → `payments.season` is `{ priceCents, iapProductId }`
-  (`SeasonFeeOffer`, `seasonFeeOffer`). The client picks the fee by the
-  board's kind (`feeOf(config, kind)`, `hostFeePrice(config, platform,
-  kind)`, `useHostFee(enabled, kind)`); the checkout sheet says "Season board"
-  and "once for the whole season", and hides "Pays for itself by your fifth
-  board" (a season isn't a board).
-- Stripe: `/pay/stripe` charges `boardFeeFor(env, game)` (the season price for
-  a season board), the PaymentIntent's description "JaxSquares host fee
-  (season board)" and metadata `season: true`. IAP: `/pay/iap` expects the
-  season product for a season board (the board product for any other; a
-  deleted board's purchase may be either), and the purchase recovery at launch
-  (`watchIAPPurchases`) redeems both products.
+- `POST /api/games/:id/lock` on the season board draws free with 5 or fewer
+  players holding its squares (the free tier counts the season board's
+  players), through an active Annual Pass (provider `pass`), and otherwise
+  answers 402 `{ error: SEASON_NEEDS_PASS, code: PASS_REQUIRED_CODE }`. A
+  venue's season board with an Annual Pass that lacks the Venue add-on pays
+  the $10 add-on once, at its draw.
+- `/pay/test`, `/pay/stripe` and `/pay/iap` answer the same 402 for a season
+  board without a pass: nothing per game is sold for it. The app's checkout
+  sheet shows only the pass there ("Season boards come with the Annual
+  Pass"), and Review in the create flow says so (`createFeeLine`).
+- Until 2026-10 a season board paid one $14.99 fee (`SEASON_BOARD_PRICE_CENTS`,
+  an App Store consumable `com.jaxsquares.app.seasonboard`); those settings
+  are gone, and season boards already paid stay paid.
 - Each game's own board is made at the draw (and by the cron as games join the
   schedule) already paid through its season: `payment_provider` `season`
   (`SEASON_PROVIDER`), `payment_reference` the season board's id,
@@ -170,25 +200,70 @@ pay-at-draw flow unchanged:
   `purchases` row, and the cron never sends it a draw reminder.
 - Single boards' prices and copy are unchanged.
 
+## Where the prices show
+
+`/pricing` (`src/pages/Pricing.tsx`, linked from the welcome screen's footer,
+Profile and the landing pages' footers) lists what's free and each product
+at the server's prices (`/api/config`), with refunds and cancelling pointing
+to Terms. Stripe's account review looks for exactly this on the public site:
+the prices, the refund and cancellation policies, Terms, Privacy and a
+contact address. In the iOS app it shows only the App Store's prices and
+leaves out the web-only Venue add-on and Annual Pass + Venue.
+
 ## Setup checklist
 
-Do these steps in order. Payments stay in test mode until step 4.
+**The quick way: the Stripe setup workflow.** Only the account itself and
+its keys need the Stripe Dashboard; `.github/workflows/stripe-setup.yml`
+(`scripts/ops/stripe-setup.ts`) does the rest, and nobody types a key into a
+chat or a terminal:
+
+1. **Activate the account** at dashboard.stripe.com: business details, the
+   person responsible, and the bank account for payouts (step 2.1 below).
+2. **Copy the live keys** from Developers → API keys: the publishable key
+   (`pk_live_…`) and the secret key (`sk_live_…`). Use the secret key here,
+   not a restricted one: the setup makes Products, the webhook endpoint and
+   the portal settings.
+3. **Add them to GitHub** as repository secrets (Settings → Secrets and
+   variables → Actions → New repository secret): `STRIPE_SECRET_KEY` and
+   `STRIPE_PUBLISHABLE_KEY`.
+4. **Run the workflow**: Actions → Stripe setup → the latest run → Re-run all
+   jobs. It makes or finds the Annual Pass and Annual Pass + Venue Prices
+   (by lookup key, at `HOST_PASS_PRICE_CENTS` / `CLUB_PASS_PRICE_CENTS`),
+   registers `jaxsquares.com` for Apple Pay, makes the webhook endpoint
+   (every event below, at the API version `stripe.ts` pins) and the Customer
+   Portal settings, then stores `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`
+   and the endpoint's `STRIPE_WEBHOOK_SECRET` as the Worker's secrets. Live
+   mode starts then: host fees work at once.
+5. **Put the printed ids in `wrangler.jsonc`** (`STRIPE_HOST_PASS_PRICE_ID`,
+   `STRIPE_CLUB_PASS_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID`; they aren't
+   secrets) and deploy. Until then live mode doesn't sell the passes on the
+   web.
+
+Running it again is safe: it keeps what's there. A changed pass amount gets
+a new Price that takes over the lookup key (put its id in `wrangler.jsonc`;
+subscriptions keep renewing at their old Price). If Cloudflare doesn't hold
+the webhook's signing secret, the endpoint is replaced so a fresh one can be
+stored. It never prints a key or a signing secret. Test keys (`sk_test_`,
+`pk_test_`) work the same way, for a staging run.
+
+The manual steps follow, for reference. Do these steps in order. Payments
+stay in test mode until step 4.
 
 ### 1. Price
 
-- `BOARD_PRICE_CENTS` in `wrangler.jsonc` → `vars` sets the price. It's `499`
-  ($4.99) today. Values below 50 (Stripe's minimum) or values that aren't whole
-  numbers fall back to 499.
+- `BOARD_PRICE_CENTS` in `wrangler.jsonc` → `vars` sets the host fee. It's
+  `499` ($4.99) today. Values below 50 (Stripe's minimum) or values that
+  aren't whole numbers fall back to 499. `VENUE_PRICE_CENTS` (`1000`, $10) is
+  a venue board's Venue add-on, the same way (falls back to 1000); web only.
 - Set the App Store price for the IAP product to the same amount (step 3). Apple
   keeps 15% of IAP revenue (Small Business Program) or 30%. The `purchases`
   ledger records the gross amount the customer paid.
 - The free tier (boards of 5 or fewer players) is `FREE_PLAYER_LIMIT` in
   `shared/hostFee.ts`, not a setting: the Worker and the app must agree on it,
   so change it there and ship both together.
-- The Host Pass price is `HOST_PASS_PRICE_CENTS` (`1999`, $19.99 a year); see
-  "Setup (Host Pass)".
-- A season board's one fee is `SEASON_BOARD_PRICE_CENTS` (`1499`, $14.99 for
-  the whole season). Set its App Store product to the same amount (step 3).
+- The Annual Pass price is `HOST_PASS_PRICE_CENTS` (`1999`, $19.99 a year); see
+  "Setup (Annual Pass)". With the Venue add-on, `CLUB_PASS_PRICE_CENTS`
+  (`9999`, $99.99 a year); see "Setup (Annual Pass + Venue)".
 
 ### 2. Stripe (web)
 
@@ -198,7 +273,7 @@ Do these steps in order. Payments stay in test mode until step 4.
    - Copy the publishable key (`pk_live_…`) for `STRIPE_PUBLISHABLE_KEY`.
    - For `STRIPE_SECRET_KEY`, the safer choice is a restricted key (`rk_live_…`)
      with only the permissions the app uses: **PaymentIntents: Write** (the
-     host fee), and for the Host Pass **Customers: Write**, **Subscriptions:
+     host fee), and for the Annual Pass **Customers: Write**, **Subscriptions:
      Write**, **Invoices: Read** and **Customer portal (Billing portal):
      Write**. The secret key (`sk_live_…`) also works.
 3. **Payment methods.** Go to Settings → Payment methods and turn on Cards,
@@ -228,7 +303,7 @@ Do these steps in order. Payments stay in test mode until step 4.
    - Events: `payment_intent.succeeded` and `payment_intent.canceled` (the
      host fee), plus `invoice.paid`, `invoice.payment_failed`,
      `customer.subscription.created`, `customer.subscription.updated` and
-     `customer.subscription.deleted` (the Host Pass and the Club Pass)
+     `customer.subscription.deleted` (the Annual Pass and the Annual Pass + Venue)
    - Payload style: **snapshot**, not thin, because the handler reads
      `data.object`.
    - API version: any (the dashboard offers the newest). Payloads come in the
@@ -261,18 +336,8 @@ Do these steps in order. Payments stay in test mode until step 4.
      board: draw the numbers and run the game with your friends."
    - Add the review screenshot.
    - The first IAP has to be submitted together with an app version.
-   - **Season board product** (season boards; until it's approved the iOS app
-     can't pay for a season board of 6 or more, which then shows the
-     store's error, while the web, the free tier and the passes work): **+**
-     again, Type **Consumable** (every season board is a new purchase).
-     Reference name `Season board`; Product ID
-     `com.jaxsquares.app.seasonboard`, which must equal
-     `IAP_SEASON_PRODUCT_ID` in `wrangler.jsonc`; Price the tier matching
-     `SEASON_BOARD_PRICE_CENTS`, i.e. $14.99; Display name "Season board";
-     Description "The host fee for one season board: one set of squares for
-     every game of a team's season." Add the review screenshot (the season
-     board's "Draw the numbers · $14.99 for the season") and submit it with
-     the app version that ships season boards.
+   - No season board product: a season board comes with the Annual Pass
+     (see "Pricing"). The Venue add-on isn't sold in the app either.
 3. **In-App Purchase key**, which lets the server ask Apple about transactions.
    Go to App Store Connect → Users and Access → Integrations → In-App Purchase
    → Generate In-App Purchase Key.
@@ -426,7 +491,7 @@ FROM purchases WHERE status = 'paid' AND livemode = 1 GROUP BY provider;
 
 What paid for a drawn board is on the board itself, `games.payment_provider`:
 `test`, `stripe` or `iap` (a purchase in this ledger, by its reference),
-`pass` (a Host Pass, reference = the pass id, amount 0) or `free` (the free
+`pass` (an Annual Pass, reference = the pass id, amount 0) or `free` (the free
 tier, reference `free`, amount 0, no ledger row).
 
 ```sql
@@ -438,7 +503,7 @@ SELECT payment_provider, COUNT(*) AS boards FROM games WHERE paid_at IS NOT NULL
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/games/:id/lock` (core) | Host or co-host. Draws the numbers: free (marked paid `free`) while 5 or fewer players hold squares, through an active Host Pass on a bigger board, else **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
+| POST | `/api/games/:id/lock` (core) | Host or co-host. Draws the numbers: free (marked paid `free`) while 5 or fewer players hold squares, through an active Annual Pass on a bigger board, else **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` while the host fee isn't paid; 409 once drawn. |
 | POST | `/api/games/:id/pay/test` | Host or co-host (by clientId, no admin token; `isHostOrCohost` in `worker/service.ts`), like the two below. Only works in test mode. Returns `{ state }` (the board paid, not drawn; a no-op on a board already paid for). |
 | POST | `/api/games/:id/pay/stripe` | Host or co-host. Returns `{ clientSecret, amountCents, currency }` and reuses the board's open PaymentIntent (show `amountCents`, not the config's price). If the board is already paid for it returns `409 { error, state }`. That includes a board that was just paid while the webhook hasn't arrived yet: the server checks with Stripe and marks it paid on the spot. |
 | POST | `/api/games/:id/pay/iap` | Host or co-host. Body `{ transactionId }`. Returns `{ state }`. Errors are 400 (Apple has no record of it, wrong product or app, refunded, bound to another board), 409 (already paid for another board; or, with `unused: true` and `state`, the board was already paid for so the purchase is kept as `unused`), 410 (the board was deleted; with `unused: true` the purchase is kept as `unused`, and no admin token is needed because the purchase's board binding is the proof) and 502 (couldn't reach Apple, so retry). |
@@ -472,7 +537,7 @@ board is already paid for. After paying, the host tools call `POST /lock`
 (`api.lock`); `isPaymentRequired(err)` (`src/lib/api.ts`) recognizes the 402, so
 a board an older copy said was paid opens the checkout instead of an error.
 
-## Host Pass
+## Annual Pass
 
 A yearly subscription, the alternative to paying board by board: **$19.99 a
 year** on the web (`HOST_PASS_PRICE_CENTS`, 1999; it was $9.99 until October
@@ -492,7 +557,7 @@ subscriptions created after the change.
 | Where | How it's sold | What makes it active |
 |---|---|---|
 | Web | Stripe Billing: a yearly Subscription, first payment with Express Checkout (Apple Pay / Google Pay, with Apple Pay's recurring payment request) or the card form. **Needs a signed-in account.** | The Subscription read back from Stripe (`/pass/stripe/confirm`), then signed webhooks |
-| iOS app | App Store auto-renewable subscription `com.jaxsquares.app.hostpass.yearly`, group "Host Pass", through `@capgo/native-purchases`. No sign-in needed; **Restore purchases** in Profile | App Store Server API (transaction, then subscription status), then App Store Server Notifications V2 |
+| iOS app | App Store auto-renewable subscription `com.jaxsquares.app.hostpass.yearly`, group "Annual Pass", through `@capgo/native-purchases`. No sign-in needed; **Restore purchases** in Profile | App Store Server API (transaction, then subscription status), then App Store Server Notifications V2 |
 | Anywhere, while `PAYMENTS_MODE` isn't `live` | A no-charge **test pass** that lasts a year and doesn't renew (labeled "Test pass" in the app); no sign-in | The test route |
 
 In live mode the web sells the pass only once `STRIPE_HOST_PASS_PRICE_ID` is
@@ -649,8 +714,9 @@ their JWS isn't re-verified (as for the board purchase).
 | GET | `/api/payments/pass` | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer }` (`no-store`). `GET /api/me` carries `hostPass` too |
 | POST | `/api/payments/pass/test` | Test mode only (403 in live): a no-charge pass for a year; a no-op while one is active |
 | POST | `/api/payments/pass/test/end` | Test mode only: ends the test pass (to try again) |
-| POST | `/api/payments/pass/stripe` | `{ clientSecret, amountCents, currency }`; 409 `account_required` without an account link; 409 `{ error, pass, offer }` when one is already active; 503 while `STRIPE_HOST_PASS_PRICE_ID` or the key is unset; 502 when Stripe errors |
+| POST | `/api/payments/pass/stripe` | `{ clientSecret, amountCents, currency }`; 409 `account_required` without an account link; 409 `{ error, pass, offer }` when one is already active; 409 `UPGRADE_PASS_CODE` for the Annual Pass + Venue (`{ plan: "club" }`) when a web Annual Pass is running (add it with `/stripe/venue`); 503 while the Price or the key is unset; 502 when Stripe errors |
 | POST | `/api/payments/pass/stripe/confirm` | `HostPassState`, read back from Stripe |
+| POST | `/api/payments/pass/stripe/venue` | Adds the Venue add-on to the identity's running web Annual Pass (its item moves to `STRIPE_CLUB_PASS_PRICE_ID`, prorated and charged now to the card it renews on) → `HostPassState`; 200 when it has it already; 402 when the card is refused (nothing changed); 404 with no web Annual Pass; 503 while the Price or key is unset; 502 when Stripe errors |
 | POST | `/api/payments/pass/portal` | `{ url }` (Customer Portal); 404 with no web pass here |
 | POST | `/api/payments/pass/iap` | Body `{ transactionId, jws? }` → `HostPassState`; 400 (unknown, wrong product or app), 409 (held by another identity, no valid proof), 502 (Apple unreachable), 503 (no App Store key) |
 | POST | `/api/payments/pass/iap/restore` | Body `{ transactions: [{ transactionId, jws? }] }` (up to 20) → `HostPassState & { restored }`; 409 when the only ones found belong to another identity without proof |
@@ -664,7 +730,7 @@ their JWS isn't re-verified (as for the board purchase).
   sign-out clears. `useHostPassPrice()` gives "$19.99" (or the App Store's
   string); the UI says "$19.99/year".
 - Checkout sheet at the draw (an unpaid board of 6 or more players, no pass):
-  "This board · $4.99" (the default) and "Host Pass · $19.99/year" ("Every
+  "This board · $4.99" (the default) and "Annual Pass · $19.99/year" ("Every
   board you host for a year", "Pays for itself by your fifth board"), one
   tap to switch (`plan-board`, `plan-pass`). The "pays for itself" board is
   worked out from the two prices this device shows (`passPaysOffAt`,
@@ -678,16 +744,16 @@ their JWS isn't re-verified (as for the board purchase).
   canceled, how to cancel, Terms and Privacy). Bought at the draw, the host
   tools draw right away (the server marks the board paid through the pass).
 - With an active pass the host bar, the Now card and the lock confirm read
-  "Draw the numbers" with "Included with your Host Pass" (`host-pass-note`),
+  "Draw the numbers" with "Included with your Annual Pass" (`host-pass-note`),
   no price, no pay-ahead; drawing just draws. If the server answers 402 (the
   pass ended meanwhile) the checkout opens as usual.
-- Profile → Host Pass (`HostPassSection`): no pass: a pitch and Get (`pass-get`,
+- Profile → Annual Pass (`HostPassSection`): no pass: a pitch and Get (`pass-get`,
   through `startPassPurchase`); active: "Active · renews Oct 19, 2027" or "Ends
   Oct 19, 2027" (`pass-status`) and Manage (`pass-manage`: Apple's subscription
   management in the iOS app, the Customer Portal on the web, "End test pass"
   in test mode); iOS: Restore purchases (`pass-restore`).
 
-### Setup (Host Pass)
+### Setup (Annual Pass)
 
 Do these alongside the steps above. Every value below is a plain setting
 (`wrangler.jsonc` → `vars`) except where it says secret; no new secrets are
@@ -697,11 +763,11 @@ for it.
 **App Store Connect**
 
 1. Your app → Monetization → **Subscriptions** → create a subscription group
-   named **Host Pass**.
-2. In it, add an auto-renewable subscription: reference name `Host Pass
+   named **Annual Pass**.
+2. In it, add an auto-renewable subscription: reference name `Annual Pass
    (yearly)`, product ID **`com.jaxsquares.app.hostpass.yearly`** (=
    `IAP_HOST_PASS_PRODUCT_ID` in `wrangler.jsonc`), duration **1 year**, price
-   **$19.99**. Display name "Host Pass", description "Every board you host for a
+   **$19.99**. Display name "Annual Pass", description "Every board you host for a
    year: draw the numbers with no host fee." Add the review screenshot; submit
    it with an app version.
    - **Already set up at $9.99?** Subscription → Subscription Prices → Plan a
@@ -716,13 +782,13 @@ for it.
 
 **Stripe**
 
-1. Product catalog → add a product **Host Pass** with a **recurring** price,
+1. Product catalog → add a product **Annual Pass** with a **recurring** price,
    **$19.99 per year**. Copy the price id (`price_…`) into
    `STRIPE_HOST_PASS_PRICE_ID` in `wrangler.jsonc` → `vars` (it isn't a
    secret), and keep `HOST_PASS_PRICE_CENTS` (1999) equal to it: the app shows
    that number on the web, and it's the only place the web price is set.
    - **Already set up at $9.99?** Stripe Prices can't be edited: add a new
-     $19.99/year Price to the same Host Pass product, put its id in
+     $19.99/year Price to the same Annual Pass product, put its id in
      `STRIPE_HOST_PASS_PRICE_ID` and set `HOST_PASS_PRICE_CENTS` to 1999 in the
      same deploy. **Changing the Price ID only affects new subscriptions:**
      every existing subscription keeps renewing at the $9.99 Price it was
@@ -750,17 +816,20 @@ npx wrangler d1 execute jaxsquares --remote --command \
   "SELECT provider, status, current_period_end, auto_renew, livemode FROM host_passes ORDER BY created_at DESC LIMIT 5"
 ```
 
-## Club Pass
+## Annual Pass + Venue
 
-A yearly plan for bars, booster clubs, offices and fundraisers that run boards
-every week: **$49 a year** (`CLUB_PASS_PRICE_CENTS`, 4900), auto-renewing
-until canceled, sold **on the web only** through Stripe Billing, and only to a
-signed-in account (like the web Host Pass). It's everything the Host Pass is,
-plus the club features on every board its holder hosts while it's active:
+The Annual Pass with the Venue add-on (`plan` 'club' in the API and the
+tables), for bars and restaurants that run boards every week: **$99.99 a
+year** (`CLUB_PASS_PRICE_CENTS`, 9999; the Annual Pass's $19.99 plus $80),
+for a year from the day it's bought, auto-renewing until canceled, sold **on
+the web only** through Stripe Billing, and only to a signed-in account (like
+the web Annual Pass). A holder of a web Annual Pass adds it to their pass
+instead (see "Pricing"). It's everything the Annual Pass is, plus venue boards
+and the venue features on every board its holder hosts while it's active:
 
 | | What | Where |
 |---|---|---|
-| No host fee | Like the Host Pass: `activePass` counts a Club Pass, so the draw (and a linked board's kickoff) is covered | `worker/payments/pass.ts` |
+| No host fee, no Venue add-on | `passCover` says "venue": every board's host fee and every venue board's add-on are covered at the draw (and a linked board's kickoff) | `worker/payments/pass.ts`, `shared/pricing.ts` |
 | Club branding | The club's name (checked like a board name, `mentionsMoney`, 40 characters) and an optional logo: the board header ("Hosted by <club>", the invite view too), TV mode's panel, the printout, and the link preview's description (the name only, never an amount, the image unchanged) | `Game.club`, `worker/clubs/brand.ts` |
 | More co-hosts | Up to 10 per board (`CLUB_MAX_COHOSTS`) instead of `MAX_COHOSTS` (3): `cohostLimitOf(game)` in `shared/cohosts.ts` | the invite and accept routes, `CohostsSection` |
 | Players CSV | `GET /api/games/:id/export.csv`, host and co-hosts of a club board: player, how many squares, the squares as "row-col" (from 1 at the top left), after the draw their numbers (team across the top first; a column per draw with new numbers each quarter), when they joined (`?tz=`). Never a payment column, an email or a clientId; formula-looking names are kept as text | `worker/clubs/csv.ts` |
@@ -771,7 +840,7 @@ app may unlock what was bought elsewhere, but must not point to buying it).
 No price, no pitch, no Get button, no Manage link and no "buy it on the web"
 there (`clubCheckoutMethod` and `clubPassPrice` say null on iOS; Profile,
 Terms and Support leave it out). A holder's features just work in the app:
-Profile shows "Club Pass · Active" and the club settings (name, logo, TV link,
+Profile shows "Annual Pass + Venue · Active" and the club settings (name, logo, TV link,
 boards), and boards, TV and printouts carry the branding.
 
 ### How it's built
@@ -780,13 +849,13 @@ boards), and boards, TV and printouts carry the branding.
   `host_passes.plan` (`'host'` default, or `'club'`). `activePass` and
   `holdersOfActivePass` count any plan; `hostPassOf` / `clubPassOf` show each
   plan apart (`HostPassState.club`, `MeResponse.clubPass`; the `HostPass`
-  shape is the same). A Club Pass holder isn't sold a Host Pass (409 "Your Club
-  Pass already covers every board you host."); a Host Pass holder can add the
-  Club Pass (both stay until one is canceled in Manage).
-- **Buying it** reuses the Host Pass routes with `{ plan: "club" }` in the
+  shape is the same). An Annual Pass + Venue holder isn't sold an Annual Pass (409 "Your Club
+  Pass already covers every board you host."); an Annual Pass holder can add the
+  Annual Pass + Venue (both stay until one is canceled in Manage).
+- **Buying it** reuses the Annual Pass routes with `{ plan: "club" }` in the
   body: `POST /api/payments/pass/stripe` (409 `account_required` without a
   sign-in; 503 until `STRIPE_CLUB_PASS_PRICE_ID` is set; idempotency key
-  `clubpass-<customer>-<price>-<n>`; description "JaxSquares Club Pass
+  `clubpass-<customer>-<price>-<n>`; description "JaxSquares Annual Pass + Venue
   (yearly)"; metadata `product=host_pass`, `plan=club`), `POST
   /api/payments/pass/stripe/confirm` and, in test mode, `POST
   /api/payments/pass/test` / `test/end`. Manage is the same Customer Portal
@@ -795,20 +864,20 @@ boards), and boards, TV and printouts carry the branding.
   the card form, the test pass in test mode) from Profile's pitch.
 - **The plan follows the Price.** Every webhook (and confirm) reads the
   Subscription back from Stripe; `planOfSubscription` maps its Price: the
-  club Price → `club`, the Host Pass Price → `host`, any other Price (an older
+  club Price → `club`, the Annual Pass Price → `host`, any other Price (an older
   one kept by subscriptions made before a price change) leaves the stored plan
   as it is. So a holder who switches plans in the Customer Portal (if you
-  allow it) moves between them, and a Club Pass price change never demotes
+  allow it) moves between them, and an Annual Pass + Venue price change never demotes
   existing holders.
 - **The club** (`clubs`, owned by `worker/clubs/store.ts`): a random public
   id, the owner's canonical clientId (server-only), the name, the logo (base64
   in D1, with its type and a SHA-256 ETag) and the TV link token's SHA-256.
-  It's made the first time a Club Pass holder needs one. It joins the sign-in
+  It's made the first time an Annual Pass + Venue holder needs one. It joins the sign-in
   merge and goes with a deleted account (docs/auth.md).
 - **Branding on the board.** `worker/db.ts` reads the host's club with every
   board state (`clubBrandOf`, cached per isolate for 30 s, dropped on the
   holder's own changes and pass changes) into `Game.club` `{ id, name,
-  hasLogo, logoVersion }`: present while the host's Club Pass is active (an
+  hasLogo, logoVersion }`: present while the host's Annual Pass + Venue is active (an
   unnamed club shows nothing), never who owns it. A rename or new logo
   re-broadcasts the club's open and live boards.
 - **The logo.** The browser resizes it to fit 256×256 and re-encodes it as
@@ -838,34 +907,38 @@ boards), and boards, TV and printouts carry the branding.
   stay), the CSV and the TV's boards stop; boards drawn while it was active
   stay drawn. The club's name and logo are kept for when it's renewed.
 
-### Setup (Club Pass)
+### Setup (Annual Pass + Venue)
 
 Every value is a plain setting (`wrangler.jsonc` → `vars`); no new secrets.
 
 **Stripe**
 
-1. Product catalog → **Add product** → name **Club Pass**, description "For
-   bars, booster clubs, offices and fundraisers: every board you host for a
-   year, with your club's name and logo, 10 co-hosts, players lists and a TV
-   link." Pricing: **Recurring**, **$49.00 per year**. Save.
+1. Product catalog → **Add product** → name **Annual Pass + Venue**,
+   description "For bars and restaurants: every board you host for a year,
+   venue boards included, with your venue's name and logo, 10 co-hosts,
+   players lists and a TV link." Pricing: **Recurring**, **$99.99 per
+   year**. Save. (Stripe's test mode and live mode each need it.)
 2. Copy the Price id (`price_…`) into `STRIPE_CLUB_PASS_PRICE_ID` in
-   `wrangler.jsonc` → `vars`, and keep `CLUB_PASS_PRICE_CENTS` (4900) equal to
-   it: the web shows that number. Until the Price id is set, live mode doesn't
-   sell the Club Pass (Profile hides the pitch; the route answers 503). Test
-   mode always offers the no-charge test pass.
+   `wrangler.jsonc` → `vars`, and keep `CLUB_PASS_PRICE_CENTS` (9999) equal to
+   it: the web shows that number, and "+$80/year" is it less the Annual Pass's.
+   Until the Price id is set, live mode doesn't sell the Annual Pass + Venue
+   or add the Venue add-on to a pass (Profile hides the pitch; the routes
+   answer 503). Test mode always offers the no-charge test pass. The old $49
+   Club Pass Price is retired: its subscriptions keep renewing at $49 and stay
+   venue passes (an unknown Price never changes a pass's plan).
    - **Changing the price later:** add a new Price to the same product and
      point `STRIPE_CLUB_PASS_PRICE_ID` at it (with `CLUB_PASS_PRICE_CENTS`) in
      one deploy. Existing subscriptions keep renewing at their old Price, and
-     the webhook keeps them Club Passes (an unknown Price never changes a
+     the webhook keeps them Annual Pass + Venue passes (an unknown Price never changes a
      pass's plan). Leave the old Price active.
 3. Nothing else changes in Stripe: the webhook endpoint and its events
    (`invoice.paid`, `customer.subscription.updated` / `.deleted`), the
-   restricted key's permissions and the Customer Portal are the Host Pass's.
-   If you want holders to switch between the Host Pass and the Club Pass
+   restricted key's permissions and the Customer Portal are the Annual Pass's.
+   If you want holders to switch between the Annual Pass and the Annual Pass + Venue
    themselves, add both products to the Customer Portal's "Subscription
    products" (Settings → Billing → Customer portal → Subscriptions → let
    customers switch plans); the webhook moves the pass's plan with the Price.
-4. **App Store Connect:** nothing. The Club Pass has no in-app product, and
+4. **App Store Connect:** nothing. The Annual Pass + Venue has no in-app product, and
    the iOS app never sells it (see above). Review notes may mention that club
    features bought on the web work in the app.
 
@@ -874,14 +947,14 @@ Then `npm run deploy` (CI applies `0016_club.sql` before deploying, or run
 
 ```bash
 curl -s https://jaxsquares.com/api/config | jq .payments.clubPass
-# { "priceCents": 4900, "currency": "usd", "web": true }
+# { "priceCents": 9999, "currency": "usd", "web": true }
 npx wrangler d1 execute jaxsquares --remote --command \
   "SELECT plan, provider, status, current_period_end FROM host_passes WHERE plan = 'club' ORDER BY created_at DESC LIMIT 5"
 ```
 
 Refunds: a holder asks Support (`support@jaxsquares.com`); refund from the
 Stripe dashboard (Payments → the charge → Refund) and cancel the subscription
-there if they want it ended now. A refunded Club Pass that's canceled stops
+there if they want it ended now. A refunded Annual Pass + Venue that's canceled stops
 covering draws and the club features at once.
 
 ## Not covered yet
@@ -899,7 +972,7 @@ covering draws and the club features at once.
   end to end first.
 
 - **Refunds don't undo a draw.** Refunding a board in Stripe or Apple leaves
-  it paid (and drawn); a refunded Host Pass stops covering new draws (Apple's
+  it paid (and drawn); a refunded Annual Pass stops covering new draws (Apple's
   REFUND notification, or the subscription ending in Stripe) but boards it
   covered stay drawn. Handle `charge.refunded` for board purchases if that
   matters.
@@ -907,7 +980,7 @@ covering draws and the club features at once.
   that open right away (it reads `paymentRequired: false`), but it can't pay at
   the draw: its "Draw the numbers" shows the 402's message until it updates.
 - **Android app.** Google Play's payments policy will require Play Billing
-  (for the board fee and the Host Pass) before an Android build ships on the
+  (for the board fee and the Annual Pass) before an Android build ships on the
   Play Store. Until then, Android uses
   the Stripe web flow, which is fine for the web or PWA but not for a Play
   Store build.

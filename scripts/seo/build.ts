@@ -55,6 +55,7 @@ const require = createRequire(import.meta.url);
 /** The source of each app page in the sitemap: a change to it is a change to the page. */
 const APP_PAGE_SOURCES: Record<(typeof APP_PAGES)[number], string> = {
   "/": "src/features/home/Welcome.tsx",
+  "/pricing": "src/pages/Pricing.tsx",
   "/terms": "src/pages/Terms.tsx",
   "/privacy": "src/pages/Privacy.tsx",
   "/support": "src/pages/Support.tsx",

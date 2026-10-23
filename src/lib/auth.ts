@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { sha256 } from "../../shared/playerId";
 import type { AuthConfig, AuthProvider, MeResponse, SignInInput } from "../../shared/types";
 import { api } from "./api";
-import { hasProfileName, isSignedIn, saveAdminTokens, setCohostGames, setProfile, setServerIdentity, wipeIdentity } from "./identity";
+import { forgetSignedInBefore, hasProfileName, isSignedIn, saveAdminTokens, setCohostGames, setProfile, setServerIdentity, wipeIdentity } from "./identity";
 import { resetMyGames } from "./live";
 import { platform, type Platform } from "./native";
 import { clearMutedCache, currentPushTarget, syncPush } from "./push";
@@ -213,8 +213,9 @@ export async function signOut(): Promise<void> {
   startFresh();
 }
 
-/** Deletes the account (the server revokes the Apple token too); then this device starts fresh. */
+/** Deletes the account (the server revokes the Apple token too); then this device starts fresh, with nothing to sign back in to. */
 export async function deleteAccount(): Promise<void> {
   await api.deleteAccount();
   startFresh();
+  forgetSignedInBefore();
 }

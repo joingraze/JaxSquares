@@ -11,7 +11,7 @@ export type Audience = "friends" | "venue";
 
 const OPTIONS: { value: Audience; label: string; hint: string; icon: typeof UsersIcon }[] = [
   { value: "friends", label: "Friends & family", hint: "A square price, or just for fun", icon: UsersIcon },
-  { value: "venue", label: "A bar or restaurant", hint: "Free to play, prizes from you", icon: TvIcon },
+  { value: "venue", label: "A bar or restaurant", hint: "Free to play, prizes from you · Venue add-on", icon: TvIcon },
 ];
 
 export function AudiencePicker({ value, onChange }: { value: Audience; onChange: (audience: Audience) => void }) {

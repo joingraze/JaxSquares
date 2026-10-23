@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { MOMENT_INFO, periodPhrase, periodsFor, PRESET_INFO, rulesForPreset, suggestPrizes } from "./formats";
+import { MOMENT_INFO, momentInfo, periodPhrase, periodsFor, PRESET_INFO, presetInfo, rulesForPreset, suggestPrizes, withRules } from "./formats";
 import {
+  BY_KIND_SPORT_ERROR,
   EVERY_SCORE_SPORT_ERROR,
   HALVES_MOMENT_ERROR,
+  SOCCER_FRESH_ERROR,
+  SOCCER_MOMENT_ERROR,
+  formatProblemFor,
+  isSoccer,
   LEAGUE_INFO,
   SPORT_ERROR,
   SPORT_LEAGUES,
@@ -137,6 +142,67 @@ describe("moments and presets per league", () => {
   it("suggests prizes for basketball's fixed moments like football's", () => {
     expect(suggestPrizes(rulesForPreset("quarters", false), 10, 100).map((r) => r.square?.amount)).toEqual([200, 200, 200, 400]);
     expect(suggestPrizes(fitRules(rulesForPreset("quarters", false), NCAAM), 10, 100).map((r) => r.square?.amount)).toEqual([400, 600]);
+  });
+});
+
+describe("soccer", () => {
+  const MLS = { sport: "soccer" as const, league: "mls" as const };
+  const CUSTOM_SOCCER = { sport: "soccer" as const, league: "custom" as const };
+
+  it("has its leagues, picked by day", () => {
+    expect(SPORT_LEAGUES.soccer).toEqual(["mls", "nwsl", "epl", "laliga", "ligamx", "ucl"]);
+    expect(SPORT_LEAGUES.soccer.map((l) => LEAGUE_INFO[l].label)).toEqual(["MLS", "NWSL", "Premier League", "LaLiga", "Liga MX", "Champions League"]);
+    expect(leagueSport("epl")).toBe("soccer");
+    expect(isDayLeague("ucl")).toBe(true);
+    expect(isSoccer(MLS)).toBe(true);
+    expect(isSoccer(CUSTOM_SOCCER)).toBe(true);
+    expect(isSoccer(NFL)).toBe(false);
+    expect(boardSportFor("soccer", "custom")).toBe("soccer");
+    expect(leagueSportProblem("football", "mls")).toBe("That league plays soccer, not football.");
+    expect(leagueSportProblem("soccer", "custom")).toBeNull();
+  });
+
+  it("wins on goals: the first, every one and the last", () => {
+    expect(momentsFor(MLS)).toEqual(["first", "score", "final"]);
+    expect(presetsFor(MLS)).toEqual(["every-score", "first-last", "final"]);
+    expect(defaultPresetFor(CUSTOM_SOCCER)).toBe("every-score");
+    expect(presetsFor(MLS).map((p) => presetInfo(p, "soccer").label)).toEqual(["Every goal", "First & last goal", "Last goal"]);
+    expect(momentsFor(MLS).map((m) => momentInfo(m, "soccer").label)).toEqual(["First goal", "Every goal", "Last goal"]);
+    expect(periodsFor("first-last", "soccer").map((p) => p.label)).toEqual(["1st goal", "Last goal"]);
+    // Football never offers the first goal.
+    expect(presetsFor(NFL)).not.toContain("first-last");
+    expect(rulesProblemFor(rulesForPreset("first-last", false), NFL)).toBe("That moment isn't part of this game.");
+  });
+
+  it("refuses quarters, amounts by score type and fresh numbers", () => {
+    expect(rulesProblemFor(rulesForPreset("quarters", false), MLS)).toBe(SOCCER_MOMENT_ERROR);
+    expect(rulesProblemFor(rulesForPreset("every-score", true), MLS)).toBeNull();
+    const byKind: MomentRule[] = [{ moment: "score", square: { amount: 5, note: "", byKind: { touchdown: 10 } }, reverse: null }];
+    expect(rulesProblemFor(byKind, MLS)).toBe(BY_KIND_SPORT_ERROR);
+    expect(rulesProblemFor(byKind, NFL)).toBeNull();
+    const fresh = withRules({ periods: "final", reverse: false, boardSize: 100, freshNumbers: true, rules: rulesForPreset("final", false) });
+    expect(fresh.freshNumbers).toBe(true);
+    expect(formatProblemFor(fresh, MLS)).toBe(SOCCER_FRESH_ERROR);
+    expect(formatProblemFor(fresh, NFL)).toBeNull();
+    // A first goal never takes fresh numbers, whatever the sport says.
+    expect(withRules({ periods: "first-last", reverse: false, boardSize: 100, freshNumbers: true, rules: rulesForPreset("first-last", false) }).freshNumbers).toBe(false);
+  });
+
+  it("starts a board turning to or from soccer on its game's default", () => {
+    expect(fitRules(rulesForPreset("quarters", false), MLS).map((r) => r.moment)).toEqual(["score", "final"]);
+    expect(fitRules(rulesForPreset("first-last", true), NFL).map((r) => r.moment)).toEqual(["q1", "q2", "q3", "final"]);
+    expect(fitRules(rulesForPreset("first-last", true), NFL).every((r) => r.reverse)).toBe(true);
+    const goals = rulesForPreset("every-score", false);
+    expect(fitRules(goals, MLS)).toBe(goals);
+    // Football's amounts by score type don't come along.
+    const byKind: MomentRule[] = [{ moment: "score", square: { amount: 5, note: "Wings", byKind: { touchdown: 10 } }, reverse: null }];
+    expect(fitRules(byKind, MLS)).toEqual([{ moment: "score", square: { amount: 5, note: "Wings" }, reverse: null }]);
+  });
+
+  it("names soccer's periods", () => {
+    expect(regulationPeriods(MLS)).toBe(2);
+    expect([1, 2, 3, 5].map((p) => periodName(p, MLS))).toEqual(["H1", "H2", "ET", "Pens"]);
+    expect(wordsFor(MLS).emoji).toBe("⚽");
   });
 });
 

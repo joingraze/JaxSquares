@@ -1,21 +1,22 @@
-// Pieces of the Host Pass UI shared by the checkout sheet and Profile: the
-// "This board / Host Pass" choice, the pass card, and the subscription
+// Pieces of the Annual Pass UI shared by the checkout sheet and Profile: the
+// "This board / Annual Pass" choice, the pass card, and the subscription
 // disclosure Apple requires next to the subscribe button (name, length, price
 // per period, auto-renewal until canceled, how to cancel, Terms and Privacy).
 // Prices come from the caller: the App Store's own string in the iOS app,
 // never the web price there (App Store guideline 3.1.1).
 
 import type { ReactNode } from "react";
+import { PASS_NAME, VENUE_PASS_NAME } from "../../../shared/pricing";
+import type { PassPlan } from "../../../shared/types";
 import { Link } from "react-router-dom";
 import { CheckIcon, CrownIcon, SparklesIcon } from "../../components/icons";
 import { cx } from "../../components/ui";
 import type { CheckoutMethod } from "../../lib/checkout";
-import { useHostPass } from "../../lib/useHostPass";
 import { paysForItself, perYear } from "./passText";
 
 export type CheckoutPlan = "board" | "pass";
 
-// ---- This board / Host Pass ----
+// ---- This board / Annual Pass ----
 
 function PlanOption({
   plan,
@@ -67,9 +68,10 @@ function PlanOption({
 }
 
 /**
- * The two ways to pay at the draw: this board once, or the yearly Host Pass.
- * One tap switches. `paysOffAt`: the board the pass pays for itself on
- * (passPaysOffAt, from the prices this device shows); null hides that line.
+ * The two ways to pay at the draw: this board once, or the yearly Annual Pass
+ * (with the Venue add-on on a venue board: `venue`). One tap switches.
+ * `paysOffAt`: the board the pass pays for itself on (passPaysOffAt, from the
+ * prices this device shows); null hides that line.
  */
 export function PlanPicker({
   plan,
@@ -78,7 +80,7 @@ export function PlanPicker({
   passPrice,
   paysOffAt,
   disabled,
-  season = false,
+  venue = false,
 }: {
   plan: CheckoutPlan;
   onChange: (plan: CheckoutPlan) => void;
@@ -86,24 +88,23 @@ export function PlanPicker({
   passPrice: string | null;
   paysOffAt: number | null;
   disabled?: boolean;
-  /** A season board: its one fee covers every game of the season. */
-  season?: boolean;
+  /** A venue board: this board with its Venue add-on, or the Annual Pass + Venue. */
+  venue?: boolean;
 }) {
-  const what = season ? "This season" : "This board";
   return (
     <div role="radiogroup" aria-label="How to pay" data-testid="plan-picker" className={cx("mt-4 flex flex-col gap-2.5", disabled && "pointer-events-none opacity-60")}>
       <PlanOption
         plan="board"
         selected={plan === "board"}
-        title={boardPrice ? `${what} · ${boardPrice}` : what}
-        detail={season ? "Once, for every game of the season" : "Once, for this board"}
+        title={boardPrice ? `This board · ${boardPrice}` : "This board"}
+        detail={venue ? "Once, for this board, with the Venue add-on" : "Once, for this board"}
         onSelect={onChange}
       />
       <PlanOption
         plan="pass"
         selected={plan === "pass"}
-        title={`Host Pass · ${perYear(passPrice)}`}
-        detail="Every board you host for a year"
+        title={`${venue ? VENUE_PASS_NAME : PASS_NAME} · ${perYear(passPrice)}`}
+        detail={venue ? "Every board you host for a year, venue boards too" : "Every board you host for a year"}
         extra={paysOffAt ? <span data-testid="pass-pays-off">{paysForItself(paysOffAt)}</span> : undefined}
         onSelect={onChange}
       />
@@ -124,8 +125,9 @@ function Perk({ children }: { children: ReactNode }) {
   );
 }
 
-/** `paysOffAt`: as PlanPicker's (null leaves that perk out). */
-export function PassCard({ price, test, paysOffAt = null }: { price: string | null; test?: boolean; paysOffAt?: number | null }) {
+/** `paysOffAt`: as PlanPicker's (null leaves that perk out). `plan` "club": the Annual Pass + Venue. */
+export function PassCard({ price, test, paysOffAt = null, plan = "host" }: { price: string | null; test?: boolean; paysOffAt?: number | null; plan?: PassPlan }) {
+  const venue = plan === "club";
   return (
     <div data-testid="pass-card" className="relative overflow-hidden rounded-card bg-surface-3 p-4 ring-1 ring-inset ring-gold-line/40">
       <div aria-hidden className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-[radial-gradient(closest-side,rgb(255_194_51/0.22),transparent)]" />
@@ -134,13 +136,14 @@ export function PassCard({ price, test, paysOffAt = null }: { price: string | nu
           <CrownIcon size={21} strokeWidth={2.3} />
         </span>
         <div className="min-w-0">
-          <p className="font-display text-title-3 font-extrabold text-ink">Host Pass</p>
+          <p className="font-display text-title-3 font-extrabold text-ink">{venue ? VENUE_PASS_NAME : PASS_NAME}</p>
           <p className="text-subhead font-semibold text-ink-muted">{test ? "Test pass · no charge" : perYear(price)}</p>
         </div>
       </div>
       <ul className="relative mt-3.5 flex flex-col gap-2 text-subhead text-ink">
-        <Perk>Every board you host for a year</Perk>
-        <Perk>Draw the numbers with no host fee</Perk>
+        <Perk>Every board you host for a year from today</Perk>
+        <Perk>{venue ? "Venue boards included: free to play, prize pickup, 10 co-hosts" : "Draw the numbers with no host fee"}</Perk>
+        {venue && <Perk>Your venue's name and logo on your boards and TV</Perk>}
         {paysOffAt ? <Perk>{paysForItself(paysOffAt)}</Perk> : null}
       </ul>
     </div>
@@ -157,14 +160,26 @@ const link = "font-semibold text-ink-muted underline underline-offset-2";
  * canceled, how to cancel, and links to the Terms and Privacy Policy.
  * `onNavigate` closes the sheet when a link is followed.
  */
-export function PassDisclosure({ method, price, onNavigate }: { method: CheckoutMethod | null; price: string | null; onNavigate?: () => void }) {
+export function PassDisclosure({
+  method,
+  price,
+  onNavigate,
+  plan = "host",
+}: {
+  method: CheckoutMethod | null;
+  price: string | null;
+  onNavigate?: () => void;
+  /** "club": the Annual Pass + Venue. */
+  plan?: PassPlan;
+}) {
+  const name = plan === "club" ? VENUE_PASS_NAME : PASS_NAME;
   let text: ReactNode;
   if (method === "test") {
     text = "Test pass: no charge while checkout is in test mode. It lasts a year and doesn't renew.";
   } else if (method === "iap") {
     text = (
       <>
-        Host Pass, 1 year, {price ? `${price} a year` : "at the price the App Store shows"}. Charged to your Apple ID when you confirm. It renews
+        {name}, 1 year, {price ? `${price} a year` : "at the price the App Store shows"}. Charged to your Apple ID when you confirm. It renews
         automatically each year unless you cancel at least 24 hours before it renews; the renewal is charged in the 24 hours before. Cancel any
         time in Settings › your name › Subscriptions.
       </>
@@ -172,8 +187,8 @@ export function PassDisclosure({ method, price, onNavigate }: { method: Checkout
   } else {
     text = (
       <>
-        Host Pass, 1 year, {price ? `${price} a year` : "yearly"}. It renews automatically each year until you cancel. Cancel any time in Profile ›
-        Host Pass › Manage.
+        {name}, 1 year, {price ? `${price} a year` : "yearly"}. It renews automatically each year until you cancel. Cancel any time in Profile ›
+        Annual Pass › Manage.
       </>
     );
   }
@@ -191,13 +206,12 @@ export function PassDisclosure({ method, price, onNavigate }: { method: Checkout
   );
 }
 
-/** "Included with your Host Pass" (or Club Pass, when that's the one covering it): where a price would be on a board the pass covers. */
+/** "Included with your Annual Pass": where a price would be on a board the pass covers. */
 export function PassIncluded({ className }: { className?: string }) {
-  const { pass, clubActive } = useHostPass(false);
   return (
     <p data-testid="host-pass-note" className={cx("flex items-center justify-center gap-1.5 text-footnote font-semibold text-ink-gold", className)}>
       <SparklesIcon size={14} strokeWidth={2.4} className="shrink-0" />
-      {clubActive && !pass?.active ? "Included with your Club Pass" : "Included with your Host Pass"}
+      Included with your {PASS_NAME}
     </p>
   );
 }

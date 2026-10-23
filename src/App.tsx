@@ -26,7 +26,7 @@ const screens = {
   // The board on a TV (/g/:id/tv) and on paper (/g/:id/print): full-bleed, outside the phone column.
   tv: () => import("./pages/TvView"),
   print: () => import("./pages/PrintView"),
-  // A Club Pass holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
+  // An Annual Pass + Venue holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
   clubTv: () => import("./pages/ClubTvView"),
   // A smart TV pairing with a board by code (/tv).
   tvPair: () => import("./pages/TvPair"),
@@ -34,6 +34,7 @@ const screens = {
   privacy: () => import("./pages/Privacy"),
   terms: () => import("./pages/Terms"),
   support: () => import("./pages/Support"),
+  pricing: () => import("./pages/Pricing"),
 } satisfies Record<string, () => Promise<PageModule>>;
 type Screen = keyof typeof screens;
 const isScreen = (id: string | undefined): id is Screen => !!id && Object.prototype.hasOwnProperty.call(screens, id);
@@ -125,7 +126,7 @@ function LaunchHooks() {
             });
           },
           onUnused: (message) => toast.show({ title: "That purchase wasn't needed", description: message, duration: 0 }),
-          // A Host Pass purchase confirmed later, or a renewal: the pass as the server now has it.
+          // An Annual Pass purchase confirmed later, or a renewal: the pass as the server now has it.
           onPass: (state) => setHostPassState(state),
         }),
       )
@@ -164,6 +165,7 @@ export function appRoutes(): RouteObject[] {
             { path: "privacy", ...screen("privacy") },
             { path: "terms", ...screen("terms") },
             { path: "support", ...screen("support") },
+            { path: "pricing", ...screen("pricing") },
             // Component gallery for building screens; dev server only.
             ...(import.meta.env.DEV
               ? [{ path: "kit", lazy: async () => ({ Component: (await import("./pages/Kit")).default }) }]

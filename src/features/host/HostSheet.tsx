@@ -12,8 +12,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PRESET_INFO, drawKeys, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
-import { freshNumbersInfo, isFootball, presetsFor, wordsFor, type GameKind } from "../../../shared/sports";
+import { PRESET_INFO, drawKeys, presetInfo, everyScoreIndex, formatAmount, hasPrizeAmounts, periodPhrase, rulesOf, rulesSummary, unitOf } from "../../../shared/formats";
+import { freshNumbersInfo, isFootball, isSoccer, presetsFor, sportOf, wordsFor, type GameKind } from "../../../shared/sports";
 import { squareHolders } from "../../../shared/hostFee";
 import { SEASON_NUMBERS_INFO, currentSeasonGame, isSeasonBoard, isSeasonGame, seasonPositionLine } from "../../../shared/season";
 import { boardCountLine, siblingCheckOf, siblingProblem } from "../../../shared/siblings";
@@ -120,6 +120,9 @@ import {
 } from "./hostModel";
 import { Keypad, ScorePreview, ScoreTiles, SuggestionChip, type SavedNotice } from "./ScorePad";
 import { useScoreEntry } from "./useScoreEntry";
+import { GoalEntry, GoalPreviewLine } from "./GoalEntry";
+import { useGoalEntry } from "./useGoalEntry";
+import { fullTimeInput } from "./goalModel";
 import type { HostActions } from "./useHostActions";
 import { WinnersList } from "./WinnersList";
 import { ShowOnTv } from "../tv/SendToTv";
@@ -168,9 +171,9 @@ export interface HostSheetProps {
   /** Sign in (the host, not signed in, where sign-in is set up): the board's host controls then follow them to any device. */
   onSignIn?: () => void;
   onInvite: () => void;
-  /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
+  /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Annual Pass covers it). */
   fee: boolean;
-  /** The fee would be due, but the host's Host Pass covers it: "Included with your Host Pass", and the draw just draws. */
+  /** The fee would be due, but the host's Annual Pass covers it: "Included with your Annual Pass", and the draw just draws. */
   covered?: boolean;
   /** The fee would be due, but 5 or fewer players hold squares (drawIsFree): "Draw the numbers · Free", and the draw just draws. */
   free?: boolean;
@@ -239,6 +242,9 @@ export function HostSheet(props: HostSheetProps) {
 
   // ---- score entry (kept here so the footer can preview + save) ----
   const entry = useScoreEntry(state, defaultTargetKey(state));
+  // A soccer board's squares are minutes: its host adds goals (who scored, the minute), not scores.
+  const soccer = isSoccer(game);
+  const goal = useGoalEntry(state);
   const [fixing, setFixing] = useState(false);
   const scoreRef = useRef<HTMLElement>(null);
   const typedBoard = game.status === "locked" && !linked && !season;
@@ -262,6 +268,7 @@ export function HostSheet(props: HostSheetProps) {
   useEffect(() => {
     if (open && !wasOpen.current) {
       entry.setKey(defaultTargetKey(state), state);
+      goal.setKey(NEXT_ENTRY, state);
       setFixing(false);
       setNotice(null);
     }
@@ -327,6 +334,41 @@ export function HostSheet(props: HostSheetProps) {
       typedBoard ? nextKey : null,
       typedBoard ? initialDraft(next, nextKey) : null,
     );
+  };
+
+  /** Saves the goal being typed (a new one, or a fix), then readies the next one. */
+  const saveGoal = async () => {
+    const input = goal.input;
+    if (!input || !goal.canSave) return;
+    const preview = goal.preview;
+    const next = await actions.saveScore(input);
+    if (!next) return;
+    goal.setKey(NEXT_ENTRY, next);
+    if (!typedBoard) setFixing(false);
+    const winner = preview?.ownerId && preview.wins.length > 0 ? (next.players.find((p) => p.id === preview.ownerId) ?? null) : null;
+    void haptic(winner ? "success" : "light");
+    const what = preview?.wins.join(" + ") ?? "";
+    say(
+      winner
+        ? { tone: "win", title: winner.id === me ? `Saved · you win ${what}!` : `Saved · ${winner.name} wins ${what}`, detail: `A goal at ${preview?.text}.`, player: winner }
+        : { tone: "neutral", title: `Goal at ${preview?.text ?? "that minute"} saved`, detail: preview?.wins.length ? "Nobody had that square. You can give it to a player under Winners." : "Everyone sees it now.", player: null },
+    );
+  };
+
+  /** Full time: the last goal's moment (the final score), which ends a typed-in board; or end the board where the last goal doesn't win. */
+  const fullTime = async () => {
+    const input = fullTimeInput(state);
+    if (!input) return onView("end");
+    const next = await actions.saveScore(input);
+    if (next) props.onEnded();
+  };
+
+  const removeGoal = async (key: string) => {
+    const next = await actions.removeScore(key);
+    if (!next) return;
+    void haptic("light");
+    goal.setKey(NEXT_ENTRY, next);
+    say({ tone: "neutral", title: "Goal removed", detail: null, player: null });
   };
 
   const removeScore = async () => {
@@ -719,7 +761,27 @@ export function HostSheet(props: HostSheetProps) {
           {game.status === "locked" && linked && !fixing && <AutoHero state={state} started={started} onFix={() => setFixing(true)} />}
           {game.status === "final" && !fixing && !season && <FinalHero state={state} onFix={() => setFixing(true)} />}
 
-          {scoring && (
+          {scoring && soccer && (
+            <section ref={scoreRef} aria-label="Goals" className="flex scroll-mt-2 flex-col gap-3">
+              <GoalEntry state={state} goal={goal} teamX={game.teamX} teamY={game.teamY} onRemove={(k) => void removeGoal(k)} busy={actions.busy !== null} />
+              <div className="flex min-h-11 items-center justify-between gap-2 px-1">
+                {!typedBoard ? (
+                  <button type="button" onClick={() => setFixing(false)} className="pressable tap-target rounded-full px-1 py-1.5 text-footnote font-bold text-ink-muted">
+                    Cancel
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {typedBoard && (
+                  <Button data-testid="goal-full-time" variant="secondary" size="sm" haptic="medium" leading={<FlagIcon size={16} />} loading={actions.busy === "score" && goal.input === null} onClick={() => void fullTime()}>
+                    Full time
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
+
+          {scoring && !soccer && (
             <section ref={scoreRef} aria-label="Score entry" className="flex scroll-mt-2 flex-col gap-3">
               {entries && !everyScore ? (
                 // Every score and the quarter-ends: one tab adds (or fixes) a score change, the others mark a quarter-end.
@@ -814,7 +876,8 @@ export function HostSheet(props: HostSheetProps) {
                 entries && scoring
                   ? (k) => {
                       void haptic("selection");
-                      entry.setKey(k);
+                      if (soccer) goal.setKey(everyScoreIndex(k) !== null ? k : NEXT_ENTRY);
+                      else entry.setKey(k);
                       scoreRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
                     }
                   : undefined
@@ -896,9 +959,9 @@ export function HostSheet(props: HostSheetProps) {
               subtitle={
                 season
                   ? `${prizeLineup(game.format) ? prizesSummary(game.format) : rulesSummary(rulesOf(game.format, game.prizes))} · every game still to play`
-                  : prizeLineup(game.format)
-                    ? prizesSummary(game.format)
-                    : rulesSummary(rulesOf(game.format, game.prizes))
+                  : prizeLineup(game.format, game.sport)
+                    ? prizesSummary(game.format, game.sport)
+                    : rulesSummary(rulesOf(game.format, game.prizes), game.sport)
               }
               chevron
               onClick={() => onView("rules")}
@@ -923,7 +986,7 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("players")}
             />
           )}
-          {/* A Club Pass board's players as a CSV, for the host and co-hosts (src/features/club). */}
+          {/* An Annual Pass + Venue board's players as a CSV, for the host and co-hosts (src/features/club). */}
           <ExportPlayersRow game={game} />
           {isHost && props.onSignIn && <SignInToHostRow onSignIn={props.onSignIn} />}
           {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
@@ -957,7 +1020,25 @@ export function HostSheet(props: HostSheetProps) {
         </ListGroup>
       </div>
     );
-    if (scoring) {
+    if (scoring && soccer) {
+      footer = (
+        <div style={teamVars(game.teamX, game.teamY, theme)}>
+          <GoalPreviewLine state={state} goal={goal} me={me} notice={noticeLive} />
+          <Button
+            data-testid="score-save"
+            size="lg"
+            block
+            variant={goal.canSave ? "primary" : "secondary"}
+            haptic="medium"
+            disabled={!goal.canSave}
+            loading={actions.busy === "score"}
+            onClick={() => void saveGoal()}
+          >
+            {goal.key === NEXT_ENTRY ? `Add goal ${state.scores.filter((s) => everyScoreIndex(s.periodKey) !== null).length + 1}` : "Update goal"}
+          </Button>
+        </div>
+      );
+    } else if (scoring) {
       footer = (
         <div style={teamVars(game.teamX, game.teamY, theme)}>
           <ScorePreview state={state} entry={entry} label={label} moment={moment} me={me} notice={noticeLive} />
@@ -1059,6 +1140,7 @@ function RulesEditView({
 }) {
   const preset = presetChoice(draft.rules);
   const fresh = freshNumbersInfo(kind);
+  const sport = kind ? sportOf(kind) : null;
   return (
     <div className="flex flex-col gap-5 pb-2">
       <section aria-label="Presets" className="flex flex-col gap-2">
@@ -1071,16 +1153,16 @@ function RulesEditView({
               data-preset={p}
               selected={preset === p}
               disabled={!!lock.scoring && preset !== p}
-              onClick={() => preset !== p && onChange({ ...draft, rules: selectPreset(draft.rules, p) })}
+              onClick={() => preset !== p && onChange({ ...draft, rules: selectPreset(draft.rules, p, undefined, sport) })}
             >
-              {PRESET_INFO[p].short}
+              {presetInfo(p, sport).short}
             </Chip>
           ))}
           {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
         </div>
       </section>
-      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} kind={kind} />
-      {canUseFreshNumbers(draft.rules) && (
+      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} kind={kind} venueLocked={lock.venue} />
+      {canUseFreshNumbers(draft.rules) && sport !== "soccer" && (
         <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
           <Switch
             className="min-h-12"
@@ -1178,7 +1260,7 @@ function OpenHero({
       {fee ? payToDrawLabel(price, season) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw"}
     </Button>
   );
-  // Right under the draw: what a price would say on a free board, or one the Host Pass covers.
+  // Right under the draw: what a price would say on a free board, or one the Annual Pass covers.
   const drawNote = free ? <FreeDrawNote key="note" className="-mt-1" /> : covered ? <PassIncluded key="note" className="-mt-1" /> : null;
   // Until it's paid for, the hint says boards with up to 5 players are free.
   const upcoming = state.season?.games.filter((g) => g.startsAt > now).length ?? 0;
@@ -1229,7 +1311,7 @@ function OpenHero({
         </div>
       </div>
       {fee || covered || free ? (
-        // The draw carries its price (or "Free", or the Host Pass), so each button gets the full width; the move to make goes first.
+        // The draw carries its price (or "Free", or the Annual Pass), so each button gets the full width; the move to make goes first.
         <div className="relative mt-4 flex flex-col gap-2.5">
           {ready ? [drawButton, drawNote, inviteButton] : [inviteButton, drawButton, drawNote]}
         </div>
@@ -1436,7 +1518,7 @@ function LockConfirm({
       )}
       {covered && (
         <Fact icon={<SparklesIcon size={16} />}>
-          <b className="font-bold text-ink">Included with your Host Pass.</b> No host fee for this {season ? "season" : "board"}.
+          <b className="font-bold text-ink">Included with your Annual Pass.</b> Nothing to pay for this {season ? "season" : "board"}.
         </Fact>
       )}
       {low && (

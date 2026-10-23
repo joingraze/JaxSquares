@@ -1,7 +1,7 @@
-// The Club Pass's club on this device (docs/payments.md "Club Pass"): the
+// The Annual Pass + Venue's club on this device (docs/payments.md "Annual Pass + Venue"): the
 // holder's club settings (name, logo, TV link, boards), the club TV's read,
 // the players CSV, and the TV link this device made. The pass itself (buying
-// it, whether it's active) lives with the Host Pass (src/lib/useHostPass.ts).
+// it, whether it's active) lives with the Annual Pass (src/lib/useHostPass.ts).
 //
 // The TV link's token is only ever in the link (its fragment) and in this
 // device's storage: the server keeps a hash. The link comes back once, when
@@ -36,7 +36,7 @@ async function rawFetch(path: string, init: RequestInit): Promise<Response> {
 }
 
 export const clubApi = {
-  /** The holder's club; 404 (ApiError) without an active Club Pass. */
+  /** The holder's club; 404 (ApiError) without an active Annual Pass + Venue. */
   mine: () => request<ClubSettings>("GET", "/clubs/mine"),
   /** "" takes the branding off the boards. 400 for a name that talks money (CLUB_NAME_MONEY_ERROR). */
   rename: (name: string) => request<ClubSettings>("PATCH", "/clubs/mine", { body: { name } }),

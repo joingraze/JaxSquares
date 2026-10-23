@@ -43,6 +43,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 /** A Resend request as the mock saw it: one message, or a batch. */

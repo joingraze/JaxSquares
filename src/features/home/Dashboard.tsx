@@ -16,7 +16,7 @@ import { ArrowRightIcon, MailIcon, ShareIcon, WifiOffIcon } from "../../componen
 import { Button, buttonStyles, celebrate, cx, Jax, JaxCheer, LiveDot, useToast } from "../../components/ui";
 import { inviteUrl, type ApiError } from "../../lib/api";
 import { forgetSeen, getPlayerId, rememberSeen, useProfile } from "../../lib/identity";
-import { SignInCard } from "../account";
+import { SignInCard, SignInPill } from "../account";
 import { isMyBoard } from "../../lib/live";
 import { haptic, shareLink } from "../../lib/native";
 import { celebratedWins, markCelebrated } from "../board/storage";
@@ -201,7 +201,12 @@ export function Dashboard({ games, error, refresh }: DashboardProps) {
         name={profile.name}
         headline={headline}
         pulse={winPulse}
-        trailing={<ActivityBell items={inbox} now={now} focusGameId={focus?.id ?? null} />}
+        trailing={
+          <>
+            <SignInPill className="mr-1" />
+            <ActivityBell items={inbox} now={now} focusGameId={focus?.id ?? null} />
+          </>
+        }
       />
 
       <PullIndicator pull={pull} refreshing={refreshing} />

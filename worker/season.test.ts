@@ -12,11 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { derivePlayerIdSync } from "../shared/playerId";
 import { SEASON_ERRORS, SEASON_PROVIDER } from "../shared/season";
 import { drawFor, winningCell } from "../shared/squares";
-import { PAYMENT_REQUIRED_CODE, type CreateGameResponse, type GameState, type GameSummary, type LiveUpdate, type MeResponse } from "../shared/types";
+import { PASS_REQUIRED_CODE, SEASON_NEEDS_PASS } from "../shared/pricing";
+import type { CreateGameResponse, GameState, GameSummary, LiveUpdate, MeResponse } from "../shared/types";
 import type { Env } from "./env";
 import worker from "./index";
 import { inviteMeta } from "./og";
-import { getPaymentConfig } from "./payments";
 import { createTestD1, type TestD1 } from "./payments/testD1";
 import { notify } from "./push";
 import { clearMemoryCache } from "./scores/cache";
@@ -55,6 +55,7 @@ const MIGRATIONS = [
   "migrations/0019_prize_claims.sql",
   "migrations/0020_tv_display.sql",
   "migrations/0021_tv_pairings.sql",
+  "migrations/0022_goal_minutes.sql",
 ];
 
 const DAY = 86_400_000;
@@ -313,13 +314,14 @@ describe("the draw", () => {
     expect(new Set(draws.map((d) => JSON.stringify(d))).size).toBeGreaterThan(1);
   });
 
-  it("answers 402 on a bigger season until it's paid for; a Host Pass covers it", async () => {
+  it("answers 402 on a bigger season until there's an Annual Pass, which covers it", async () => {
     const made = await createSeason();
     const { id } = made.body.game;
     await fill(id, CLIENTS.slice(0, 6));
     const res = await call<{ error: string; code: string }>("POST", `/games/${id}/lock`, { admin: made.body.adminToken });
     expect(res.status).toBe(402);
-    expect(res.body.code).toBe(PAYMENT_REQUIRED_CODE);
+    // A season board comes with the Annual Pass: no per-game fee for it.
+    expect(res.body).toEqual({ error: SEASON_NEEDS_PASS, code: PASS_REQUIRED_CODE });
     expect(children(id)).toEqual([]);
     const now = Date.now();
     t.query(
@@ -339,14 +341,14 @@ describe("the draw", () => {
     expect(children(id)).toHaveLength(3);
   });
 
-  it("takes the season fee in test mode, then draws; the season's price is its own", async () => {
+  it("isn't sold per game, even in test mode: the test Annual Pass draws it", async () => {
     const made = await createSeason();
     const { id } = made.body.game;
     await fill(id, CLIENTS.slice(0, 6));
-    expect(getPaymentConfig(env).season).toEqual({ priceCents: 1499, iapProductId: "com.jaxsquares.app.seasonboard" });
-    expect(getPaymentConfig({ ...env, SEASON_BOARD_PRICE_CENTS: "1999" } as Env).season?.priceCents).toBe(1999);
-    expect(getPaymentConfig(env).priceCents).toBe(499);
-    expect((await call("POST", `/games/${id}/pay/test`, { admin: made.body.adminToken })).status).toBe(200);
+    const pay = await call<{ code: string }>("POST", `/games/${id}/pay/test`, { admin: made.body.adminToken });
+    expect(pay.status).toBe(402);
+    expect(pay.body.code).toBe(PASS_REQUIRED_CODE);
+    expect((await call("POST", "/payments/pass/test", { client: HOST })).status).toBe(200);
     expect((await call("POST", `/games/${id}/lock`, { admin: made.body.adminToken })).status).toBe(200);
     expect(children(id)).toHaveLength(3);
   });

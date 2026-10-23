@@ -23,24 +23,26 @@ exception so far: the public-id rename below, which closed an impersonation hole
   link previews/OG tags, invite or share text, or activity data. A host's
   free-text note ("Loser buys wings") may be quoted in a push (and an email,
   the same way).
-- The only payment is the host paying JaxSquares the host fee for a board, due
-  when they draw its numbers: one tap with Apple Pay / Google Pay (Stripe) on the
-  web, Apple In-App Purchase in the iOS app. Or the yearly **Host Pass** ($19.99
-  a year, auto-renewing until canceled), which covers that fee on every board
-  its holder hosts while it's active, or the web-only **Club Pass** ($49 a
-  year: the Host Pass plus club branding, 10 co-hosts, a players CSV and a club
-  TV; never offered in the iOS app; see "The Club Pass"). Creating a board, inviting and picking
+- The only payment is the host paying JaxSquares for a board (two products,
+  `shared/pricing.ts`, docs/payments.md "Pricing"): per game, the host fee
+  ($4.99) plus the Venue add-on ($10) on a venue board, due when they draw its
+  numbers: one tap with Apple Pay / Google Pay (Stripe) on the web, Apple
+  In-App Purchase in the iOS app (the host fee only). Or the yearly **Annual
+  Pass** ($19.99 a year, from the day it's bought, auto-renewing until
+  canceled), which covers the host fee on every board its holder hosts while
+  it's active, and with the Venue add-on (the web-only **Annual Pass + Venue**,
+  $99.99 a year) venue boards too, plus the venue's branding and a venue TV
+  link (never offered in the iOS app; see "The Annual Pass + Venue"). Creating a board, inviting and picking
   squares are free, and so is drawing a board whose squares 5 or fewer players
   hold (the free tier: `FREE_PLAYER_LIMIT` / `isFreeDraw` in
-  `shared/hostFee.ts`); JaxSquares never sells squares. A **season board** pays
-  one fee ($14.99) at its own draw for every game of the season (see "Season
-  boards"). With `PAYMENTS_MODE` unset
+  `shared/hostFee.ts`); JaxSquares never sells squares. A **season board**
+  comes with the Annual Pass: no per-game fee (see "Season boards"). With `PAYMENTS_MODE` unset
   the app runs a clearly labeled no-charge test checkout (and test pass). See
   docs/payments.md and "The host fee" below.
 - No account needed. A device is identified by a random `clientId` (localStorage, plus
   Capacitor Preferences in the native app) sent as `x-client-id` on every request.
   The host additionally holds a per-game `adminToken` sent as `x-admin-token`.
-  Up to 3 co-hosts (10 on a Club Pass holder's board) the host invites run the board with them by their
+  Up to 3 co-hosts (10 on an Annual Pass + Venue holder's board) the host invites run the board with them by their
   (canonical) clientId, never the token (see "Co-hosts").
   Signing in with Apple or Google is optional: it maps every signed-in device to
   its account's canonical clientId, so boards follow a person (see "Optional
@@ -113,7 +115,7 @@ Model, merge rules and setup: docs/auth.md. In short:
   public id.
 - Signing in on another device moves that device's rows (hosted boards,
   co-host rows, players, squares, its public id in the feed, push
-  registrations, mutes, Host Pass rows, its Stripe customer and its email
+  registrations, mutes, Annual Pass rows, its Stripe customer and its email
   notice addresses) to the canonical clientId in one batch with its link, bumps the touched boards'
   versions and broadcasts them. Its own clientId then works only through
   `client_links`.
@@ -162,7 +164,7 @@ Model, merge rules and setup: docs/auth.md. In short:
   hour with its host fee unpaid one `draw-reminder` push (`claimDrawReminders`,
   stamped in `games.draw_reminder_at`, migration 0009), unless the board is
   free (5 or fewer players hold squares; left out in SQL, unstamped) or the
-  host's Host Pass covers it (`holdersOfActivePass`): Jax draws those at
+  host's Annual Pass covers it (`holdersOfActivePass`): Jax draws those at
   kickoff. Each minute it also reads up to 5 drawn season boards' schedules
   that are due (about every 12 hours each, within the hour after a failed
   read) and gives new games their boards (`syncSeasons`, see "Season boards").
@@ -190,12 +192,12 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 |---|---|---|---|---|
 | GET | `/api/config` | – | – | `AppConfig` (`no-store`: a switch to live checkout or a new price reaches clients at once; the client reuses it for a minute). `auth`: the public sign-in client ids (`AuthConfig`); a provider without one is hidden. `emailEnabled`: email notices are set up (the app shows the opt-in only then) |
 | POST | `/api/auth/apple`, `/api/auth/google` | C | `SignInInput` (`{ idToken, nonce?, authorizationCode?, name?, redirectUri? }`) | `MeResponse`. Verifies the ID token (JWKS, `iss`, `aud`, `exp`/`iat`, nonce = SHA-256 of the raw one); a new identity makes this device an account's canonical one, a known one merges this device into it, and a new one whose verified email (not an Apple private relay address) an account has joins that account the same way (docs/auth.md "One account per email"). `MeResponse.account.providers` lists every way the account signs in. 400 bad body, 401 refused token, 409 "Sign out first" (linked to another account), 429, 502 provider keys unreachable, 503 provider not set up |
-| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Club Pass, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
+| GET | `/api/me` | C | – | `MeResponse` `{ playerId, account \| null, hostTokens, profile?, hostPass?, clubPass?, cohostGames? }` (`no-store`; reads the link fresh; 503 when it can't). `hostPass`: the identity's `HostPass` or null; `clubPass`: its Annual Pass + Venue, the same shape; `cohostGames`: ids of the boards the identity co-hosts (newest 200, no tokens) |
 | POST | `/api/auth/apple/link`, `/api/auth/google/link` | C | `SignInInput` (+ `combine?`) | `MeResponse`: adds that sign-in to the account this device is signed in to. 409 "Sign in first" (this device isn't); 409 `{ error, code: "account_exists" }` when that sign-in has its own account, until resent with `combine: true`, which moves that account's boards, devices and sign-ins into this one and deletes it; otherwise as sign-in |
 | POST | `/api/auth/sign-out` | C | `SignOutInput` (`{ endpoint?, token? }`, optional) | `{ ok: true }`: drops this device's link and that push registration from the account; 429 |
 | DELETE | `/api/account` | C | – | `{ ok: true }`: revokes Apple tokens, deletes the account, identities, links and the account's push registrations and email notice addresses; boards and squares stay. 404 when not signed in; 429 |
 | GET | `/api/schedule?league=nfl\|ncaaf[&week=2-8]` | – | – | `ScheduleResponse`: without `week`, the first week with games to link (`week`, `events`) and the weeks after it (`weeks`); with `week` (`<season type>-<week>`), that week's `events`. Cached; `{ events: [], unavailable: true }` when ESPN is down. 400 with `date` |
-| GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball goes by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
+| GET | `/api/schedule?league=nba\|wnba\|ncaab\|ncaaw\|mls\|nwsl\|epl\|laliga\|ligamx\|ucl[&date=20260320]` | – | – | `ScheduleResponse` `{ events, dates }`: basketball and soccer go by day (ESPN's US date). Without `date`, the next 7 days, today's slate first (`dates` lists the 7 `YYYYMMDD` days; one cached ESPN fetch per day, a day that fails is left out); with `date` (yesterday's slate to 400 days ahead), that day. 400 with `week`, or a `date` that isn't a real day in range. Same caching and `unavailable` as football. `ncaab` and `ncaaw` ask ESPN for Division I (`groups=50`, `limit=400`) |
 | GET | `/api/season/teams?league=<linked league>` | – | – | `SeasonTeamsResponse` `{ teams }`: the league's teams for a team's season (provider id, name, short name, abbreviation, color; never a logo: team logos are the leagues' trademarks, so teams show as their abbreviation on their color), by name; cached a day; `{ teams: [], unavailable: true }` when ESPN is down; 400 bad league |
 | GET | `/api/season/schedule?league=<linked league>&team=<id>[&year=2026]` | – | – | `TeamScheduleResponse` `{ team, year, events }`: one team's season (regular season, then the postseason games scheduled so far; the NBA's play-in too), every game in order, a finished one with its `result`; `homeId`/`awayId`, `label` ("Week 7", "Wild Card"), `playoff`. 200 `unavailable` when ESPN is down; 400 bad league, team or year |
 | POST | `/api/games` | C | `CreateGameInput` | `CreateGameResponse` (201): the board is `open` right away with `paid: false` (`paymentRequired` is always `false`; the host fee is due at the draw); 409 `{ error, code: "account_required" }` from a device that isn't signed in wherever web sign-in is set up (`hostsSignIn`, docs/auth.md "Hosts sign in"), checked first; 400 on bad rules (see "Rules and prizes"), money in a note, the name or a team name, or a custom `startsAt` out of range (see "Kickoff"); 429. The stored format is canonical (rules always present, `periods`/`reverse` derived) and `prizes` is `{}`: an older client's preset and notes become rules. With `fromGameId` ("Add another board for this game", see "Several boards for one game"): only that board's host (its admin token as `x-admin-token`, or the identity that hosts it) or one of its co-hosts; the new board takes that board's game and joins its group; 400 malformed id, 403 not its host or co-host, 404 no such board, 409 its game started or ended, or its group is full (or it's a season board or one of a season's games, `SEASON_ERRORS.sibling`). With `season` (`SeasonInput`, see "Season boards"): a season board; 400 on a bad scope, numbers, league, team, no game ahead or more than 120 (`SEASON_ERRORS`) |
@@ -205,18 +207,18 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/games/:id` | C H! | – | `{ ok: true }`; open sockets get `{ type: "deleted" }` then close 4404; co-host rows and invites go with the board. A season board takes its games' boards with it; a season's game board is 409 (`SEASON_ERRORS.childDelete`) |
 | POST | `/api/games/:id/join` | C | `JoinInput` | `{ state }` (upsert; also used to rename); 409 once the board has `MAX_PLAYERS` (200, `shared/squares.ts`) and you aren't one of them, or on a season's game board (`SEASON_ERRORS.childJoin`: players join the season board); 429 |
 | DELETE | `/api/games/:id/players/:playerId` | C H | – | `{ state }`: removes that player (public id) and frees their squares while the board is `open` (or a legacy `draft`); a removed co-host stops being one. 400 for the host (403 when a co-host asks), 403 when a co-host asks to remove another co-host, 404 if not on the board, 409 once locked. They may join again |
-| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`; 409 on a season's game board: invite on the season board, `SEASON_ERRORS.childCohost`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has its host's plan's limit (`cohostLimitOf`: `MAX_COHOSTS`, 3, or `CLUB_MAX_COHOSTS`, 10, on a Club Pass holder's board); 429 |
+| POST | `/api/games/:id/cohost-invites` | C H! | – | `CohostInviteResponse` `{ url, expiresAt }` (201, `no-store`; 409 on a season's game board: invite on the season board, `SEASON_ERRORS.childCohost`): a single-use link `<origin>/g/<id>?cohost=<token>` (43-char base64url token; D1 keeps only its SHA-256) good for 7 days (`COHOST_INVITE_TTL_MS`). 409 once the board has its host's plan's limit (`cohostLimitOf`: `MAX_COHOSTS`, 3, or `CLUB_MAX_COHOSTS`, 10, on an Annual Pass + Venue holder's board); 429 |
 | POST | `/api/games/:id/cohosts/accept` | C | `CohostAcceptInput` `{ token }` | `{ state }`: the caller (a player on the board, not its host) becomes a co-host; the invite is used up in the same transaction, which re-checks it's unused and unexpired and that the board has room. Already a co-host: `{ state }`, the link stays unused. 400 malformed token, 403 not on the board ("Join the board first…"), 404 unknown link, 409 the host's own link or the board is full, 410 used or expired; 429. Logs a `cohost` activity and pushes `cohost-accepted` to the host |
 | DELETE | `/api/games/:id/cohosts/:playerId` | C H | – | `{ state }`: the host removes a co-host (public id), or a co-host steps down (their own id; any other id is 403 for a co-host). They stay on the board. 404 when that id isn't a co-host |
 | POST | `/api/games/:id/claim` | C | `CellsInput` | `{ claimed: number, skipped: number, state }`; 409 on a season's game board (`SEASON_ERRORS.childClaim`; release too); 429 |
 | POST | `/api/games/:id/release` | C | `CellsInput` | `{ state }`; 429 |
-| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers; a co-host too). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Host Pass covers it (the caller's, by canonical clientId, so a co-host's own pass counts, or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`). A season board's draw (its season fee) reads the schedule again, gives every game ahead a board and sends one `numbers-drawn`; 409 when no game is left to play (`SEASON_ERRORS.noGames`) |
+| POST | `/api/games/:id/lock` | C H | – | `{ state }` (draws numbers; a co-host too). Free while 5 or fewer players hold squares (`isFreeDraw`): the board is marked paid with provider `free`, reference `free`, amount 0 (`db.markFreeDraw`, which counts the holders again in SQL) in the same batch as the draw, before any pass check; a 6th player whose claim committed first makes that a no-op and the route decides again with them counted (docs/payments.md "The free tier"). Otherwise **402** `{ error: "Draw the numbers once the board's paid for.", code: "payment_required" }` (`PAYMENT_REQUIRED_CODE`) while the host fee isn't paid (`Game.paid`) and no active Annual Pass covers it (the caller's, by canonical clientId, so a co-host's own pass counts, or the board's host's; then the board is marked paid through the pass, provider `pass`, amount 0, in the same write as the draw); 409 once drawn. On a linked board whose game the feed already called Final, the draw also ends the board (`final`, one `final` push instead of `numbers-drawn`). A season board's draw (its season fee) reads the schedule again, gives every game ahead a board and sends one `numbers-drawn`; 409 when no game is left to play (`SEASON_ERRORS.noGames`) |
 | POST | `/api/games/:id/scores` | C H | `ScoreInput` | `{ state }`; 409 on a season board (`SEASON_ERRORS.seasonScores`: scores go on its games' boards, like winners). Every-score boards: `periodKey` `"next"` (or `""`) appends entry `s(N+1)`; `sN` edits an existing entry (a `label` mentioning money is a 400). Re-saving a period's recorded score is written but not announced again (no score/winner activity or push) |
 | DELETE | `/api/games/:id/scores/:periodKey` | C H | – | `{ state }`. On every-score boards the entry's host pick goes with it (the next entry reuses the index) |
 | POST | `/api/games/:id/winners` | C H | `ManualWinnerInput` | `{ state }` |
 | DELETE | `/api/games/:id/winners/:periodKey` | C H | – | `{ state }` |
 | POST | `/api/games/:id/final` | C H | – | `{ state }` (host ends the game) |
-| GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | A Club Pass board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Club Pass, or for anyone but the host and co-hosts; 429 |
+| GET | `/api/games/:id/export.csv[?tz=<IANA zone>]` | C H | – | An Annual Pass + Venue board's players as CSV (`text/csv`, `attachment`, `no-store`, UTF-8 with a BOM): Player, Squares, Square list ("row-col" from 1), after the draw `Numbers (KC-PHI)` (a column per draw with new numbers each quarter), `Joined (<zone>)`. Never a payment column, an email or a clientId; a name a spreadsheet would run as a formula starts with `'`. 403 on a board whose host has no active Annual Pass + Venue, or for anyone but the host and co-hosts; 429 |
 | GET | `/api/games/:id/live?player=<public id>[&watch=0]` | – | WebSocket upgrade | stream of `LiveMessage` (see "Live socket") |
 | GET | `/api/games/:id/claims` | C (H for `all`) | – | `ClaimsResponse` `{ enabled, mine, all }` (`no-store`): a board with claim codes (`format.claimCodes`, see "Venue boards"): `mine` lists the caller's own winning awards with their codes; `all` every award's code for the host (its admin token) or a co-host, else null. `{ enabled: false, mine: [], all: null }` when the board doesn't use them; 404 |
 | POST | `/api/games/:id/claims/collect` | C (the winner, or H) | `CollectInput` `{ periodKey, reverse, collected }` | `{ state }`: marks that award's prize handed over to its current winner (`GameState.collected`, broadcast like any change), by the host or a co-host (`by: "host"`) or on the winner's own phone (`by: "winner"`); marking it again is a no-op. `collected: false` takes it back (host only, else 403). 400 bad body, 403 anyone else, 404 nobody has won that award, 409 the board doesn't use claim codes, or the winner's phone after their time to collect (`claimDeadline` + `CLAIM_GRACE_MS`, `CLAIM_EXPIRED_ERROR`; the host still can) |
@@ -227,8 +229,8 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | POST | `/api/games/:id/pay/test` | C H | – | `{ state }` (test mode only; marks the host fee paid, doesn't draw) |
 | POST | `/api/games/:id/pay/stripe` | C H | – | `{ clientSecret, amountCents, currency }` (PaymentIntent for this board's host fee; show and itemize its amount); 409 `{ error, state }` once the board is paid for |
 | POST | `/api/games/:id/pay/iap` | C H | `{ transactionId }` | `{ state }` (verifies with Apple, marks the fee paid). A verified purchase that can't pay for the board is kept in the ledger as `unused`: 409 `{ error, state, unused: true }` when the board is already paid for (or another purchase paid for it at the same instant: a board has one `paid` purchase, decided in one transaction, see docs/payments.md), 410 `{ error, unused: true }` when it was deleted (no admin token needed then; the purchase's board binding is the proof) |
-| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused`. `invoice.paid` and `customer.subscription.*` for a Host Pass make the server read the Subscription back from Stripe |
-| GET | `/api/payments/pass` | C | – | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer, club: HostPass \| null, clubOffer: ClubPassOffer }` (`no-store`), for the request's canonical identity. The purchase routes below take `{ plan: "club" }` for the Club Pass (`test`, `test/end`, `stripe`, `stripe/confirm`; web only) |
+| POST | `/api/stripe/webhook` | Stripe | raw | `{ received: true }`. `payment_intent.succeeded` marks the board paid only if this intent is the board's one `paid` purchase; one that lost to another purchase, or arrived after the board was deleted, is kept as `unused`. `invoice.paid` and `customer.subscription.*` for an Annual Pass make the server read the Subscription back from Stripe |
+| GET | `/api/payments/pass` | C | – | `HostPassState` `{ pass: HostPass \| null, offer: HostPassOffer, club: HostPass \| null, clubOffer: ClubPassOffer }` (`no-store`), for the request's canonical identity. The purchase routes below take `{ plan: "club" }` for the Annual Pass + Venue (`test`, `test/end`, `stripe`, `stripe/confirm`; web only) |
 | POST | `/api/payments/pass/test`, `/api/payments/pass/test/end` | C | – | `HostPassState`: a no-charge test pass for a year / end it. Test mode only (403 in live) |
 | POST | `/api/payments/pass/stripe` | C | – | `{ clientSecret, amountCents, currency }` (the pass's first invoice, Stripe Billing); **409** `{ error, code: "account_required" }` (`ACCOUNT_REQUIRED_CODE`) for a device with no account link; 409 with the state when one is active; 503 until `STRIPE_HOST_PASS_PRICE_ID` is set |
 | POST | `/api/payments/pass/stripe/confirm` | C | – | `HostPassState`, read back from Stripe |
@@ -246,13 +248,13 @@ token; a co-host gets 403). `429` = rate limited (see below; has `Retry-After`).
 | DELETE | `/api/games/:id/email` | C | – | `{ status: "none", email: null }`: the address is deleted (works even when email isn't set up); 429 |
 | GET, POST | `/api/email/confirm?token=` | – | – | HTML page. GET asks ("Confirm my email", which POSTs); POST confirms. 400 page for a used or expired (7 days) link, 503 until set up |
 | GET, POST | `/api/email/unsubscribe?token=` | – | form `scope=board\|all`, or RFC 8058 `List-Unsubscribe=One-Click` | HTML page. GET asks (this board, or every board for the address); POST unsubscribes. 400 page for a bad token |
-| GET | `/api/clubs/mine` | C | – | `ClubSettings` `{ club: ClubBrand, tvKey, boards: ClubBoard[] }` (`no-store`): the identity's club, made on first need; 404 without an active Club Pass |
+| GET | `/api/clubs/mine` | C | – | `ClubSettings` `{ club: ClubBrand, tvKey, boards: ClubBoard[] }` (`no-store`): the identity's club, made on first need; 404 without an active Annual Pass + Venue |
 | PATCH | `/api/clubs/mine` | C | `{ name }` | `ClubSettings`; 400 a name over 40 characters or one that talks money (`CLUB_NAME_MONEY_ERROR`); 404; 429. Re-broadcasts the club's open and live boards |
 | PUT | `/api/clubs/mine/logo` | C | the image (`image/webp` or `image/png`, ≤ 60 KB, ≤ 256×256) | `ClubSettings`; 400 (empty, magic bytes not matching the type, broken header, too large in pixels), 413 (over 60 KB), 415 (any other type); 404; 429 |
 | DELETE | `/api/clubs/mine/logo` | C | – | `ClubSettings`; 404; 429 |
 | POST | `/api/clubs/mine/tv` | C | – | `ClubTvLink` (201, `no-store`): `ClubSettings` + `tvUrl` `<origin>/club/<id>/tv#k=<token>`; only the token's hash is kept, the old link stops working; 404; 429 |
 | GET | `/api/clubs/:id/logo[?v=<version>]` | – | – | The logo, `ETag`, `nosniff`; `public, max-age=31536000, immutable` with its current `?v=`, a day otherwise; 304 on `If-None-Match`; 404 |
-| GET | `/api/clubs/:id/tv` | – (`x-club-tv-token`) | – | `ClubTvState` `{ club, active, boards: GameState[] }` (`no-store`): up to 12 open and live boards' public states (live, then drawn, then being picked); `boards: []` when the Club Pass isn't active; 404 for a wrong or old token (the same as an unknown club); 429 per address |
+| GET | `/api/clubs/:id/tv` | – (`x-club-tv-token`) | – | `ClubTvState` `{ club, active, boards: GameState[] }` (`no-store`): up to 12 open and live boards' public states (live, then drawn, then being picked); `boards: []` when the Annual Pass + Venue isn't active; 404 for a wrong or old token (the same as an unknown club); 429 per address |
 | GET | `/api/health` | – | – | `{ ok: true }` |
 
 Rate limits (`worker/rateLimit.ts`, fixed windows in the D1 `rate_limits` table
@@ -274,7 +276,7 @@ generous because a household, a bar's Wi-Fi or a carrier NAT shares one address:
 | `join-ip` | 120 per address per minute | what `join` counts, for every device behind one address |
 | `auth` | 20 per device per hour | sign-in attempts, sign-outs and account deletions (keyed by the device's own public id) |
 | `auth-ip` | 60 per address per hour | what `auth` counts, for every device behind one address |
-| `pass` | 30 per device per hour | Host Pass calls: test pass, starting or confirming a web purchase, App Store purchase and restore, Manage (keyed by the resolved public id) |
+| `pass` | 30 per device per hour | Annual Pass calls: test pass, starting or confirming a web purchase, App Store purchase and restore, Manage (keyed by the resolved public id) |
 | `pass-ip` | 120 per address per hour | what `pass` counts, for every device behind one address |
 | `cohost-invite` | 20 per device per hour | co-host invite links the host makes |
 | `cohost-invite-ip` | 60 per address per hour | what `cohost-invite` counts, for every device behind one address |
@@ -324,7 +326,7 @@ Non-API routes:
   `shared/tvBrowser.ts`: Tizen, webOS, Android TV, Fire TV, consoles and the
   like) is sent (302) to `/g/:id/tv`; `?board=1` keeps the board. A phone,
   tablet or computer never is.
-- `/club/:clubId/tv` (the club TV, see "The Club Pass") is the assets' SPA
+- `/club/:clubId/tv` (the club TV, see "The Annual Pass + Venue") is the assets' SPA
   fallback (`index.html`), and the page reads its token from the URL's fragment.
 - Search (docs/seo.md): `/g/*`, `/club/*`, `/new`, `/me` and `/tv` carry
   `X-Robots-Tag: noindex` (a board page lists its players' names). `GET /`
@@ -510,7 +512,7 @@ play is fetched once the same way (again when its `version` moves on).
 | `joined` | `{ name }` |
 | `claimed` | `{ count, cells: {row, col}[] }` (only what this request actually got) |
 | `released` | `{ count, cells }` |
-| `locked` | `{}` host draw, `{ auto: true }` at kickoff (actor null; only once the host fee is paid, the board is free, or a Host Pass covers it) |
+| `locked` | `{}` host draw, `{ auto: true }` at kickoff (actor null; only once the host fee is paid, the board is free, or an Annual Pass covers it) |
 | `score` | `{ periodKey, label, scoreX, scoreY, source: "live" \| "host" }` |
 | `winner` | `{ periodKey, label, playerIds, cell, reverseCell?, prize, manual? }` |
 | `final` | `{}` |
@@ -728,11 +730,13 @@ score, q1, q2, q3, final.
   period 2 through halftime). `liveCell`, the board's "Right now" and its draw
   tab follow it.
 
-## Sports: football and basketball (`shared/sports.ts`)
+## Sports: football, basketball and soccer (`shared/sports.ts`)
 
-- A board's `sport` is `football` or `basketball` (older boards without one
-  read as football); its `league` is `nfl`/`ncaaf` (football), `nba`, `wnba`,
-  `ncaab` (men's college), `ncaaw` (women's college) or `custom`.
+- A board's `sport` is `football`, `basketball` or `soccer` (older boards
+  without one read as football); its `league` is `nfl`/`ncaaf` (football),
+  `nba`, `wnba`, `ncaab` (men's college), `ncaaw` (women's college), the
+  soccer leagues (`mls`, `nwsl`, `epl`, `laliga`, `ligamx`, `ucl`; "Soccer
+  boards" below) or `custom`.
   `LEAGUE_INFO` holds each league's sport, chip label, schedule shape (by
   `week` or by `day`) and whether it plays halves (only `ncaab`). Create
   validates the pair (`leagueSportProblem`: 400 "That league plays basketball,
@@ -759,9 +763,68 @@ score, q1, q2, q3, final.
   buzzer", in the board, Home, alerts, push (`worker/push/copy.ts`), email,
   TV, print and the recap card (a court's center circle instead of yard
   lines). Link previews (`worker/og.ts`) add "🏀 Basketball squares" to a
-  basketball board's description. The brand stays "football squares".
+  basketball board's description. The brand is "sports squares" (the welcome
+  screen, `index.html` and the manifest name no one sport).
 - "How close am I" on the board (`playBookFor`): baskets (2), threes (3) and
   free throws (1) instead of touchdowns and field goals.
+
+### Soccer boards: goal minutes (`shared/soccer.ts`)
+
+- A soccer match has too few goals for score digits, so every square is a
+  **minute**: the column's digit is the minute's ones, the row's its tens
+  (`minuteCell`; a 5×5 board's two digits per row and column work the same).
+  Reverse is the minute with its digits swapped (`reverseMinuteCell`: 43' ->
+  the 34th minute's square). One draw all match: `freshNumbers` on a soccer
+  board is a 400 (`SOCCER_FRESH_ERROR`, `formatProblemFor`) and the create
+  flow and host sheet hide it.
+- The minute on the board (`boardMinute(minute, added)`): first-half
+  stoppage counts as 45 (45+2' -> 45) and stoppage after extra time's first
+  period as 105; other stoppage runs on (90+3' -> 93, 120+2' -> 122); then
+  only the last two digits count (105 -> 05, 122 -> 22). A goal stores the
+  minute the match showed, `Score.minute` and `Score.added` (migration 0022);
+  the board minute is derived on read, never stored.
+- Moments (`momentsFor`): `first` (the first goal), `score` (every goal:
+  entries `s1`..`sN` labeled "Goal n") and `final` (the last goal, decided
+  when the match ends: a `final` score row or `status` final, `matchOver`).
+  Presets (`SOCCER_PRESETS`, copy via `presetInfo(preset, sport)` /
+  `momentInfo(moment, sport)`): Every goal, First & last goal, Last goal; a
+  new board starts on every goal + the last goal (`defaultRulesFor`). A
+  quarter moment on a soccer board is a 400 (`SOCCER_MOMENT_ERROR`), and
+  `first` off soccer is one too (`MOMENT_SPORT_ERROR`); amounts by score type are football's
+  (`BY_KIND_SPORT_ERROR`). The scoring team doesn't matter, and own goals
+  count; shootout goals never do.
+- No goals: once the match is over, 00 (`NO_GOALS_MINUTE`) wins each goal
+  moment once: the first goal, the last goal and one every-goal winner (`s1`,
+  labeled "No goals").
+- Results (`resolveGoalResults` in `shared/squares.ts`): squares by
+  `PeriodResult.goalMinute`, with the deciding `goal`; show a result's time
+  through `resultMinute(r)` ("45+2'", "00"). Suggestions (`suggestPrizes`
+  with the sport) assume `TYPICAL_GOALS` and give the last goal the rest.
+- Linked matches: ESPN's soccer scoreboard and summary list the scoring
+  plays (`details` / `keyEvents`; `parseGoals` skips the shootout and reads
+  the clock's text, else its seconds), sent as `LiveUpdate.goals` oriented
+  x/y. `goalsFromFeed` (run by `applyLiveUpdate` in `worker/service.ts`)
+  writes them in order as `s1`..`sN`; it retracts a feed goal only once the feed's list is
+  settled (as many goals as the score says) and never touches a goal the host
+  typed. `periodsDecidedBy` adds the first goal (with `s1`) and, at full time
+  with no goals, `first` and `s1`, for winner events.
+- Typed-in matches: POST `/scores` takes `minute` (0–`MINUTE_MAX`) and
+  `added` (0–`ADDED_MAX`) on a soccer goal (`periodKey` "next" or `sN`; a
+  goal without a minute is a 400, and a minute anywhere else is a 400 "Only a
+  soccer board's goals have a minute."). The host pad
+  (`src/features/host/GoalEntry.tsx`, `goalModel.ts`) asks who scored and the
+  minute, prefilled from the live clock, previews whose square it is, and
+  ends the match with Full time (the `final` row where the last goal wins,
+  else POST `/final`).
+- "Right now" (`liveMinuteCell`, `goalNow` in the board model): the square a
+  goal at the match clock's minute would land on (none at halftime), else the
+  last goal's square on a typed-in board, else 00; plus the viewer's next
+  minute. The scorebug, TV, recap, results, pushes ("1st goal", "Goal 2",
+  "Last goal", "No goals") and emails (the numbers block lists minutes) show
+  minutes, never score digits.
+- No season boards for soccer (`worker/season.ts` 400s a soccer league).
+  The landing page is `/soccer-squares` with its printable
+  (`scripts/seo/`), and names the leagues as not affiliated.
 
 ## Module ownership (one owner per file)
 
@@ -781,7 +844,7 @@ score, q1, q2, q3, final.
   `fetchLiveForEvent(event)`, and for season boards `teamSeasonVia(env,
   league, teamId, year)` (never throws; null when ESPN can't say),
   `isTeamId`, `isSeasonYear`.
-- `worker/payments/*` – Stripe + IAP + test checkout, and the Host Pass
+- `worker/payments/*` – Stripe + IAP + test checkout, and the Annual Pass
   (`pass.ts`, `passStripe.ts`, `passApple.ts`, `passRoutes.ts`; the App Store
   JWS check in `appleJws.ts` / `x509.ts`). Exports `paymentsRoutes` (Hono),
   `getPaymentConfig(env)`, `activePass`, `holdersOfActivePass`, `hostPassOf`,
@@ -795,7 +858,7 @@ score, q1, q2, q3, final.
   `emailNotices(env, gameId, events)` and the store's `mergeClientStatements`,
   `deleteClientSubscriptionsStatement`, `pruneSubscriptions`. Owns
   `worker/email/store.ts` (its D1 tables).
-- `worker/clubs/*` – what the Club Pass turns on (docs/payments.md "Club
+- `worker/clubs/*` – what the Annual Pass + Venue turns on (docs/payments.md "Club
   Pass"): the club's branding on its holder's boards (`brand.ts`:
   `clubBrandOf`, read into every board state by `worker/db.ts`, cached per
   isolate for 30 s), the logo check (`logo.ts`), the players CSV (`csv.ts`, used
@@ -866,9 +929,9 @@ the phone column or the route slide (`isBoardViewPath`).
   no admin token, so a TV that never joined just watches: it never joins,
   claims or asks for the admin token. The TV is nobody's player (`me = ""`:
   nothing is "mine"); its socket counts once in "N watching" like any device.
-- On a Club Pass holder's board the panel's corner shows the club's logo and
+- On an Annual Pass + Venue holder's board the panel's corner shows the club's logo and
   name instead of the JaxSquares mark, and the printout carries the logo and
-  "Hosted by <club>" (see "The Club Pass"). The page's body is `TvScreen`
+  "Hosted by <club>" (see "The Annual Pass + Venue"). The page's body is `TvScreen`
   (exported for the club TV, which passes `hideClub`, a `panelFooter` and a
   winner to celebrate on arrival).
 - Entry points: "Show on TV" and "Print board" in the board's invite sheet
@@ -965,7 +1028,7 @@ in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
   draws the numbers when everyone's in. `game-starting` stays a linked-board
   push, sent when the feed goes live; it never carries an amount. A linked
   board locks itself at kickoff only once its host fee is paid, it's free (5
-  or fewer players hold squares) or the host's Host Pass covers it; otherwise
+  or fewer players hold squares) or the host's Annual Pass covers it; otherwise
   it stays `open` (the feed still records scores) and the kickoff push asks the
   host to draw and tells everyone else they're waiting on the host.
 - Shown as "Kicks off Sun 1:00 PM PDT" (`kicksOffLabel` in `src/lib/format.ts`,
@@ -977,11 +1040,12 @@ in `shared/kickoff.ts` reads it. D1 keeps both in `games.starts_at`.
 ## Create flow (client)
 
 `/new` is a five-step guided flow (`src/pages/CreateGame.tsx`, model in
-`src/features/create/wizard.ts`): `game` (Football or Basketball at the top
-(`sport-picker`), then the league chips: NFL / College by week, soonest
-picked; NBA / WNBA / Men's college / Women's college by day, the next 7 days
+`src/features/create/wizard.ts`): `game` (Football, Basketball or Soccer at
+the top (`sport-picker`), then the league chips: NFL / College by week,
+soonest picked; NBA / WNBA / Men's college / Women's college and MLS / NWSL /
+Premier League / LaLiga / Liga MX / Champions League by day, the next 7 days
 grouped under day headers with a date picker for later days; or Custom teams
-+ kickoff), `format` (how squares win), `prizes` (the
++ kickoff; soccer has no season scope), `format` (how squares win), `prizes` (the
 rules & prizes editor; skippable, Review then flags "Square price: not set"),
 `details` (board name, max per player, the host's name on a device without
 one) and `review` (a card per step, then Create). Every step starts filled
@@ -1041,8 +1105,8 @@ a game ahead. The other steps are the same (rules and prizes for every
 game). Review's game card says "Jaguars 2026 season · 17 games so far", the
 next game and the numbers choice (`review-season`); the board is named
 "Jaguars Season Squares" until the host types one; Create reads "Create
-season board" and the fee line "… $14.99 for the whole season with more."
-(`createFeeLine(price, true)`, `useHostFee(true, "season")`). The draft keeps
+season board" and the fee line "… bigger seasons come with the Annual Pass."
+(`createFeeLine(price, { season: true })`). The draft keeps
 the scope, numbers, each league's team and picks (`WizardDraft.boardScope`,
 `seasonScope`, `seasonNumbers`, `seasonTeams`, `seasonPicks`).
 
@@ -1109,10 +1173,10 @@ the board locks meanwhile.
 
 Office pools and watch parties often have two or three organizers. The host
 invites up to `MAX_COHOSTS` (3) players to run the board with them, or up to
-`CLUB_MAX_COHOSTS` (10) on a Club Pass holder's board: the limit is a function
+`CLUB_MAX_COHOSTS` (10) on an Annual Pass + Venue holder's board: the limit is a function
 of the host's plan (`cohostLimit(plan)` / `cohostLimitOf(game)` in
 `shared/cohosts.ts`, from `Game.club`), checked by the invite route, inside
-the accept's own SQL, and by the host sheet. A board whose host's Club Pass
+the accept's own SQL, and by the host sheet. A board whose host's Annual Pass + Venue
 ends keeps the co-hosts it has, but takes no new one past 3.
 
 - **What a co-host can do:** every host action: edit the board, rules and
@@ -1163,7 +1227,7 @@ ends keeps the co-hosts it has, but takes no new one past 3.
   The app keeps `cohostGames` (`jaxsquares.cohosts`) only to load host tools
   early.
 - **Drawing as a co-host:** the lock rules are the host's (free with 5 or
-  fewer players, else the caller's or the host's Host Pass, else 402). This
+  fewer players, else the caller's or the host's Annual Pass, else 402). This
   device only knows its own pass, so a co-host whose fee looks due asks the
   server first (no reveal until it answers) and opens the checkout on the 402.
 
@@ -1191,7 +1255,7 @@ square prices (a $1, a $5 and a $20 board). Pure rules in `shared/siblings.ts`.
   other board in the group are broadcast afterwards (`announceSibling`), so
   their open boards list the new one; deleting a board broadcasts the rest.
 - **Payments:** untouched. The new board starts `open` and unpaid like any
-  board; each board draws (and pays, or is free, or is covered by a Host Pass)
+  board; each board draws (and pays, or is free, or is covered by an Annual Pass)
   on its own. The source's token doesn't run the sibling.
 - **Public state:** `GameState.siblings` (only on a board in a group): the
   other boards, oldest first, each `{ id, name, status, squarePrice, unit,
@@ -1248,9 +1312,9 @@ orchestration in `worker/season.ts`, the provider in `worker/scores`, D1 in
   (the cron's last read; indexed for drawn season boards). No new table keyed
   by a clientId: a game's board copies the season board's `players` and
   `squares` rows, which the sign-in merge already moves (every board's).
-- **The draw** (`POST /lock` on the season board): the fee as any board (402,
-  the free tier counting the season board's players, a Host or Club Pass;
-  `SEASON_BOARD_PRICE_CENTS`, docs/payments.md "Season boards"). It reads the
+- **The draw** (`POST /lock` on the season board): it comes with the Annual
+  Pass (402 `PASS_REQUIRED_CODE` without one; the free tier counting the
+  season board's players; docs/payments.md "Season boards"). It reads the
   team's schedule again (`seasonSchedule`; picks as stored), refuses a season
   with nothing left to play (409), draws the season's numbers
   (`seasonNumbers`: one draw, or none with `fresh`) and then
@@ -1397,31 +1461,31 @@ server's 402 decides), unless 5 or fewer players hold squares
   `/pay/*` endpoints. Its primary confirm is `data-testid="pay-confirm"`.
 - iOS recovery: `watchIAPPurchases({ onPaid })` (`src/App.tsx`) confirms an App
   Store purchase that landed later (app closed mid-purchase, Ask to Buy) and
-  toasts "Payment confirmed" with a Draw action (`?draw=1`); Host Pass
+  toasts "Payment confirmed" with a Draw action (`?draw=1`); Annual Pass
   transactions (a late purchase, a renewal) go to `onPass`, which updates the
   pass state.
-- The Host Pass (docs/payments.md "Host Pass"): `useHostPass()`
+- The Annual Pass (docs/payments.md "Annual Pass"): `useHostPass()`
   (`src/lib/useHostPass.ts`, over `src/lib/hostPassStore.ts`, primed by
   `GET /api/me`). With an active pass, the host bar, the Now card and the lock
-  confirm read "Draw the numbers" with "Included with your Host Pass"
+  confirm read "Draw the numbers" with "Included with your Annual Pass"
   (`host-pass-note`), no price and no pay-ahead, and drawing just draws (the
   server marks the board paid through the pass; a 402 meanwhile opens the
   checkout). Without one, `CheckoutSheet` offers "This board · $4.99" (the
-  default) and "Host Pass · $19.99/year" (`plan-board` / `plan-pass`) with
+  default) and "Annual Pass · $19.99/year" (`plan-board` / `plan-pass`) with
   "Pays for itself by your fifth board" (`pass-pays-off`, `passPaysOffAt`
   from the two prices this device shows, StoreKit's in the iOS app; hidden
   when either is unknown), the pass with its subscription disclosure
   (`pass-disclosure`); buying the pass at the
   draw then draws. On the web the pass needs an account: `startPassPurchase()`
-  opens `SignInSheet` first. Profile → Host Pass (`HostPassSection`): Get,
+  opens `SignInSheet` first. Profile → Annual Pass (`HostPassSection`): Get,
   "Active · renews …" / "Ends …", Manage (Apple's subscription management in
   the iOS app, a Stripe Customer Portal on the web), and Restore purchases in
   the iOS app. Prices in the iOS app are only the App Store's.
 
-## The Club Pass
+## The Annual Pass + Venue
 
 A yearly plan for bars, booster clubs, offices and fundraisers (setup and the
-payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
+payment side: docs/payments.md "Annual Pass + Venue"). A `host_passes` row with `plan`
 'club', web only; while it's active, on every board its holder hosts:
 
 - **No host fee** (`activePass` counts it).
@@ -1453,17 +1517,17 @@ payment side: docs/payments.md "Club Pass"). A `host_passes` row with `plan`
   (`isBoardViewPath`), TV mode's own theme (`index.html`, `useTvTheme`). Only
   public board states; a wrong or old link shows "This TV link doesn't work
   anymore".
-- **Client state.** The pass is in the Host Pass store (`hostPassStore.ts`:
+- **Client state.** The pass is in the Annual Pass store (`hostPassStore.ts`:
   `club`, `clubOffer`; `useHostPass().clubActive`, and `active` covers the
-  draw for either pass; `PassIncluded` says "Included with your Club Pass").
+  draw for either pass; `PassIncluded` says "Included with your Annual Pass + Venue").
   The club API and the TV link this device made: `src/lib/club.ts`
-  (`jaxsquares.clubTv`, wiped at sign-out). Profile → Club Pass
+  (`jaxsquares.clubTv`, wiped at sign-out). Profile → Annual Pass + Venue
   (`ClubSection`): a holder's status, Manage (web), name, logo
   (`prepareLogo`, `src/lib/clubLogo.ts`), TV link (Copy, Open, New link with
   a confirm) and boards; everyone else on the web, one line ("Running squares
-  for a bar, club or office? Club Pass · $49/year") that opens
+  for a bar, club or office? Annual Pass + Venue · $49/year") that opens
   `ClubCheckoutSheet`. **iOS:** nothing offered, priced or linked to buying or
-  managing it; a holder's features all work and Profile says "Club Pass ·
+  managing it; a holder's features all work and Profile says "Annual Pass + Venue ·
   Active".
 
 ## Venue boards
@@ -1476,7 +1540,12 @@ Optional `GameFormat` fields, edited with the rules (Rules & prizes:
 or empty:
 
 - **`venue?: true`** (venue mode): free to play, so never a square price
-  (`VENUE_PRICE_ERROR`, 400; `withRules` drops one). Turning it on
+  (`VENUE_PRICE_ERROR`, 400; `withRules` drops one). Its host pays the Venue
+  add-on with the host fee at the draw, unless their Annual Pass has it
+  (docs/payments.md "Pricing"); it brings up to 10 co-hosts and the players
+  list (`hasVenueFeatures`), and it can't change once the board is paid for
+  or drawn (409 `VENUE_LOCKED_ERROR`; the host's editor shows it locked,
+  `rulesLock().venue`). Turning it on
   (`setVenue` in `rulesModel.ts`) makes the board just for fun (amounts the
   host already chose stay, as prize values), turns claim codes on with five
   minutes to collect and adds "Must be present to win" when there are no
@@ -1525,7 +1594,7 @@ only, present on boards with claim codes): the phone, Host tools and the TV
 counts only while that player still holds the award (`collectedFor`).
 
 What a board says about itself (`venueLines`): a venue board, or a club
-board (a Club Pass holder's, named), with no square price shows "Free to
+board (an Annual Pass + Venue holder's, named), with no square price shows "Free to
 play · No purchase necessary", and a club's "Prizes from <club>". Where it
 shows:
 
@@ -1571,7 +1640,7 @@ Optional, per board, never required; for players push can't reach (docs/email.md
 loadState(env: Env, gameId: string): Promise<GameState | null>
 /** Re-read state from D1 and push it to every socket in the game's room. */
 broadcast(env: Env, gameId: string, activity?: Activity): Promise<GameState | null>
-/** The board's host fee is paid (stamps games.paid_at; a legacy draft opens too). Idempotent. Provider "pass": covered by a Host Pass (reference = the pass id, amount 0). */
+/** The board's host fee is paid (stamps games.paid_at; a legacy draft opens too). Idempotent. Provider "pass": covered by an Annual Pass (reference = the pass id, amount 0). */
 markPaid(env: Env, gameId: string, purchase: { provider: "test" | "stripe" | "iap" | "pass"; reference: string; amountCents: number }): Promise<GameState | null>
 // (A free board is never marked through markPaid: POST /lock and applyLiveUpdate stamp provider "free" with db.markFreeDraw in the draw's own batch.)
 /** The game was deleted: the room sends { type: "deleted" }, closes sockets with 4404, drops its storage. Never throws. */
@@ -1579,7 +1648,7 @@ closeRoom(env: Env, gameId: string): Promise<void>
 isHost(env: Env, gameId: string, adminToken: string): Promise<boolean>
 /** The admin token, or x-client-id (resolved to the canonical clientId) is a co-host: who may pay the host fee. */
 isHostOrCohost(env: Env, gameId: string, req: { adminToken: string; clientId: string | null | undefined; signedIn: boolean }): Promise<boolean>
-/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the board is free: marked paid "free" and locked in a batch of its own that re-counts the holders, before the scores; or the host's Host Pass covers it: marked paid through the pass in the same write). */
+/** Apply a provider update to a linked board: upsert live status + period scores, diff every-score entries, lock at kickoff once the host fee is paid (or the board is free: marked paid "free" and locked in a batch of its own that re-counts the holders, before the scores; or the host's Annual Pass covers it: marked paid through the pass in the same write). */
 applyLiveUpdate(env: Env, gameId: string, update: LiveUpdate): Promise<void>
 ```
 `worker/db.ts` (core) keeps exporting `getGame(db, id)` and `getPlayers(db, gameId)`
@@ -1599,13 +1668,13 @@ scheduleFor(league, { week?, date? }): Promise<ScheduleResult | null>  // either
 ```ts
 paymentsRoutes: Hono<{ Bindings: Env }>          // /games/:id/pay/*, /stripe/webhook, /payments/pass*, /payments/apple/notifications
 getPaymentConfig(env: Env): PaymentConfig
-/** The active pass (Host Pass or Club Pass) any of these (canonical) clientIds holds, or null. Missing table (0011 not applied) = none. */
+/** The active pass (Annual Pass or Annual Pass + Venue) any of these (canonical) clientIds holds, or null. Missing table (0011 not applied) = none. */
 activePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<PassRow | null>
 /** Which of these clientIds hold an active pass (the cron's reminders skip them). */
 holdersOfActivePass(db: D1Database, clientIds: readonly string[], now?: number): Promise<Set<string>>
 /** The identity's pass as the API shows it (GET /api/me). */
 hostPassOf(db: D1Database, clientId: string, now?: number): Promise<HostPass | null>
-/** The identity's active Club Pass (the club features), or null; and its Club Pass as the API shows it (MeResponse.clubPass). */
+/** The identity's active Annual Pass + Venue (the club features), or null; and its Annual Pass + Venue as the API shows it (MeResponse.clubPass). */
 activeClubPass(db: D1Database, clientId: string, now?: number): Promise<PassRow | null>
 clubPassOf(db: D1Database, clientId: string, now?: number): Promise<HostPass | null>
 /** Account deletion: the account's web passes stop renewing (throws when Stripe can't be reached). */
@@ -1621,7 +1690,7 @@ type NotifyEvent = (
   | { kind: "winner"; periodKey: string; label: string; playerIds: string[] }   // public ids
   | { kind: "game-starting" }
   | { kind: "board-full" }
-  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not for a free board, or a Host Pass holder)
+  | { kind: "draw-reminder" }   // host only: a linked board kicks off within the hour, its host fee unpaid (not for a free board, or an Annual Pass holder)
   | { kind: "player-joined"; name: string }
   | { kind: "cohost-accepted"; name: string }   // host only: someone accepted their co-host invite (actor = the new co-host)
   | { kind: "final" }
@@ -1638,7 +1707,7 @@ Final score, `player-joined`, `cohost-accepted` (the new co-host), and
 `board-full` (whoever claimed the last square).
 `draw-reminder` comes from the cron (no actor) and goes to the host alone,
 never for a free board (5 or fewer players hold squares) or to a host whose
-Host Pass covers the board; for those the board-full push on a linked board
+Annual Pass covers the board; for those the board-full push on a linked board
 leaves out paying ahead (notify counts the holders, then looks the pass up,
 for those two host-only events). `board-full` goes out once
 per board: the claim that first fills it stamps `games.board_full_at` in the

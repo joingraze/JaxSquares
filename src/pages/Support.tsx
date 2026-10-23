@@ -1,8 +1,8 @@
 // Support page (App Store "Support URL": https://jaxsquares.com/support).
 // The contact address is a placeholder until the mailbox exists. The host fee
-// and the Host Pass show as this device shows them (useHostFee,
+// and the Annual Pass show as this device shows them (useHostFee,
 // useHostPassPrice): inside the iOS app only the App Store's price and Apple's
-// billing, never the web price or Stripe. The Club Pass (web only) has its
+// billing, never the web price or Stripe. The Venue add-on (web only) has its
 // question on the web only: the iOS app never offers or points to buying it.
 import { useEffect, useRef, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
@@ -17,6 +17,7 @@ import { useClubPassPrice, useHostPassPrice, useHostPrices } from "../lib/useHos
 import { ordinal, passPaysOffAt } from "../features/pass/passText";
 
 const SUPPORT_EMAIL = "support@jaxsquares.com";
+const VENUE_BOARD = { format: { venue: true } } as const;
 
 interface Faq {
   q: string;
@@ -26,28 +27,42 @@ interface Faq {
 const link = "font-semibold text-ink-brand underline-offset-2 hover:underline";
 
 /**
- * `price` / `passPrice`: the host fee and the Host Pass as this device shows
+ * `price` / `passPrice`: the host fee and the Annual Pass as this device shows
  * them (null while loading); `paysOffAt`: the board the pass pays for itself
- * on (passPaysOffAt; null leaves it out); `inApp`: inside the iOS app.
+ * on (passPaysOffAt; null leaves it out); `inApp`: inside the iOS app;
+ * `clubPrice` / `venueBoardPrice`: the Annual Pass + Venue a year and a venue
+ * board with its Venue add-on (web only).
  */
-function faqs(price: string | null, passPrice: string | null, paysOffAt: number | null, inApp: boolean, clubPrice: string | null): Faq[] {
+function faqs(
+  price: string | null,
+  passPrice: string | null,
+  paysOffAt: number | null,
+  inApp: boolean,
+  clubPrice: string | null,
+  venueBoardPrice: string | null,
+): Faq[] {
   const club: Faq[] = inApp
     ? []
     : [
         {
-          q: "What's the Club Pass, and how do I cancel it?",
+          q: "What's the Venue add-on, and how do I cancel it?",
           a: (
             <>
               <p>
-                The Club Pass is a yearly plan{clubPrice ? ` (${clubPrice} a year)` : ""} for bars, booster clubs, offices and fundraisers that run
-                boards every week. It covers the host fee on every board you host, like the Host Pass, and adds your club's name and logo on those
-                boards (their TV view, printout and invite), up to 10 co-hosts per board, a download of each board's players list, and a TV link
-                that rotates your open and live boards. Get it in Profile › Club Pass; it needs a sign-in, so it stays with your account.
+                It's for bars and restaurants running boards for their guests. Pick "A bar or restaurant" when you make a board and it's a venue
+                board: free to play, house rules, prize pickup with claim codes, up to 10 co-hosts for your staff and a download of its players
+                list. A venue board with more than {FREE_PLAYER_LIMIT} players costs {venueBoardPrice ?? "its host fee plus the Venue add-on"} when you
+                draw the numbers.
               </p>
               <p>
-                It renews every year until you cancel. Cancel any time in Profile › Club Pass › Manage; it stays active until the end of the year
-                you've paid for, and then your boards go back to plain JaxSquares. If a TV link gets out, make a new one in Profile › Club Pass:
-                the old one stops working right away.
+                Running them every week? The Annual Pass + Venue{clubPrice ? ` (${clubPrice} a year)` : ""} covers every board you host for a year,
+                venue boards included, and adds your venue's name and logo on your boards (their TV view, printout and invite) and a TV link that
+                rotates your open and live boards. Already have the Annual Pass? Add the Venue add-on in Profile › Venue add-on: today you pay
+                for what's left of your pass's year. It needs a sign-in, so it stays with your account.
+              </p>
+              <p>
+                It renews every year until you cancel. Cancel any time in Profile › Venue add-on › Manage; it stays active until the end of the
+                year you've paid for. If a TV link gets out, make a new one in Profile › Venue add-on: the old one stops working right away.
               </p>
               <p>To ask about a refund, email us with the email address you signed in with.</p>
             </>
@@ -72,7 +87,7 @@ function faqs(price: string | null, passPrice: string | null, paysOffAt: number 
             Setting up a board, inviting friends and picking squares are free, and so is drawing the numbers on a board with up to{" "}
             {FREE_PLAYER_LIMIT} players. The only charge is the host fee for creating and managing a bigger board:{" "}
             {price ? `${price} per board` : "once per board"}, charged when the host draws the numbers of a board more than {FREE_PLAYER_LIMIT}{" "}
-            players hold squares on.
+            players hold squares on.{inApp ? "" : " A venue's board adds the Venue add-on."} Season boards come with the Annual Pass.
           </p>
           <p>
             {inApp
@@ -80,8 +95,8 @@ function faqs(price: string | null, passPrice: string | null, paysOffAt: number 
               : "In the iPhone app it's an In-App Purchase billed by Apple. On the web it's charged through Stripe."}
           </p>
           <p>
-            Hosting a lot? The Host Pass ({passPrice ? `${passPrice} a year` : "yearly"}) covers the host fee on every board you host for a year
-            {paysOffAt ? `, so it pays for itself by your ${ordinal(paysOffAt)} board.` : "."}
+            Hosting a lot? The Annual Pass ({passPrice ? `${passPrice} a year` : "yearly"}) covers the host fee on every board you host for a
+            year from the day you get it{paysOffAt ? `, so it pays for itself by your ${ordinal(paysOffAt)} board.` : "."}
           </p>
           <p>
             JaxSquares never sells squares, and it never collects, holds, sends or tracks money between players. A square price or prize amount a
@@ -123,19 +138,19 @@ function faqs(price: string | null, passPrice: string | null, paysOffAt: number 
       ),
     },
     {
-      q: "How does the Host Pass work, and how do I cancel it?",
+      q: "How does the Annual Pass work, and how do I cancel it?",
       a: (
         <>
           <p>
-            The Host Pass is a yearly subscription{passPrice ? ` (${passPrice} a year)` : ""}. While it's active, drawing the numbers on any board you
-            host costs nothing more: tap Draw the numbers and you're done. Boards you drew while it was active stay drawn after it ends. Get it in
-            Profile › Host Pass, or when you draw a board's numbers.
+            The Annual Pass is a yearly subscription{passPrice ? ` (${passPrice} a year)` : ""}, for a year from the day you get it. While it's
+            active, drawing the numbers on any board you host costs nothing more, season boards included: tap Draw the numbers and you're done.
+            Boards you drew while it was active stay drawn after it ends. Get it in Profile › Annual Pass, or when you draw a board's numbers.
           </p>
           <p>
             It renews every year until you cancel, and canceling keeps it active until the end of the year you've paid for.{" "}
             {inApp
-              ? "Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. On a new iPhone, tap Restore purchases in Profile › Host Pass."
-              : "Bought in the iPhone app? Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. Bought on the web? Cancel in Profile › Host Pass › Manage. Signing in keeps a web Host Pass with your account on every device."}
+              ? "Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. On a new iPhone, tap Restore purchases in Profile › Annual Pass."
+              : "Bought in the iPhone app? Cancel in Settings › your name › Subscriptions at least 24 hours before it renews. Bought on the web? Cancel in Profile › Annual Pass › Manage. Signing in keeps a web Annual Pass with your account on every device."}
           </p>
           <p>
             Refunds for App Store subscriptions are handled by Apple at{" "}
@@ -220,6 +235,8 @@ export default function Support() {
   const { price } = useHostFee();
   const { price: passPrice } = useHostPassPrice();
   const clubPrice = useClubPassPrice();
+  // A venue board with its Venue add-on, on the web only (the app never shows it).
+  const { price: venueBoardPrice } = useHostFee(platform() !== "ios", VENUE_BOARD);
   const amounts = useHostPrices();
   // Profile links here as /support#meet-jax.
   const { hash } = useLocation();
@@ -256,7 +273,7 @@ export default function Support() {
         <section>
           <h2 className="mb-3 px-1 font-display text-title-3 font-extrabold text-ink">Common questions</h2>
           <ListGroup>
-            {faqs(price, passPrice, passPaysOffAt(amounts.pass, amounts.board), platform() === "ios", clubPrice).map((faq, i) => (
+            {faqs(price, passPrice, passPaysOffAt(amounts.pass, amounts.board), platform() === "ios", clubPrice, venueBoardPrice).map((faq, i) => (
               <FaqItem key={faq.q} faq={faq} defaultOpen={i === 0} />
             ))}
           </ListGroup>

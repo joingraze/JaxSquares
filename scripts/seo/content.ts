@@ -33,6 +33,7 @@ const PRINTABLES = "printable-football-squares";
 const BASKETBALL = "basketball-squares";
 const MARCH = "march-madness-squares";
 const BEST = "best-football-squares-numbers";
+const SOCCER = "soccer-squares";
 
 const hub: LandingPage = {
   slug: "football-squares",
@@ -112,7 +113,7 @@ The big game in February is the biggest squares day of the year, and the ${link(
 
 College fans get a full slate every Saturday, plus rivalry week and bowl season: see ${link("college-football-squares", "college football squares")}. And if you'd like a sheet for the fridge door too, grab a ${link(PRINTABLES, "free printable football squares template")}. Each one has a QR code that turns it into a live board.
 
-Squares isn't just for football, either. ${link(BASKETBALL, "Basketball squares")} works the same way for NBA, WNBA and college games, and the ${link(MARCH, "March Madness squares guide")} covers a board for every tournament game.
+Squares isn't just for football, either. ${link(BASKETBALL, "Basketball squares")} works the same way for NBA, WNBA and college games, and the ${link(MARCH, "March Madness squares guide")} covers a board for every tournament game. On a ${link(SOCCER, "soccer squares")} board, every square is a minute of the match and each goal's minute wins.
 
 Curious which numbers win most? ${link(BEST, "The best numbers in football squares")} counts every NFL final score since ${FIRST_SEASON}, square by square.`),
     },
@@ -735,6 +736,160 @@ JaxSquares never collects, holds or sends money, and nobody pays anyone through 
   },
 };
 
+const soccer: LandingPage = {
+  slug: SOCCER,
+  nav: "Soccer squares",
+  blurb: "A board where every square is a minute, with winners at the first goal, every goal and the last goal.",
+  title: "Soccer Squares: Every Square Is a Minute of the Match | JaxSquares",
+  description:
+    "Run soccer squares for MLS, NWSL, the Premier League and more. Each square is a minute, and the first goal, every goal or the last goal wins. Free to set up.",
+  eyebrow: "Soccer squares",
+  h1: `Soccer squares, <span class="hl">one minute at a time</span>`,
+  lede:
+    "Soccer scores are too low for the usual squares game, so on a soccer board every square is a minute instead. Link an MLS, NWSL, Premier League, LaLiga, Liga MX or Champions League match, text one link to your group, and the square for each goal's minute lights up the moment the ball goes in.",
+  hero: {
+    jax: "cheer",
+    win: { x: 3, y: 4 },
+    bands: { x: "Minute · ones", y: "Minute · tens" },
+    art: "An example soccer squares board: the minute's ones across the top, its tens down the side, and the square for a goal in the 43rd minute lit gold as the winner.",
+  },
+  sections: [
+    {
+      id: "how-soccer-squares-works",
+      h2: "How soccer squares works",
+      body:
+        paras(`
+A soccer match can end 1–0, so the classic squares game, which reads the last digit of each team's score, would leave most of the board with nothing to cheer for all afternoon. Soccer squares uses the clock instead. The board is still a 10×10 grid of 100 squares, and everyone still claims their squares first. Then the digits 0 to 9 are drawn at random across the top, for the ones digit of the minute, and again down the side, for the tens digit. Every square ends up as one minute of the match, from 00 to 99.
+
+When a goal goes in, read the minute the match shows. A goal in the 43rd minute wins for the square where the 4 row meets the 3 column. It doesn't matter which team scored, and an own goal counts like any other: a goal is a goal. Nobody knows which square is which minute when they pick, so the friend who has never watched a match has the same chance as the one who never misses one.`) +
+        `<figure class="diagram">${boardDiagram({
+          id: "soccer-diagram",
+          win: { x: 3, y: 4 },
+          guide: true,
+          bands: { x: "Minute · ones", y: "Minute · tens" },
+          title: "For a goal in the 43rd minute, follow the 3 column down and the 4 row across: the square where they meet wins.",
+        })}<figcaption>A goal in the 43rd minute: the 3 column meets the 4 row.</figcaption></figure>`,
+    },
+    {
+      id: "when-squares-win",
+      h2: "When squares win",
+      body:
+        terms([
+          ["Every goal", "Each goal's minute wins, so a match that ends 2–1 has three winners. The classic for a group that wants plenty of moments to cheer."],
+          ["First & last goal", "Two winners: the minute of the first goal, and the minute of the last one, settled at the final whistle."],
+          ["Last goal", "One winner: the minute of the match's last goal. A late goal changes everything."],
+          ["Mix and match", "Combine them, like a winner on every goal plus a bigger prize for the first and the last."],
+          ["Reverse winners", "The minute with its digits swapped wins too, so a goal in the 43rd minute also wins for the 34th minute's square."],
+          ["No goals", "A 0–0 match still has a winner: the 00 square takes each of the board's goal winners, once."],
+          ["10×10 or 5×5", "100 squares for a big group, or 25 squares, with two digits per row and column, for a small one."],
+        ]) +
+        paras(`
+The numbers are drawn once and stay put for the whole match. A soccer board doesn't reshuffle at halftime: a minute is a minute in either half. The ${link(HOW_TO, "rules guide")} covers reverse winners, board sizes and what to do when a winning square is empty.`),
+    },
+    {
+      id: "stoppage-time",
+      h2: "Stoppage time and extra time",
+      body:
+        paras(`
+The soccer clock has a few wrinkles, and the board handles each one the same way every time, so nobody has to argue about it at the final whistle.`) +
+        terms([
+          ["First-half stoppage time", "Counts as the 45th minute. A goal at 45+2' wins for the 45 square."],
+          ["Second-half stoppage time", "Runs on. A goal at 90+3' is the 93rd minute, so the 9 row belongs to the late drama."],
+          ["Extra time", "Keeps the last two digits: a goal in the 105th minute wins for the 05 square, and one in the 118th for 18. Stoppage time after 105 counts as the 105th minute, and after 120 it runs on, so 120+2' is 22."],
+          ["Penalty shootouts", "Don't count. Only goals scored while the match is played decide the winners."],
+        ]) +
+        paras(`
+Each row is a ten-minute stretch of the match. Goals come at any time, and late ones are common, so the squares in the 8 and 9 rows are never out of it until the final whistle.`),
+    },
+    {
+      id: "watch-the-clock",
+      h2: "Watch the clock, not just the score",
+      body: paras(`
+In football squares, a quiet quarter means waiting. In soccer squares, every minute that ticks by hands the spotlight to the next square. On a linked match, the board follows the clock: the square for the current minute glows, so everyone can see whose square a goal would land on right now, and your board tells you how many minutes until one of yours comes up.
+
+When a goal goes in, its minute and the winning square land on every phone within seconds, and anyone with notifications on hears about it. A goal in the 89th minute is just as big as one in the 9th, which makes the last few minutes of every half worth watching, even in a match that's already decided.`),
+    },
+    {
+      id: "leagues",
+      h2: "Link an MLS, NWSL, Premier League or LaLiga match",
+      body:
+        paras(`
+When you make a board, pick Soccer and then the league: MLS, NWSL, the Premier League, LaLiga, Liga MX or the Champions League. The next seven days of matches are listed by day, and you can pick a date to look further ahead. Link your board to a match and the goals fill in on their own, each with the minute the match showed.
+
+Watching a match that isn't listed, like a youth tournament, a college game or your Sunday league? Type in any two teams instead and the host adds each goal: tap the team that scored, type the minute and any stoppage time, and the board shows whose square it is before you save. A goal entered wrong can be fixed or removed from the same screen.`) +
+        ticks([
+          "Weekend mornings: Premier League and LaLiga matches kick off early in the Americas, just right for a board over breakfast.",
+          "Derby day: the rivalry match everyone in the group chat has an opinion about.",
+          "MLS and NWSL nights: a full schedule from spring into fall, then the playoffs to close the season.",
+          "Midweek in Europe: Champions League nights put the top clubs from across Europe on one schedule.",
+          "Liga MX: a packed calendar and loud crowds, for the family group chat.",
+        ]),
+    },
+    {
+      id: "why-jaxsquares",
+      h2: "Why run your board on JaxSquares",
+      body:
+        features([
+          ["A live board", "Every pick, the draw and every goal land on every phone within a second. No refreshing, and nobody has to send a photo of the sheet."],
+          ["Goals on their own", "Link a real match and each goal fills in with its minute. Typing in your own match? A goal takes a few taps."],
+          ["Free to set up", "Making a board, inviting your group and picking squares cost nothing. Players never pay to join."],
+          ["No app needed", "Friends tap the link and they're in, with no download and no account. Same room? Show a QR code or a six-character board code."],
+        ]) +
+        shots(["pick", "draw"]) +
+        `<p>Running a board for another sport too? The ${link("football-squares", "football squares guide")} covers the NFL and college seasons, and the ${link(BASKETBALL, "basketball squares guide")} has the NBA, the WNBA and college hoops.</p>`,
+    },
+    {
+      id: "printable",
+      h2: "A printable soccer board",
+      body: (ctx) =>
+        printableCards(ctx.printableSizes, "soccer") +
+        `<p>It prints on one Letter page, with the minute boxes across the top and down the side, lines for the first goal, each goal and the last goal, the stoppage-time rules and a QR code that turns it into a live board. The ${link(PRINTABLES, "printable templates page")} has the football boards, an A4 board and a prize sheet.</p>`,
+    },
+    {
+      id: "prizes",
+      h2: "Prizes without the awkward part",
+      body: paras(`
+JaxSquares never collects, holds or sends money, and nobody pays anyone through the app. If your group likes to play for something, the host can show a square price and prizes on the board as plain information, in dollars or in points, so everyone sees the rules before they pick. Any settling up happens among yourselves.
+
+Plenty of groups skip amounts entirely. Mark the board Just for fun, or add a prize note like “Loser brings breakfast next match day” or “Winner picks the next match we watch.”`),
+    },
+  ],
+  faqs: [
+    {
+      q: "How does soccer squares work?",
+      a: "Each square is a minute of the match. The digits 0 to 9 are drawn across the top for the minute's ones and down the side for its tens, and when a goal goes in, the square for its minute wins. A goal in the 43rd minute is the 4 row and the 3 column.",
+    },
+    {
+      q: "Which soccer matches can I link?",
+      a: "MLS, NWSL, Premier League, LaLiga, Liga MX and Champions League matches. When you make a board, the next seven days of matches are listed by day, and you can pick a date further ahead. Any other match can be typed in, and the host adds the goals.",
+    },
+    {
+      q: "How do stoppage time and extra time count?",
+      a: "First-half stoppage time counts as the 45th minute. Second-half stoppage time runs on, so 90+3' is the 93 square. In extra time only the last two digits count: the 105th minute is 05 and the 118th is 18. Penalty shootouts don't count.",
+    },
+    {
+      q: "What if nobody scores?",
+      a: "The 00 square wins. On a 0–0 match it takes each of the board's goal winners once, so on a first-and-last-goal board, 00 wins both.",
+    },
+    {
+      q: "Does it matter which team scores?",
+      a: "No. A soccer board is about when a goal goes in, not who scores it, so own goals count too. The score is on the board for everyone to follow.",
+    },
+    {
+      q: "Is JaxSquares affiliated with any soccer league?",
+      a: "No. JaxSquares isn't affiliated with or endorsed by MLS, the NWSL, the Premier League, LaLiga, Liga MX or UEFA. We use those names only to describe the matches your board can follow.",
+    },
+  ],
+  related: ["football-squares", BASKETBALL, HOW_TO, PRINTABLES],
+  parent: null,
+  soccerNotice: true,
+  imageAlt: NEUTRAL_IMAGE_ALT,
+  cta: {
+    h2: "Make your soccer board",
+    text: "Pick the match, text the link, and let the goals do the rest. Free to set up, and friends join from a link.",
+  },
+};
+
 const printables: LandingPage = {
   slug: PRINTABLES,
   nav: "Printable templates",
@@ -757,7 +912,7 @@ const printables: LandingPage = {
       h2: "Download a template",
       body: (ctx) =>
         printableCards(ctx.printableSizes) +
-        `<p>Each PDF prints on a single page. Use the Letter files in the US and Canada and the A4 file almost everywhere else. Playing basketball? There's a ${link(BASKETBALL, "printable basketball squares board")} too.</p>`,
+        `<p>Each PDF prints on a single page. Use the Letter files in the US and Canada and the A4 file almost everywhere else. Playing basketball or soccer? There's a ${link(BASKETBALL, "printable basketball squares board")} and a ${link(SOCCER, "printable soccer squares board")} too.</p>`,
     },
     {
       id: "on-the-sheet",
@@ -1159,4 +1314,4 @@ The numbers come from <a href="https://github.com/nflverse/nfldata">nflverse</a>
   },
 };
 
-export const PAGES: readonly LandingPage[] = [hub, bigGame, nfl, college, basketball, marchMadness, printables, howTo, bestNumbers];
+export const PAGES: readonly LandingPage[] = [hub, bigGame, nfl, college, basketball, marchMadness, soccer, printables, howTo, bestNumbers];

@@ -1,4 +1,4 @@
-// D1 access for the clubs table (migrations/0016_club.sql): a Club Pass
+// D1 access for the clubs table (migrations/0016_club.sql): an Annual Pass + Venue
 // holder's club, its name, logo and TV link. The table belongs to the clubs
 // module, so its SQL lives here and nowhere else.
 //
@@ -82,7 +82,7 @@ export async function clubById(db: D1Database, id: string): Promise<ClubRow | nu
 
 /**
  * The identity's club, made (unnamed, no logo, no TV link) the first time a
- * Club Pass holder needs one. One per identity: a race keeps the first.
+ * Annual Pass + Venue holder needs one. One per identity: a race keeps the first.
  */
 export async function ensureClub(db: D1Database, owner: string, now = Date.now()): Promise<ClubRow> {
   const [, read] = await db.batch<ClubDbRow>([

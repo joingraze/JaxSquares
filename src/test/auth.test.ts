@@ -200,6 +200,24 @@ describe("signing out", () => {
     expect(sent("/account").init.method).toBe("DELETE");
     expectFresh(before);
   });
+
+  it("remembers only which provider signed in here, through sign-out, until the account is deleted", async () => {
+    expect(id.signedInBeforeWith()).toBeNull();
+    signedInDevice();
+    expect(id.signedInBeforeWith()).toBe("apple");
+    expect(localStorage.getItem("jaxsquares.signedInBefore")).toBe("apple");
+    fetchMock.mockImplementation(async () => json({ ok: true }));
+    await auth.signOut();
+    expect(id.signedInBeforeWith()).toBe("apple");
+    signedInDevice();
+    await auth.deleteAccount();
+    expect(id.signedInBeforeWith()).toBeNull();
+  });
+
+  it("restores the provider from the native store at startup", async () => {
+    await id.hydrateIdentity(memoryStore({ "jaxsquares.clientId": "native-client-id", "jaxsquares.signedInBefore": "google" }));
+    expect(id.signedInBeforeWith()).toBe("google");
+  });
 });
 
 describe("refreshMe on start", () => {

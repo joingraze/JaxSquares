@@ -18,7 +18,7 @@ export function appleBundleId(env: Env): string {
 /**
  * Hosts sign in to make a board (docs/auth.md "Hosts sign in"), wherever web
  * sign-in is set up (a Google web client or an Apple Services ID): the board,
- * its host controls and any Host Pass then stay with their account on every
+ * its host controls and any Annual Pass then stay with their account on every
  * device. Without either (local dev, most tests) anyone can make one. Players
  * never need an account.
  */

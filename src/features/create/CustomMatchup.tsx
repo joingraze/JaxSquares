@@ -49,7 +49,7 @@ export function CustomMatchup({ x, y, onChange, showErrors, note, colors = {}, s
   const suggestions = typing ? searchTeams(activeValue, 3, teamsForSport(sport)) : [];
   const taken = new Set([matchTeam(x, sport)?.abbr, matchTeam(y, sport)?.abbr]);
   const popular = popularTeams(sport).filter((t) => !taken.has(t.abbr));
-  const showPopular = !typing && (!x.trim() || !y.trim());
+  const showPopular = !typing && (!x.trim() || !y.trim()) && popular.length > 0;
 
   const sideColor = (side: Side) => (side === "x" ? CUSTOM_X_COLOR : CUSTOM_Y_COLOR);
   // A chip shows exactly the tile it will become: the live color, else the color of the side it fills.

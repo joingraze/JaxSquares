@@ -1,5 +1,6 @@
 // "Your squares": a one-line summary under the grid (how many, and the one
-// closest to hitting) that opens into every number pair, labeled by team.
+// closest to hitting) that opens into every number pair, labeled by team. A
+// soccer board's squares are minutes: each reads as its minute(s) ("43'").
 
 import { useState } from "react";
 import type { Team } from "../../../shared/types";
@@ -24,11 +25,22 @@ export interface MySquaresProps {
   wonKeys: ReadonlySet<string>;
   spotKey: string | null;
   onSpot: (key: string | null) => void;
+  /** A soccer board: squares read as minutes (the row's tens, the column's ones). */
+  minutes?: boolean;
+}
+
+/** A soccer square's minutes: "43'", or a 5x5 square's "43' 48' 93' 98'". */
+function minutesOf(nb: MyNumber): string {
+  return nb.y
+    .split("·")
+    .flatMap((t) => nb.x.split("·").map((o) => `${t}${o}`))
+    .map((m) => (m === "00" ? "00" : `${Number(m)}'`))
+    .join(" ");
 }
 
 const abbrOf = (t: Team) => t.abbr || t.name.slice(0, 3).toUpperCase();
 
-export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot }: MySquaresProps) {
+export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot, minutes = false }: MySquaresProps) {
   const [open, setOpen] = useState(false);
   if (numbers.length === 0) return null;
   const x = abbrOf(teamX);
@@ -38,19 +50,26 @@ export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot
   let best: { nb: MyNumber; note: string } | null = null;
   const nowKey = now ? cellKey(now.cell.row, now.cell.col) : null;
   const pathKey = now?.path ? cellKey(now.path.cell.row, now.path.cell.col) : null;
+  const next = now?.goal?.next ?? null;
   for (const nb of numbers) {
     const k = cellKey(nb.row, nb.col);
     if (now?.mine && k === nowKey) best = { nb, note: "Leading now" };
     else if (!best && k === pathKey) best = { nb, note: now?.path?.plays.length === 1 ? "1 score away" : "2 scores away" };
+    else if (!best && next && minutesOf(nb).split(" ").includes(next.minute === 0 ? "00" : `${next.minute}'`)) {
+      best = { nb, note: `in ${next.inMinutes} ${next.inMinutes === 1 ? "minute" : "minutes"}` };
+    }
   }
 
-  const pair = (nb: MyNumber) => (
+  const pair = (nb: MyNumber) =>
+    minutes ? (
+      <b className="font-extrabold text-ink">{minutesOf(nb)}</b>
+    ) : (
     <>
       <span className="text-ink-subtle">{x}</span> <b className="font-extrabold text-ink">{nb.x}</b>
       <span aria-hidden className="mx-1 text-ink-subtle">·</span>
       <span className="text-ink-subtle">{y}</span> <b className="font-extrabold text-ink">{nb.y}</b>
     </>
-  );
+    );
 
   return (
     <div className="rounded-2xl bg-surface-2 ring-1 ring-inset ring-line">
@@ -72,7 +91,7 @@ export function MySquares({ numbers, now, teamX, teamY, wonKeys, spotKey, onSpot
             </>
           ) : (
             <>
-              <span className="block text-caption font-bold text-ink-muted">Your numbers</span>
+              <span className="block text-caption font-bold text-ink-muted">{minutes ? "Your minutes" : "Your numbers"}</span>
               <span className="block truncate text-subhead tabular-nums">{pair(numbers[0])}{numbers.length > 1 ? <span className="text-ink-subtle"> and more</span> : null}</span>
             </>
           )}

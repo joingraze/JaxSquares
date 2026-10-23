@@ -96,11 +96,11 @@ export default function Privacy() {
             <Fact icon={<LockIcon />} title="Purchase records">
               When a host pays the host fee for a board (when they draw its numbers), we keep the transaction reference, amount and the board it paid for. Card and Apple Pay details go straight to Apple or Stripe.
             </Fact>
-            <Fact icon={<LockIcon />} title="A Host Pass (optional)">
-              If you get the yearly Host Pass, we keep its subscription reference (from the App Store or Stripe), whether it's active, when it renews or ends, and whether it renews, tied to your device ID or account. For a pass bought on the web, Stripe also keeps a customer record for it. We use this only to cover your boards' host fee and to show your pass.
+            <Fact icon={<LockIcon />} title="An Annual Pass (optional)">
+              If you get the yearly Annual Pass, we keep its subscription reference (from the App Store or Stripe), whether it's active, when it renews or ends, and whether it renews, tied to your device ID or account. For a pass bought on the web, Stripe also keeps a customer record for it. We use this only to cover your boards' host fee and to show your pass.
             </Fact>
-            <Fact icon={<LockIcon />} title="A Club Pass and its club (optional)">
-              If you get the yearly Club Pass, we keep it like a Host Pass, plus your club: the name and logo you give it (the logo is resized on your device before it's uploaded), and a scrambled fingerprint of its TV link, never the link itself. The club's name and logo are public on the boards you host, their TV view, printout and link previews. They're deleted with your account.
+            <Fact icon={<LockIcon />} title="The Venue add-on and your venue (optional)">
+              If your Annual Pass has the Venue add-on, we keep it like any Annual Pass, plus your venue: the name and logo you give it (the logo is resized on your device before it's uploaded), and a scrambled fingerprint of its TV link, never the link itself. The club's name and logo are public on the boards you host, their TV view, printout and link previews. They're deleted with your account.
             </Fact>
             <Fact icon={<InfoIcon />} title="Basic server logs">
               Our hosting provider records technical details like IP address and request time to keep the service running and secure. We don't use them to work out where you are.
@@ -115,8 +115,8 @@ export default function Privacy() {
               <Check>Showing boards and drawing numbers</Check>
               <Check>Recording scores and winning squares</Check>
               <Check>Sending the notifications and emails you asked for</Check>
-              <Check>Letting hosts draw the numbers once a board is paid for, covered by their Host Pass or Club Pass, or free (5 or fewer players hold squares)</Check>
-              <Check>Showing a Club Pass holder's club on their boards, and a players list (names, squares and when each joined) to the board's host and co-hosts</Check>
+              <Check>Letting hosts draw the numbers once a board is paid for, covered by their Annual Pass, or free (5 or fewer players hold squares)</Check>
+              <Check>Showing a venue's name and logo on its host's boards, and a venue board's players list (names, squares and when each joined) to its host and co-hosts</Check>
               <Check>Keeping your boards on every device you sign in on</Check>
               <Check>Preventing abuse</Check>
             </ul>
@@ -134,7 +134,7 @@ export default function Privacy() {
             <ListRow title="Apple" subtitle="In-App Purchase and subscriptions, push delivery, Sign in with Apple" />
             <ListRow title="Google" subtitle="Sign in with Google (optional)" />
             <ListRow title="Google Firebase Cloud Messaging" subtitle="Push notifications in the app" />
-            <ListRow title="Stripe" subtitle="Web payments for the host fee, the Host Pass and the Club Pass" />
+            <ListRow title="Stripe" subtitle="Web payments for the host fee, the Venue add-on and the Annual Pass" />
             <ListRow title="Resend" subtitle="Sending the board emails you ask for" />
           </ListGroup>
         </Section>
@@ -158,7 +158,7 @@ export default function Privacy() {
           <ListGroup>
             <Fact title="Boards and their data">Until the host deletes the board.</Fact>
             <Fact title="Your account">Until you delete it. Your boards and squares stay on their boards afterwards, no longer tied to you.</Fact>
-            <Fact title="A club's name and logo">Until you change them, or delete your account. They stop showing on your boards when your Club Pass ends.</Fact>
+            <Fact title="A venue's name and logo">Until you change them, or delete your account. They stop showing on your boards when your Venue add-on ends.</Fact>
             <Fact title="Purchase records">As long as tax and accounting law requires.</Fact>
             <Fact title="Push tokens">Deleted when you turn notifications off, or when Apple or Google tells us a token is no longer valid.</Fact>
             <Fact title="Email for a board">

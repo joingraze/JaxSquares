@@ -2,7 +2,9 @@
 // zoomed), and one button per square. Fit mode shows the whole board at phone
 // width; zoom mode magnifies it inside the same square frame and pans on whole
 // squares. A two-finger pinch zooms in and out. The square the score points at
-// right now leads the board; earlier winners shrink to trophy pips.
+// right now leads the board; earlier winners shrink to trophy pips. A soccer
+// board's squares are minutes: its bands name the minute's tens (down the
+// side) and ones (across the top) instead of the teams.
 
 import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Game } from "../../../shared/types";
@@ -20,7 +22,7 @@ export interface BoardCallout {
 }
 
 export interface BoardProps {
-  game: Pick<Game, "teamX" | "teamY" | "format" | "league">;
+  game: Pick<Game, "teamX" | "teamY" | "format" | "league"> & Partial<Pick<Game, "sport">>;
   cells: CellView[][];
   axis: { x: string[]; y: string[]; drawn: boolean };
   /** Squares are being claimed: empty squares look tappable. */
@@ -65,6 +67,7 @@ export function Board({
   accessory,
 }: BoardProps) {
   const n = cells.length;
+  const soccer = game.sport === "soccer";
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
@@ -236,11 +239,11 @@ export function Board({
       <div aria-hidden />
       <div className="relative flex min-w-0 items-center">
         <div className={cx("flex min-w-0 flex-1 items-center", !!accessory && "px-[5rem]")}>
-          <TeamBand axis="x" name={shortTeam(game.teamX, game.league)} />
+          <TeamBand axis="x" name={soccer ? "Minute · ones" : shortTeam(game.teamX, game.league)} />
         </div>
         {accessory && <div className="absolute inset-y-0 right-0 flex items-center">{accessory}</div>}
       </div>
-      <TeamBand axis="y" name={shortTeam(game.teamY, game.league)} />
+      <TeamBand axis="y" name={soccer ? "Minute · tens" : shortTeam(game.teamY, game.league)} />
       <div
         ref={scrollerRef}
         className={cx("jx-board-scroller", zoom ? "overflow-auto scrollbar-none" : "overflow-visible")}
@@ -250,7 +253,11 @@ export function Board({
         <div
           ref={boardRef}
           role="group"
-          aria-label={`Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`}
+          aria-label={
+            soccer
+              ? "Board: each square is a minute of the match, its tens down the side and its ones across the top"
+              : `Board: ${game.teamX.name} across the top, ${game.teamY.name} down the side`
+          }
           className={cx("jx-board", intro && "jx-board-intro")}
           data-size={n}
           data-zoom={zoom}
@@ -378,10 +385,19 @@ function signature(c: CellView): string {
   ].join("~");
 }
 
+/** A soccer square's minutes: the row's tens with the column's ones ("43", or a 5x5 square's "43, 48, 93 and 98"). */
+function squareMinutes(tens: string, ones: string): string {
+  const list = tens.split("·").flatMap((t) => ones.split("·").map((o) => `${t}${o}`));
+  return list.length <= 1 ? (list[0] ?? "") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+}
+
 function cellLabel(c: CellView, game: BoardProps["game"], axis: BoardProps["axis"]): string {
-  const where = axis.drawn
-    ? `${game.teamX.abbr || game.teamX.name} ${axis.x[c.col]}, ${game.teamY.abbr || game.teamY.name} ${axis.y[c.row]}`
-    : `row ${c.row + 1}, column ${c.col + 1}`;
+  const soccer = game.sport === "soccer";
+  const where = !axis.drawn
+    ? `row ${c.row + 1}, column ${c.col + 1}`
+    : soccer
+      ? `minute ${squareMinutes(axis.y[c.row], axis.x[c.col])}`
+      : `${game.teamX.abbr || game.teamX.name} ${axis.x[c.col]}, ${game.teamY.abbr || game.teamY.name} ${axis.y[c.row]}`;
   let who: string;
   if (c.selected === "claim") who = "Selected";
   else if (c.selected === "release") who = "Your square, selected to give back";
@@ -389,7 +405,7 @@ function cellLabel(c: CellView, game: BoardProps["game"], axis: BoardProps["axis
   else if (c.ownerId) who = `${c.owner?.name ?? "Someone"}'s square`;
   else who = "Open square";
   const wins = c.wins.length ? `. Won ${c.wins.map((w) => (w.reverse ? `${w.label} reverse` : w.label)).join(", ")}` : "";
-  const live = c.live ? ". The score points here right now" : "";
+  const live = c.live ? (soccer ? ". A goal now lands here" : ". The score points here right now") : "";
   return `${who}, ${where}${wins}${live}`;
 }
 
@@ -398,9 +414,9 @@ function shortName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? "";
 }
 
-/** "Q1", "Half", or "#3" for an every-score entry ("Score 3"). */
+/** "Q1", "Half", or "#3" for an every-score entry ("Score 3", a soccer board's "Goal 3"). */
 function shortWin(label: string): string {
-  const m = /^score\s+(\d+)$/i.exec(label);
+  const m = /^(?:score|goal)\s+(\d+)$/i.exec(label);
   return m ? `#${m[1]}` : label;
 }
 

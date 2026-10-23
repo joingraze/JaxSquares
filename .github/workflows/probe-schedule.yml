@@ -16,6 +16,10 @@ name: Probe schedule
 #     counted, halftime + final for the men's halves and Q1/Half/Q3/Final for
 #     the rest), the latest finals and any game on now; plus how many college
 #     games each slate lists with and without ESPN's Division I filter.
+#   - MLS, NWSL, Premier League, LaLiga, Liga MX and Champions League: the
+#     next 7 days, a date ahead, a past match's goals (each with its minute,
+#     as many as the score, scoreboard and summary agree), the latest finals
+#     and the clock of any match on now.
 #   - Season boards: the NFL's and the NBA's team lists and one team's season
 #     each (the Jaguars, the Lakers: regular season and playoffs, the team on
 #     one side of every game, results on finished games, a final's live data),
@@ -29,6 +33,7 @@ on:
       - .github/workflows/probe-schedule.yml
       - worker/scores/**
       - shared/sports.ts
+      - shared/soccer.ts
   workflow_run:
     workflows: [Deploy]
     types: [completed]
@@ -59,7 +64,7 @@ jobs:
           cp worker/scores/espn.probe.ts worker/scores/probe.live.test.ts
           status=0
           npx vitest run worker/scores/probe.live.test.ts --reporter=verbose > probe.log 2>&1 || status=$?
-          grep -vE "^\s*$|^stdout \|" probe.log | head -250
+          grep -vE "^\s*$|^stdout \|" probe.log | head -2000
           exit "$status"
 
       - name: Deployed site
@@ -68,8 +73,8 @@ jobs:
         run: |
           if [ -z "$SITE" ]; then echo "No site to check"; exit 0; fi
           code() { curl -s -o /dev/null -w '%{http_code}' "$SITE$1"; }
-          # Basketball goes by day: 7 days, today first, or one date.
-          for league in nba wnba ncaab ncaaw; do
+          # Basketball and soccer go by day: 7 days, today first, or one date.
+          for league in nba wnba ncaab ncaaw mls nwsl epl laliga ligamx ucl; do
             curl -fsS "$SITE/api/schedule?league=$league" | node -e '
               const r = JSON.parse(require("fs").readFileSync(0, "utf8"));
               const league = process.argv[1];
@@ -108,4 +113,9 @@ jobs:
           curl -fsS "$SITE/march-madness-squares" | grep -q "affiliated with or endorsed by the NCAA"
           curl -fsS "$SITE/sitemap.xml" | grep -q "/march-madness-squares"
           test "$(code "/printables/basketball-squares-10x10-letter.pdf")" = 200
+          # The soccer landing page, its leagues' line and its printable.
+          curl -fsS "$SITE/soccer-squares" | grep -q "rel=\"canonical\" href=\"https://jaxsquares.com/soccer-squares\""
+          curl -fsS "$SITE/soccer-squares" | grep -q "affiliated with or endorsed by MLS"
+          curl -fsS "$SITE/sitemap.xml" | grep -q "/soccer-squares"
+          test "$(code "/printables/soccer-squares-10x10-letter.pdf")" = 200
           echo "Site checks passed: $SITE"

@@ -1,7 +1,7 @@
 // The host sheet's "Co-hosts" section (shared/cohosts.ts). The host sees who
 // co-hosts with a Remove on each, and "Invite a co-host": a single-use link
 // (7 days) shared like any invite, until the board has its plan's limit
-// (cohostLimitOf: MAX_COHOSTS, or CLUB_MAX_COHOSTS on a Club Pass holder's board). A co-host
+// (cohostLimitOf: MAX_COHOSTS, or CLUB_MAX_COHOSTS on an Annual Pass + Venue holder's board). A co-host
 // sees the same list with "Step down" on their own row, and who the host is.
 // The confirms live in the host sheet ("cohost-remove", "step-down").
 

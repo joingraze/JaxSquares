@@ -22,7 +22,7 @@ import {
   seasonOver,
   upcomingSeasonEvents,
 } from "../shared/season";
-import { isLinkedLeague, type LinkedLeague } from "../shared/sports";
+import { isLinkedLeague, leagueSport, type LinkedLeague } from "../shared/sports";
 import type { Game, GameState, NumberDraw, ScheduleEvent, SeasonEvent, SeasonTeam, Team } from "../shared/types";
 import { cleanText, cleanTeam } from "./clean";
 import * as db from "./db";
@@ -88,7 +88,8 @@ export interface SeasonPlan {
 export function parseSeasonInput(v: unknown, league: unknown, now: number): SeasonPlan | string {
   if (!v || typeof v !== "object" || Array.isArray(v)) return SEASON_ERRORS.scope;
   const input = v as Record<string, unknown>;
-  if (!isLinkedLeague(league)) return SEASON_ERRORS.league;
+  // Soccer's boards are one match each: a season board follows football or basketball.
+  if (!isLinkedLeague(league) || leagueSport(league) === "soccer") return SEASON_ERRORS.league;
   if (!isSeasonScope(input.scope)) return SEASON_ERRORS.scope;
   if (!isSeasonNumbers(input.numbers)) return SEASON_ERRORS.numbers;
   const scope = input.scope;

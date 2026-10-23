@@ -137,9 +137,19 @@ export const BasketballIcon = make(
   </>,
 );
 
-/** The board's sport as an icon: a basketball on a basketball board, else the football. */
+export const SoccerIcon = make(
+  "Soccer",
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 8.3l3.5 2.5-1.3 4.1H9.8l-1.3-4.1z" />
+    <path d="M12 8.3V3.2M15.5 10.8l4.9-1.6M14.2 14.9l3 4.1M9.8 14.9l-3 4.1M8.5 10.8 3.6 9.2" />
+  </>,
+);
+
+/** The board's sport as an icon: a basketball on a basketball board, a soccer ball on a soccer board, else the football. */
 export function SportIcon({ sport, ...props }: IconProps & { sport?: string | null }) {
-  return sport === "basketball" ? <BasketballIcon {...props} /> : <FootballIcon {...props} />;
+  if (sport === "basketball") return <BasketballIcon {...props} />;
+  return sport === "soccer" ? <SoccerIcon {...props} /> : <FootballIcon {...props} />;
 }
 export const GridIcon = make(
   "Grid",

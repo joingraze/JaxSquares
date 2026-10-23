@@ -9,17 +9,19 @@
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the host
 // paying JaxSquares a fee for a board, due when they draw its numbers, or a
-// yearly Host Pass (or Club Pass) that covers that fee on every board they host.
+// yearly Annual Pass (or Annual Pass + Venue) that covers that fee on every board they host.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
 /**
  * Leagues we can pull live schedules/scores for. "custom" = typed-in matchup.
  * Football: "nfl", "ncaaf" (college). Basketball: "nba", "wnba", "ncaab"
- * (men's college, played in halves) and "ncaaw" (women's college). Which
- * sport each plays, and how its game splits, lives in shared/sports.ts.
+ * (men's college, played in halves) and "ncaaw" (women's college). Soccer:
+ * "mls", "nwsl", "epl" (the English top flight), "laliga", "ligamx" and
+ * "ucl" (the European club cup). Which sport each plays, and how its game
+ * splits, lives in shared/sports.ts.
  */
-export type League = "nfl" | "ncaaf" | "nba" | "wnba" | "ncaab" | "ncaaw" | "custom";
+export type League = "nfl" | "ncaaf" | "nba" | "wnba" | "ncaab" | "ncaaw" | "mls" | "nwsl" | "epl" | "laliga" | "ligamx" | "ucl" | "custom";
 
 /**
  * draft  – legacy: a board waiting on its creator's payment before it opened,
@@ -34,20 +36,23 @@ export type GameStatus = "draft" | "open" | "locked" | "final";
 
 /**
  * Which scoring moments win a square. "custom" = the rules' moments match no
- * preset (e.g. every score plus the quarters).
+ * preset (e.g. every score plus the quarters). "first-last" is soccer's first
+ * and last goal.
  */
-export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "custom";
+export type PeriodsPreset = "quarters" | "halves" | "final" | "every-score" | "first-last" | "custom";
 
 /** 100 = classic 10x10 (one digit per row/col); 25 = 5x5 (two digits per row/col). */
 export type BoardSize = 100 | 25;
 
 /**
  * A moment a square can win at: every score change, or the score at the end of
- * Q1 / halftime / Q3 / the game. Every score is football only; a game played
- * in halves (men's college basketball) has only halftime ("q2") and the final
- * (shared/sports.ts `momentsFor`).
+ * Q1 / halftime / Q3 / the game. Every score is football and soccer only; a
+ * game played in halves (men's college basketball) has only halftime ("q2")
+ * and the final (shared/sports.ts `momentsFor`). A soccer board's squares are
+ * the match's minutes (shared/soccer.ts): "first" is the first goal's minute,
+ * "score" every goal's and "final" the last goal's.
  */
-export type Moment = "score" | "q1" | "q2" | "q3" | "final";
+export type Moment = "first" | "score" | "q1" | "q2" | "q3" | "final";
 
 /**
  * The kind of score an every-score entry was (football only: every score
@@ -218,6 +223,17 @@ export interface LinkedEvent {
 }
 
 /**
+ * One goal of a soccer match as the feed reports it (penalty-shootout kicks
+ * aren't goals): the minute shown ("45'+2'" is minute 45, 2 added) and the
+ * team it counts for, on the board's X/Y orientation.
+ */
+export interface LiveGoal {
+  minute: number;
+  added: number;
+  team: "x" | "y";
+}
+
+/**
  * Raw live data for a linked game, oriented to the board's X/Y teams. Periods
  * are the feed's own: quarters (index 0 = Q1, 4+ = OT), or halves for men's
  * college basketball (index 0 = 1st half, 2+ = OT); shared/sports.ts
@@ -231,6 +247,8 @@ export interface LiveUpdate {
   /** Number of fully completed periods (0-4 for quarters, 0-2 for halves, more with OT). */
   completedPeriods: number;
   isFinal: boolean;
+  /** Soccer: every goal so far, in order (absent when the feed sent none, or another sport). */
+  goals?: LiveGoal[];
 }
 
 /**
@@ -297,7 +315,7 @@ export interface Game {
    */
   paid?: boolean;
   /**
-   * The host holds an active Club Pass (docs/payments.md "Club Pass"): the
+   * The host holds an active Annual Pass + Venue (docs/payments.md "Annual Pass + Venue"): the
    * club's public branding (its name shows only once the holder names it:
    * `shownClub` in shared/clubs.ts), and the board takes up to
    * CLUB_MAX_COHOSTS co-hosts (`cohostLimitOf`). null/absent on every other
@@ -505,12 +523,20 @@ export interface Square {
 /** A recorded score. For fixed periods it's the cumulative score at the end of that period. */
 export interface Score {
   periodKey: string;
-  /** Only set for every-score entries, e.g. "Score 3". */
+  /** Only set for every-score entries, e.g. "Score 3", "Goal 2". */
   label?: string;
   scoreX: number; // the column team's score
   scoreY: number; // the row team's score
   source: "live" | "host";
   updatedAt: number;
+  /**
+   * A soccer goal (an entry s1..sN on a soccer board): the minute shown, 45
+   * for "45'+2'" (shared/soccer.ts `boardMinute` says which square it is).
+   * Absent everywhere else.
+   */
+  minute?: number;
+  /** The goal's stoppage time ("45'+2'" -> 2); 0 or absent for none. */
+  added?: number;
 }
 
 /** A host's manual winner pick for a period; overrides the computed square. */
@@ -839,6 +865,10 @@ export interface ScoreInput {
   scoreY: number;
   /** every-score only: label for a new score entry. */
   label?: string;
+  /** A soccer goal (required for one, refused elsewhere): its minute, 0-130, as shown ("45'+2'" -> 45). */
+  minute?: number;
+  /** A soccer goal's stoppage time, 0-30 ("45'+2'" -> 2). */
+  added?: number;
 }
 
 export interface ManualWinnerInput {
@@ -961,30 +991,20 @@ export interface ScheduleResponse {
 export interface PaymentConfig {
   /** "test" simulates checkout with no charge; "live" uses Stripe / Apple IAP. */
   mode: "test" | "live";
+  /** One board's host fee (shared/pricing.ts). */
   priceCents: number;
+  /** One venue board's Venue add-on, on top of its host fee (web only). Always sent; optional so older fixtures type-check (0 = none). */
+  venuePriceCents?: number;
   currency: string;
   stripePublishableKey: string | null;
   iapProductId: string;
-  /** How the Host Pass is sold here. Always sent; optional only so older fixtures type-check. */
+  /** How the Annual Pass is sold here. Always sent; optional only so older fixtures type-check. */
   hostPass?: HostPassOffer;
-  /** How the Club Pass is sold (the web only). Always sent; optional only so older fixtures type-check. */
+  /** How the Annual Pass with the Venue add-on is sold (the web only). Always sent; optional only so older fixtures type-check. */
   clubPass?: ClubPassOffer;
-  /**
-   * A season board's host fee (one fee, at its draw, for every game of the
-   * season): `priceCents` on the web, the App Store product's own price in
-   * the iOS app. Always sent; optional only so older fixtures type-check.
-   */
-  season?: SeasonFeeOffer;
 }
 
-/** A season board's host fee: due once, at the season board's draw (docs/payments.md "Season boards"). */
-export interface SeasonFeeOffer {
-  priceCents: number;
-  /** App Store product id of the consumable (com.jaxsquares.app.seasonboard). */
-  iapProductId: string;
-}
-
-// ---- The Host Pass (docs/payments.md "Host Pass") ----
+// ---- The Annual Pass (docs/payments.md "Annual Pass") ----
 // A yearly subscription, an alternative to paying the host fee board by board:
 // while it's active, drawing the numbers on any board its holder hosts costs
 // nothing more. It belongs to the holder's identity (the account's, when signed
@@ -1012,7 +1032,7 @@ export interface HostPassOffer {
   web: boolean;
 }
 
-/** An identity's Host Pass as the API reports it: never a clientId or a payment reference. */
+/** An identity's Annual Pass as the API reports it: never a clientId or a payment reference. */
 export interface HostPass {
   /** Covers the host fee right now. */
   active: boolean;
@@ -1029,15 +1049,15 @@ export interface HostPass {
 export interface HostPassState {
   pass: HostPass | null;
   offer: HostPassOffer;
-  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass + Venue (null when it never had one). Always sent; optional so older fixtures type-check. */
   club?: HostPass | null;
-  /** How the Club Pass is sold here. Always sent; optional so older fixtures type-check. */
+  /** How the Annual Pass + Venue is sold here. Always sent; optional so older fixtures type-check. */
   clubOffer?: ClubPassOffer;
 }
 
-// ---- The Club Pass (docs/payments.md "Club Pass") ----
+// ---- The Annual Pass + Venue (docs/payments.md "Annual Pass + Venue") ----
 // A yearly plan for bars, booster clubs, offices and fundraisers: everything
-// the Host Pass does, plus the club's branding on the holder's boards, up to
+// the Annual Pass does, plus the club's branding on the holder's boards, up to
 // 10 co-hosts, a players CSV and a TV link that rotates the club's boards.
 // Sold on the web only (Stripe Billing, signed in); the iOS app never offers
 // it or links to buying it, but a holder's features work there. A row of
@@ -1046,7 +1066,7 @@ export interface HostPassState {
 /** Which pass a host_passes row is. */
 export type PassPlan = "host" | "club";
 
-/** How the Club Pass is sold: on the web only, never in the iOS app. */
+/** How the Annual Pass + Venue is sold: on the web only, never in the iOS app. */
 export interface ClubPassOffer {
   /** The price per year, in minor units of `currency` (4900 = "$49/year"). */
   priceCents: number;
@@ -1065,7 +1085,7 @@ export interface ClubBoard {
   startsAt: number | null;
 }
 
-/** GET /api/clubs/mine (and every club settings route's answer): the holder's club. 404 without an active Club Pass. */
+/** GET /api/clubs/mine (and every club settings route's answer): the holder's club. 404 without an active Annual Pass + Venue. */
 export interface ClubSettings {
   club: ClubBrand;
   /**
@@ -1088,7 +1108,7 @@ export interface ClubTvLink extends ClubSettings {
 /** GET /api/clubs/:id/tv (the TV link's token in x-club-tv-token): the club and its boards' public states. 404 for a wrong token. */
 export interface ClubTvState {
   club: ClubBrand;
-  /** The Club Pass is active; when it isn't, `boards` is empty. */
+  /** The Annual Pass + Venue is active; when it isn't, `boards` is empty. */
   active: boolean;
   /** Up to CLUB_TV_MAX_BOARDS of the club's open and live boards: live ones first, then by kickoff. */
   boards: GameState[];
@@ -1112,6 +1132,13 @@ export interface HostPassTransaction {
  * a web subscription needs a sign-in first, or it would be lost with the browser.
  */
 export const ACCOUNT_REQUIRED_CODE = "account_required";
+
+/**
+ * `code` of the 409 that POST /api/payments/pass/stripe answers when a holder
+ * of a web Annual Pass asks for the Annual Pass + Venue: the app adds the
+ * Venue add-on to their pass instead (POST /api/payments/pass/stripe/venue).
+ */
+export const UPGRADE_PASS_CODE = "upgrade_pass";
 
 export interface AppConfig {
   payments: PaymentConfig;
@@ -1211,7 +1238,7 @@ export interface AccountInfo {
 
 /**
  * GET /api/me and the sign-in response: who this device is. An object so
- * later fields (the Host Pass) can be added.
+ * later fields (the Annual Pass) can be added.
  */
 export interface MeResponse {
   /** This device's public player id: the account's (canonical) one when signed in. "Mine" compares against it. */
@@ -1222,9 +1249,9 @@ export interface MeResponse {
   hostTokens: Record<string, string>;
   /** The name, color and emoji this identity last joined a board with, if any (public on that board already). */
   profile?: { name: string; color: string; emoji: string } | null;
-  /** This identity's Host Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
   hostPass?: HostPass | null;
-  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass + Venue (null when it never had one). Always sent; optional so older fixtures type-check. */
   clubPass?: HostPass | null;
   /**
    * Ids of the boards this identity co-hosts (newest 200). No token: a co-host

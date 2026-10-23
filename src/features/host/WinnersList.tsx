@@ -9,7 +9,7 @@
 
 import type { ReactNode } from "react";
 import { formatAmount, scorePlayLabel, unitOf } from "../../../shared/formats";
-import { primaryAward } from "../../../shared/squares";
+import { primaryAward, resultMinute } from "../../../shared/squares";
 import type { ClaimCode, GameState, Player } from "../../../shared/types";
 import { claimDeadline, collectedFor, countdownText } from "../../../shared/venue";
 import { CheckIcon, PencilIcon, TrophyIcon } from "../../components/icons";
@@ -116,9 +116,14 @@ export function WinnersList({ state, codes = null, onCollect, rows, me, busy, on
         const amount = money(award?.amount ?? null);
         // Every-score entries say what kind of score it was ("Touchdown", "Extra point").
         const kind = r?.scoreKind ? scorePlayLabel(r.scoreKind, true) : null;
-        const scoreLine = row.score
-          ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${kind ? ` · ${kind}` : ""}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
-          : null;
+        // A soccer result is a minute ("45+2'", or 00 with no goals), with the score it left.
+        const minute = r ? resultMinute(r) : null;
+        const shown = minute ? (r?.score ?? null) : row.score;
+        const scoreLine = minute
+          ? `${minute}${shown ? ` · ${abbrX} ${shown.scoreX} – ${shown.scoreY} ${abbrY}` : ""}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
+          : row.score
+            ? `${abbrX} ${row.score.scoreX} – ${row.score.scoreY} ${abbrY}${kind ? ` · ${kind}` : ""}${amount ? ` · ${amount}` : ""}${award?.reverse ? " · reverse" : ""}`
+            : null;
 
         const actions: RowAction[] = [];
         if (onEdit && row.score) {
@@ -167,7 +172,7 @@ export function WinnersList({ state, codes = null, onCollect, rows, me, busy, on
               : winner.name
             : row.manual
               ? "Empty square (your pick)"
-              : `Nobody had ${row.score ? `${row.score.scoreX % 10}–${row.score.scoreY % 10}` : "it"}`;
+              : `Nobody had ${minute ?? (row.score ? `${row.score.scoreX % 10}–${row.score.scoreY % 10}` : "it")}`;
 
         return (
           <li key={row.key} className="py-2.5 pl-3.5 pr-2.5">
@@ -213,7 +218,7 @@ export function WinnersList({ state, codes = null, onCollect, rows, me, busy, on
             </div>
             {empty && (
               <p className="mt-1.5 pl-[3.25rem] text-footnote leading-snug text-ink-muted">
-                That square is empty, so {/^Score \d+$/.test(row.label) ? "this score has" : `${row.label} has`} no winner unless you give it to someone.
+                That square is empty, so {/^Score \d+$/.test(row.label) ? "this score has" : /^Goal \d+$/.test(row.label) ? "this goal has" : `${row.label} has`} no winner unless you give it to someone.
               </p>
             )}
             {ownLine && actions.length > 0 && (
@@ -250,8 +255,8 @@ function ActionButton({ action, busy }: { action: RowAction; busy: boolean }) {
   );
 }
 
-/** "Score 12" -> "#12"; period labels are already short. */
+/** "Score 12" (a soccer board's "Goal 12") -> "#12"; period labels are already short. */
 function shortLabel(label: string): string {
-  const m = /^Score (\d+)$/.exec(label);
+  const m = /^(?:Score|Goal) (\d+)$/.exec(label);
   return m ? `#${m[1]}` : label;
 }

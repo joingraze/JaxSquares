@@ -1,6 +1,6 @@
 // "Free for up to 5 players": beside the draw on a board that draws for free
 // (5 or fewer players hold squares; shared/hostFee.ts), where a price or "Included
-// with your Host Pass" would otherwise be.
+// with your Annual Pass" would otherwise be.
 
 import { UsersIcon } from "../../components/icons";
 import { cx } from "../../components/ui";

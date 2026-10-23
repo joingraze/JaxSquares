@@ -1,20 +1,24 @@
-// Pays a board's host fee: the only payment in JaxSquares, due when the host
-// draws the numbers of a board more than 5 players hold squares on (setting
-// up, inviting and picking squares are free, and so is drawing a smaller
-// board). The host tools open it from "Draw the numbers · $4.99" (then draw
-// and play the reveal), or, on a linked board, to pay ahead so Jax draws at
-// kickoff. It is self-contained: the board (GET /api/games/:id) and the saved
-// admin token are all it needs.
+// Pays what a board costs its host (shared/pricing.ts): the only payment in
+// JaxSquares, due when the host draws the numbers of a board more than 5
+// players hold squares on (setting up, inviting and picking squares are free,
+// and so is drawing a smaller board). That's the host fee, plus the Venue
+// add-on on a venue board, less what the host's Annual Pass covers. The host
+// tools open it from "Draw the numbers · $4.99" (then draw and play the
+// reveal), or, on a linked board, to pay ahead so Jax draws at kickoff. It is
+// self-contained: the board (GET /api/games/:id) and the saved admin token
+// are all it needs.
 //
-// It also sells the Host Pass, the yearly alternative: at the draw the host
-// picks "This board · $4.99" (the default) or "Host Pass · $19.99/year"
-// ("Pays for itself by your fifth board", worked out from the two prices
-// this device shows) with one tap, and Profile opens it in pass mode
-// (purpose "pass", no board). The pass
-// has its subscription disclosure beside its button. On the web it needs an
-// account first: the sheet asks the parent to sign in (onSignInForPass), then
-// it's reopened on the pass. Drawing after buying the pass needs no payment:
-// the server marks the board paid through the pass.
+// It also sells the Annual Pass, the yearly alternative: at the draw the host
+// picks "This board · $4.99" (the default) or "Annual Pass · $19.99/year"
+// (on a venue board "This board · $14.99" or "Annual Pass + Venue ·
+// $99.99/year"; "Pays for itself by your fifth board", worked out from the
+// two prices this device shows) with one tap, and Profile opens it in pass
+// mode (purpose "pass", no board). A season board comes with the Annual Pass,
+// so its sheet is the pass alone. The pass has its subscription disclosure
+// beside its button. On the web it needs an account first: the sheet asks the
+// parent to sign in (onSignInForPass), then it's reopened on the pass.
+// Drawing after buying the pass needs no payment: the server marks the board
+// paid through the pass.
 //   test   – no-charge test checkout (a test pass for the pass), one tap
 //   wallet – Apple Pay / Google Pay (Stripe Express Checkout), card form fallback
 //   card   – Stripe Payment Element
@@ -23,19 +27,21 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { inSportWords } from "../../../shared/sportWords";
-import { ACCOUNT_REQUIRED_CODE, type Game, type GameState, type HostPassState, type PaymentConfig, type Sport } from "../../../shared/types";
+import { PASS_NAME, VENUE_PASS_NAME, passPlanFor } from "../../../shared/pricing";
+import { ACCOUNT_REQUIRED_CODE, type Game, type GameState, type HostPassState, type PassPlan, type PaymentConfig, type Sport } from "../../../shared/types";
 import { AlertIcon, CheckIcon, LiveIcon, PencilIcon } from "../../components/icons";
 import { BottomSheet, Button, celebrate, CELEBRATION_COLORS, cx, Skeleton, TeamMark } from "../../components/ui";
 import {
   appStorePrice,
+  boardDue,
   buyPassWithIAP,
   CheckoutError,
   checkoutMethod,
+  clubCheckoutMethod,
   confirmPassPaid,
   confirmStripePaid,
   createPassIntent,
   createStripeIntent,
-  feeOf,
   fetchAppConfig,
   formatPrice,
   mountCardForm,
@@ -56,7 +62,7 @@ import { setHostPassState } from "../../lib/hostPassStore";
 import { useAccount } from "../../lib/identity";
 import { haptic, platform } from "../../lib/native";
 import { useResolvedTheme } from "../../lib/theme";
-import { useHostPrices } from "../../lib/useHostPass";
+import { useHostPass, useHostPrices } from "../../lib/useHostPass";
 import { PassCard, PassDisclosure, PlanPicker, type CheckoutPlan } from "../pass/PassParts";
 import { passPaysOffAt, perYear } from "../pass/passText";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR } from "./CustomMatchup";
@@ -73,7 +79,7 @@ export interface CheckoutBoard {
 
 /**
  * Why the sheet is open: to draw the numbers now, ahead of kickoff so Jax
- * draws them (linked boards), or Profile's "Get the Host Pass" (no board).
+ * draws them (linked boards), or Profile's "Get the Annual Pass" (no board).
  */
 export type CheckoutPurpose = "draw" | "ahead" | "pass";
 
@@ -88,7 +94,7 @@ export interface CheckoutSheetProps {
   /** The board's fee is paid (`state` is the paid board, or null while a web payment is still landing). */
   onPaid?: (gameId: string, state: GameState | null) => void;
   /**
-   * The Host Pass is bought (or turned out to be active already): the pass's
+   * The Annual Pass is bought (or turned out to be active already): the pass's
    * state, or null while a web payment is still confirming. The pass is only
    * offered when this is given.
    */
@@ -134,32 +140,19 @@ const COPY: Record<"draw" | "ahead", Copy> = {
   },
 };
 
-const PASS_COPY: Record<CheckoutPurpose, Copy> = {
-  draw: {
-    title: "Draw the numbers",
-    description: "Every board you host for a year, this one included. The numbers get drawn right after.",
-    pending: "Waiting on approval. Your Host Pass starts once it's approved.",
-    test: "Start test pass",
-    paid: "You're in! Drawing now",
-    walletCancel: "No charge. You can get the Host Pass any time.",
-  },
-  ahead: {
-    title: "Pay ahead for kickoff",
-    description: "Every board you host for a year, this one included. Jax draws the numbers at kickoff.",
-    pending: "Waiting on approval. Your Host Pass starts once it's approved.",
-    test: "Start test pass",
-    paid: "All set!",
-    walletCancel: "No charge. You can get the Host Pass any time.",
-  },
-  pass: {
-    title: "Host Pass",
-    description: "Draw the numbers on every board you host for a year, with no host fee.",
-    pending: "Waiting on approval. Your Host Pass starts once it's approved.",
-    test: "Start test pass",
-    paid: "You're all set!",
-    walletCancel: "No charge. You can get the Host Pass any time.",
-  },
-};
+function passCopy(purpose: CheckoutPurpose, name: string, season: boolean): Copy {
+  const pending = `Waiting on approval. Your ${name} starts once it's approved.`;
+  const walletCancel = `No charge. You can get the ${name} any time.`;
+  // A season board comes with the pass: say so first.
+  const covers = season ? "Season boards come with the Annual Pass: every board you host for a year, this season included." : "Every board you host for a year, this one included.";
+  if (purpose === "pass") {
+    return { title: name, description: "Draw the numbers on every board you host for a year, with no host fee.", pending, test: "Start test pass", paid: "You're all set!", walletCancel };
+  }
+  if (purpose === "ahead") {
+    return { title: "Pay ahead for kickoff", description: `${covers} Jax draws the numbers at kickoff.`, pending, test: "Start test pass", paid: "All set!", walletCancel };
+  }
+  return { title: "Draw the numbers", description: `${covers} The numbers get drawn right after.`, pending, test: "Start test pass", paid: "You're in! Drawing now", walletCancel };
+}
 
 /** The sheet's copy in the board's sport's words ("tip-off" on a basketball board). */
 function inSport(copy: Copy, sport: Sport | undefined): Copy {
@@ -207,16 +200,29 @@ export function CheckoutSheet({
   const gameId = board?.game.id ?? null;
   const adminToken = board?.adminToken ?? null;
   const on = platform();
-  // A season board's one fee covers every game of the season: its own price and App Store product.
   const season = board?.game.kind === "season";
-  const fee = payments ? feeOf(payments, season ? "season" : "board") : null;
+  // What this board costs with the pass the host has now (shared/pricing.ts): the host fee and the
+  // Venue add-on, less what the pass covers. A season board without the pass: the pass is the only way.
+  const { cover } = useHostPass(open && !!board);
+  const due = payments && board ? boardDue(payments, board.game, cover) : null;
+  const needsPass = due?.needsPass === true;
+  // The pass on offer: with the Venue add-on for a venue board (the web only), else the Annual Pass.
+  const passPlan: PassPlan = board ? passPlanFor(board.game) : "host";
+  const passName = passPlan === "club" ? VENUE_PASS_NAME : PASS_NAME;
 
-  // The pass is offered where it's sold and the caller takes it; Profile's sheet is the pass alone.
-  const passMethod = payments ? passCheckoutMethod(payments, on) : null;
-  const passOffered = !!onPassActive && passMethod !== null;
-  const amounts = useHostPrices(open && (passOffered || purpose === "pass"), payments);
-  const forPass = purpose === "pass" || (passOffered && plan === "pass");
-  const copy = inSport(forPass ? PASS_COPY[purpose] : COPY[purpose === "ahead" ? "ahead" : "draw"], board?.game.sport);
+  // The pass is offered where it's sold and the caller takes it, to a host who has none (one who has
+  // the Annual Pass pays just this board's Venue add-on here); Profile's sheet is the pass alone.
+  const passMethod = payments ? (passPlan === "club" ? clubCheckoutMethod(payments, on) : passCheckoutMethod(payments, on)) : null;
+  const passOffered = !!onPassActive && passMethod !== null && cover === "none";
+  const hostAmounts = useHostPrices(open && (passOffered || purpose === "pass") && passPlan === "host", payments);
+  const forPass = purpose === "pass" || needsPass || (passOffered && plan === "pass");
+  const boardCopy = COPY[purpose === "ahead" ? "ahead" : "draw"];
+  // What this board's payment is, when it's more than its host fee (a venue board's Venue add-on).
+  const what = due && due.venueCents > 0 ? (due.boardCents > 0 ? "The host fee and Venue add-on for this board." : "The Venue add-on for this board.") : null;
+  const copy = inSport(
+    forPass ? passCopy(purpose, passName, needsPass) : what ? { ...boardCopy, description: boardCopy.description.replace("The host fee for this board.", what) } : boardCopy,
+    board?.game.sport,
+  );
   const wantedMethod = payments ? (forPass ? passMethod : checkoutMethod(payments, on)) : null;
   // Buying the pass on the web needs an account (startPassPurchase's rule; the server says so too).
   const needsSignIn = forPass && (wantedMethod === "wallet" || wantedMethod === "card") && !signedIn;
@@ -255,12 +261,12 @@ export function CheckoutSheet({
   useEffect(() => {
     if (!open || on !== "ios" || !payments) return;
     let live = true;
-    void appStorePrice(on, feeOf(payments, season ? "season" : "board").iapProductId).then((p) => live && setStorePrice(p));
+    void appStorePrice(on, payments.iapProductId).then((p) => live && setStorePrice(p));
     if (payments.hostPass) void appStorePrice(on, payments.hostPass.iapProductId).then((p) => live && setStorePassPrice(p));
     return () => {
       live = false;
     };
-  }, [open, on, payments, season]);
+  }, [open, on, payments]);
 
   useEffect(() => () => {
     if (paidTimer.current) clearTimeout(paidTimer.current);
@@ -309,7 +315,7 @@ export function CheckoutSheet({
       if (err instanceof CheckoutError && err.status === 409) {
         // Already paid for (e.g. the webhook won the race), or the pass is already active: that's a success.
         if (err.state) return succeed(err.state);
-        if (err.pass?.pass?.active) return succeedPass(err.pass);
+        if (err.pass?.pass?.active || err.pass?.club?.active) return succeedPass(err.pass);
         // The web pass needs an account after all (signed out on another device meanwhile).
         if (err.code === ACCOUNT_REQUIRED_CODE && latest.current.onSignInForPass) return latest.current.onSignInForPass();
       }
@@ -326,7 +332,7 @@ export function CheckoutSheet({
     if (!forPass && !gameId) return;
     let cancelled = false;
     setError(null);
-    (forPass ? createPassIntent() : createStripeIntent(gameId!, adminToken))
+    (forPass ? createPassIntent(passPlan) : createStripeIntent(gameId!, adminToken))
       .then((r) => {
         if (cancelled) return;
         if (typeof r.amountCents === "number" && r.currency) setCharge({ amountCents: r.amountCents, currency: r.currency });
@@ -336,13 +342,13 @@ export function CheckoutSheet({
     return () => {
       cancelled = true;
     };
-  }, [open, gameId, adminToken, method, clientSecret, fail, attempt, forPass, needsSignIn]);
+  }, [open, gameId, adminToken, method, clientSecret, fail, attempt, forPass, needsSignIn, passPlan]);
 
   /** After Stripe.js reports a payment: the server reads it back from Stripe. */
   const confirmPaid = useCallback(async () => {
-    if (forPass) return succeedPass(await confirmPassPaid());
+    if (forPass) return succeedPass(await confirmPassPaid(passPlan));
     if (gameId) succeed(await confirmStripePaid(gameId, adminToken));
-  }, [forPass, gameId, adminToken, succeed, succeedPass]);
+  }, [forPass, gameId, adminToken, succeed, succeedPass, passPlan]);
 
   // Apple Pay / Google Pay button.
   useEffect(() => {
@@ -350,20 +356,21 @@ export function CheckoutSheet({
     if (!open || method !== "wallet" || !clientSecret || !el || !payments) return;
     let handle: MountedCheckout | null = null;
     let disposed = false;
-    const amountCents = charge?.amountCents ?? (forPass ? (payments.hostPass?.priceCents ?? 0) : feeOf(payments, season ? "season" : "board").priceCents);
+    const passCents = (passPlan === "club" ? payments.clubPass?.priceCents : payments.hostPass?.priceCents) ?? 0;
+    const amountCents = charge?.amountCents ?? (forPass ? passCents : (due?.cents ?? payments.priceCents));
     const origin = typeof location !== "undefined" ? location.origin : "https://jaxsquares.com";
     void mountWalletButton(el, {
       clientSecret,
       amountCents,
-      label: forPass ? "Host Pass (1 year)" : season ? "Season board" : "Squares board",
+      label: forPass ? `${passName} (1 year)` : board?.game.format.venue ? "Venue board" : season ? "Season board" : "Squares board",
       publishableKey: payments.stripePublishableKey,
       // Apple Pay shows a subscription's yearly billing in its sheet.
       applePay: forPass
         ? {
             recurringPaymentRequest: {
-              paymentDescription: "JaxSquares Host Pass",
+              paymentDescription: `JaxSquares ${passName}`,
               managementURL: `${origin}/me`,
-              regularBilling: { label: "Host Pass", amount: amountCents, recurringPaymentIntervalUnit: "year", recurringPaymentIntervalCount: 1 },
+              regularBilling: { label: passName, amount: amountCents, recurringPaymentIntervalUnit: "year", recurringPaymentIntervalCount: 1 },
             },
           }
         : undefined,
@@ -385,7 +392,7 @@ export function CheckoutSheet({
       disposed = true;
       handle?.destroy();
     };
-  }, [open, method, clientSecret, charge, payments, forPass, season, confirmPaid, fail, copy.walletCancel]);
+  }, [open, method, clientSecret, charge, payments, forPass, season, confirmPaid, fail, copy.walletCancel, passPlan, passName, due, board]);
 
   // Card form fallback.
   useEffect(() => {
@@ -418,16 +425,16 @@ export function CheckoutSheet({
     setPhase("paying");
     try {
       if (method === "test") {
-        if (forPass) succeedPass(await startTestPass());
+        if (forPass) succeedPass(await startTestPass(passPlan));
         else succeed(await payTest(gameId!, adminToken));
       } else if (method === "iap") {
-        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken, fee?.iapProductId);
+        const r = forPass ? await buyPassWithIAP(payments?.hostPass?.iapProductId) : await payWithIAP(gameId!, adminToken, payments?.iapProductId);
         if (r.status === "paid") succeed(r.state);
         else if (r.status === "active") succeedPass(r.state);
         else if (r.status === "pending") setPhase("pending");
         else {
           setPhase("ready");
-          setNotice(forPass ? "No charge. You can get the Host Pass any time." : "No charge. Tap Continue whenever you're ready.");
+          setNotice(forPass ? copy.walletCancel : "No charge. Tap Continue whenever you're ready.");
         }
       } else if (method === "card") {
         const form = cardForm.current;
@@ -458,15 +465,34 @@ export function CheckoutSheet({
   };
 
   const busy = phase === "paying" || phase === "paid";
-  // The board's price and the pass's, as this device shows them (the App Store's in the iOS app).
+  // What this board costs and the pass, as this device shows them (the App Store's in the iOS app).
   const boardPrice =
-    on === "ios" ? storePrice : !forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments && fee ? formatPrice(fee.priceCents, payments.currency) : null;
+    on === "ios"
+      ? storePrice
+      : !forPass && charge
+        ? formatPrice(charge.amountCents, charge.currency)
+        : payments && due && due.cents > 0
+          ? formatPrice(due.cents, payments.currency)
+          : null;
+  const passOffer = passPlan === "club" ? payments?.clubPass : payments?.hostPass;
   const passPrice =
-    on === "ios" ? storePassPrice : forPass && charge ? formatPrice(charge.amountCents, charge.currency) : payments?.hostPass ? formatPrice(payments.hostPass.priceCents, payments.hostPass.currency) : null;
+    on === "ios" ? storePassPrice : forPass && charge ? formatPrice(charge.amountCents, charge.currency) : passOffer ? formatPrice(passOffer.priceCents, passOffer.currency) : null;
   const price = forPass ? passPrice : boardPrice;
-  // "Pays for itself by your fifth board", from the same two prices (StoreKit's in the iOS app); hidden when either is unknown, and on a season board (its fee isn't a board's).
+  // "Pays for itself by your fifth board", from the two prices this device shows (StoreKit's in the
+  // iOS app); hidden when either is unknown, and on a season board (the pass is the only way there).
+  const amounts =
+    passPlan === "club" && payments?.clubPass && due
+      ? { pass: { amount: payments.clubPass.priceCents, currency: payments.currency }, board: { amount: due.cents, currency: payments.currency } }
+      : hostAmounts;
   const paysOffAt = season ? null : passPaysOffAt(amounts.pass, amounts.board);
   const once = season ? "once for the whole season" : "once for this board";
+  // What the board's price is made of, when it's more than its host fee: "$4.99 host fee + $10 Venue add-on".
+  const parts =
+    payments && due && due.venueCents > 0
+      ? due.boardCents > 0
+        ? `${formatPrice(due.boardCents, payments.currency)} host fee + ${formatPrice(due.venueCents, payments.currency)} Venue add-on`
+        : `${formatPrice(due.venueCents, payments.currency)} Venue add-on (your Annual Pass covers the host fee)`
+      : null;
 
   let action: ReactNode;
   if (!payments) {
@@ -497,7 +523,7 @@ export function CheckoutSheet({
         <Button data-testid="pass-signin" size="lg" block onClick={() => latest.current.onSignInForPass?.()}>
           Sign in to continue
         </Button>
-        <p className="text-center text-footnote text-ink-muted">Your Host Pass stays with your account on every device.</p>
+        <p className="text-center text-footnote text-ink-muted">Your {passName} stays with your account on every device.</p>
       </div>
     );
   } else if ((method === "wallet" || method === "card") && error && (!clientSecret || (method === "card" && !cardReady))) {
@@ -558,9 +584,11 @@ export function CheckoutSheet({
         ? price
           ? `${price} host fee, ${once}. You'll confirm with the App Store.`
           : `${once[0].toUpperCase()}${once.slice(1)}. You'll confirm with the App Store.`
-        : price
-          ? `${price} host fee, ${once}.`
-          : null;
+        : parts
+          ? `${parts}, ${once}.`
+          : price
+            ? `${price} host fee, ${once}.`
+            : null;
   const settled = phase === "paid" || phase === "pending";
 
   return (
@@ -586,14 +614,14 @@ export function CheckoutSheet({
               {STRIPE_TEST_NOTE}
             </p>
           )}
-          {forPass && !settled && payments && <PassDisclosure method={method ?? passMethod} price={passPrice} onNavigate={onClose} />}
+          {forPass && !settled && payments && <PassDisclosure method={method ?? passMethod} price={passPrice} onNavigate={onClose} plan={passPlan} />}
         </div>
       }
     >
       {board && purpose !== "pass" && <Ticket game={board.game} />}
-      {purpose === "pass" && <PassCard price={passPrice} test={passMethod === "test"} paysOffAt={paysOffAt} />}
-      {passOffered && purpose !== "pass" && (
-        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} paysOffAt={paysOffAt} disabled={busy} season={season} />
+      {(purpose === "pass" || needsPass) && <PassCard price={passPrice} test={passMethod === "test"} paysOffAt={paysOffAt} plan={passPlan} />}
+      {passOffered && purpose !== "pass" && !needsPass && (
+        <PlanPicker plan={plan} onChange={pickPlan} boardPrice={boardPrice} passPrice={passPrice} paysOffAt={paysOffAt} disabled={busy} venue={passPlan === "club"} />
       )}
       {method === "card" && !needsSignIn && !(error && !cardReady) && (
         <div className="relative mt-4 min-h-40">
@@ -625,7 +653,7 @@ function Ticket({ game }: { game: Game }) {
           <TeamMark team={y} size="lg" className="rotate-3" />
         </div>
         <p className="mt-3 max-w-full truncate font-display text-title-3 font-extrabold text-ink">{game.name}</p>
-        <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format)}</p>
+        <p className="mt-0.5 text-footnote font-semibold text-ink-muted">{formatLine(game.format, game)}</p>
       </div>
       {/* Perforation */}
       <div aria-hidden className="relative h-0 border-t-2 border-dashed border-ink/12">

@@ -9,8 +9,20 @@
 // (NBA, WNBA, women's college) or two halves (men's college), with overtime
 // after either; toLiveUpdate reports them as the feed counts them and
 // shared/sports.ts maps them onto the board's moments.
+//
+// Soccer has the same scoreboard and summary, without linescores: a goal-minute
+// board (shared/soccer.ts) reads its goals instead, the scoreboard
+// competition's `details` (the summary's `keyEvents`): each scoring play's
+// `clock.displayValue` ("27'", "45'+2'", "90'+7'"; `clock.value` stops at 2700
+// and 5400 in stoppage time) and `team.id`, the team the goal counts for (an
+// own goal's too). Penalty-shootout kicks (`shootout: true`) aren't goals. The
+// status reads STATUS_FIRST_HALF / STATUS_HALFTIME / STATUS_SECOND_HALF while
+// on, STATUS_FULL_TIME (or STATUS_FINAL_AET, STATUS_FINAL_PEN) once over, with
+// the match minute in `displayClock`. Its scoreboard takes one date per
+// request (a date range answers 400).
 
-import type { LiveUpdate, ScheduleEvent, ScheduleWeek, SeasonTeam, Team } from "../../shared/types";
+import { parseMinute } from "../../shared/soccer";
+import type { LiveGoal, LiveUpdate, ScheduleEvent, ScheduleWeek, SeasonTeam, Team } from "../../shared/types";
 import type { LinkedLeague } from "../../shared/sports";
 
 export type { LinkedLeague };
@@ -24,6 +36,12 @@ const LEAGUE_PATH: Record<LinkedLeague, string> = {
   wnba: "basketball/wnba",
   ncaab: "basketball/mens-college-basketball",
   ncaaw: "basketball/womens-college-basketball",
+  mls: "soccer/usa.1",
+  nwsl: "soccer/usa.nwsl",
+  epl: "soccer/eng.1",
+  laliga: "soccer/esp.1",
+  ligamx: "soccer/mex.1",
+  ucl: "soccer/uefa.champions",
 };
 
 /**
@@ -41,6 +59,7 @@ const LEAGUE_PARAMS: Partial<Record<LinkedLeague, Record<string, string>>> = {
 // ---- Raw response shapes (only the fields we read) ----
 
 interface RawTeam {
+  id?: string | number;
   displayName?: string;
   location?: string;
   name?: string;
@@ -55,6 +74,7 @@ interface RawLinescore {
 }
 
 interface RawCompetitor {
+  id?: string | number;
   homeAway?: string;
   team?: RawTeam;
   /** College poll rank; 99 means unranked. */
@@ -76,10 +96,19 @@ interface RawStatus {
   };
 }
 
+/** A soccer match event (a goal, a card...): the scoreboard's `details`, the summary's `keyEvents`. */
+interface RawDetail {
+  clock?: { value?: number; displayValue?: string };
+  team?: { id?: string | number };
+  scoringPlay?: boolean;
+  shootout?: boolean;
+}
+
 interface RawCompetition {
   id?: string;
   date?: string;
   competitors?: RawCompetitor[];
+  details?: RawDetail[];
   status?: RawStatus;
   neutralSite?: boolean;
   venue?: { fullName?: string; address?: { city?: string; state?: string; country?: string } };
@@ -472,6 +501,15 @@ export interface GameSnapshot {
   detail: string;
   home: SideSnapshot;
   away: SideSnapshot;
+  /** Soccer (parsed only when asked for): every goal so far, in order, shootout kicks left out. */
+  goals?: GoalSnapshot[];
+}
+
+/** One soccer goal on ESPN's home/away orientation: its minute as the match showed it, and the side it counts for. */
+export interface GoalSnapshot {
+  minute: number;
+  added: number;
+  side: "home" | "away";
 }
 
 function parseLinescores(raw: RawLinescore[] | undefined): (number | null)[] {
@@ -493,11 +531,38 @@ function parseSide(raw: RawCompetitor): SideSnapshot {
   return { score: Math.max(0, toNumber(raw.score) ?? 0), linescores: parseLinescores(raw.linescores) };
 }
 
-function snapshotFrom(eventId: string, competition: RawCompetition, fallbackStatus?: RawStatus): GameSnapshot | null {
+const teamIdOf = (c: RawCompetitor) => String(c.team?.id ?? c.id ?? "");
+
+/**
+ * A soccer match's goals from its events (the scoreboard's `details`, the
+ * summary's `keyEvents`): the scoring plays, not the shootout's, in order.
+ * The minute comes from the clock's text ("45'+2'"); without one, from its
+ * seconds (ESPN's 612 is the 11th minute). A goal counts for the side its
+ * team id names (the home side when it names neither). undefined when the
+ * feed sent no list at all.
+ */
+export function parseGoals(events: unknown, home: RawCompetitor, away: RawCompetitor): GoalSnapshot[] | undefined {
+  if (!Array.isArray(events)) return undefined;
+  const awayId = teamIdOf(away);
+  const out: GoalSnapshot[] = [];
+  for (const raw of events) {
+    const e = asRecord(raw) as RawDetail | null;
+    if (!e || e.scoringPlay !== true || e.shootout === true) continue;
+    const shown = parseMinute(e.clock?.displayValue);
+    const seconds = toNumber(e.clock?.value);
+    const at = shown ?? (seconds !== null && seconds >= 0 ? { minute: Math.max(1, Math.ceil(seconds / 60)), added: 0 } : null);
+    if (!at) continue;
+    const team = String(e.team?.id ?? "");
+    out.push({ ...at, side: team && team === awayId && awayId !== teamIdOf(home) ? "away" : "home" });
+  }
+  return out;
+}
+
+function snapshotFrom(eventId: string, competition: RawCompetition, fallbackStatus?: RawStatus, goalEvents?: unknown): GameSnapshot | null {
   const sides = homeAndAway(competition.competitors);
   if (!sides) return null;
   const status = competition.status ?? fallbackStatus;
-  return {
+  const snap: GameSnapshot = {
     eventId,
     state: parseState(status),
     statusName: status?.type?.name ?? "",
@@ -508,27 +573,36 @@ function snapshotFrom(eventId: string, competition: RawCompetition, fallbackStat
     home: parseSide(sides[0]),
     away: parseSide(sides[1]),
   };
+  const goals = goalEvents === undefined ? undefined : parseGoals(goalEvents, sides[0], sides[1]);
+  if (goals) snap.goals = goals;
+  return snap;
 }
 
-export function parseScoreboardSnapshots(json: unknown): GameSnapshot[] {
+/** What a snapshot parse reads beyond the score: a soccer match's goals. */
+export interface SnapshotOptions {
+  goals?: boolean;
+}
+
+export function parseScoreboardSnapshots(json: unknown, opts: SnapshotOptions = {}): GameSnapshot[] {
   const out: GameSnapshot[] = [];
   for (const event of rawEvents(json)) {
     const competition = event.competitions?.[0];
     if (!event.id || !competition) continue;
-    const snap = snapshotFrom(String(event.id), competition, event.status);
+    const snap = snapshotFrom(String(event.id), competition, event.status, opts.goals ? (competition.details ?? []) : undefined);
     if (snap) out.push(snap);
   }
   return out;
 }
 
-/** The summary endpoint carries the same competition object under `header`. */
-export function parseSummarySnapshot(json: unknown): GameSnapshot | null {
-  const header = asRecord(asRecord(json)?.header);
+/** The summary endpoint carries the same competition object under `header`; a soccer match's goals are its `keyEvents`. */
+export function parseSummarySnapshot(json: unknown, opts: SnapshotOptions = {}): GameSnapshot | null {
+  const root = asRecord(json);
+  const header = asRecord(root?.header);
   const competitions = header?.competitions;
   const competition = Array.isArray(competitions) ? asRecord(competitions[0]) : null;
   const id = header?.id ?? competition?.id;
   if (!competition || (typeof id !== "string" && typeof id !== "number")) return null;
-  return snapshotFrom(String(id), competition as RawCompetition);
+  return snapshotFrom(String(id), competition as RawCompetition, undefined, opts.goals ? (root?.keyEvents ?? []) : undefined);
 }
 
 // ---- Board orientation + period logic ----
@@ -563,6 +637,12 @@ function knownPeriods(a: (number | null)[], b: (number | null)[]): number {
  * back completedPeriods rather than award a period from invented numbers.
  */
 export function toLiveUpdate(s: GameSnapshot, xIsHome: boolean, updatedAt: number): LiveUpdate {
+  const update = toPeriodsUpdate(s, xIsHome, updatedAt);
+  if (s.goals) update.goals = s.goals.map((g): LiveGoal => ({ minute: g.minute, added: g.added, team: (g.side === "home") === xIsHome ? "x" : "y" }));
+  return update;
+}
+
+function toPeriodsUpdate(s: GameSnapshot, xIsHome: boolean, updatedAt: number): LiveUpdate {
   const x = xIsHome ? s.home : s.away;
   const y = xIsHome ? s.away : s.home;
   const known = knownPeriods(x.linescores, y.linescores);

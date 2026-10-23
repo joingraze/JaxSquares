@@ -1,15 +1,16 @@
-// Which game: first the sport (Football | Basketball), then its leagues as
-// chips (NFL, College; NBA, WNBA, Men's college, Women's college) and Custom.
+// Which game: first the sport (Football | Basketball | Soccer), then its
+// leagues as chips (NFL, College; NBA, WNBA, Men's college, Women's college;
+// MLS, NWSL, Premier League, LaLiga, Liga MX, Champions League) and Custom.
 // Football goes a week at a time — the current week's soonest three (plus "see
 // all" and search), later weeks as rows that open to that week's schedule.
-// Basketball has no weeks: the next 7 days, a row per day (today first, the
-// first day with games open), and any other date from a date picker. Custom is
-// two typed teams the host scores by hand, as football or basketball.
+// Basketball and soccer have no weeks: the next 7 days, a row per day (today
+// first, the first day with games open), and any other date from a date
+// picker. Custom is two typed teams the host scores by hand.
 //
-// "One game | A whole season" (season boards): with a season, the league's
-// list gives way to the season picker (the create flow's `seasonPanel`: a
-// team's season, or several games picked from these same lists, `LeagueGames`
-// with `multi`). Custom teams have no season.
+// "One game | A whole season" (season boards, football and basketball): with a
+// season, the league's list gives way to the season picker (the create flow's
+// `seasonPanel`: a team's season, or several games picked from these same
+// lists, `LeagueGames` with `multi`). Custom teams have no season.
 
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { LEAGUE_INFO, SPORT_LEAGUES, type BoardSport } from "../../../shared/sports";
@@ -24,6 +25,7 @@ import {
   LiveIcon,
   PencilIcon,
   SearchIcon,
+  SoccerIcon,
   XIcon,
 } from "../../components/icons";
 import { cx, Jax, SegmentedControl, Skeleton, TeamMark } from "../../components/ui";
@@ -105,6 +107,7 @@ export function GamePicker({
         options={[
           { value: "football", icon: <FootballIcon />, label: "Football", testId: "sport-football" },
           { value: "basketball", icon: <BasketballIcon />, label: "Basketball", testId: "sport-basketball" },
+          { value: "soccer", icon: <SoccerIcon />, label: "Soccer", testId: "sport-soccer" },
         ]}
       />
 
@@ -153,13 +156,19 @@ export function GamePicker({
             showErrors={showErrors}
             colors={colors}
             sport={sport}
-            note={noGamesAnywhere ? undefined : "Any two teams work. You punch in the score as the game goes."}
+            note={
+              noGamesAnywhere
+                ? undefined
+                : sport === "soccer"
+                  ? "Any two sides work. You add each goal's minute as the match goes."
+                  : "Any two teams work. You punch in the score as the game goes."
+            }
           />
           {noGamesAnywhere && (
             <div className="mt-2 flex items-center gap-3 pr-1">
               <Jax pose="sleep" size={76} />
               <p className="min-w-0 flex-1 text-footnote text-ink-subtle">
-                No games to link right now, so Jax is napping. Any two teams work; you punch in the score.
+                No games to link right now, so Jax is napping. Any two teams work; you {sport === "soccer" ? "add each goal's minute" : "punch in the score"}.
               </p>
             </div>
           )}
@@ -186,7 +195,7 @@ export interface LeagueGamesProps {
   multi?: MultiPick;
 }
 
-/** One league's games to pick from: a week at a time (football) or a day at a time (basketball). */
+/** One league's games to pick from: a week at a time (football) or a day at a time (basketball, soccer). */
 export function LeagueGames(props: LeagueGamesProps) {
   return LEAGUE_INFO[props.league].schedule === "day" ? <DayList {...props} /> : <GameList {...props} />;
 }
@@ -519,14 +528,14 @@ function SearchBox({
   );
 }
 
-/** Rows an open basketball day shows before "See all". */
+/** Rows an open day (basketball, soccer) shows before "See all". */
 const DAY_ROWS = 6;
 
 /** A day heading as an element id: "Wednesday, Oct 21" -> "wednesday-oct-21". */
 const daySlug = (day: string) => day.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 /**
- * Basketball's games, a day at a time: the next 7 days as rows (each local
+ * Basketball's and soccer's games, a day at a time: the next 7 days as rows (each local
  * day with games, today first; the first one open), a search across them, and
  * another date from the phone's date picker (that day loads when picked).
  */

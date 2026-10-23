@@ -1,5 +1,5 @@
-// Profile → Host Pass, next to Account. No pass: a short pitch and "Get the
-// Host Pass", which goes through startPassPurchase (the web asks for a sign-in
+// Profile → Annual Pass, next to Account. No pass: a short pitch and "Get the
+// Annual Pass", which goes through startPassPurchase (the web asks for a sign-in
 // first) and opens the checkout sheet in pass mode. Active: "Active · renews
 // Oct 19, 2027" (or "Ends Oct 19, 2027" with auto-renew off) and Manage: Apple's
 // subscription management in the iOS app, a Stripe Customer Portal on the web,
@@ -46,7 +46,7 @@ export function HostPassSection() {
 
   if (!loaded || !payments) {
     return (
-      <ListGroup title="Host Pass">
+      <ListGroup title="Annual Pass">
         <div className="px-4 py-4">
           <Skeleton className="h-12 w-full rounded-xl" />
         </div>
@@ -67,7 +67,7 @@ export function HostPassSection() {
 
   const signedInFor = (me: MeResponse) => {
     if (me.hostPass?.active) {
-      toast.success("Your Host Pass is on this account", "Every board you host is covered.");
+      toast.success("Your Annual Pass is on this account", "Every board you host is covered.");
       return;
     }
     setTimeout(() => setBuyOpen(true), SHEET_EXIT_MS);
@@ -101,25 +101,25 @@ export function HostPassSection() {
     run("restore", async () => {
       const result = await restorePassPurchases(payments.hostPass?.iapProductId);
       setHostPassState(result);
-      if (result.restored > 0 && result.pass?.active) toast.success("Host Pass restored", "Every board you host is covered.");
-      else toast.show({ tone: "neutral", title: "No Host Pass found", description: "This Apple ID has no active Host Pass to restore." });
+      if (result.restored > 0 && result.pass?.active) toast.success("Annual Pass restored", "Every board you host is covered.");
+      else toast.show({ tone: "neutral", title: "No Annual Pass found", description: "This Apple ID has no active Annual Pass to restore." });
     });
 
   const state = active ? "active" : clubActive ? "club" : pass ? pass.status : "none";
   return (
     <div data-testid="host-pass-section" data-state={state}>
-      <ListGroup title="Host Pass" footer={clubActive && !active ? undefined : footer(pass, on, test)}>
+      <ListGroup title="Annual Pass" footer={clubActive && !active ? undefined : footer(pass, on, test)}>
         {active && pass ? (
           <ActiveRows pass={pass} on={on} test={pass.provider === "test"} busy={busy === "manage"} onManage={() => void manage()} canEnd={test} />
         ) : clubActive ? (
-          // The Club Pass covers the host fee too (src/features/club): nothing to buy here.
-          <ListRow data-testid="pass-status" leading={<PassMark />} title="Host Pass" subtitle="Included with your Club Pass" />
+          // The pass with the Venue add-on (src/features/club) covers the host fee too: nothing to buy here.
+          <ListRow data-testid="pass-status" leading={<PassMark />} title="Annual Pass" subtitle="Active, with the Venue add-on (below)" />
         ) : (
           <div className="px-4 pb-4 pt-3.5">
             <div className="flex items-start gap-3">
               <PassMark />
               <div className="min-w-0 flex-1">
-                <p className="text-callout font-bold text-ink">Every board you host, for a year</p>
+                <p className="text-callout font-bold text-ink">Every board you host, for a year from today</p>
                 <p className="mt-1 text-subhead text-ink-muted">
                   Draw the numbers with no host fee.{paysOffAt ? ` ${paysForItself(paysOffAt)}.` : ""}
                 </p>
@@ -132,7 +132,7 @@ export function HostPassSection() {
             </div>
             {start.kind !== "unavailable" && (
               <Button data-testid="pass-get" block className="mt-3.5" onClick={get}>
-                {test ? "Get a test pass · no charge" : `Get the Host Pass · ${perYear(price)}`}
+                {test ? "Get a test pass · no charge" : `Get the Annual Pass · ${perYear(price)}`}
               </Button>
             )}
             {pass?.status === "past_due" && (
@@ -147,7 +147,7 @@ export function HostPassSection() {
             data-testid="pass-restore"
             leading={<RefreshIcon size={18} className="text-ink-muted" />}
             title="Restore purchases"
-            subtitle="Bought the Host Pass with this Apple ID before?"
+            subtitle="Bought the Annual Pass with this Apple ID before?"
             onClick={busy ? undefined : () => void restore()}
             trailing={busy === "restore" ? <span className="text-footnote text-ink-subtle">Checking…</span> : undefined}
           />
@@ -162,8 +162,8 @@ export function HostPassSection() {
             payments={payments}
             onPassActive={(next) => {
               setBuyOpen(false);
-              if (next?.pass?.active) toast.success("You've got the Host Pass", "Every board you host for a year is covered.");
-              else toast.show({ tone: "neutral", title: "Payment received", description: "Your Host Pass is still confirming. It shows up here in a moment." });
+              if (next?.pass?.active) toast.success("You've got the Annual Pass", "Every board you host for a year is covered.");
+              else toast.show({ tone: "neutral", title: "Payment received", description: "Your Annual Pass is still confirming. It shows up here in a moment." });
             }}
             onSignInForPass={() => {
               setBuyOpen(false);
@@ -174,8 +174,8 @@ export function HostPassSection() {
           <SignInSheet
             open={signInOpen}
             onClose={() => setSignInOpen(false)}
-            title="Sign in to get the Host Pass"
-            description="Your Host Pass stays with your account, so every board you host on any device is covered."
+            title="Sign in to get the Annual Pass"
+            description="Your Annual Pass stays with your account, so every board you host on any device is covered."
             onSignedIn={signedInFor}
           />
         </Suspense>
@@ -208,7 +208,7 @@ function ActiveRows({
         leading={<PassMark />}
         title={
           <span className="flex items-center gap-2">
-            Host Pass
+            Annual Pass
             {test && <Badge tone="outline">Test</Badge>}
           </span>
         }

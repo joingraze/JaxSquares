@@ -1,0 +1,108 @@
+name: Stripe setup
+
+# Sets up Stripe for real payments (scripts/ops/stripe-setup.ts): the Annual
+# Pass and Annual Pass + Venue Prices, jaxsquares.com for Apple Pay, the
+# webhook endpoint and the Customer Portal settings. Then it stores the keys,
+# and a new webhook signing secret, as the jaxsquares Worker's secrets, which
+# switches the site's checkout to Stripe. Never prints a key or a secret.
+#
+# Needs two repository secrets (Settings > Secrets and variables > Actions):
+#   STRIPE_SECRET_KEY       sk_live_... (Stripe > Developers > API keys)
+#   STRIPE_PUBLISHABLE_KEY  pk_live_...
+# Without them it says so and stops. Safe to run again. Starts when this file
+# or the script changes; after adding the secrets, re-run the latest run
+# (Actions > Stripe setup > the run > Re-run all jobs).
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/stripe-setup.yml
+      - scripts/ops/stripe-setup.ts
+  workflow_dispatch:
+
+concurrency:
+  group: stripe-setup
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HAS_KEYS: ${{ secrets.STRIPE_SECRET_KEY != '' && secrets.STRIPE_PUBLISHABLE_KEY != '' }}
+    steps:
+      - name: Stripe keys in GitHub?
+        run: |
+          if [ "$HAS_KEYS" != "true" ]; then
+            msg="Add the repository secrets STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY (Settings > Secrets and variables > Actions), then re-run this job."
+            echo "$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYS == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_KEYS == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: env.HAS_KEYS == 'true'
+
+      # Stripe shows a webhook endpoint's signing secret only when it's made:
+      # if Cloudflare doesn't hold one, the script replaces the endpoint.
+      - name: Webhook secret in Cloudflare?
+        id: cf
+        if: env.HAS_KEYS == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          stored=$(npx wrangler secret list --name jaxsquares --format json 2>/dev/null | node -e "
+            let names = [];
+            try { names = JSON.parse(require('fs').readFileSync(0, 'utf8')).map((s) => s.name); } catch {}
+            process.stdout.write(names.includes('STRIPE_WEBHOOK_SECRET') ? '1' : '0');" || echo 0)
+          echo "stored=$stored" >> "$GITHUB_OUTPUT"
+          echo "STRIPE_WEBHOOK_SECRET in Cloudflare: $([ "$stored" = 1 ] && echo yes || echo no)"
+
+      - name: Set up Stripe
+        if: env.HAS_KEYS == 'true'
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          WEBHOOK_SECRET_STORED: ${{ steps.cf.outputs.stored }}
+          WEBHOOK_SECRET_OUT: ${{ runner.temp }}/whsec
+          STRIPE_SETUP_RUN: "1"
+          # vite.config.ts leaves the Cloudflare plugin out under VITEST: the script only needs module resolution.
+          VITEST: "true"
+        # bash here (not the default sh -e) so a failed script fails the step through the pipe.
+        shell: bash
+        run: npx vite-node scripts/ops/stripe-setup.ts | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Store the keys in Cloudflare
+        if: env.HAS_KEYS == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          WHSEC: ${{ runner.temp }}/whsec
+        run: |
+          printf '%s' "$STRIPE_SECRET_KEY" | npx wrangler secret put STRIPE_SECRET_KEY --name jaxsquares > /dev/null
+          printf '%s' "$STRIPE_PUBLISHABLE_KEY" | npx wrangler secret put STRIPE_PUBLISHABLE_KEY --name jaxsquares > /dev/null
+          if [ -s "$WHSEC" ]; then
+            npx wrangler secret put STRIPE_WEBHOOK_SECRET --name jaxsquares < "$WHSEC" > /dev/null
+            echo "Stored STRIPE_WEBHOOK_SECRET"
+          fi
+          rm -f "$WHSEC"
+          echo "Stored STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY"
+
+      - name: Check the live site
+        if: env.HAS_KEYS == 'true'
+        run: |
+          sleep 10
+          curl -fsS https://jaxsquares.com/api/config | node -e "
+            const p = JSON.parse(require('fs').readFileSync(0, 'utf8')).payments;
+            const key = p.stripePublishableKey ? p.stripePublishableKey.slice(0, 8) + '…' : 'none';
+            const line = 'jaxsquares.com payments: mode ' + p.mode + ', publishable key ' + key + ', Annual Pass on the web ' + p.hostPass.web + ', Annual Pass + Venue on the web ' + p.clubPass.web;
+            console.log(line);
+            require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, '\n' + line + '\n');"

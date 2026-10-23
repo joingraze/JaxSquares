@@ -1,4 +1,4 @@
-// The club TV (/club/:clubId/tv#k=<token>): a Club Pass holder's open and live
+// The club TV (/club/:clubId/tv#k=<token>): an Annual Pass + Venue holder's open and live
 // boards on the TV at the bar or in the break room, one every 20 seconds, each
 // shown with the board TV's own screen (TvScreen, src/features/tv). A winner
 // landing on a board that isn't up takes the screen at once (live games are
@@ -172,7 +172,7 @@ export default function ClubTvView() {
       <ClubTvShell state={load.tv.active ? "empty" : "inactive"}>
         <ClubTitle club={club} />
         <p className="mt-[calc(var(--u)*2)] max-w-[60ch] text-center text-[length:calc(var(--u)*2.6)] font-semibold text-ink-muted">
-          {load.tv.active ? "No boards right now. They show up here as soon as the club opens one." : "The club's boards show here while its Club Pass is active."}
+          {load.tv.active ? "No boards right now. They show up here as soon as the club opens one." : "The venue's boards show here while its Venue add-on is active."}
         </p>
       </ClubTvShell>
     );

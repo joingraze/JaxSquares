@@ -1,27 +1,31 @@
 # JaxSquares 🏈🟩
 
-A mobile-first app for playing football squares with friends. Create a board,
-share a link, and friends claim squares from their phones. Players need no
+A mobile-first app for playing sports squares (football, basketball and soccer)
+with friends. Create a board, share a link, and friends claim squares from their phones. Players need no
 account or app install; hosts sign in with Apple or Google (it keeps their
 boards and host controls on every device, and players can sign in too), and
 every change shows up on every
 open board within a second. Basketball boards work the same way, for NBA,
-WNBA and men's and women's college games.
+WNBA and men's and women's college games. Soccer boards use the match clock
+instead: every square is a minute, and each goal's minute wins.
 
 **No money moves between players, ever.** There are no prices per square, pots,
 payouts or betting. A host can add a fun prize note per period ("Loser buys
 wings"), and notes that mention money are rejected. The only payment in the
-product is the host fee for a board, paid when the host draws its numbers, or
-a yearly Host Pass that covers it on every board the host makes: setting up,
-inviting and picking squares are free, and so is drawing a board whose squares
-5 or fewer players hold.
+product is what the host pays for a board (docs/payments.md "Pricing"): the
+host fee, plus a Venue add-on on a bar or restaurant's board, paid when the
+host draws its numbers, or a yearly Annual Pass that covers them on every board
+the host makes (venue boards with its Venue add-on): setting up, inviting and
+picking squares are free, and so is drawing a board whose squares 5 or fewer
+players hold.
 
 ## How the game works
 
-1. **Create** a board in five guided steps: pick Football or Basketball, then
-   a real NFL / college football game (by week) or NBA / WNBA / men's or
-   women's college basketball game (by day; scores then arrive automatically)
-   or type in your own matchup and its
+1. **Create** a board in five guided steps: pick Football, Basketball or
+   Soccer, then a real NFL / college football game (by week), NBA / WNBA /
+   men's or women's college basketball game, or MLS / NWSL / Premier League /
+   LaLiga / Liga MX / Champions League match (by day; scores then arrive
+   automatically) or type in your own matchup and its
    kickoff, choose how squares win, show a square price and prizes (or keep it
    just for fun), name it and set a per-player square limit, review, and
    create it. It opens right away, free.
@@ -29,9 +33,9 @@ inviting and picking squares are free, and so is drawing a board whose squares
    pick a name, color and emoji, and tap empty squares to claim them.
 3. **Lock & draw**: the host locks the board, which randomly assigns the
    digits 0–9 to the rows and columns. It's free with up to 5 players holding
-   squares; a bigger board needs the host fee first (or a Host Pass; a
+   squares; a bigger board needs the host fee first (or an Annual Pass; a
    no-charge test checkout until payments go live). Linked boards lock
-   themselves at kickoff once they're free, paid or covered by a Host Pass (the
+   themselves at kickoff once they're free, paid or covered by an Annual Pass (the
    host can pay ahead).
 4. **Score**: the winning square is where the last digit of each team's score
    meets. Linked boards score themselves from live data; the host can enter or
@@ -51,6 +55,13 @@ Basketball boards (`shared/sports.ts`) use the same moments: Every quarter,
 Halftime + Final or Final score, with tip-off and the final buzzer in the copy.
 Men's college basketball plays two halves, so its boards offer Halftime + Final
 or Final score. Every score and amounts by score type are football's.
+
+Soccer boards (`shared/soccer.ts`) are goal-minute boards: the top digits are
+the minute's ones, the side's its tens, and the square for a goal's minute
+wins (43' is row 4, column 3). Every goal, First & last goal or Last goal;
+first-half stoppage counts as 45, second-half stoppage runs on (90+3' is 93),
+extra time keeps the last two digits (105 is 05), and a 0–0 match gives 00
+each goal winner once. One draw all match, and no season boards.
 
 Options: **Classic 10×10** (100 squares) or **Quick 5×5** (25 squares, two digits
 per row/column), **reverse winners** (the square with the digits swapped wins
@@ -135,9 +146,9 @@ scripts/seo/     Static landing pages (/football-squares, ...) and printable PDF
 
 `/football-squares`, `/big-game-squares`, `/nfl-squares`,
 `/college-football-squares`, `/basketball-squares`, `/march-madness-squares`,
-`/printable-football-squares`, `/how-to-play-football-squares` and
-`/best-football-squares-numbers` (how often every square hits, from nflverse's
-NFL final scores) are static HTML written from
+`/soccer-squares`, `/printable-football-squares`, `/how-to-play-football-squares`
+and `/best-football-squares-numbers` (how often every square hits, from
+nflverse's NFL final scores) are static HTML written from
 `scripts/seo/content.ts` by `npm run build` (after `vite build`, into
 `dist/client` as `<slug>.html`, with `robots.txt`, `sitemap.xml`, `llms.txt`,
 the homepage's `home.html` and the fonts), so a copy change ships with the next
@@ -187,7 +198,7 @@ working) until its values are set.
 
 | Area | Names | Guide |
 |---|---|---|
-| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID`; the Host Pass: `HOST_PASS_PRICE_CENTS`, `STRIPE_HOST_PASS_PRICE_ID`, `IAP_HOST_PASS_PRODUCT_ID` | [docs/payments.md](docs/payments.md) |
+| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `VENUE_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID`; the Annual Pass: `HOST_PASS_PRICE_CENTS`, `STRIPE_HOST_PASS_PRICE_ID`, `IAP_HOST_PASS_PRODUCT_ID`; with the Venue add-on: `CLUB_PASS_PRICE_CENTS`, `STRIPE_CLUB_PASS_PRICE_ID` | [docs/payments.md](docs/payments.md) |
 | Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `FCM_SERVICE_ACCOUNT` | [docs/push.md](docs/push.md) |
 | App links | `APPLE_TEAM_ID`, `APPLE_BUNDLE_ID`, `ANDROID_PACKAGE`, `ANDROID_SHA256_CERT_FINGERPRINTS` | [docs/ios.md](docs/ios.md) |
 | Sign-in (optional) | vars `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `APPLE_SERVICES_ID`; secrets `APPLE_KEY_ID`, `APPLE_SIGNIN_PRIVATE_KEY` (with `APPLE_TEAM_ID`) | [docs/auth.md](docs/auth.md) |

@@ -10,6 +10,7 @@ import {
   matchingPreset,
   periodsFor,
   PRESET_INFO,
+  presetInfo,
   ruleFor,
   rulesOf,
   rulesSummary,
@@ -17,7 +18,7 @@ import {
   type FixedPreset,
 } from "../../../shared/formats";
 import { seasonAxes, seasonLabel, teamIsHome, teamShortName, upcomingSeasonEvents, MAX_SEASON_GAMES } from "../../../shared/season";
-import { LEAGUE_INFO, leagueSport, playsHalves, wordsFor, type BoardSport, type GameKind, type LinkedLeague } from "../../../shared/sports";
+import { isSoccer, LEAGUE_INFO, leagueSport, playsHalves, sportOf, wordsFor, type BoardSport, type GameKind, type LinkedLeague } from "../../../shared/sports";
 import { nflTeamToTeam, teamsForSport, type NflTeam, type ProTeam } from "../../../shared/teams";
 import { shortTeam, shortTeamName } from "../../lib/format";
 import type {
@@ -106,8 +107,9 @@ export const POPULAR_TEAMS: readonly NflTeam[] = popular(["KC", "PHI", "DAL", "G
 /** The same for a custom basketball board. */
 export const POPULAR_NBA_TEAMS: readonly ProTeam[] = popular(["LAL", "BOS", "GS", "NY", "MIA", "CHI", "DEN", "OKC"], "basketball");
 
-/** The one-tap teams for a custom board of this sport. */
+/** The one-tap teams for a custom board of this sport (none for soccer: any two sides). */
 export function popularTeams(sport: BoardSport = "football"): readonly ProTeam[] {
+  if (sport === "soccer") return [];
   return sport === "basketball" ? POPULAR_NBA_TEAMS : POPULAR_TEAMS;
 }
 
@@ -211,11 +213,12 @@ export function winnerCount(preset: FixedPreset): number | null {
 
 /**
  * Short, stable tag for a format card: "4 winners", "1 winner", "1 winner per
- * score". Modifiers (reverse) don't change it; the summary shows their effect once.
+ * score" ("per goal" on a soccer board). Modifiers (reverse) don't change it;
+ * the summary shows their effect once.
  */
-export function winnersTag(preset: FixedPreset): string {
+export function winnersTag(preset: FixedPreset, sport?: Sport | null): string {
   const n = winnerCount(preset);
-  if (n === null) return "1 winner per score";
+  if (n === null) return sport === "soccer" ? "1 winner per goal" : "1 winner per score";
   return `${n} ${n === 1 ? "winner" : "winners"}`;
 }
 
@@ -224,9 +227,11 @@ const WHEN: Record<FixedPreset, string> = {
   halves: "at halftime and at the final",
   final: "at the final (overtime counts)",
   "every-score": "every time the score changes",
+  "first-last": "for the first goal and the last goal",
 };
 
 const MOMENT_WHEN: Record<Moment, string> = {
+  first: "for the first goal",
   score: "every time the score changes",
   q1: "after Q1",
   q2: "at halftime",
@@ -234,9 +239,12 @@ const MOMENT_WHEN: Record<Moment, string> = {
   final: "at the final",
 };
 
-/** "after Q1, at halftime and at the final". */
-function whenList(moments: Moment[]): string {
-  const words = moments.map((m) => MOMENT_WHEN[m]);
+/** A soccer board's moments: its squares are minutes (shared/soccer.ts). */
+const SOCCER_WHEN: Record<Moment, string> = { ...MOMENT_WHEN, score: "for every goal", final: "for the last goal" };
+
+/** "after Q1, at halftime and at the final"; a soccer board's "for the first goal and the last goal". */
+function whenList(moments: Moment[], sport?: Sport | null): string {
+  const words = moments.map((m) => (sport === "soccer" ? SOCCER_WHEN : MOMENT_WHEN)[m]);
   return words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 }
 
@@ -252,20 +260,38 @@ function freshApplies(format: GameFormat): boolean {
  * { winners: "8 winners", size: "100 squares" }, "2 winners every score", or
  * "Every score + 4 winners" when both win.
  */
-export function boardHeadlineParts(format: GameFormat): { winners: string; size: string } {
+export function boardHeadlineParts(format: GameFormat, sport?: Sport | null): { winners: string; size: string } {
   const size = `${format.boardSize} squares`;
   const rules = rulesOf(format);
   const fixed = rules.filter((r) => r.moment !== "score").reduce((n, r) => n + (r.square ? 1 : 0) + (r.reverse ? 1 : 0), 0);
   const score = ruleFor(rules, "score");
+  const each = sport === "soccer" ? "goal" : "score";
   if (!score) return { winners: winnersWord(fixed), size };
-  if (fixed === 0) return { winners: score.square && score.reverse ? "2 winners every score" : "A winner every score", size };
-  return { winners: `Every score + ${winnersWord(fixed)}`, size };
+  if (fixed === 0) return { winners: score.square && score.reverse ? `2 winners every ${each}` : `A winner every ${each}`, size };
+  return { winners: `Every ${each} + ${winnersWord(fixed)}`, size };
 }
 
 /** "4 winners · 100 squares", "8 winners · 25 squares", "A winner every score · 100 squares". */
-export function boardHeadline(format: GameFormat): string {
-  const { winners, size } = boardHeadlineParts(format);
+export function boardHeadline(format: GameFormat, sport?: Sport | null): string {
+  const { winners, size } = boardHeadlineParts(format, sport);
   return `${winners} · ${size}`;
+}
+
+/**
+ * A soccer board's rules in plain words: its squares are the match's minutes
+ * (the row's number the tens, the column's the ones), and the minutes that win.
+ */
+function describeSoccer(format: GameFormat): string {
+  const rules = rulesOf(format);
+  const square = rules.filter((r) => r.square).map((r) => r.moment);
+  const reverse = rules.filter((r) => r.reverse).map((r) => r.moment);
+  let text = "Each square is a minute: the row's number is the tens, the column's the ones.";
+  if (square.length) text += ` The square for the minute wins ${whenList(square, "soccer")}.`;
+  if (reverse.length && reverse.join() === square.join()) text += " Flip the minute's digits (34' and 43') and that square wins too.";
+  else if (reverse.length) text += ` Flip the minute's digits and that square wins ${whenList(reverse, "soccer")}.`;
+  text += " No goals? 00 wins.";
+  if (format.boardSize === 25) text += " Two numbers per row and column: each square covers four minutes.";
+  return text;
 }
 
 /**
@@ -275,6 +301,7 @@ export function boardHeadline(format: GameFormat): string {
  * `kind` words fresh numbers: every quarter, or every half in a game of halves.
  */
 export function describeBoard(format: GameFormat, kind?: GameKind): string {
+  if (isSoccer(kind)) return describeSoccer(format);
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
   let text: string;
@@ -298,22 +325,23 @@ export function describeBoard(format: GameFormat, kind?: GameKind): string {
   return text;
 }
 
-/** One line for the rules row and the checkout ticket: "Every quarter · 10×10 · Reverse". */
+/** One line for the rules row and the checkout ticket: "Every quarter · 10×10 · Reverse", "Every goal · 10×10". */
 export function formatLine(format: GameFormat, kind?: GameKind): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
   const size = BOARD_SIZE_INFO[format.boardSize].short;
-  const parts = exact ? [PRESET_INFO[exact.preset].label, size] : [rulesSummary(rules), size];
+  const sport = kind ? sportOf(kind) : null;
+  const parts = exact ? [presetInfo(exact.preset, sport).label, size] : [rulesSummary(rules, sport), size];
   if (exact?.reverse) parts.push("Reverse");
   if (freshApplies(format)) parts.push(playsHalves(kind) ? "New numbers each half" : "New numbers each Q");
   return parts.join(" · ");
 }
 
-/** The rules row's title: the preset's name, "Every score + reverse" for that setup, or "Custom rules". */
-export function rulesTitle(format: GameFormat): string {
+/** The rules row's title: the preset's name ("Every goal" on a soccer board), "Every score + reverse" for that setup, or "Custom rules". */
+export function rulesTitle(format: GameFormat, sport?: Sport | null): string {
   const rules = rulesOf(format);
   const exact = matchingPreset(rules);
-  if (exact) return PRESET_INFO[exact.preset].label;
+  if (exact) return presetInfo(exact.preset, sport).label;
   if (isEveryScoreWithReverseQuarters(rules)) return `${PRESET_INFO["every-score"].label} + reverse`;
   return isEveryScoreSetup(rules) ? PRESET_INFO["every-score"].label : PRESET_INFO.custom.label;
 }
@@ -347,9 +375,12 @@ export function detailsSummary(maxPerPlayer: number): string {
  * app, never the web price there); null leaves the amount out. A season
  * board's one fee covers the whole season.
  */
-export function createFeeLine(price: string | null, season = false): string {
+export function createFeeLine(price: string | null, board: { season?: boolean; venue?: boolean; covered?: boolean } = {}): string {
   const free = `Free to set up and invite. Free to draw with up to ${FREE_PLAYER_LIMIT} players`;
-  if (season) return price ? `${free}, ${price} for the whole season with more.` : `${free}; bigger seasons have one host fee when you draw.`;
+  if (board.covered) return "Free to set up and invite. Your Annual Pass covers drawing the numbers.";
+  // A season board comes with the Annual Pass (shared/pricing.ts): no per-board price.
+  if (board.season) return `${free}; bigger seasons come with the Annual Pass.`;
+  if (board.venue) return price ? `${free}, ${price} with the Venue add-on for bigger boards.` : `${free}; bigger boards have a host fee and the Venue add-on when you draw.`;
   return price ? `${free}, ${price} for bigger boards.` : `${free}; bigger boards have a host fee when you draw.`;
 }
 

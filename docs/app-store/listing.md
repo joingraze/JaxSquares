@@ -8,7 +8,7 @@ screenshots are generated from the real app; see `docs/app-store/README.md`.
 "bet", "wager", "gamble", "pot", "pool", "buy-in", "payout" or "odds", and don't
 show prices per square. JaxSquares is free to download. The only purchase is the
 host fee: a host pays once per board, when they draw its numbers, or takes the
-optional yearly Host Pass that covers it on every board they host. Drawing is
+optional yearly Annual Pass that covers it on every board they host. Drawing is
 free on a board whose squares 5 or fewer players hold.
 
 **Trademark rule:** keep "Super Bowl", "NFL", and real team names and logos out
@@ -29,7 +29,7 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 | Secondary category | **Entertainment** | |
 | Price | Free | |
 | In-app purchase | `com.jaxsquares.app.board`: Consumable, "Squares board", $4.99 (details in `docs/payments.md`). The host fee for one board, paid when the host draws its numbers on a board 6 or more players hold squares on; creating a board, joining, picking squares and drawing a board of up to 5 players are free. | |
-| Subscription | `com.jaxsquares.app.hostpass.yearly`: Auto-renewable, group "Host Pass", 1 year, $19.99 (`docs/payments.md` → "Host Pass"). Covers the host fee on every board the subscriber hosts while it's active. | |
+| Subscription | `com.jaxsquares.app.hostpass.yearly`: Auto-renewable, group "Annual Pass", 1 year, $19.99 (`docs/payments.md` → "Annual Pass"). Covers the host fee on every board the subscriber hosts while it's active. | |
 | Copyright | `2026 JaxSquares` | |
 | Availability | United States to start. Add other countries once the copy is checked for each. | |
 | Devices | iPhone only, so no iPad screenshots are needed | |
@@ -88,7 +88,7 @@ made-up teams (Harbor Hawks, Ridge Wolves, Bay Comets, Mesa Foxes and friends).
 > JaxSquares is free to download, and setting up a board, inviting friends and
 > joining are always free, and so is drawing the numbers with up to 5 players.
 > The only purchase is the host fee for a bigger board you host, paid when you
-> draw the numbers, or the optional yearly Host Pass that covers it on every
+> draw the numbers, or the optional yearly Annual Pass that covers it on every
 > board you host. Players never pay to join, squares are
 > never sold, and no money changes hands in the app. You play for fun and
 > bragging rights.
@@ -177,10 +177,10 @@ accept whatever Apple computes; don't change the answers.
 > pays when they draw the numbers on a board they made that 6 or more players
 > hold squares on (making the board, inviting, picking squares and drawing a
 > board of up to 5 players are free), and an optional auto-renewable
-> subscription (com.jaxsquares.app.hostpass.yearly, the "Host Pass") that
+> subscription (com.jaxsquares.app.hostpass.yearly, the "Annual Pass") that
 > covers that fee on every board the subscriber hosts for a year. Neither buys
-> any chance to win anything. The Host Pass is offered next to the board fee
-> when drawing, and in Profile → Host Pass, which also has Restore purchases
+> any chance to win anything. The Annual Pass is offered next to the board fee
+> when drawing, and in Profile → Annual Pass, which also has Restore purchases
 > and Manage (Apple's subscription management). A
 > host may add an optional free-text note per period (e.g. "Loser buys
 > wings"); the server rejects notes that mention money, and the app takes no
@@ -217,9 +217,9 @@ accept whatever Apple computes; don't change the answers.
 > https://jaxsquares.com/g/<FEE_DEMO_ID>#host=<FEE_DEMO_HOST_TOKEN>, a board
 > seven players hold squares on, numbers not drawn yet. Tap "Host tools", then
 > "Draw the numbers · $4.99" (the App Store's price) and "Draw the numbers"
-> again: the sheet offers "This board" (the consumable) or "Host Pass" (the
+> again: the sheet offers "This board" (the consumable) or "Annual Pass" (the
 > subscription). Complete either with the sandbox account, and the numbers
-> are drawn. The Host Pass is also in Profile → Host Pass, with Restore
+> are drawn. The Annual Pass is also in Profile → Annual Pass, with Restore
 > purchases.
 >
 > Notifications are sent for numbers drawn, kickoff, a winning square, a full
@@ -263,14 +263,14 @@ devices to an Apple or Google account.
 | Contact Info → **Name** | The display name you type. It can be a nickname. | Shows on your squares to the others in the board. |
 | Contact Info → **Email Address** | Only if you sign in with Apple or Google and share it (Apple's private relay address works), or ask for email about a board (docs/email.md). | Shown only to you ("Signed in with Apple · email"); a board's address gets that board's notices, and is deleted a week after its game. |
 | Identifiers → **User ID** | Only if you sign in: the account id Apple or Google assigns you. | Keeps your boards on every device you sign in on. |
-| User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color; a Club Pass holder's club name and logo (a picture they pick, resized on the device to 256x256 at most). | The game itself; the club's branding on its boards. |
-| Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock, and for a Host Pass its original transaction id, status and renewal date. | Opens the board you paid for, stops one purchase from being used twice, and lets the Host Pass cover your boards. |
+| User Content → **Other User Content** | Board names, prize notes, scores a host enters, your emoji and color; an Annual Pass + Venue holder's club name and logo (a picture they pick, resized on the device to 256x256 at most). | The game itself; the club's branding on its boards. |
+| Purchases → **Purchase History** | The App Store transaction id and amount for each board you unlock, and for an Annual Pass its original transaction id, status and renewal date. | Opens the board you paid for, stops one purchase from being used twice, and lets the Annual Pass cover your boards. |
 
 **Not collected:**
 
 - Phone, physical address (email only if you choose to sign in or ask for board email, above)
 - Precise or coarse location
-- Contacts, photos, health, financial info (a club logo a Club Pass holder
+- Contacts, photos, health, financial info (a club logo an Annual Pass + Venue holder
   uploads is declared as Other User Content above: a brand graphic for their
   boards, not their photo library; **check this with whoever owns legal**)
 - Payment card data: Apple handles IAP, and the iOS app never shows Stripe

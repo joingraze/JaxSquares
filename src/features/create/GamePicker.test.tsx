@@ -5,7 +5,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { BoardSport } from "../../../shared/sports";
 import type { ScheduleEvent, ScheduleWeek } from "../../../shared/types";
+import type { PickerTab } from "./GamePicker";
 
 vi.mock("../../lib/native", async (orig) => {
   const real = await orig<typeof import("../../lib/native")>();
@@ -58,7 +60,7 @@ beforeEach(() => {
 });
 
 const none = { loading: false, events: [], week: null, weeks: [], dates: [] };
-const BASKETBALL_NONE = { nba: none, wnba: none, ncaab: none, ncaaw: none };
+const BASKETBALL_NONE = { nba: none, wnba: none, ncaab: none, ncaaw: none, mls: none, nwsl: none, epl: none, laliga: none, ligamx: none, ucl: none };
 
 function Harness() {
   const [selected, setSelected] = useState<ScheduleEvent | null>(THIS_WEEK[0]);
@@ -146,8 +148,8 @@ describe("GamePicker basketball", () => {
 
   function Hoops({ nba = NBA_WEEK, start = "nba" as const }: { nba?: ScheduleEvent[]; start?: "nba" | "ncaab" }) {
     const [selected, setSelected] = useState<ScheduleEvent | null>(null);
-    const [tab, setTab] = useState<"nba" | "wnba" | "ncaab" | "ncaaw" | "custom" | "nfl" | "ncaaf">(start);
-    const [sport, setSport] = useState<"football" | "basketball">("basketball");
+    const [tab, setTab] = useState<PickerTab>(start);
+    const [sport, setSport] = useState<BoardSport>("basketball");
     return (
       <GamePicker
         schedule={{
@@ -160,7 +162,7 @@ describe("GamePicker basketball", () => {
         sport={sport}
         onSport={(s) => {
           setSport(s);
-          setTab(s === "football" ? "nfl" : "nba");
+          setTab(s === "football" ? "nfl" : s === "soccer" ? "mls" : "nba");
         }}
         tab={tab}
         onTab={setTab}

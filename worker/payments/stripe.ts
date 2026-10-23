@@ -1,5 +1,5 @@
 // Stripe over plain fetch (no SDK in the Worker): PaymentIntents for a board's
-// host fee, the Host Pass subscription (Stripe Billing) and webhook signature
+// host fee, the Annual Pass subscription (Stripe Billing) and webhook signature
 // verification.
 // Docs: https://docs.stripe.com/api/payment_intents
 //       https://docs.stripe.com/billing/subscriptions/build-subscriptions
@@ -43,10 +43,10 @@ export interface StripeEvent<T = unknown> {
 
 /** Metadata tag on every intent we create, so the webhook ignores anything else on the account. */
 export const BOARD_PRODUCT = "board";
-/** Metadata tag on every Host Pass subscription we create. */
+/** Metadata tag on every Annual Pass subscription we create. */
 export const HOST_PASS_PRODUCT = "host_pass";
 
-// ---- Stripe Billing (the Host Pass), in the shapes of the pinned API version ----
+// ---- Stripe Billing (the Annual Pass), in the shapes of the pinned API version ----
 // At 2024-06-20 a Subscription carries current_period_end and its latest
 // Invoice carries the PaymentIntent that collects the first payment
 // (expand latest_invoice.payment_intent). Newer versions (2025-03-31 "basil")
@@ -88,8 +88,8 @@ export interface StripeSubscription {
   livemode: boolean;
   metadata: Record<string, string>;
   latest_invoice: string | StripeInvoice | null;
-  /** What it bills for: the Price says which pass it is (the Host Pass or the Club Pass). Sent by default. */
-  items?: { data?: { price?: { id?: string } | null }[] };
+  /** What it bills for: the Price says which pass it is (the Annual Pass, or with the Venue add-on). Sent by default. */
+  items?: { data?: { id?: string; price?: { id?: string } | null }[] };
 }
 
 export interface StripeCustomer {
@@ -115,14 +115,14 @@ export interface HostPassSubscriptionInput {
   priceId: string;
   /** Our pass id (host_passes.id), in the subscription's metadata. */
   passId: string;
-  /** Which pass: the Host Pass (default) or the Club Pass. Only its description and metadata; its Price decides. */
+  /** Which pass: the Annual Pass (default) or with the Venue add-on ("club"). Only its description and metadata; its Price decides. */
   plan?: "host" | "club";
   /** Same key => Stripe returns the same subscription instead of creating a second one. */
   idempotencyKey: string;
 }
 
 /**
- * A yearly Host Pass subscription waiting for its first payment: the browser
+ * A yearly Annual Pass subscription waiting for its first payment: the browser
  * confirms the latest invoice's PaymentIntent (Express Checkout or the card
  * form), and the card is saved for the renewals.
  */
@@ -136,13 +136,35 @@ export function createHostPassSubscription(secretKey: string, input: HostPassSub
       items: [{ price: input.priceId }],
       payment_behavior: "default_incomplete",
       payment_settings: { save_default_payment_method: "on_subscription" },
-      description: input.plan === "club" ? "JaxSquares Club Pass (yearly)" : "JaxSquares Host Pass (yearly)",
+      description: passDescription(input.plan ?? "host"),
       // Both passes carry product=host_pass (the webhook's "ours" check); plan is informational.
       metadata: { product: HOST_PASS_PRODUCT, pass_id: input.passId, plan: input.plan ?? "host" },
       expand: ["latest_invoice.payment_intent"],
     },
     input.idempotencyKey,
   );
+}
+
+/** A pass subscription's description in Stripe (receipts, the dashboard). */
+export function passDescription(plan: "host" | "club"): string {
+  return plan === "club" ? "JaxSquares Annual Pass + Venue (yearly)" : "JaxSquares Annual Pass (yearly)";
+}
+
+/**
+ * Adds the Venue add-on to a running Annual Pass: its one item moves to the
+ * Annual Pass + Venue Price, and what's left of this year's difference is
+ * invoiced and charged now to the card the pass renews on (prorated). If the
+ * charge fails nothing changes (error_if_incomplete: Stripe answers 402).
+ */
+export function upgradeSubscriptionPrice(secretKey: string, input: { subscriptionId: string; itemId: string; priceId: string }): Promise<StripeSubscription> {
+  return stripeFetch<StripeSubscription>(secretKey, "POST", `/subscriptions/${encodeURIComponent(input.subscriptionId)}`, {
+    items: [{ id: input.itemId, price: input.priceId }],
+    proration_behavior: "always_invoice",
+    payment_behavior: "error_if_incomplete",
+    description: passDescription("club"),
+    metadata: { plan: "club" },
+    expand: ["latest_invoice.payment_intent"],
+  });
 }
 
 export function retrieveSubscription(secretKey: string, id: string): Promise<StripeSubscription> {
@@ -163,11 +185,12 @@ export function cancelSubscriptionNow(secretKey: string, id: string): Promise<St
   return stripeFetch<StripeSubscription>(secretKey, "DELETE", `/subscriptions/${encodeURIComponent(id)}`);
 }
 
-/** A Customer Portal session (Manage): update the card, see receipts, cancel. */
-export function createPortalSession(secretKey: string, input: { customerId: string; returnUrl: string }): Promise<{ id: string; url: string }> {
+/** A Customer Portal session (Manage): update the card, see receipts, cancel. `configuration`: which portal settings (null: the account's default). */
+export function createPortalSession(secretKey: string, input: { customerId: string; returnUrl: string; configuration?: string | null }): Promise<{ id: string; url: string }> {
   return stripeFetch<{ id: string; url: string }>(secretKey, "POST", "/billing_portal/sessions", {
     customer: input.customerId,
     return_url: input.returnUrl,
+    configuration: input.configuration ?? undefined,
   });
 }
 
@@ -229,8 +252,15 @@ export interface BoardIntentInput {
   currency: string;
   /** Same key => Stripe returns the same intent instead of creating a second one. */
   idempotencyKey: string;
-  /** A season board's one fee (every game of its season): its own line on the receipt. */
-  season?: boolean;
+  /** What the amount is for, on the receipt: the host fee, the Venue add-on (a venue board), or both. Default the host fee. */
+  parts?: { hostFee: boolean; venue: boolean };
+}
+
+/** The receipt line for a board's payment. */
+export function boardIntentDescription(parts: { hostFee: boolean; venue: boolean } = { hostFee: true, venue: false }): string {
+  if (parts.venue && parts.hostFee) return "JaxSquares host fee + Venue add-on (one board)";
+  if (parts.venue) return "JaxSquares Venue add-on (one board)";
+  return "JaxSquares host fee (one board)";
 }
 
 export function createBoardPaymentIntent(secretKey: string, input: BoardIntentInput): Promise<PaymentIntent> {
@@ -243,7 +273,7 @@ export function createBoardPaymentIntent(secretKey: string, input: BoardIntentIn
       currency: input.currency,
       // Wallets and cards only: everything completes in the sheet, never via a redirect.
       automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-      description: input.season ? "JaxSquares host fee (season board)" : "JaxSquares host fee (one board)",
+      description: boardIntentDescription(input.parts),
       metadata: { game_id: input.gameId, product: BOARD_PRODUCT },
     },
     input.idempotencyKey,

@@ -32,14 +32,23 @@ const WRAP_UP: Record<PeriodsPreset, string> = {
   halves: "See who won each half.",
   final: "See the winning square.",
   "every-score": "See every winning square.",
+  "first-last": "See who won the first and last goal.",
   custom: "See every winning square.",
 };
 
-/** Natural phrasing for a period label: "in Q1", "at Half", "at the Final", "on Score 3". */
+/**
+ * Natural phrasing for a period label: "in Q1", "at Half", "at the Final",
+ * "on Score 3"; a soccer board's "on the first goal", "on goal 2", "on the
+ * last goal", "with no goals".
+ */
 export function atPeriod(label: string): string {
   if (/^Q\d$/.test(label)) return `in ${label}`;
   if (label === "Half") return "at Half";
   if (label === "Final") return "at the Final";
+  if (label === "1st goal") return "on the first goal";
+  if (label === "Last goal") return "on the last goal";
+  if (label === "No goals") return "with no goals";
+  if (/^Goal \d+$/.test(label)) return `on ${label.toLowerCase()}`;
   return `on ${label}`;
 }
 
@@ -65,7 +74,7 @@ function base(game: Game, kind: NotifyKind, over: Partial<PushContent> & Pick<Pu
 
 /** What notify() knows beyond the board itself. */
 export interface DeliveryContext {
-  /** The host's Host Pass covers this board's fee: Jax draws a linked board at kickoff, so no "pay" in the copy. */
+  /** The host's Annual Pass covers this board's fee: Jax draws a linked board at kickoff, so no "pay" in the copy. */
   hostHasPass?: boolean;
   /** 5 or fewer players hold squares (shared/hostFee.ts): drawing is free, so no "pay" in the copy either. */
   freeDraw?: boolean;
@@ -138,7 +147,7 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
 
     case "board-full": {
       // A linked board draws at kickoff on its own only once its host fee is
-      // paid, the board is free (5 or fewer players), or the host's Host Pass
+      // paid, the board is free (5 or fewer players), or the host's Annual Pass
       // covers it (then nothing to pay).
       const linkedOpen = game.linkedEvent !== null && game.status === "open";
       const start = sportWords(game.sport).startLower;
@@ -151,7 +160,7 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
     }
 
     case "draw-reminder": {
-      // Paid or drawn since the reminder was due, free (Jax draws it at kickoff), or a Host Pass covers it: nothing to remind.
+      // Paid or drawn since the reminder was due, free (Jax draws it at kickoff), or an Annual Pass covers it: nothing to remind.
       if (game.status !== "open" || game.paid !== false || game.linkedEvent === null || context.hostHasPass || context.freeDraw) return [];
       const mins = Math.round((game.linkedEvent.startsAt - now) / 60_000);
       // "Kickoff" or "Tip-off", as the board's sport says it.

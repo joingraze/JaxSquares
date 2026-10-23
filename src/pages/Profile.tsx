@@ -1,7 +1,7 @@
 // Profile (/me): who I am on the boards (name, sticker, color, with a live
 // preview square), my notifications (one card for every state), what each
 // board will ping about next (with per-board mutes), the optional account,
-// the Host Pass, the Club Pass, host links and About.
+// the Annual Pass, the Annual Pass + Venue, host links and About.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -88,7 +88,7 @@ export default function Profile() {
 
         <HostPassSection />
 
-        {/* The Club Pass (src/features/club): a holder's club settings; a one-line pitch on the web; nothing to buy in the iOS app. */}
+        {/* The Annual Pass + Venue (src/features/club): a holder's club settings; a one-line pitch on the web; nothing to buy in the iOS app. */}
         <ClubSection />
 
         <ListGroup title="Hosting">
@@ -120,6 +120,7 @@ export default function Profile() {
           }
         >
           <ListRow title="Support" subtitle="Questions, bugs and ideas" to="/support" />
+          <ListRow title="Pricing" to="/pricing" />
           <ListRow title="Privacy" to="/privacy" />
           <ListRow title="Terms" to="/terms" />
         </ListGroup>

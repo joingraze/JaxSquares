@@ -4,7 +4,7 @@
 // and haptics on the moments that matter.
 
 import { useCallback, useRef, useState } from "react";
-import type { CohostInviteResponse, GameState, UpdateGameInput } from "../../../shared/types";
+import type { CohostInviteResponse, GameState, ScoreInput, UpdateGameInput } from "../../../shared/types";
 import { useToast } from "../../components/ui";
 import { ApiError, api, errorMessage, isPaymentRequired } from "../../lib/api";
 import { getPlayerId, rememberCohost } from "../../lib/identity";
@@ -31,7 +31,8 @@ export interface HostActions {
   busy: HostBusy;
   /** Draws the numbers: the new state, PAY_FIRST while the host fee is due, or null after a failure (toasted). */
   lock: () => Promise<GameState | typeof PAY_FIRST | null>;
-  saveScore: (input: { periodKey: string; scoreX: number; scoreY: number }) => Promise<GameState | null>;
+  /** A period's score, or a soccer goal with its minute (ScoreInput). */
+  saveScore: (input: ScoreInput) => Promise<GameState | null>;
   removeScore: (periodKey: string) => Promise<GameState | null>;
   setWinner: (periodKey: string, cell: { row: number; col: number }) => Promise<GameState | null>;
   clearWinner: (periodKey: string) => Promise<GameState | null>;

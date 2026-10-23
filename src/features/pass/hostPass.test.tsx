@@ -1,7 +1,7 @@
-// The Host Pass on the client: the purchase gate (the web needs a sign-in),
+// The Annual Pass on the client: the purchase gate (the web needs a sign-in),
 // prices (the App Store's own in the iOS app, never the web price), the
 // checkout sheet's two choices with the subscription disclosure, and
-// Profile's Host Pass section.
+// Profile's Annual Pass section.
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -124,7 +124,7 @@ function sheet(props: Partial<Parameters<typeof CheckoutSheet>[0]> = {}) {
   );
 }
 
-describe("the checkout sheet at the draw: this board or the Host Pass", () => {
+describe("the checkout sheet at the draw: this board or the Annual Pass", () => {
   it("offers both, defaults to this board, and switches in one tap", async () => {
     sheet();
     const board = await screen.findByTestId("plan-board");
@@ -132,7 +132,7 @@ describe("the checkout sheet at the draw: this board or the Host Pass", () => {
     expect(screen.getByRole("radiogroup", { name: "How to pay" })).toBeInTheDocument();
     expect(board).toHaveTextContent("This board · $4.99");
     expect(board).toHaveAttribute("aria-checked", "true");
-    expect(pass).toHaveTextContent("Host Pass · $19.99/year");
+    expect(pass).toHaveTextContent("Annual Pass · $19.99/year");
     expect(pass).toHaveTextContent("Every board you host for a year");
     expect(pass).toHaveTextContent("Pays for itself by your fifth board");
     expect(pass).toHaveAttribute("aria-checked", "false");
@@ -171,6 +171,57 @@ describe("the checkout sheet at the draw: this board or the Host Pass", () => {
   });
 });
 
+describe("the checkout sheet on a venue board, and on a season board", () => {
+  const CLUB_OFFER = { priceCents: 9999, currency: "usd", web: true };
+  const VENUE_TEST: PaymentConfig = { ...TEST, venuePriceCents: 1000, clubPass: CLUB_OFFER };
+  const VENUE_LIVE: PaymentConfig = { ...LIVE, venuePriceCents: 1000, clubPass: CLUB_OFFER };
+  const venueGame = { ...game, id: "ven123", format: { ...game.format, venue: true } } as unknown as Game;
+  const seasonGame = { ...game, id: "sea123", kind: "season" } as unknown as Game;
+
+  it("charges a venue board its host fee and the Venue add-on, or offers the Annual Pass + Venue", async () => {
+    sheet({ board: { game: venueGame, adminToken: "tok" }, payments: VENUE_TEST });
+    const board = await screen.findByTestId("plan-board");
+    expect(board).toHaveTextContent("This board · $14.99");
+    expect(board).toHaveTextContent("Once, for this board, with the Venue add-on");
+    const pass = screen.getByTestId("plan-pass");
+    expect(pass).toHaveTextContent("Annual Pass + Venue · $99.99/year");
+    expect(pass).toHaveTextContent("venue boards too");
+    // $99.99 against $14.99 a board: the seventh board.
+    expect(pass).toHaveTextContent("Pays for itself by your seventh board");
+    fireEvent.click(pass);
+    expect(pass).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByRole("button", { name: "Start test pass" })).toHaveAttribute("data-testid", "pay-confirm");
+  });
+
+  it("says what a card payment is made of", async () => {
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/pay/stripe") ? Response.json({ clientSecret: "pi_secret", amountCents: 1499, currency: "usd" }) : new Response("{}", { status: 404 }),
+    );
+    sheet({ board: { game: venueGame, adminToken: "tok" }, payments: VENUE_LIVE, onPassActive: undefined });
+    expect(await screen.findByRole("button", { name: "Pay $14.99" })).toBeInTheDocument();
+    expect(screen.getByText("$4.99 host fee + $10 Venue add-on, once for this board.")).toBeInTheDocument();
+  });
+
+  it("charges an Annual Pass holder only the Venue add-on, with no pass to sell them", async () => {
+    passStore.setHostPassState({ pass: active(), offer: OFFER, club: null, clubOffer: CLUB_OFFER });
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).endsWith("/pay/stripe") ? Response.json({ clientSecret: "pi_secret", amountCents: 1000, currency: "usd" }) : new Response("{}", { status: 404 }),
+    );
+    sheet({ board: { game: venueGame, adminToken: "tok" }, payments: VENUE_LIVE });
+    expect(await screen.findByRole("button", { name: "Pay $10" })).toBeInTheDocument();
+    expect(screen.getByText("$10 Venue add-on (your Annual Pass covers the host fee), once for this board.")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-picker")).toBeNull();
+  });
+
+  it("sells a season board only the Annual Pass: it comes with it", async () => {
+    sheet({ board: { game: seasonGame, adminToken: "tok" }, payments: TEST });
+    expect(await screen.findByTestId("pass-card")).toHaveTextContent("Annual Pass");
+    expect(screen.queryByTestId("plan-picker")).toBeNull();
+    expect(screen.getByText(/Season boards come with the Annual Pass/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start test pass" })).toHaveAttribute("data-testid", "pay-confirm");
+  });
+});
+
 describe("the web sign-in gate", () => {
   it("asks a signed-out browser to sign in before the pass, and never starts a subscription", async () => {
     const onSignInForPass = vi.fn();
@@ -178,10 +229,10 @@ describe("the web sign-in gate", () => {
     fireEvent.click(await screen.findByTestId("plan-pass"));
     const signInButton = await screen.findByTestId("pass-signin");
     expect(signInButton).toHaveTextContent("Sign in to continue");
-    expect(screen.getByText("Your Host Pass stays with your account on every device.")).toBeInTheDocument();
+    expect(screen.getByText("Your Annual Pass stays with your account on every device.")).toBeInTheDocument();
     // The disclosure Apple asks for sits beside the button (on the web too): name, length, price per period, renewal, cancel, links.
     const disclosure = screen.getByTestId("pass-disclosure");
-    expect(disclosure).toHaveTextContent("Host Pass, 1 year, $19.99 a year. It renews automatically each year until you cancel. Cancel any time in Profile › Host Pass › Manage.");
+    expect(disclosure).toHaveTextContent("Annual Pass, 1 year, $19.99 a year. It renews automatically each year until you cancel. Cancel any time in Profile › Annual Pass › Manage.");
     expect(screen.getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms#host-pass");
     expect(screen.getByRole("link", { name: "Privacy" })).toHaveAttribute("href", "/privacy");
     fireEvent.click(signInButton);
@@ -209,12 +260,12 @@ describe("in the iOS app", () => {
   it("shows the App Store's own prices and Apple's subscription terms, never the web price", async () => {
     env.platform = "ios";
     sheet({ payments: LIVE });
-    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Host Pass · 21,99 €/year"));
+    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Annual Pass · 21,99 €/year"));
     expect(screen.getByTestId("plan-board")).toHaveTextContent("This board · 5,49 €");
     fireEvent.click(screen.getByTestId("plan-pass"));
     expect(await screen.findByRole("button", { name: "Subscribe" })).toHaveAttribute("data-testid", "pay-confirm");
     const disclosure = screen.getByTestId("pass-disclosure");
-    expect(disclosure).toHaveTextContent("Host Pass, 1 year, 21,99 € a year. Charged to your Apple ID when you confirm.");
+    expect(disclosure).toHaveTextContent("Annual Pass, 1 year, 21,99 € a year. Charged to your Apple ID when you confirm.");
     expect(disclosure).toHaveTextContent("renews automatically each year unless you cancel at least 24 hours before it renews");
     expect(disclosure).toHaveTextContent("Cancel any time in Settings › your name › Subscriptions.");
     expect(document.body.textContent).not.toMatch(/\$19\.99|\$4\.99|Stripe/);
@@ -237,7 +288,7 @@ describe("in the iOS app", () => {
         : { identifier: productIdentifier, priceString: "21,99 €", price: 21.99, currencyCode: "EUR" },
     }));
     sheet({ payments: board });
-    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Host Pass · 21,99 €/year"));
+    await waitFor(() => expect(screen.getByTestId("plan-pass")).toHaveTextContent("Annual Pass · 21,99 €/year"));
     expect(screen.getByTestId("plan-board")).toHaveTextContent("This board · 5,49 €");
     expect(screen.queryByTestId("pass-pays-off")).toBeNull();
     expect(screen.getByTestId("plan-pass")).not.toHaveTextContent(/Pays for itself/);
@@ -294,7 +345,7 @@ function profile() {
   );
 }
 
-describe("Profile → Host Pass", () => {
+describe("Profile → Annual Pass", () => {
   it("pitches it with a Get button when there's no pass (a free test pass in test mode)", async () => {
     serve(TEST, null);
     profile();
@@ -332,7 +383,7 @@ describe("Profile → Host Pass", () => {
     env.platform = "ios";
     serve(LIVE, null);
     const { unmount } = profile();
-    expect(await screen.findByTestId("pass-get")).toHaveTextContent("Get the Host Pass · 21,99 €/year");
+    expect(await screen.findByTestId("pass-get")).toHaveTextContent("Get the Annual Pass · 21,99 €/year");
     expect(screen.getByTestId("pass-restore")).toHaveTextContent("Restore purchases");
     unmount();
     passStore.resetHostPass();
@@ -348,7 +399,7 @@ describe("Profile → Host Pass", () => {
     profile();
     fireEvent.click(await screen.findByTestId("pass-get"));
     expect(await screen.findByTestId("signin-sheet")).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Sign in to get the Host Pass" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Sign in to get the Annual Pass" })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("/payments/pass/stripe"))).toBe(false);
   });
 });
