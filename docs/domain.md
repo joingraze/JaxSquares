@@ -56,6 +56,24 @@ DS record it gives you at Squarespace.
   through a dashboard redirect rule ("Redirect from WWW to root"; the deploy
   token can't edit redirect rules, so the deploy step only checks it).
 
+## Email (support@ and every other address)
+
+Cloudflare Email Routing forwards every address @jaxsquares.com (support@,
+which the receipts, Pricing and Terms give out, included) to the owner's
+inbox: `scripts/email-routing.sh`, run by `.github/workflows/email-routing.yml`,
+turns it on (Cloudflare adds its MX and SPF records), adds the inbox as a
+destination and points the catch-all rule at it. The inbox is the repository
+secret `EMAIL_FORWARD_TO`, never written in this public repo or a log, and
+Cloudflare emails it a verification link that has to be clicked before
+anything forwards. The deploy token needs **Zone · Email Routing Rules ·
+Edit** and **Account · Email Routing Addresses · Edit** (plus **Zone · Zone
+Settings · Edit** and **Zone · DNS · Edit** while routing is off); the run
+names any it lacks. Dashboard instead: the account's Email Routing → the
+domain → Routing rules → Catch-all address → Send to an email.
+
+Sending (the email notices, docs/email.md) is separate: Resend's records sit
+on their own names and don't clash with Email Routing's.
+
 ## After it's live
 
 - Stripe: register `jaxsquares.com` for Apple Pay (docs/payments.md).

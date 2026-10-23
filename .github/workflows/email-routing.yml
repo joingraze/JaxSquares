@@ -1,0 +1,47 @@
+name: Email routing
+
+# Forwards every address @jaxsquares.com (support@ included) to the owner's
+# inbox with Cloudflare Email Routing (scripts/email-routing.sh): turns it on,
+# adds the inbox as a destination and points the catch-all rule at it.
+#
+# Needs the repository secret EMAIL_FORWARD_TO (the inbox; a secret so the
+# address stays out of this public repo and its logs), and a CLOUDFLARE_API_TOKEN
+# allowed to edit Email Routing (the run names any permission it lacks).
+# Starts when this file or the script changes; after adding the secret or a
+# permission, re-run it (Actions > Email routing > the run > Re-run all jobs).
+on:
+  push:
+    branches:
+      - claude/determined-fermat-b0si26
+    paths:
+      - .github/workflows/email-routing.yml
+      - scripts/email-routing.sh
+  workflow_dispatch:
+
+concurrency:
+  group: email-routing
+  cancel-in-progress: false
+
+jobs:
+  routing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HAS_INBOX: ${{ secrets.EMAIL_FORWARD_TO != '' }}
+    steps:
+      - name: Inbox in GitHub?
+        run: |
+          if [ "$HAS_INBOX" != "true" ]; then
+            msg="Add the repository secret EMAIL_FORWARD_TO (the inbox to forward to: Settings > Secrets and variables > Actions), then re-run this job."
+            echo "$msg"
+            echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@v4
+        if: env.HAS_INBOX == 'true'
+      - name: Set up Email Routing
+        if: env.HAS_INBOX == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          FORWARD_TO: ${{ secrets.EMAIL_FORWARD_TO }}
+        shell: bash
+        run: bash scripts/email-routing.sh 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
