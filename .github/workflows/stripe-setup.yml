@@ -6,6 +6,9 @@ name: Stripe setup
 # and a new webhook signing secret, as the jaxsquares Worker's secrets, which
 # switches the site's checkout to Stripe. Never prints a key or a secret.
 #
+# Last, it commits the Prices' and portal settings' ids to wrangler.jsonc and
+# starts a deploy, which turns on the passes on the web.
+#
 # Needs two repository secrets (Settings > Secrets and variables > Actions):
 #   STRIPE_SECRET_KEY       sk_live_... (Stripe > Developers > API keys)
 #   STRIPE_PUBLISHABLE_KEY  pk_live_...
@@ -25,6 +28,11 @@ concurrency:
   group: stripe-setup
   cancel-in-progress: false
 
+# Commit the ids to this branch, and start the Deploy workflow.
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   setup:
     runs-on: ubuntu-latest
@@ -42,6 +50,9 @@ jobs:
 
       - uses: actions/checkout@v4
         if: env.HAS_KEYS == 'true'
+        with:
+          # Full history, so the ids' commit can rebase if the branch moved meanwhile.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         if: env.HAS_KEYS == 'true'
         with:
@@ -72,6 +83,7 @@ jobs:
           STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
           WEBHOOK_SECRET_STORED: ${{ steps.cf.outputs.stored }}
           WEBHOOK_SECRET_OUT: ${{ runner.temp }}/whsec
+          WRITE_WRANGLER: "1"
           STRIPE_SETUP_RUN: "1"
           # vite.config.ts leaves the Cloudflare plugin out under VITEST: the script only needs module resolution.
           VITEST: "true"
@@ -95,6 +107,27 @@ jobs:
           fi
           rm -f "$WHSEC"
           echo "Stored STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY"
+
+      # A push made with this run's token doesn't start other workflows, so
+      # it starts Deploy itself (workflow_dispatch is the exception).
+      - name: Save the ids and deploy
+        if: env.HAS_KEYS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if git diff --quiet -- wrangler.jsonc; then
+            echo "wrangler.jsonc already has these ids: nothing to deploy." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git diff -- wrangler.jsonc
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -m "Stripe: the live Price and portal settings ids from the setup run" -- wrangler.jsonc
+          git pull -q --rebase origin "$BRANCH"
+          git push -q origin "HEAD:$BRANCH"
+          gh workflow run deploy.yml --ref "$BRANCH"
+          echo "Committed the ids to $BRANCH and started a deploy." | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Check the live site
         if: env.HAS_KEYS == 'true'

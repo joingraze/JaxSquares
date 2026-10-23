@@ -234,10 +234,10 @@ chat or a terminal:
    Portal settings, then stores `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`
    and the endpoint's `STRIPE_WEBHOOK_SECRET` as the Worker's secrets. Live
    mode starts then: host fees work at once.
-5. **Put the printed ids in `wrangler.jsonc`** (`STRIPE_HOST_PASS_PRICE_ID`,
+5. **It commits the ids to `wrangler.jsonc`** (`STRIPE_HOST_PASS_PRICE_ID`,
    `STRIPE_CLUB_PASS_PRICE_ID`, `STRIPE_PORTAL_CONFIGURATION_ID`; they aren't
-   secrets) and deploy. Until then live mode doesn't sell the passes on the
-   web.
+   secrets) and starts the Deploy workflow, which turns on the passes on the
+   web a few minutes later. Until that deploy, live mode doesn't sell them.
 
 Running it again is safe: it keeps what's there. A changed pass amount gets
 a new Price that takes over the lookup key (put its id in `wrangler.jsonc`;

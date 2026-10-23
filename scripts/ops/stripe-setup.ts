@@ -15,7 +15,8 @@
 //     store in Cloudflare;
 //   - the Customer Portal settings Manage opens (update the card, receipts,
 //     cancel at the end of the year).
-// Then it prints the ids wrangler.jsonc needs (they're not secrets).
+// Then it prints the ids wrangler.jsonc needs (they're not secrets), and with
+// WRITE_WRANGLER=1 writes them there for the workflow to commit and deploy.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { formEncode, STRIPE_API_VERSION } from "../../worker/payments/stripe";
@@ -232,6 +233,13 @@ export function wranglerVar(jsonc: string, name: string): string | null {
   return new RegExp(`"${name}"\\s*:\\s*"([^"]*)"`).exec(jsonc)?.[1] ?? null;
 }
 
+/** wrangler.jsonc with a var's value replaced (comments and layout kept); throws when the var isn't there. */
+export function setWranglerVar(jsonc: string, name: string, value: string): string {
+  const re = new RegExp(`("${name}"\\s*:\\s*")[^"]*(")`);
+  if (!re.test(jsonc)) throw new Error(`wrangler.jsonc has no ${name}`);
+  return jsonc.replace(re, (_m, open: string, close: string) => `${open}${value}${close}`);
+}
+
 export interface SetupResult {
   mode: "live" | "test";
   prices: { envVar: string; id: string; action: string }[];
@@ -291,6 +299,12 @@ async function main(): Promise<void> {
   });
   const out = process.env.WEBHOOK_SECRET_OUT;
   if (result.webhookSecret && out) writeFileSync(out, result.webhookSecret, { mode: 0o600 });
+  if (process.env.WRITE_WRANGLER === "1") {
+    let next = jsonc;
+    for (const p of result.prices) next = setWranglerVar(next, p.envVar, p.id);
+    next = setWranglerVar(next, "STRIPE_PORTAL_CONFIGURATION_ID", result.portalId);
+    if (next !== jsonc) writeFileSync("wrangler.jsonc", next);
+  }
 }
 
 if (process.env.STRIPE_SETUP_RUN === "1") {

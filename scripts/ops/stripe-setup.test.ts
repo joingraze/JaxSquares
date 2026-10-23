@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { STRIPE_API_VERSION } from "../../worker/payments/stripe";
-import { keyMode, setup, StripeSetupError, stripeCaller, WEBHOOK_EVENTS, wranglerVar, type StripeCall } from "./stripe-setup";
+import { keyMode, setup, setWranglerVar, StripeSetupError, stripeCaller, WEBHOOK_EVENTS, wranglerVar, type StripeCall } from "./stripe-setup";
 
 type Obj = Record<string, unknown> & { id: string };
 
@@ -204,5 +204,19 @@ describe("wrangler.jsonc", () => {
     expect(wranglerVar(jsonc, "HOST_PASS_PRICE_CENTS")).toBe("1999");
     expect(wranglerVar(jsonc, "CLUB_PASS_PRICE_CENTS")).toBe("9999");
     expect(wranglerVar(jsonc, "APP_ORIGIN")).toBe("https://jaxsquares.com");
+  });
+
+  it("takes the ids the setup made, keeping everything else as it was", () => {
+    const jsonc = readFileSync("wrangler.jsonc", "utf8");
+    let next = setWranglerVar(jsonc, "STRIPE_HOST_PASS_PRICE_ID", "price_live_host");
+    next = setWranglerVar(next, "STRIPE_CLUB_PASS_PRICE_ID", "price_live_club");
+    next = setWranglerVar(next, "STRIPE_PORTAL_CONFIGURATION_ID", "bpc_live");
+    expect(wranglerVar(next, "STRIPE_HOST_PASS_PRICE_ID")).toBe("price_live_host");
+    expect(wranglerVar(next, "STRIPE_CLUB_PASS_PRICE_ID")).toBe("price_live_club");
+    expect(wranglerVar(next, "STRIPE_PORTAL_CONFIGURATION_ID")).toBe("bpc_live");
+    // Only those three lines change.
+    const changed = next.split("\n").filter((line, i) => line !== jsonc.split("\n")[i]);
+    expect(changed).toHaveLength(3);
+    expect(() => setWranglerVar(jsonc, "NOT_A_VAR", "x")).toThrow(/no NOT_A_VAR/);
   });
 });
