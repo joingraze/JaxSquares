@@ -200,7 +200,7 @@ describe("notify", () => {
     expect(sent.fcm).toHaveLength(2);
   });
 
-  it("leaves paying out of board-full when the host's Host Pass covers an unpaid linked board", async () => {
+  it("leaves paying out of board-full when the host's Annual Pass covers an unpaid linked board", async () => {
     const linked = { provider: "espn" as const, league: "nfl" as const, eventId: "401", startsAt: Date.now() + 3_600_000, xIsHome: true };
     db.game = makeGame({ status: "open", paid: false, linkedEvent: linked });
     await notify(env, "abc234", { kind: "board-full" });

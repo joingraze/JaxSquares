@@ -105,9 +105,10 @@ describe("a season matchup", () => {
     expect(body).not.toHaveProperty("fromGameId");
   });
 
-  it("says the season's fee is once for the whole season", () => {
-    expect(createFeeLine("$14.99", true)).toBe("Free to set up and invite. Free to draw with up to 5 players, $14.99 for the whole season with more.");
-    expect(createFeeLine(null, true)).toBe("Free to set up and invite. Free to draw with up to 5 players; bigger seasons have one host fee when you draw.");
+  it("says a bigger season comes with the Annual Pass (no per-board price), or that the pass covers it", () => {
+    expect(createFeeLine(null, { season: true })).toBe("Free to set up and invite. Free to draw with up to 5 players; bigger seasons come with the Annual Pass.");
+    expect(createFeeLine("$4.99", { season: true })).toBe("Free to set up and invite. Free to draw with up to 5 players; bigger seasons come with the Annual Pass.");
+    expect(createFeeLine(null, { season: true, covered: true })).toBe("Free to set up and invite. Your Annual Pass covers drawing the numbers.");
   });
 });
 

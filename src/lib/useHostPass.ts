@@ -1,6 +1,6 @@
-// The Host Pass on this device: whether the identity holds an active one (so
-// drawing the numbers costs nothing more), what it costs here, and the one
-// gate every purchase goes through (startPassPurchase). The state lives in
+// The Annual Pass on this device: whether the identity holds an active one
+// (and with the Venue add-on: shared/pricing.ts PassCover), what it costs
+// here, and the one gate every purchase goes through (startPassPurchase). The state lives in
 // hostPassStore.ts: GET /api/me primes it at startup and on sign-in, the pass
 // routes answer with the new state after a purchase, and sign-out clears it.
 //
@@ -8,6 +8,7 @@
 // localized string in the iOS app (App Store guideline 3.1.1), never the web price.
 
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { coverOf, type PassCover } from "../../shared/pricing";
 import type { ClubPassOffer, HostPass, HostPassOffer, PaymentConfig } from "../../shared/types";
 import { clubPassPrice, fetchAppConfig, fetchPassState, hostPassPrice, hostPrices, passCheckoutMethod, type CheckoutMethod, type Platform, type PriceAmount } from "./checkout";
 import { getHostPassSnapshot, hostPassGeneration, setHostPassState, subscribeHostPass } from "./hostPassStore";
@@ -34,13 +35,15 @@ export function refreshHostPass(): Promise<void> {
 export interface HostPassView {
   pass: HostPass | null;
   offer: HostPassOffer | null;
-  /** The Club Pass, shown apart (src/features/club); it covers the host fee too. */
+  /** The Annual Pass with the Venue add-on (plan "club"), shown apart (src/features/club); it covers the host fee too. */
   club: HostPass | null;
   clubOffer: ClubPassOffer | null;
-  /** Covers the host fee right now (the Host Pass or the Club Pass): drawing costs nothing more. */
+  /** Covers the host fee right now (the Annual Pass, with the Venue add-on or not). */
   active: boolean;
-  /** The Club Pass is active: the club features are on. */
+  /** The pass has the Venue add-on: venue boards are covered and the venue features are on. */
   clubActive: boolean;
+  /** What the pass covers right now (shared/pricing.ts): what a board costs to draw follows from it. */
+  cover: PassCover;
   loaded: boolean;
   refresh: () => Promise<void>;
 }
@@ -60,6 +63,7 @@ export function useHostPass(enabled = true): HostPassView {
     clubOffer: s.clubOffer,
     active: s.pass?.active === true || clubActive,
     clubActive,
+    cover: coverOf(s.pass, s.club),
     loaded: s.loaded,
     refresh: refreshHostPass,
   };
@@ -87,7 +91,7 @@ export function useHostPassPrice(enabled = true): { price: string | null; paymen
   return { price, payments };
 }
 
-/** The Club Pass's yearly web price ("$49"); null in the iOS app (it never shows it) and while loading. */
+/** The Annual Pass + Venue's yearly web price ("$99.99"); null in the iOS app (it never shows it) and while loading. */
 export function useClubPassPrice(): string | null {
   const [price, setPrice] = useState<string | null>(null);
   useEffect(() => {
@@ -138,7 +142,7 @@ export type PassStart =
   | { kind: "unavailable" };
 
 /**
- * Every Host Pass purchase starts here. Buying on the web needs a signed-in
+ * Every Annual Pass purchase starts here. Buying on the web needs a signed-in
  * account (a web subscription kept only in a browser would be lost with it;
  * the server refuses one too, 409 account_required). The iOS app needs none
  * (Apple keeps the subscription; Restore purchases brings it back), and the

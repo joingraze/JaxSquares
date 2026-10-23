@@ -1,4 +1,4 @@
-// Sending a Club Pass board's players CSV (GET /api/games/:id/export.csv):
+// Sending an Annual Pass + Venue board's players CSV (GET /api/games/:id/export.csv):
 // a download on the web; in the iOS app, the share sheet. The app's share
 // plugin only takes file:// URLs (and writing a file needs a plugin the app
 // doesn't ship), so there the web view's own file share is used when it has

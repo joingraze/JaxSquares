@@ -47,6 +47,7 @@ import {
   type FixedPreset,
 } from "../../../shared/formats";
 import { totalSquares } from "../../../shared/squares";
+import { VENUE_LOCKED_ERROR } from "../../../shared/pricing";
 import { VENUE_DEFAULTS, shownHouseRules } from "../../../shared/venue";
 import type { AmountUnit, BoardSize, Game, GameFormat, GameState, Moment, MomentRule, Prize, ScoreKind, UpdateGameInput } from "../../../shared/types";
 
@@ -769,19 +770,23 @@ export interface RulesLock {
   scoring: string | null;
   /** Why fresh numbers can't change any more. */
   fresh: string | null;
+  /** Why venue mode can't change any more: the board is paid for (its Venue add-on charged or not) or drawn. Optional for older callers. */
+  venue?: string | null;
 }
 
 export function rulesLock(state: Pick<GameState, "game" | "scores" | "manualWinners">): RulesLock {
   return {
     scoring: state.scores.length > 0 || state.manualWinners.length > 0 ? SCORING_LOCKED : null,
     fresh: state.game.numbers ? FRESH_LOCKED : null,
+    venue: state.game.paid || state.game.numbers ? VENUE_LOCKED_ERROR : null,
   };
 }
 
-/** Is the draft allowed under the lock (who wins unchanged once scoring locked, fresh numbers unchanged once drawn)? */
+/** Is the draft allowed under the lock (who wins unchanged once scoring locked, fresh numbers unchanged once drawn, venue mode once paid)? */
 export function lockViolation(game: Pick<Game, "format">, draft: RulesDraft, lock: RulesLock): string | null {
   if (lock.scoring && rulesShape(draft.rules) !== rulesShape(rulesOf(game.format))) return lock.scoring;
   if (lock.fresh && draft.freshNumbers !== game.format.freshNumbers) return lock.fresh;
+  if (lock.venue && !!draft.venue !== !!game.format.venue) return lock.venue;
   return null;
 }
 

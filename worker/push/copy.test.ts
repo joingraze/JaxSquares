@@ -198,7 +198,7 @@ describe("buildDeliveries", () => {
       expect(ds[0].content.body).toBe("🔥 Your board is full. Draw the numbers now, or pay ahead and Jax draws them at kickoff.");
     });
 
-    it("board-full doesn't mention paying when the host's Host Pass covers the board (it draws at kickoff)", () => {
+    it("board-full doesn't mention paying when the host's Annual Pass covers the board (it draws at kickoff)", () => {
       const game = makeGame({
         status: "open",
         paid: false,
@@ -227,7 +227,7 @@ describe("buildDeliveries", () => {
       );
     });
 
-    it("draw-reminder skips a host whose Host Pass covers the board", () => {
+    it("draw-reminder skips a host whose Annual Pass covers the board", () => {
       const game = makeGame({
         status: "open",
         paid: false,

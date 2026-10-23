@@ -340,4 +340,12 @@ describe("createFeeLine (Review's line under Create)", () => {
     expect(line).toBe("Free to set up and invite. Free to draw with up to 5 players; bigger boards have a host fee when you draw.");
     expect(line).not.toMatch(/\$|€/);
   });
+
+  it("names the Venue add-on on a venue board, and says when the Annual Pass covers it all", () => {
+    expect(createFeeLine("$14.99", { venue: true })).toBe("Free to set up and invite. Free to draw with up to 5 players, $14.99 with the Venue add-on for bigger boards.");
+    expect(createFeeLine(null, { venue: true })).toBe(
+      "Free to set up and invite. Free to draw with up to 5 players; bigger boards have a host fee and the Venue add-on when you draw.",
+    );
+    expect(createFeeLine(null, { venue: true, covered: true })).toBe("Free to set up and invite. Your Annual Pass covers drawing the numbers.");
+  });
 });

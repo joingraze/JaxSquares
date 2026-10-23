@@ -49,21 +49,23 @@
     // end and charges nothing (docs/payments.md "Staging with Stripe test
     // keys"). The App Store keys only matter once the iOS app ships.
     "PAYMENTS_MODE": "live",
+    // Two products (docs/payments.md "Pricing", shared/pricing.ts). Per game:
+    // one board's host fee, plus the Venue add-on on a venue board (web only),
+    // charged by amount at the draw (no Stripe Price needed).
     "BOARD_PRICE_CENTS": "499",
+    "VENUE_PRICE_CENTS": "1000",
     "IAP_PRODUCT_ID": "com.jaxsquares.app.board",
-    // A season board's one host fee, at its draw, for every game of the season
-    // (docs/payments.md "Season boards"). Its own App Store consumable.
-    "SEASON_BOARD_PRICE_CENTS": "1499",
-    "IAP_SEASON_PRODUCT_ID": "com.jaxsquares.app.seasonboard",
-    // The Host Pass, yearly (docs/payments.md "Host Pass"). In live mode the web
-    // sells it only once STRIPE_HOST_PASS_PRICE_ID names the Stripe Price.
+    // The Annual Pass, yearly (docs/payments.md "Annual Pass"). In live mode the
+    // web sells it only once STRIPE_HOST_PASS_PRICE_ID names the Stripe Price.
     "HOST_PASS_PRICE_CENTS": "1999",
     "STRIPE_HOST_PASS_PRICE_ID": "price_1USU5ZRy2YSRrbHrSyXOAOMH",
     "IAP_HOST_PASS_PRODUCT_ID": "com.jaxsquares.app.hostpass.yearly",
-    // The Club Pass, yearly, web only (docs/payments.md "Club Pass"). In live
-    // mode the web sells it only once STRIPE_CLUB_PASS_PRICE_ID names its Price.
-    "CLUB_PASS_PRICE_CENTS": "4900",
-    "STRIPE_CLUB_PASS_PRICE_ID": "price_1USU68Ry2YSRrbHrHZQHjFnj",
+    // The Annual Pass with the Venue add-on, yearly, web only (plan "club"). In
+    // live mode the web sells it only once STRIPE_CLUB_PASS_PRICE_ID names its
+    // $99.99/year Price; until then it's off (the old $49 Club Pass Price is
+    // retired: its subscriptions keep renewing as venue passes).
+    "CLUB_PASS_PRICE_CENTS": "9999",
+    "STRIPE_CLUB_PASS_PRICE_ID": "",
     // Optional sign-in (docs/auth.md). Public OAuth client ids, not secrets;
     // empty = that provider is hidden in the app. Native Sign in with Apple
     // uses APPLE_BUNDLE_ID (default com.jaxsquares.app, the Capacitor appId).

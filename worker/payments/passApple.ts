@@ -1,9 +1,9 @@
-// The Host Pass in the iOS app: the App Store auto-renewable subscription
-// com.jaxsquares.app.hostpass.yearly (group "Host Pass"). A purchase or a
+// The Annual Pass in the iOS app: the App Store auto-renewable subscription
+// com.jaxsquares.app.hostpass.yearly (group "Annual Pass"). A purchase or a
 // restore is verified with the App Store Server API (the transaction, then
 // the subscription's status by originalTransactionId) and attached to the
 // requesting identity; App Store Server Notifications V2 keep it current
-// (renewals, expirations, refunds). See docs/payments.md "Host Pass".
+// (renewals, expirations, refunds). See docs/payments.md "Annual Pass".
 
 import type { HostPassTransaction } from "../../shared/types";
 import type { Env } from "../env";
@@ -71,7 +71,7 @@ export async function attachAppleTransaction(
   const tx = await fetchAppStoreTransaction(creds, input.transactionId);
   if (!tx) return { ok: false, status: 400, error: "Apple has no record of that purchase" };
   if (tx.bundleId !== creds.bundleId) return { ok: false, status: 400, error: "That purchase belongs to a different app" };
-  if (tx.productId !== iapHostPassProductId(env)) return { ok: false, status: 400, error: "That purchase isn't the Host Pass" };
+  if (tx.productId !== iapHostPassProductId(env)) return { ok: false, status: 400, error: "That purchase isn't the Annual Pass" };
   const original = String(tx.originalTransactionId ?? tx.transactionId);
   const current = await fetchSubscriptionStatus(creds, original, tx.environment);
   const state = current ? applePassState(current.status, current.transaction, current.renewal, now) : applePassState(undefined, tx, null, now);

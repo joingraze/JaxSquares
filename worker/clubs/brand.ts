@@ -1,5 +1,5 @@
 // A board's club branding (Game.club): the host's club while the host holds an
-// active Club Pass (worker/payments/pass.ts activeClubPass), else null. Read
+// active Annual Pass + Venue (worker/payments/pass.ts activeClubPass), else null. Read
 // with every board state (worker/db.ts), so it's cached per isolate for a
 // short TTL, like the canonical clientId: a rename or a new logo shows at once
 // on the holder's own requests (forgetClubBrand) and the boards it broadcasts
@@ -38,7 +38,7 @@ export function brandOf(club: Pick<ClubRow, "id" | "name" | "logoEtag">): ClubBr
 
 /**
  * The branding on the boards `hostClientId` (a board's host's canonical
- * clientId, server-only) hosts: their club while their Club Pass is active,
+ * clientId, server-only) hosts: their club while their Annual Pass + Venue is active,
  * made on first need (unnamed until they name it), else null.
  */
 export async function clubBrandOf(db: D1Database, hostClientId: string, now = Date.now()): Promise<ClubBrand | null> {

@@ -1,24 +1,26 @@
-// Which checkout the app runs and what a board (or the yearly Host Pass) costs.
+// Which checkout the app runs and what a host pays (shared/pricing.ts): one
+// board's host fee and its Venue add-on, or the yearly Annual Pass, with or
+// without the Venue add-on.
 // Live mode needs an explicit PAYMENTS_MODE=live AND the Stripe keys (the web
 // checkout); anything less runs the clearly labeled no-charge test checkout.
 // The App Store keys only matter to the iOS app: until they're set its
 // purchase routes answer 503 (appStoreCredentials), so a web-only launch
 // doesn't wait on them.
 
-import type { ClubPassOffer, Game, HostPassOffer, PaymentConfig, SeasonFeeOffer } from "../../shared/types";
+import type { BoardPrices } from "../../shared/pricing";
+import type { ClubPassOffer, HostPassOffer, PaymentConfig } from "../../shared/types";
 import type { Env } from "../env";
 
+/** One board's host fee: $4.99 (wrangler.jsonc BOARD_PRICE_CENTS sets it). */
 export const DEFAULT_PRICE_CENTS = 499;
 export const DEFAULT_IAP_PRODUCT_ID = "com.jaxsquares.app.board";
-/** A season board's host fee: $14.99, once, at its draw (wrangler.jsonc SEASON_BOARD_PRICE_CENTS sets it). */
-export const DEFAULT_SEASON_PRICE_CENTS = 1499;
-/** The App Store consumable for a season board's host fee. */
-export const DEFAULT_IAP_SEASON_PRODUCT_ID = "com.jaxsquares.app.seasonboard";
-/** The Host Pass: $19.99 a year on the web (wrangler.jsonc HOST_PASS_PRICE_CENTS sets it); the App Store sets its own localized price. */
+/** One venue board's Venue add-on, on top of its host fee: $10 (wrangler.jsonc VENUE_PRICE_CENTS sets it). Web only. */
+export const DEFAULT_VENUE_PRICE_CENTS = 1000;
+/** The Annual Pass: $19.99 a year on the web (wrangler.jsonc HOST_PASS_PRICE_CENTS sets it); the App Store sets its own localized price. */
 export const DEFAULT_HOST_PASS_PRICE_CENTS = 1999;
 export const DEFAULT_IAP_HOST_PASS_PRODUCT_ID = "com.jaxsquares.app.hostpass.yearly";
-/** The Club Pass: $49 a year, on the web only (wrangler.jsonc CLUB_PASS_PRICE_CENTS sets it). */
-export const DEFAULT_CLUB_PASS_PRICE_CENTS = 4900;
+/** The Annual Pass with the Venue add-on (plan "club"): $99.99 a year, on the web only (wrangler.jsonc CLUB_PASS_PRICE_CENTS sets it). */
+export const DEFAULT_CLUB_PASS_PRICE_CENTS = 9999;
 export const CURRENCY = "usd";
 /** Stripe's minimum charge for USD. */
 const MIN_PRICE_CENTS = 50;
@@ -43,25 +45,14 @@ export function iapProductId(env: Env): string {
   return env.IAP_PRODUCT_ID?.trim() || DEFAULT_IAP_PRODUCT_ID;
 }
 
-export function seasonPriceCents(env: Env): number {
-  const n = Number(env.SEASON_BOARD_PRICE_CENTS);
-  return Number.isInteger(n) && n >= MIN_PRICE_CENTS ? n : DEFAULT_SEASON_PRICE_CENTS;
+export function venuePriceCents(env: Env): number {
+  const n = Number(env.VENUE_PRICE_CENTS);
+  return Number.isInteger(n) && n >= MIN_PRICE_CENTS ? n : DEFAULT_VENUE_PRICE_CENTS;
 }
 
-export function iapSeasonProductId(env: Env): string {
-  return env.IAP_SEASON_PRODUCT_ID?.trim() || DEFAULT_IAP_SEASON_PRODUCT_ID;
-}
-
-/** A season board's host fee (one fee for every game of the season). */
-export function seasonFeeOffer(env: Env): SeasonFeeOffer {
-  return { priceCents: seasonPriceCents(env), iapProductId: iapSeasonProductId(env) };
-}
-
-/** What a board's host fee is: a season board's (Game.kind "season"), else one board's. */
-export function boardFeeFor(env: Env, game: Pick<Game, "kind">): { amountCents: number; iapProductId: string } {
-  return game.kind === "season"
-    ? { amountCents: seasonPriceCents(env), iapProductId: iapSeasonProductId(env) }
-    : { amountCents: boardPriceCents(env), iapProductId: iapProductId(env) };
+/** One board's prices: its host fee and the Venue add-on. */
+export function boardPrices(env: Env): BoardPrices {
+  return { boardCents: boardPriceCents(env), venueCents: venuePriceCents(env) };
 }
 
 export function hostPassPriceCents(env: Env): number {
@@ -73,7 +64,7 @@ export function iapHostPassProductId(env: Env): string {
   return env.IAP_HOST_PASS_PRODUCT_ID?.trim() || DEFAULT_IAP_HOST_PASS_PRODUCT_ID;
 }
 
-/** The Stripe Price of the yearly Host Pass, or null while the owner hasn't set one. */
+/** The Stripe Price of the yearly Annual Pass, or null while the owner hasn't set one. */
 export function stripeHostPassPriceId(env: Env): string | null {
   return env.STRIPE_HOST_PASS_PRICE_ID?.trim() || null;
 }
@@ -83,22 +74,22 @@ export function clubPassPriceCents(env: Env): number {
   return Number.isInteger(n) && n >= MIN_PRICE_CENTS ? n : DEFAULT_CLUB_PASS_PRICE_CENTS;
 }
 
-/** The Stripe Price of the yearly Club Pass, or null while the owner hasn't set one. */
+/** The Stripe Price of the yearly Annual Pass with the Venue add-on, or null while the owner hasn't set one. */
 export function stripeClubPassPriceId(env: Env): string | null {
   return env.STRIPE_CLUB_PASS_PRICE_ID?.trim() || null;
 }
 
 /**
- * How the Club Pass is sold: on the web only (the iOS app never offers it),
- * as a no-charge test pass in test mode and in live mode once
- * STRIPE_CLUB_PASS_PRICE_ID is set.
+ * How the Annual Pass with the Venue add-on is sold: on the web only (the iOS
+ * app never offers it), as a no-charge test pass in test mode and in live mode
+ * once STRIPE_CLUB_PASS_PRICE_ID is set.
  */
 export function clubPassOffer(env: Env, live: boolean): ClubPassOffer {
   return { priceCents: clubPassPriceCents(env), currency: CURRENCY, web: !live || stripeClubPassPriceId(env) !== null };
 }
 
 /**
- * How the Host Pass is sold here. The web sells it in test mode (a no-charge
+ * How the Annual Pass is sold here. The web sells it in test mode (a no-charge
  * test pass) and in live mode once STRIPE_HOST_PASS_PRICE_ID is set; the iOS
  * app sells it through the App Store whenever StoreKit knows the product.
  */
@@ -123,11 +114,11 @@ export function getPaymentConfig(env: Env): PaymentConfig {
   return {
     mode: live ? "live" : "test",
     priceCents: boardPriceCents(env),
+    venuePriceCents: venuePriceCents(env),
     currency: CURRENCY,
     stripePublishableKey: live ? env.STRIPE_PUBLISHABLE_KEY!.trim() : null,
     iapProductId: iapProductId(env),
     hostPass: hostPassOffer(env, live),
     clubPass: clubPassOffer(env, live),
-    season: seasonFeeOffer(env),
   };
 }

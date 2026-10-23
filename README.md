@@ -11,10 +11,12 @@ WNBA and men's and women's college games.
 **No money moves between players, ever.** There are no prices per square, pots,
 payouts or betting. A host can add a fun prize note per period ("Loser buys
 wings"), and notes that mention money are rejected. The only payment in the
-product is the host fee for a board, paid when the host draws its numbers, or
-a yearly Host Pass that covers it on every board the host makes: setting up,
-inviting and picking squares are free, and so is drawing a board whose squares
-5 or fewer players hold.
+product is what the host pays for a board (docs/payments.md "Pricing"): the
+host fee, plus a Venue add-on on a bar or restaurant's board, paid when the
+host draws its numbers, or a yearly Annual Pass that covers them on every board
+the host makes (venue boards with its Venue add-on): setting up, inviting and
+picking squares are free, and so is drawing a board whose squares 5 or fewer
+players hold.
 
 ## How the game works
 
@@ -29,9 +31,9 @@ inviting and picking squares are free, and so is drawing a board whose squares
    pick a name, color and emoji, and tap empty squares to claim them.
 3. **Lock & draw**: the host locks the board, which randomly assigns the
    digits 0–9 to the rows and columns. It's free with up to 5 players holding
-   squares; a bigger board needs the host fee first (or a Host Pass; a
+   squares; a bigger board needs the host fee first (or an Annual Pass; a
    no-charge test checkout until payments go live). Linked boards lock
-   themselves at kickoff once they're free, paid or covered by a Host Pass (the
+   themselves at kickoff once they're free, paid or covered by an Annual Pass (the
    host can pay ahead).
 4. **Score**: the winning square is where the last digit of each team's score
    meets. Linked boards score themselves from live data; the host can enter or
@@ -182,7 +184,7 @@ working) until its values are set.
 
 | Area | Names | Guide |
 |---|---|---|
-| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID`; the Host Pass: `HOST_PASS_PRICE_CENTS`, `STRIPE_HOST_PASS_PRICE_ID`, `IAP_HOST_PASS_PRODUCT_ID` | [docs/payments.md](docs/payments.md) |
+| Payments | `PAYMENTS_MODE`, `BOARD_PRICE_CENTS`, `VENUE_PRICE_CENTS`, `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `APPLE_IAP_KEY_ID`, `APPLE_IAP_ISSUER_ID`, `APPLE_IAP_PRIVATE_KEY`, `APPLE_BUNDLE_ID`, `IAP_PRODUCT_ID`; the Annual Pass: `HOST_PASS_PRICE_CENTS`, `STRIPE_HOST_PASS_PRICE_ID`, `IAP_HOST_PASS_PRODUCT_ID`; with the Venue add-on: `CLUB_PASS_PRICE_CENTS`, `STRIPE_CLUB_PASS_PRICE_ID` | [docs/payments.md](docs/payments.md) |
 | Push | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `FCM_SERVICE_ACCOUNT` | [docs/push.md](docs/push.md) |
 | App links | `APPLE_TEAM_ID`, `APPLE_BUNDLE_ID`, `ANDROID_PACKAGE`, `ANDROID_SHA256_CERT_FINGERPRINTS` | [docs/ios.md](docs/ios.md) |
 | Sign-in (optional) | vars `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_IOS_CLIENT_ID`, `APPLE_SERVICES_ID`; secrets `APPLE_KEY_ID`, `APPLE_SIGNIN_PRIVATE_KEY` (with `APPLE_TEAM_ID`) | [docs/auth.md](docs/auth.md) |

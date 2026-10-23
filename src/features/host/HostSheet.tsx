@@ -168,9 +168,9 @@ export interface HostSheetProps {
   /** Sign in (the host, not signed in, where sign-in is set up): the board's host controls then follow them to any device. */
   onSignIn?: () => void;
   onInvite: () => void;
-  /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Host Pass covers it). */
+  /** The host fee is due before the numbers can be drawn (needsHostFee, the board isn't free, and no Annual Pass covers it). */
   fee: boolean;
-  /** The fee would be due, but the host's Host Pass covers it: "Included with your Host Pass", and the draw just draws. */
+  /** The fee would be due, but the host's Annual Pass covers it: "Included with your Annual Pass", and the draw just draws. */
   covered?: boolean;
   /** The fee would be due, but 5 or fewer players hold squares (drawIsFree): "Draw the numbers · Free", and the draw just draws. */
   free?: boolean;
@@ -923,7 +923,7 @@ export function HostSheet(props: HostSheetProps) {
               onClick={() => onView("players")}
             />
           )}
-          {/* A Club Pass board's players as a CSV, for the host and co-hosts (src/features/club). */}
+          {/* An Annual Pass + Venue board's players as a CSV, for the host and co-hosts (src/features/club). */}
           <ExportPlayersRow game={game} />
           {isHost && props.onSignIn && <SignInToHostRow onSignIn={props.onSignIn} />}
           {/* The host link hands over the admin token: a co-host has none (and needs none on another phone). */}
@@ -1079,7 +1079,7 @@ function RulesEditView({
           {preset === null && <Chip selected disabled>{PRESET_INFO.custom.short}</Chip>}
         </div>
       </section>
-      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} kind={kind} />
+      <RulesEditor draft={draft} onChange={onChange} boardSize={boardSize} squares={squares} locked={lock.scoring} kind={kind} venueLocked={lock.venue} />
       {canUseFreshNumbers(draft.rules) && (
         <div className="rounded-2xl bg-surface-3 px-3.5 py-2.5 ring-1 ring-inset ring-line">
           <Switch
@@ -1178,7 +1178,7 @@ function OpenHero({
       {fee ? payToDrawLabel(price, season) : free ? FREE_DRAW_LABEL : covered ? "Draw the numbers" : "Lock & draw"}
     </Button>
   );
-  // Right under the draw: what a price would say on a free board, or one the Host Pass covers.
+  // Right under the draw: what a price would say on a free board, or one the Annual Pass covers.
   const drawNote = free ? <FreeDrawNote key="note" className="-mt-1" /> : covered ? <PassIncluded key="note" className="-mt-1" /> : null;
   // Until it's paid for, the hint says boards with up to 5 players are free.
   const upcoming = state.season?.games.filter((g) => g.startsAt > now).length ?? 0;
@@ -1229,7 +1229,7 @@ function OpenHero({
         </div>
       </div>
       {fee || covered || free ? (
-        // The draw carries its price (or "Free", or the Host Pass), so each button gets the full width; the move to make goes first.
+        // The draw carries its price (or "Free", or the Annual Pass), so each button gets the full width; the move to make goes first.
         <div className="relative mt-4 flex flex-col gap-2.5">
           {ready ? [drawButton, drawNote, inviteButton] : [inviteButton, drawButton, drawNote]}
         </div>
@@ -1436,7 +1436,7 @@ function LockConfirm({
       )}
       {covered && (
         <Fact icon={<SparklesIcon size={16} />}>
-          <b className="font-bold text-ink">Included with your Host Pass.</b> No host fee for this {season ? "season" : "board"}.
+          <b className="font-bold text-ink">Included with your Annual Pass.</b> Nothing to pay for this {season ? "season" : "board"}.
         </Fact>
       )}
       {low && (

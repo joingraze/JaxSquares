@@ -1110,7 +1110,7 @@ export default function GameView() {
         {/* A season's game board: which game of how many, the season board and the games either side. */}
         {state.seasonGame && <SeasonNav position={state.seasonGame} />}
 
-        {/* A Club Pass holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
+        {/* An Annual Pass + Venue holder's board: "Hosted by <club>" with its logo (src/features/club), the invite view included. */}
         <ClubBanner game={game} />
 
         {/* A newcomer gets the invite hero (matchup, who's in, squares left) in place of the scoreboard; a season board, its season. */}

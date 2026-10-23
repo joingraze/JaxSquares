@@ -1,4 +1,4 @@
-// The players CSV a Club Pass board's host and co-hosts can download
+// The players CSV an Annual Pass + Venue board's host and co-hosts can download
 // (GET /api/games/:id/export.csv): one row per player, from the board's
 // public state only. Columns: the player's name, how many squares they hold,
 // those squares as "row-col" (counted from 1 at the top left), after the draw

@@ -2,8 +2,7 @@
 // unset in local dev; every integration must degrade gracefully without them.
 //
 // This file only declares names. Never put values here (it is committed):
-// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, IAP_PRODUCT_ID, SEASON_BOARD_PRICE_CENTS,
-//   IAP_SEASON_PRODUCT_ID, PAYMENTS_MODE,
+// - Plain settings (APP_ORIGIN, BOARD_PRICE_CENTS, VENUE_PRICE_CENTS, IAP_PRODUCT_ID, PAYMENTS_MODE,
 //   HOST_PASS_PRICE_CENTS, STRIPE_HOST_PASS_PRICE_ID, IAP_HOST_PASS_PRODUCT_ID,
 //   CLUB_PASS_PRICE_CENTS, STRIPE_CLUB_PASS_PRICE_ID, the sign-in client ids,
 //   EMAIL_FROM) go in wrangler.jsonc "vars".
@@ -29,8 +28,10 @@ export interface Env {
   // ---- Payments ----
   /** "live" to charge for real; anything else runs the no-charge test checkout. */
   PAYMENTS_MODE?: string;
-  /** Price to create one board, in cents. */
+  /** One board's host fee in cents (default 499), due when its numbers are drawn. */
   BOARD_PRICE_CENTS?: string;
+  /** One venue board's Venue add-on in cents (default 1000), on top of its host fee. Web only. */
+  VENUE_PRICE_CENTS?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_PUBLISHABLE_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -43,23 +44,19 @@ export interface Env {
   /** Apple developer team id, for apple-app-site-association (universal links). */
   APPLE_TEAM_ID?: string;
   IAP_PRODUCT_ID?: string;
-  /** A season board's host fee in cents (default 1499): one fee, at its draw, for every game of the season. */
-  SEASON_BOARD_PRICE_CENTS?: string;
-  /** App Store product id of a season board's host fee, a consumable (default "com.jaxsquares.app.seasonboard"). */
-  IAP_SEASON_PRODUCT_ID?: string;
 
-  // ---- The Host Pass (a yearly subscription covering the host fee of every board its holder hosts) ----
-  /** The web price per year in cents (default 999). Must match the Stripe Price. */
+  // ---- The Annual Pass (a yearly subscription covering the host fee of every board its holder hosts; plan "host") ----
+  /** The web price per year in cents (default 1999). Must match the Stripe Price. */
   HOST_PASS_PRICE_CENTS?: string;
-  /** The Stripe Price id of the yearly Host Pass (price_...). Unset: the web doesn't sell the pass in live mode. */
+  /** The Stripe Price id of the yearly Annual Pass (price_...). Unset: the web doesn't sell the pass in live mode. */
   STRIPE_HOST_PASS_PRICE_ID?: string;
   /** App Store product id of the auto-renewable subscription (default "com.jaxsquares.app.hostpass.yearly"). */
   IAP_HOST_PASS_PRODUCT_ID?: string;
 
-  // ---- The Club Pass (a yearly plan for bars, clubs, offices: the Host Pass plus club features; web only) ----
-  /** The web price per year in cents (default 4900). Must match the Stripe Price. */
+  // ---- The Annual Pass with the Venue add-on (plan "club": venue boards and the venue's branding too; web only) ----
+  /** The web price per year in cents (default 9999). Must match the Stripe Price. */
   CLUB_PASS_PRICE_CENTS?: string;
-  /** The Stripe Price id of the yearly Club Pass (price_...). Unset: the web doesn't sell it in live mode. */
+  /** The Stripe Price id of the yearly Annual Pass + Venue (price_...). Unset: the web doesn't sell it in live mode. */
   STRIPE_CLUB_PASS_PRICE_ID?: string;
 
   // ---- Android app links (/.well-known/assetlinks.json) ----

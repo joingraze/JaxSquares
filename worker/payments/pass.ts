@@ -1,5 +1,6 @@
-// The Host Pass: a yearly subscription that covers the host fee of every board
-// its holder hosts (docs/payments.md "Host Pass"). What "active" means, what the
+// The Annual Pass: a yearly subscription that covers the host fee of every
+// board its holder hosts, and with the Venue add-on (plan "club") venue boards
+// too (docs/payments.md "Annual Pass", shared/pricing.ts). What "active" means, what the
 // API shows, and the lookups core uses when a board is drawn: POST /lock and a
 // linked board's kickoff (worker/index.ts, worker/service.ts), the "kickoff
 // soon" reminders and the board-full push. Kept free of routes and core
@@ -11,6 +12,7 @@
 // won't renew ends exactly at the period end. Checked when the pass is used:
 // webhooks and notifications keep the rows current, so no cron is needed.
 
+import type { PassCover } from "../../shared/pricing";
 import type { HostPass, HostPassState, HostPassStatus, PassPlan } from "../../shared/types";
 import type { Env } from "../env";
 import { clubPassOffer, getPaymentConfig, hostPassOffer } from "./config";
@@ -76,8 +78,8 @@ async function rowsOf(db: D1Database, clientIds: readonly string[], activeOnly: 
 const ofPlan = (rows: readonly PassRow[], plan: PassPlan) => rows.filter((p) => p.plan === plan);
 
 /**
- * The active pass any of these identities holds, or null: a Host Pass or a
- * Club Pass, since both cover the host fee. `clientIds` are canonical
+ * The active pass any of these identities holds, or null: an Annual Pass or a
+ * Annual Pass + Venue, since both cover the host fee. `clientIds` are canonical
  * clientIds: whoever draws (c.get("clientId")) and the board's host.
  */
 export async function activePass(db: D1Database, clientIds: readonly string[], now = Date.now()): Promise<PassRow | null> {
@@ -85,25 +87,32 @@ export async function activePass(db: D1Database, clientIds: readonly string[], n
 }
 
 /**
- * The identity's active Club Pass, or null: what turns on the club features
+ * What these identities' active passes cover (shared/pricing.ts PassCover): the
+ * Venue add-on when any holds an active pass with it (plan "club"), the host
+ * fee when any holds one without, else nothing. Returns the pass that covers it.
+ */
+export async function passCover(db: D1Database, clientIds: readonly string[], now = Date.now()): Promise<{ cover: PassCover; pass: PassRow | null }> {
+  const rows = (await rowsOf(db, clientIds, true)).filter((p) => passCovers(p, now));
+  const venue = bestActive(ofPlan(rows, "club"), now);
+  if (venue) return { cover: "venue", pass: venue };
+  const pass = bestActive(rows, now);
+  return { cover: pass ? "pass" : "none", pass };
+}
+
+/**
+ * The identity's active Annual Pass + Venue, or null: what turns on the club features
  * on the boards it hosts (branding, 10 co-hosts, the players CSV, the club TV).
  */
 export async function activeClubPass(db: D1Database, clientId: string, now = Date.now()): Promise<PassRow | null> {
   return bestActive(ofPlan(await rowsOf(db, [clientId], true), "club"), now);
 }
 
-/** Which of these identities hold an active pass, of either plan (the cron's "kickoff soon" reminders skip them). */
-export async function holdersOfActivePass(db: D1Database, clientIds: readonly string[], now = Date.now()): Promise<Set<string>> {
-  const rows = await rowsOf(db, clientIds, true);
-  return new Set(rows.filter((p) => passCovers(p, now)).map((p) => p.clientId));
-}
-
-/** The identity's Host Pass as the API shows it (GET /api/me folds it in). A Club Pass is shown apart (clubPassOf). */
+/** The identity's Annual Pass as the API shows it (GET /api/me folds it in). An Annual Pass + Venue is shown apart (clubPassOf). */
 export async function hostPassOf(db: D1Database, clientId: string, now = Date.now()): Promise<HostPass | null> {
   return passView(ofPlan(await rowsOf(db, [clientId], false), "host"), now);
 }
 
-/** The identity's Club Pass as the API shows it (GET /api/me's `clubPass`). */
+/** The identity's Annual Pass + Venue as the API shows it (GET /api/me's `clubPass`). */
 export async function clubPassOf(db: D1Database, clientId: string, now = Date.now()): Promise<HostPass | null> {
   return passView(ofPlan(await rowsOf(db, [clientId], false), "club"), now);
 }

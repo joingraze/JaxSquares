@@ -304,7 +304,7 @@ async function signIn(c: Ctx, provider: AuthProvider): Promise<Response> {
   });
   if (outcome.conflict) fail(409, SIGNED_OUT_FIRST);
   rememberLink(v.device, outcome.canonical, now);
-  // A Club Pass (and its club) the device brought now brands the account's boards.
+  // An Annual Pass + Venue (and its club) the device brought now brands the account's boards.
   if (outcome.canonical !== v.device) forgetClubBrand(c.env.DB, outcome.canonical);
   broadcastMerged(c, outcome.merged);
   keepAppleToken(c, v);
@@ -403,14 +403,14 @@ authRoutes.delete("/account", async (c) => {
   if (tooMany) return tooMany;
   const link = await linkOr503(c, device);
   if (!link) fail(404, "You're not signed in on this device.");
-  // A web Host Pass stops renewing first: nobody could manage it once the
+  // A web Annual Pass stops renewing first: nobody could manage it once the
   // account is gone. (An App Store one is the person's to cancel in iPhone
   // Settings; the delete sheet says so.)
   try {
     await endWebPassRenewals(c.env, link.canonical);
   } catch (err) {
-    console.error("couldn't stop a web Host Pass renewing", err);
-    fail(502, "Couldn't stop your Host Pass from renewing, so nothing was deleted. Try again in a moment.");
+    console.error("couldn't stop a web Annual Pass renewing", err);
+    fail(502, "Couldn't stop your Annual Pass from renewing, so nothing was deleted. Try again in a moment.");
   }
   const doomed = await store.accountForDeletion(c.env.DB, link.accountId);
   // Revoke first: once the rows are gone there's no token left to revoke.
@@ -426,7 +426,7 @@ authRoutes.delete("/account", async (c) => {
   if (revoked.some((ok) => !ok)) console.log("account deleted; an Apple token couldn't be revoked (see above)");
   // The boards and squares stay as anonymous data under the canonical clientId.
   // Email addresses for notices go: nobody could manage them afterwards. So
-  // does a Club Pass holder's club (its name, logo and TV link).
+  // does an Annual Pass + Venue holder's club (its name, logo and TV link).
   await c.env.DB.batch([
     ...store.deleteAccountStatements(c.env.DB, link.accountId),
     pushStore.deleteClientSubscriptionsStatement(c.env.DB, link.canonical),

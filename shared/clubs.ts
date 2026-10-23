@@ -1,6 +1,6 @@
-// The Club Pass (docs/payments.md "Club Pass"): a yearly plan for bars,
+// The Annual Pass + Venue (docs/payments.md "Annual Pass + Venue"): a yearly plan for bars,
 // booster clubs, offices and fundraisers that run boards every week. What it
-// adds to the Host Pass: club branding on the holder's boards, up to
+// adds to the Annual Pass: club branding on the holder's boards, up to
 // CLUB_MAX_COHOSTS co-hosts (shared/cohosts.ts), a players CSV and a TV link
 // that rotates the club's boards. Pure: shared by the Worker and the app.
 

@@ -1,20 +1,22 @@
-// Host tools → Board → "Players list (CSV)": on a Club Pass holder's board
-// (Game.club), for its host and co-hosts. A download on the web, the share
+// Host tools → Board → "Players list (CSV)": on a venue's board (a venue
+// board, or a board of a host whose Annual Pass has the Venue add-on:
+// hasVenueFeatures), for its host and co-hosts. A download on the web, the share
 // sheet in the iOS app (exportPlayers.ts). Names, squares, numbers and when
 // each joined; never who paid.
 
 import { useState } from "react";
 import type { Game } from "../../../shared/types";
+import { hasVenueFeatures } from "../../../shared/venue";
 import { DownloadIcon, ShareIcon } from "../../components/icons";
 import { ListRow, useToast } from "../../components/ui";
 import { errorMessage } from "../../lib/api";
 import { haptic, isNative } from "../../lib/native";
 import { exportPlayers } from "./exportPlayers";
 
-export function ExportPlayersRow({ game }: { game: Pick<Game, "id" | "name" | "club"> }) {
+export function ExportPlayersRow({ game }: { game: Pick<Game, "id" | "name" | "club"> & { format?: Pick<Game["format"], "venue"> } }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  if (!game.club) return null;
+  if (!hasVenueFeatures(game)) return null;
   const native = isNative();
 
   const run = async () => {

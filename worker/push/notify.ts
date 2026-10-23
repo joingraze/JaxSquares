@@ -6,7 +6,8 @@ import { isFreeHolderCount } from "../../shared/hostFee";
 import type { Game } from "../../shared/types";
 import { getGame, getMembers, squareHolderCount, type Member } from "../db";
 import type { Env } from "../env";
-import { activePass } from "../payments/pass";
+import { coversBoard } from "../../shared/pricing";
+import { passCover } from "../payments/pass";
 import { coveredBySibling } from "./coalesce";
 import { buildDeliveries, type DeliveryContext } from "./copy";
 import { parseServiceAccount, sendFcm, type ServiceAccount } from "./fcm";
@@ -86,14 +87,15 @@ export async function deliver(
 /**
  * Host-only pushes about an unpaid board's fee ("pay ahead", "kickoff soon")
  * change when the board is free (5 or fewer players hold squares) or the
- * host's Host Pass covers it. Looked up only for those, and only while the
+ * host's Annual Pass covers it. Looked up only for those, and only while the
  * fee is unpaid.
  */
 async function feeContext(env: Env, game: Game, members: Member[], event: NotifyEvent): Promise<DeliveryContext> {
   if ((event.kind !== "board-full" && event.kind !== "draw-reminder") || game.paid !== false || game.status !== "open") return {};
   if (isFreeHolderCount(await squareHolderCount(env.DB, game.id))) return { freeDraw: true };
   const host = members.find((m) => m.isHost || m.id === game.hostPlayerId);
-  return { hostHasPass: host ? (await activePass(env.DB, [host.clientId])) !== null : false };
+  // Covered only when the pass covers all of it (a venue board only with the Venue add-on).
+  return { hostHasPass: host ? coversBoard(game, (await passCover(env.DB, [host.clientId])).cover) : false };
 }
 
 export async function notify(env: Env, gameId: string, event: NotifyEvent): Promise<void> {

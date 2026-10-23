@@ -9,7 +9,7 @@
 // buys wings"). Amounts stay in the app: never in push notifications, link
 // previews or share text. The only money the product touches is the host
 // paying JaxSquares a fee for a board, due when they draw its numbers, or a
-// yearly Host Pass (or Club Pass) that covers that fee on every board they host.
+// yearly Annual Pass (or Annual Pass + Venue) that covers that fee on every board they host.
 
 export type Sport = "football" | "basketball" | "baseball" | "hockey" | "soccer" | "other";
 
@@ -297,7 +297,7 @@ export interface Game {
    */
   paid?: boolean;
   /**
-   * The host holds an active Club Pass (docs/payments.md "Club Pass"): the
+   * The host holds an active Annual Pass + Venue (docs/payments.md "Annual Pass + Venue"): the
    * club's public branding (its name shows only once the holder names it:
    * `shownClub` in shared/clubs.ts), and the board takes up to
    * CLUB_MAX_COHOSTS co-hosts (`cohostLimitOf`). null/absent on every other
@@ -961,30 +961,20 @@ export interface ScheduleResponse {
 export interface PaymentConfig {
   /** "test" simulates checkout with no charge; "live" uses Stripe / Apple IAP. */
   mode: "test" | "live";
+  /** One board's host fee (shared/pricing.ts). */
   priceCents: number;
+  /** One venue board's Venue add-on, on top of its host fee (web only). Always sent; optional so older fixtures type-check (0 = none). */
+  venuePriceCents?: number;
   currency: string;
   stripePublishableKey: string | null;
   iapProductId: string;
-  /** How the Host Pass is sold here. Always sent; optional only so older fixtures type-check. */
+  /** How the Annual Pass is sold here. Always sent; optional only so older fixtures type-check. */
   hostPass?: HostPassOffer;
-  /** How the Club Pass is sold (the web only). Always sent; optional only so older fixtures type-check. */
+  /** How the Annual Pass with the Venue add-on is sold (the web only). Always sent; optional only so older fixtures type-check. */
   clubPass?: ClubPassOffer;
-  /**
-   * A season board's host fee (one fee, at its draw, for every game of the
-   * season): `priceCents` on the web, the App Store product's own price in
-   * the iOS app. Always sent; optional only so older fixtures type-check.
-   */
-  season?: SeasonFeeOffer;
 }
 
-/** A season board's host fee: due once, at the season board's draw (docs/payments.md "Season boards"). */
-export interface SeasonFeeOffer {
-  priceCents: number;
-  /** App Store product id of the consumable (com.jaxsquares.app.seasonboard). */
-  iapProductId: string;
-}
-
-// ---- The Host Pass (docs/payments.md "Host Pass") ----
+// ---- The Annual Pass (docs/payments.md "Annual Pass") ----
 // A yearly subscription, an alternative to paying the host fee board by board:
 // while it's active, drawing the numbers on any board its holder hosts costs
 // nothing more. It belongs to the holder's identity (the account's, when signed
@@ -1012,7 +1002,7 @@ export interface HostPassOffer {
   web: boolean;
 }
 
-/** An identity's Host Pass as the API reports it: never a clientId or a payment reference. */
+/** An identity's Annual Pass as the API reports it: never a clientId or a payment reference. */
 export interface HostPass {
   /** Covers the host fee right now. */
   active: boolean;
@@ -1029,15 +1019,15 @@ export interface HostPass {
 export interface HostPassState {
   pass: HostPass | null;
   offer: HostPassOffer;
-  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass + Venue (null when it never had one). Always sent; optional so older fixtures type-check. */
   club?: HostPass | null;
-  /** How the Club Pass is sold here. Always sent; optional so older fixtures type-check. */
+  /** How the Annual Pass + Venue is sold here. Always sent; optional so older fixtures type-check. */
   clubOffer?: ClubPassOffer;
 }
 
-// ---- The Club Pass (docs/payments.md "Club Pass") ----
+// ---- The Annual Pass + Venue (docs/payments.md "Annual Pass + Venue") ----
 // A yearly plan for bars, booster clubs, offices and fundraisers: everything
-// the Host Pass does, plus the club's branding on the holder's boards, up to
+// the Annual Pass does, plus the club's branding on the holder's boards, up to
 // 10 co-hosts, a players CSV and a TV link that rotates the club's boards.
 // Sold on the web only (Stripe Billing, signed in); the iOS app never offers
 // it or links to buying it, but a holder's features work there. A row of
@@ -1046,7 +1036,7 @@ export interface HostPassState {
 /** Which pass a host_passes row is. */
 export type PassPlan = "host" | "club";
 
-/** How the Club Pass is sold: on the web only, never in the iOS app. */
+/** How the Annual Pass + Venue is sold: on the web only, never in the iOS app. */
 export interface ClubPassOffer {
   /** The price per year, in minor units of `currency` (4900 = "$49/year"). */
   priceCents: number;
@@ -1065,7 +1055,7 @@ export interface ClubBoard {
   startsAt: number | null;
 }
 
-/** GET /api/clubs/mine (and every club settings route's answer): the holder's club. 404 without an active Club Pass. */
+/** GET /api/clubs/mine (and every club settings route's answer): the holder's club. 404 without an active Annual Pass + Venue. */
 export interface ClubSettings {
   club: ClubBrand;
   /**
@@ -1088,7 +1078,7 @@ export interface ClubTvLink extends ClubSettings {
 /** GET /api/clubs/:id/tv (the TV link's token in x-club-tv-token): the club and its boards' public states. 404 for a wrong token. */
 export interface ClubTvState {
   club: ClubBrand;
-  /** The Club Pass is active; when it isn't, `boards` is empty. */
+  /** The Annual Pass + Venue is active; when it isn't, `boards` is empty. */
   active: boolean;
   /** Up to CLUB_TV_MAX_BOARDS of the club's open and live boards: live ones first, then by kickoff. */
   boards: GameState[];
@@ -1112,6 +1102,13 @@ export interface HostPassTransaction {
  * a web subscription needs a sign-in first, or it would be lost with the browser.
  */
 export const ACCOUNT_REQUIRED_CODE = "account_required";
+
+/**
+ * `code` of the 409 that POST /api/payments/pass/stripe answers when a holder
+ * of a web Annual Pass asks for the Annual Pass + Venue: the app adds the
+ * Venue add-on to their pass instead (POST /api/payments/pass/stripe/venue).
+ */
+export const UPGRADE_PASS_CODE = "upgrade_pass";
 
 export interface AppConfig {
   payments: PaymentConfig;
@@ -1211,7 +1208,7 @@ export interface AccountInfo {
 
 /**
  * GET /api/me and the sign-in response: who this device is. An object so
- * later fields (the Host Pass) can be added.
+ * later fields (the Annual Pass) can be added.
  */
 export interface MeResponse {
   /** This device's public player id: the account's (canonical) one when signed in. "Mine" compares against it. */
@@ -1222,9 +1219,9 @@ export interface MeResponse {
   hostTokens: Record<string, string>;
   /** The name, color and emoji this identity last joined a board with, if any (public on that board already). */
   profile?: { name: string; color: string; emoji: string } | null;
-  /** This identity's Host Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
   hostPass?: HostPass | null;
-  /** This identity's Club Pass (null when it never had one). Always sent; optional so older fixtures type-check. */
+  /** This identity's Annual Pass + Venue (null when it never had one). Always sent; optional so older fixtures type-check. */
   clubPass?: HostPass | null;
   /**
    * Ids of the boards this identity co-hosts (newest 200). No token: a co-host

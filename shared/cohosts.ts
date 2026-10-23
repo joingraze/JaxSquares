@@ -7,15 +7,19 @@
 import type { Game } from "./types";
 
 /**
- * Most co-hosts a board can have: the default, for every board whose host
- * doesn't hold the Club Pass.
+ * Most co-hosts a board can have: the default, for every board that isn't a
+ * venue's (no venue mode, no Venue add-on on its host's Annual Pass).
  */
 export const MAX_COHOSTS = 3;
 
-/** Most co-hosts on a Club Pass holder's board (docs/payments.md "Club Pass"). */
+/**
+ * Most co-hosts on a venue's board, for its staff: a venue board (venue mode,
+ * whose Venue add-on is paid at the draw), or any board of a host whose Annual
+ * Pass has the Venue add-on (docs/payments.md "Pricing").
+ */
 export const CLUB_MAX_COHOSTS = 10;
 
-/** The host's plan, as far as co-hosts go: a Club Pass, or anything else. */
+/** The board's plan, as far as co-hosts go: a venue's, or anything else. */
 export type CohostPlan = "club" | null;
 
 /** Most co-hosts a board can have under its host's plan. The one place the limits live. */
@@ -23,9 +27,9 @@ export function cohostLimit(plan: CohostPlan): number {
   return plan === "club" ? CLUB_MAX_COHOSTS : MAX_COHOSTS;
 }
 
-/** The board's co-host limit: `Game.club` is there while its host holds an active Club Pass. */
-export function cohostLimitOf(game: Pick<Game, "club">): number {
-  return cohostLimit(game.club ? "club" : null);
+/** The board's co-host limit: a venue board's, or `Game.club` (there while its host's pass has the Venue add-on). */
+export function cohostLimitOf(game: Pick<Game, "club"> & { format?: Pick<Game["format"], "venue"> }): number {
+  return cohostLimit(game.club || game.format?.venue === true ? "club" : null);
 }
 
 /** How long a co-host invite link works. Each link works once. */
@@ -55,7 +59,7 @@ export function isCohostOf(game: Pick<Game, "cohostIds">, playerId: string): boo
 }
 
 /** Whether the host can invite another co-host (the board has fewer than its plan allows: cohostLimitOf). */
-export function hasCohostRoom(game: Pick<Game, "cohostIds" | "club">): boolean {
+export function hasCohostRoom(game: Pick<Game, "cohostIds" | "club"> & { format?: Pick<Game["format"], "venue"> }): boolean {
   return cohostIdsOf(game).length < cohostLimitOf(game);
 }
 

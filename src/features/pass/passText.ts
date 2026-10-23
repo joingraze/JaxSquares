@@ -1,5 +1,5 @@
-// How the Host Pass reads in the UI: dates, the yearly price, when it pays for
-// itself and Profile's status line.
+// How the Annual Pass reads in the UI: dates, the yearly price, when it pays
+// for itself and Profile's status line.
 
 import type { HostPass } from "../../../shared/types";
 import type { PriceAmount } from "../../lib/checkout";
@@ -15,7 +15,7 @@ export function perYear(price: string | null): string {
 }
 
 /**
- * The board on which the Host Pass pays for itself: the first board count whose
+ * The board on which the Annual Pass pays for itself: the first board count whose
  * fees reach the pass's price, ceil(pass ÷ board) in whole cents, so $19.99
  * against $4.99 is the fifth board (4 boards are $19.96). Both prices as this
  * device shows them (the App Store's in the iOS app). Null when either is

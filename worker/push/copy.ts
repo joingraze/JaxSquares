@@ -65,7 +65,7 @@ function base(game: Game, kind: NotifyKind, over: Partial<PushContent> & Pick<Pu
 
 /** What notify() knows beyond the board itself. */
 export interface DeliveryContext {
-  /** The host's Host Pass covers this board's fee: Jax draws a linked board at kickoff, so no "pay" in the copy. */
+  /** The host's Annual Pass covers this board's fee: Jax draws a linked board at kickoff, so no "pay" in the copy. */
   hostHasPass?: boolean;
   /** 5 or fewer players hold squares (shared/hostFee.ts): drawing is free, so no "pay" in the copy either. */
   freeDraw?: boolean;
@@ -138,7 +138,7 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
 
     case "board-full": {
       // A linked board draws at kickoff on its own only once its host fee is
-      // paid, the board is free (5 or fewer players), or the host's Host Pass
+      // paid, the board is free (5 or fewer players), or the host's Annual Pass
       // covers it (then nothing to pay).
       const linkedOpen = game.linkedEvent !== null && game.status === "open";
       const start = sportWords(game.sport).startLower;
@@ -151,7 +151,7 @@ export function buildDeliveries(game: Game, members: Member[], event: NotifyEven
     }
 
     case "draw-reminder": {
-      // Paid or drawn since the reminder was due, free (Jax draws it at kickoff), or a Host Pass covers it: nothing to remind.
+      // Paid or drawn since the reminder was due, free (Jax draws it at kickoff), or an Annual Pass covers it: nothing to remind.
       if (game.status !== "open" || game.paid !== false || game.linkedEvent === null || context.hostHasPass || context.freeDraw) return [];
       const mins = Math.round((game.linkedEvent.startsAt - now) / 60_000);
       // "Kickoff" or "Tip-off", as the board's sport says it.

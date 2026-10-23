@@ -1,12 +1,12 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../env";
+import { feeDue } from "../../shared/pricing";
 import {
   DEFAULT_IAP_HOST_PASS_PRODUCT_ID,
   DEFAULT_IAP_PRODUCT_ID,
-  DEFAULT_IAP_SEASON_PRODUCT_ID,
-  boardFeeFor,
   boardPriceCents,
+  boardPrices,
   getPaymentConfig,
   hostPassPriceCents,
   missingLiveKeys,
@@ -32,15 +32,15 @@ describe("getPaymentConfig", () => {
     expect(cfg).toEqual({
       mode: "live",
       priceCents: 499,
+      // A venue board's Venue add-on, on top of its host fee.
+      venuePriceCents: 1000,
       currency: "usd",
       stripePublishableKey: "pk_live_x",
       iapProductId: DEFAULT_IAP_PRODUCT_ID,
-      // No Stripe price for the Host Pass yet: the web doesn't sell it in live mode.
+      // No Stripe price for the Annual Pass yet: the web doesn't sell it in live mode.
       hostPass: { priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: false },
-      // Nor for the Club Pass (web only).
-      clubPass: { priceCents: 4900, currency: "usd", web: false },
-      // A season board's one host fee, at its draw.
-      season: { priceCents: 1499, iapProductId: DEFAULT_IAP_SEASON_PRODUCT_ID },
+      // Nor for the Annual Pass + Venue (web only).
+      clubPass: { priceCents: 9999, currency: "usd", web: false },
     });
     expect(getPaymentConfig(env({ ...LIVE_KEYS, PAYMENTS_MODE: " LIVE " })).mode).toBe("live");
   });
@@ -77,28 +77,28 @@ describe("getPaymentConfig", () => {
   });
 });
 
-describe("a season board's host fee", () => {
-  it("is SEASON_BOARD_PRICE_CENTS ($14.99 by default) with its own App Store product, and leaves the board's alone", () => {
-    expect(getPaymentConfig(env({})).season).toEqual({ priceCents: 1499, iapProductId: "com.jaxsquares.app.seasonboard" });
-    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "1999", IAP_SEASON_PRODUCT_ID: "com.example.season" })).season).toEqual({
-      priceCents: 1999,
-      iapProductId: "com.example.season",
-    });
+describe("one board's prices", () => {
+  it("are the host fee and the Venue add-on (VENUE_PRICE_CENTS, $10 by default), each with Stripe's minimum", () => {
+    expect(boardPrices(env({}))).toEqual({ boardCents: 499, venueCents: 1000 });
+    expect(boardPrices(env({ BOARD_PRICE_CENTS: "599", VENUE_PRICE_CENTS: "1500" }))).toEqual({ boardCents: 599, venueCents: 1500 });
     // Below Stripe's minimum or not whole cents: the default.
-    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "20" })).season?.priceCents).toBe(1499);
-    expect(getPaymentConfig(env({ SEASON_BOARD_PRICE_CENTS: "14.99" })).season?.priceCents).toBe(1499);
-    expect(getPaymentConfig(env({})).priceCents).toBe(499);
+    expect(boardPrices(env({ VENUE_PRICE_CENTS: "20" })).venueCents).toBe(1000);
+    expect(boardPrices(env({ VENUE_PRICE_CENTS: "9.99" })).venueCents).toBe(1000);
+    expect(getPaymentConfig(env({ VENUE_PRICE_CENTS: "1500" })).venuePriceCents).toBe(1500);
   });
 
-  it("is what a season board's checkout charges; any other board pays the board fee", () => {
-    const e = env({ BOARD_PRICE_CENTS: "499", SEASON_BOARD_PRICE_CENTS: "1499" });
-    expect(boardFeeFor(e, { kind: "season" })).toEqual({ amountCents: 1499, iapProductId: DEFAULT_IAP_SEASON_PRODUCT_ID });
-    expect(boardFeeFor(e, { kind: "board" })).toEqual({ amountCents: 499, iapProductId: DEFAULT_IAP_PRODUCT_ID });
-    expect(boardFeeFor(e, {})).toEqual({ amountCents: 499, iapProductId: DEFAULT_IAP_PRODUCT_ID });
+  it("price a board as shared/pricing.ts says: venue boards add the add-on, a season board needs the pass", () => {
+    const prices = boardPrices(env({}));
+    expect(feeDue({ format: {} }, prices, "none").cents).toBe(499);
+    expect(feeDue({ format: { venue: true } }, prices, "none")).toEqual({ cents: 1499, boardCents: 499, venueCents: 1000, needsPass: false });
+    expect(feeDue({ format: { venue: true } }, prices, "pass")).toEqual({ cents: 1000, boardCents: 0, venueCents: 1000, needsPass: false });
+    expect(feeDue({ format: { venue: true } }, prices, "venue").cents).toBe(0);
+    expect(feeDue({ kind: "season", format: {} }, prices, "none").needsPass).toBe(true);
+    expect(feeDue({ kind: "season", format: {} }, prices, "pass")).toEqual({ cents: 0, boardCents: 0, venueCents: 0, needsPass: false });
   });
 });
 
-describe("the Host Pass offer", () => {
+describe("the Annual Pass offer", () => {
   it("sells the pass on the web in test mode, and in live mode only once the Stripe price is set", () => {
     expect(getPaymentConfig(env({})).hostPass).toEqual({ priceCents: 1999, currency: "usd", iapProductId: DEFAULT_IAP_HOST_PASS_PRODUCT_ID, web: true });
     const live = env({ ...LIVE_KEYS, PAYMENTS_MODE: "live" });

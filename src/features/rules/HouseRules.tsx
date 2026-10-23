@@ -21,15 +21,22 @@ import {
 /** Why the editor won't add a line: the API's reasons, and a squares limit (its own setting). */
 const problemOf = (text: string): string | null => houseRuleProblem(text) ?? (isSquareLimitRule(text) ? SQUARE_LIMIT_HINT : null);
 
-/** "Venue mode": a bar, restaurant or brewery's free board (setVenue in rulesModel sets it up). */
-export function VenueMode({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+/**
+ * "Venue mode": a bar, restaurant or brewery's free board (setVenue in
+ * rulesModel sets it up), with the Venue add-on at the draw. `locked`: why it
+ * can't change now (the board is paid for or drawn: rulesLock).
+ */
+export function VenueMode({ on, onChange, locked = null }: { on: boolean; onChange: (on: boolean) => void; locked?: string | null }) {
   return (
     <div className="rounded-2xl bg-surface-3 px-3.5 py-3 ring-1 ring-inset ring-line" data-testid="venue-mode-row">
       <Switch
         checked={on}
         onChange={onChange}
+        disabled={!!locked}
         label="Venue mode"
-        description="For a bar, restaurant or brewery: free to play, one square each, and winners collect their prize from staff."
+        description={
+          locked ?? "For a bar, restaurant or brewery: free to play, one square each, and winners collect their prize from staff. Adds the Venue add-on when you draw."
+        }
         data-testid="venue-mode"
       />
     </div>

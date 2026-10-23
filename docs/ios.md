@@ -196,11 +196,11 @@ Connect:
 3. Create sandbox testers (Users and Access → Sandbox). On the device, sign in
    under Settings → Developer → Sandbox Apple Account.
 4. Submit the IAP product together with the first app version.
-5. The Host Pass: a subscription group **Host Pass** with an auto-renewable
+5. The Annual Pass: a subscription group **Annual Pass** with an auto-renewable
    subscription `com.jaxsquares.app.hostpass.yearly` (1 year, $19.99; must
    match `IAP_HOST_PASS_PRODUCT_ID`), and App Store Server Notifications V2 at
    `https://jaxsquares.com/api/payments/apple/notifications`. Steps in
-   `docs/payments.md` → "Setup (Host Pass)". Sandbox subscriptions renew every
+   `docs/payments.md` → "Setup (Annual Pass)". Sandbox subscriptions renew every
    few minutes (a year lasts about an hour), which is handy for testing
    renewals and expiry.
 

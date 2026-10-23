@@ -154,7 +154,7 @@ function CombineSheet({ pending, onClose }: { pending: PendingCombine | null; on
     >
       <ul data-testid="account-combine-sheet" className="flex flex-col gap-2.5 pb-1 text-callout text-ink">
         <Line kept>Its boards, squares and host controls move into this account.</Line>
-        <Line kept>A Host Pass or Club Pass on it comes along.</Line>
+        <Line kept>An Annual Pass on it comes along, with its Venue add-on.</Line>
         <Line kept>{name} and your current sign-in both open this account, on every device.</Line>
         <Line>The other account itself. This can't be undone.</Line>
       </ul>
@@ -229,7 +229,7 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
     onClose,
   );
   const have = signInsOf(account);
-  // A Host Pass on the account: a web one stops renewing (nobody could manage it
+  // An Annual Pass on the account: a web one stops renewing (nobody could manage it
   // afterwards); an App Store one is Apple's to cancel, and Restore purchases brings it back.
   const { pass } = useHostPass(false);
   const renewing = pass?.active && pass.autoRenew ? pass.provider : null;
@@ -261,7 +261,7 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
             </Line>
             <Line>The link between your devices and your boards</Line>
             {have.includes("apple") && <Line>JaxSquares' access to your Apple ID</Line>}
-            {renewing === "stripe" && <Line>Your Host Pass renewal. It won't be charged again.</Line>}
+            {renewing === "stripe" && <Line>Your Annual Pass renewal. It won't be charged again.</Line>}
           </ul>
         </section>
         <section>
@@ -273,7 +273,7 @@ export function DeleteAccountSheet({ open, onClose, account }: { open: boolean; 
             <Line kept>Playing. This device starts fresh, and no account is needed to keep going.</Line>
             {renewing === "iap" && (
               <Line kept>
-                Your Host Pass App Store subscription. It keeps renewing until you cancel it in Settings › your name › Subscriptions. Restore purchases
+                Your Annual Pass App Store subscription. It keeps renewing until you cancel it in Settings › your name › Subscriptions. Restore purchases
                 brings it back on any device.
               </Line>
             )}

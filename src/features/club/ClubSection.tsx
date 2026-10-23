@@ -1,16 +1,20 @@
-// Profile → Club Pass (docs/payments.md "Club Pass"), under the Host Pass.
+// Profile → Venue add-on (docs/payments.md "Pricing"), under the Annual Pass:
+// the Annual Pass with the Venue add-on (plan "club" in the API).
 //
-// A holder (an active Club Pass) gets the club's settings: its name, its logo
-// (resized and re-encoded in the browser: src/lib/clubLogo.ts), the TV link
-// (Copy, and a new one that cuts off the old), its open and live boards, and
-// on the web Manage (the Stripe Customer Portal; "End test Club Pass" in test
-// mode). In the iOS app the same features work, the status reads "Club Pass ·
-// Active", and nothing offers, prices or links to buying or managing it (App
-// Store guidelines 3.1.1 / 3.1.3(b)).
+// A holder (an active pass with the Venue add-on) gets the venue's settings:
+// its name, its logo (resized and re-encoded in the browser:
+// src/lib/clubLogo.ts), the TV link (Copy, and a new one that cuts off the
+// old), its open and live boards, and on the web Manage (the Stripe Customer
+// Portal; "End test pass" in test mode). In the iOS app the same features
+// work, the status reads "Annual Pass + Venue · Active", and nothing offers,
+// prices or links to buying or managing it (App Store guidelines 3.1.1 /
+// 3.1.3(b)).
 //
-// Everyone else on the web sees one line: "Running squares for a bar, club or
-// office? Club Pass · $49/year", which opens its checkout (signing in first,
-// like the web Host Pass). Nothing at all in the iOS app.
+// Everyone else on the web sees one line: "Running squares for a bar or
+// restaurant? Annual Pass + Venue · $99.99/year", which opens its checkout
+// (signing in first, like the web Annual Pass). A holder of a web Annual Pass
+// sees "Add the Venue add-on · +$80/year" instead: it's added to their pass
+// (ClubCheckoutSheet `upgrade`). Nothing at all in the iOS app.
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { Link } from "react-router-dom";
@@ -19,7 +23,7 @@ import type { ClubSettings, HostPass, MeResponse, PaymentConfig } from "../../..
 import { ChevronRightIcon, CopyIcon, CrownIcon, ImageIcon, RefreshIcon, TrashIcon, TvIcon } from "../../components/icons";
 import { Badge, Button, ListGroup, ListRow, Skeleton, TextField, buttonStyles, useToast } from "../../components/ui";
 import { ApiError, errorMessage } from "../../lib/api";
-import { CheckoutError, clubCheckoutMethod, clubPassPrice, endTestPass, fetchAppConfig, passPortalUrl } from "../../lib/checkout";
+import { CheckoutError, clubCheckoutMethod, clubPassPrice, endTestPass, fetchAppConfig, formatPrice, passPortalUrl } from "../../lib/checkout";
 import { clubApi, knownTvLink } from "../../lib/club";
 import { prepareLogo } from "../../lib/clubLogo";
 import { setHostPassState } from "../../lib/hostPassStore";
@@ -50,19 +54,31 @@ function usePayments(): PaymentConfig | null {
 }
 
 export function ClubSection() {
-  const { club, loaded } = useHostPass();
+  const { club, pass: hostPass, loaded } = useHostPass();
   const on = platform();
   const payments = usePayments();
   if (!loaded) return null;
   if (club?.active) return <ClubHolder pass={club} ios={on === "ios"} />;
   // The iOS app never offers it, prices it or links to buying it.
   if (on === "ios" || !payments) return null;
-  return <ClubPitch payments={payments} pass={club} />;
+  return <ClubPitch payments={payments} pass={club} upgrade={upgradeable(hostPass, payments)} />;
+}
+
+/** A running web Annual Pass, live: the Venue add-on is added to it (a test pass just gets the test venue pass). */
+function upgradeable(pass: HostPass | null, payments: PaymentConfig): boolean {
+  return payments.mode === "live" && pass?.active === true && pass.provider === "stripe";
+}
+
+/** "+$80/year": what the Venue add-on adds to the Annual Pass per year. */
+function addOnPrice(payments: PaymentConfig): string | null {
+  const club = payments.clubPass?.priceCents;
+  const host = payments.hostPass?.priceCents;
+  return club && host && club > host ? `+${formatPrice(club - host, payments.currency)}/year` : null;
 }
 
 // ---- Everyone else (web): one line ----
 
-function ClubPitch({ payments, pass }: { payments: PaymentConfig; pass: HostPass | null }) {
+function ClubPitch({ payments, pass, upgrade }: { payments: PaymentConfig; pass: HostPass | null; upgrade: boolean }) {
   const toast = useToast();
   const signedIn = useAccount() !== null;
   const [buyOpen, setBuyOpen] = useState(false);
@@ -79,7 +95,7 @@ function ClubPitch({ payments, pass }: { payments: PaymentConfig; pass: HostPass
   };
   const signedInFor = (me: MeResponse) => {
     if (me.clubPass?.active) {
-      toast.success("Your Club Pass is on this account", "Your club's features are on.");
+      toast.success("Your Venue add-on is on this account", "Your venue's features are on.");
       return;
     }
     setTimeout(() => setBuyOpen(true), SHEET_EXIT_MS);
@@ -94,9 +110,9 @@ function ClubPitch({ payments, pass }: { payments: PaymentConfig; pass: HostPass
             <CrownIcon size={17} strokeWidth={2.3} />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-callout font-semibold leading-snug text-ink">Running squares for a bar, club or office?</span>
+            <span className="block text-callout font-semibold leading-snug text-ink">Running squares for a bar or restaurant?</span>
             <span className="mt-0.5 block text-subhead font-bold text-ink-brand">
-              Club Pass · {perYear(price)}
+              {upgrade ? `Add the Venue add-on · ${addOnPrice(payments) ?? "yearly"}` : `Annual Pass + Venue · ${perYear(price)}`}
             </span>
             {test && <span className="block text-footnote text-ink-subtle">Free while checkout is in test mode</span>}
             {pass && <span className="block text-footnote text-ink-subtle">{clubStatusLine(pass)}</span>}
@@ -109,10 +125,11 @@ function ClubPitch({ payments, pass }: { payments: PaymentConfig; pass: HostPass
           <ClubCheckoutSheet
             open={buyOpen}
             payments={payments}
+            upgrade={upgrade}
             onActive={(state) => {
               setBuyOpen(false);
-              if (state?.club?.active) toast.success("You've got the Club Pass", "Name your club and add its logo below.");
-              else toast.show({ tone: "neutral", title: "Payment received", description: "Your Club Pass is still confirming. It shows up here in a moment." });
+              if (state?.club?.active) toast.success("You've got the Venue add-on", "Name your venue and add its logo below.");
+              else toast.show({ tone: "neutral", title: "Payment received", description: "Your Venue add-on is still confirming. It shows up here in a moment." });
             }}
             onSignIn={() => {
               setBuyOpen(false);
@@ -123,8 +140,8 @@ function ClubPitch({ payments, pass }: { payments: PaymentConfig; pass: HostPass
           <SignInSheet
             open={signInOpen}
             onClose={() => setSignInOpen(false)}
-            title="Sign in to get the Club Pass"
-            description="Your Club Pass stays with your account, so your club works on every device you sign in on."
+            title="Sign in to get the Venue add-on"
+            description="Your pass stays with your account, so your venue works on every device you sign in on."
             onSignedIn={signedInFor}
           />
         </Suspense>
@@ -153,7 +170,7 @@ function ClubHolder({ pass, ios }: { pass: HostPass; ios: boolean }) {
     try {
       if (test) {
         setHostPassState(await endTestPass("club"));
-        toast.show({ tone: "neutral", title: "Test Club Pass ended", description: "Get it again any time. It's free in test mode." });
+        toast.show({ tone: "neutral", title: "Test venue pass ended", description: "Get it again any time. It's free in test mode." });
       } else {
         window.location.assign(await passPortalUrl());
       }
@@ -167,15 +184,15 @@ function ClubHolder({ pass, ios }: { pass: HostPass; ios: boolean }) {
   return (
     <div data-testid="club-section" className="flex flex-col gap-7">
       <ListGroup
-        title="Club Pass"
-        footer={ios ? "Your club's branding, co-hosts, players lists and TV link work here too." : "Everything in the Host Pass, plus your club on every board you host."}
+        title="Venue add-on"
+        footer={ios ? "Your venue's branding, co-hosts, players lists and TV link work here too." : "Every board you host for a year, venue boards included, with your venue on each."}
       >
         <ListRow
           data-testid="club-status"
           leading={settings ? <ClubMark club={settings.club} size={36} /> : <ClubCrown />}
           title={
             <span className="flex items-center gap-2">
-              Club Pass
+              Annual Pass + Venue
               {test && <Badge tone="outline">Test</Badge>}
             </span>
           }
@@ -185,7 +202,7 @@ function ClubHolder({ pass, ios }: { pass: HostPass; ios: boolean }) {
         {!ios && (pass.provider === "stripe" || test) && (
           <ListRow
             data-testid="club-manage"
-            title={test ? "End test Club Pass" : "Manage"}
+            title={test ? "End test venue pass" : "Manage"}
             subtitle={test ? undefined : "Update your card, see receipts or cancel"}
             chevron={!test}
             onClick={managing ? undefined : () => void manage()}
@@ -197,7 +214,7 @@ function ClubHolder({ pass, ios }: { pass: HostPass; ios: boolean }) {
       {settings ? (
         <ClubSettingsPanel settings={settings} onChange={setSettings} ios={ios} />
       ) : failed ? (
-        <ListGroup title="Your club">
+        <ListGroup title="Your venue">
           <div className="flex flex-col items-start gap-3 px-4 py-4">
             <p className="text-subhead text-ink-muted">{failed}</p>
             <Button variant="secondary" size="sm" onClick={load}>
@@ -206,7 +223,7 @@ function ClubHolder({ pass, ios }: { pass: HostPass; ios: boolean }) {
           </div>
         </ListGroup>
       ) : (
-        <ListGroup title="Your club">
+        <ListGroup title="Your venue">
           <div className="flex flex-col gap-3 px-4 py-4">
             <Skeleton className="h-13 w-full rounded-btn" />
             <Skeleton className="h-16 w-full rounded-xl" />
@@ -252,7 +269,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
     try {
       onChange(await clubApi.rename(trimmed));
       void haptic("success");
-      toast.success(trimmed ? "Club name saved" : "Club name removed", trimmed ? "It shows on every board you host." : "Your boards show no club now.");
+      toast.success(trimmed ? "Venue name saved" : "Venue name removed", trimmed ? "It shows on every board you host." : "Your boards show no venue now.");
     } catch (err) {
       if (err instanceof ApiError && err.status === 400) setNameError(err.message);
       else toast.error("Couldn't save the name", errorMessage(err));
@@ -313,11 +330,11 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
 
   return (
     <>
-      <ListGroup title="Your club" footer="Your club's name and logo show on every board you host, its TV view, its printout and its invite. Never an amount.">
+      <ListGroup title="Your venue" footer="Your venue's name and logo show on every board you host, its TV view, its printout and its invite. Never an amount.">
         <div className="flex flex-col gap-3 px-4 py-4">
           <TextField
             data-testid="club-name"
-            label="Club name"
+            label="Venue name"
             placeholder="The Rusty Anchor"
             value={name}
             maxLength={CLUB_NAME_MAX}
@@ -343,7 +360,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
           <ClubMark club={{ ...club, name: club.name || "?" }} size={56} className="ring-1 ring-line" />
           <div className="min-w-0 flex-1">
             <p className="text-callout font-bold text-ink">Logo</p>
-            <p className="text-footnote text-ink-subtle">{club.hasLogo ? "Beside your club's name" : "Square pictures work best"}</p>
+            <p className="text-footnote text-ink-subtle">{club.hasLogo ? "Beside your venue's name" : "Square pictures work best"}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <Button
@@ -375,7 +392,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
         </div>
       </ListGroup>
 
-      <ListGroup title="Club TV" footer="Opens your open and live boards on a TV, one every 20 seconds; a winner jumps to the front. Anyone with the link can watch, so share it only with your screens.">
+      <ListGroup title="Venue TV" footer="Opens your open and live boards on a TV, one every 20 seconds; a winner jumps to the front. Anyone with the link can watch, so share it only with your screens.">
         <div data-testid="club-tv" data-state={tvUrl ? "known" : settings.tvKey ? "elsewhere" : "none"} className="flex flex-col gap-3 px-4 py-4">
           <div className="flex items-start gap-3">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-surface-4 text-ink">
@@ -389,7 +406,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
                 </p>
               ) : (
                 <p className="mt-0.5 text-footnote text-ink-subtle">
-                  {settings.tvKey ? "Made on another device. Make a new one here (the old one stops working)." : "Show your club's boards on the TV at the bar or in the break room."}
+                  {settings.tvKey ? "Made on another device. Make a new one here (the old one stops working)." : "Show your venue's boards on the TV at the bar."}
                 </p>
               )}
             </div>
@@ -443,7 +460,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
         </div>
       </ListGroup>
 
-      <ListGroup title="Club boards" footer={boards.length > 0 ? "Open and live boards you host. Finished ones drop off." : undefined}>
+      <ListGroup title="Venue boards" footer={boards.length > 0 ? "Open and live boards you host. Finished ones drop off." : undefined}>
         {boards.length > 0 ? (
           boards.map((b) => (
             <ListRow
@@ -459,7 +476,7 @@ function ClubSettingsPanel({ settings, onChange, ios }: { settings: ClubSettings
         ) : (
           <div className="px-4 py-4">
             <p data-testid="club-boards-empty" className="text-subhead text-ink-muted">
-              No open boards right now. <Link to="/new" className="font-semibold text-ink-brand underline underline-offset-2">Make one</Link> and it shows here and on your club TV.
+              No open boards right now. <Link to="/new" className="font-semibold text-ink-brand underline underline-offset-2">Make one</Link> and it shows here and on your venue TV.
             </p>
           </div>
         )}

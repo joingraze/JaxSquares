@@ -67,7 +67,7 @@ export function PrintSheet({ state, url, amounts, className, style }: PrintSheet
     <article className={["jx-paper", className].filter(Boolean).join(" ")} data-orientation={sheet.orientation} data-testid="print-sheet" data-mode={mode} data-amounts={amounts} style={vars}>
       <header className="jx-paper-head">
         <div className="flex min-w-0 items-center gap-[3mm]">
-          {/* A Club Pass holder's board: the club's logo, and "Hosted by" in the subtitle (src/features/club). */}
+          {/* An Annual Pass + Venue holder's board: the club's logo, and "Hosted by" in the subtitle (src/features/club). */}
           {club && <ClubMark club={club} size="inherit" className="h-[11.5mm] w-[11.5mm] text-[16pt]" />}
           <div className="min-w-0">
             <h1 className="jx-paper-title">{game.name}</h1>

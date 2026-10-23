@@ -26,7 +26,7 @@ const screens = {
   // The board on a TV (/g/:id/tv) and on paper (/g/:id/print): full-bleed, outside the phone column.
   tv: () => import("./pages/TvView"),
   print: () => import("./pages/PrintView"),
-  // A Club Pass holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
+  // An Annual Pass + Venue holder's boards going round on a TV (/club/:clubId/tv#k=<token>).
   clubTv: () => import("./pages/ClubTvView"),
   // A smart TV pairing with a board by code (/tv).
   tvPair: () => import("./pages/TvPair"),
@@ -125,7 +125,7 @@ function LaunchHooks() {
             });
           },
           onUnused: (message) => toast.show({ title: "That purchase wasn't needed", description: message, duration: 0 }),
-          // A Host Pass purchase confirmed later, or a renewal: the pass as the server now has it.
+          // An Annual Pass purchase confirmed later, or a renewal: the pass as the server now has it.
           onPass: (state) => setHostPassState(state),
         }),
       )

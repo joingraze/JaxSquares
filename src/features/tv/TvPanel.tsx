@@ -28,7 +28,7 @@ import { latest, tvDetails, type TvDetails, type TvPlayer, type TvUpcoming, type
 type Side = "x" | "y";
 
 /**
- * The small JaxSquares mark in the panel's corner; on a Club Pass holder's
+ * The small JaxSquares mark in the panel's corner; on an Annual Pass + Venue holder's
  * board, the club's logo and name instead (src/features/club), unless the
  * club TV already shows them in its own corner (`club={null}`).
  */

@@ -1,6 +1,6 @@
 // D1 access for the purchases ledger (migrations/0003_purchases.sql, 0006) and the
-// Host Pass (0011: host_passes, stripe_customers; 0016: host_passes.plan, which
-// makes a row the Club Pass). The tables belong to the payments module, so
+// Annual Pass (0011: host_passes, stripe_customers; 0016: host_passes.plan, which
+// makes a row the Annual Pass + Venue). The tables belong to the payments module, so
 // their SQL lives here rather than in worker/db.ts.
 //
 // A board has at most one 'paid' purchase: recordPaid decides that inside one
@@ -161,14 +161,14 @@ export async function markCanceled(db: D1Database, reference: string): Promise<v
   await db.prepare(`UPDATE purchases SET status = 'canceled' WHERE reference = ? AND status = 'pending'`).bind(reference).run();
 }
 
-// ---- The Host Pass (migrations/0011_host_pass.sql): host_passes, stripe_customers ----
+// ---- The Annual Pass (migrations/0011_host_pass.sql): host_passes, stripe_customers ----
 // Keyed by the holder's canonical clientId, which never leaves the server. A
-// row's plan (migrations/0016_club.sql) says whether it's the Host Pass or the
-// Club Pass; both cover the host fee.
+// row's plan (migrations/0016_club.sql) says whether it's the Annual Pass or the
+// Annual Pass + Venue; both cover the host fee.
 
 export type PassProvider = "stripe" | "iap" | "test";
 export type PassStatus = "pending" | "active" | "past_due" | "ended" | "revoked";
-/** Which pass a row is (migrations/0016_club.sql): the Host Pass, or the Club Pass (web only). */
+/** Which pass a row is (migrations/0016_club.sql): the Annual Pass, or the Annual Pass + Venue (web only). */
 export type { PassPlan };
 
 export interface PassRow {
@@ -176,7 +176,7 @@ export interface PassRow {
   id: string;
   clientId: string;
   provider: PassProvider;
-  /** 'host' or 'club'. Both cover the host fee; a Club Pass adds the club features. */
+  /** 'host' or 'club'. Both cover the host fee; an Annual Pass + Venue adds the club features. */
   plan: PassPlan;
   /** Stripe subscription id, Apple originalTransactionId, or "test:<random>". */
   externalId: string;

@@ -22,6 +22,7 @@ import {
 } from "../shared/formats";
 import { COHOST_INVITE_TTL_MS, COHOST_PARAM, cohostLimitOf, hasCohostRoom, isCohostOf, isCohostToken, type HostRole } from "../shared/cohosts";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
+import { PASS_REQUIRED_CODE, SEASON_NEEDS_PASS, VENUE_LOCKED_ERROR, coversBoard, feeDue, type PassCover } from "../shared/pricing";
 import { SEASON_ERRORS, isSeasonBoard, isSeasonGame, seasonGameName, seasonNumbers } from "../shared/season";
 import { KICKOFF_ERRORS, kickoffProblem } from "../shared/kickoff";
 import { isClientId, isPlayerId } from "../shared/playerId";
@@ -48,14 +49,14 @@ import * as db from "./db";
 import { emailEnabled, emailRoutes } from "./email";
 import type { Env } from "./env";
 import { claimCodesFor } from "./claims";
-import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor } from "../shared/venue";
+import { CLAIM_EXPIRED_ERROR, CLAIM_GRACE_MS, claimDeadline, collectedFor, hasVenueFeatures } from "../shared/venue";
 import { cleanTvDisplay, tvDisplayError } from "../shared/tv";
 import { TV_CODE_TTL_MS, cleanTvCode, isTvBrowser } from "../shared/tvBrowser";
 import { drawTvCode, newTvToken, tvTokenHash } from "./tvPair";
 import { housekeeping, isHousekeepingTick } from "./housekeeping";
 import { makeId } from "./ids";
 import { boardPageOf, inviteMeta, withInviteMeta } from "./og";
-import { activePass, getPaymentConfig, holdersOfActivePass, paymentsRoutes } from "./payments";
+import { boardPrices, getPaymentConfig, passCover, paymentsRoutes } from "./payments";
 import { playerIdOf } from "./playerIds";
 import { pushRoutes, type NotifyEvent } from "./push";
 import { RATE_LIMITS, addressSubject, checkRate, type RateRule } from "./rateLimit";
@@ -215,7 +216,8 @@ function periodsOf(format: GameFormat): Period[] {
  * Lock rules for a host's rules edit: amounts, notes, the unit and the square
  * price change any time (even after the final, for corrections); who wins
  * when only until the first score or host pick; fresh numbers only until the
- * numbers are drawn; the board size never.
+ * numbers are drawn; venue mode only until the board is paid for (or drawn);
+ * the board size never.
  */
 function rulesEditProblem(state: GameState, next: GameFormat): string | null {
   const { game } = state;
@@ -227,6 +229,8 @@ function rulesEditProblem(state: GameState, next: GameFormat): string | null {
   if (next.freshNumbers !== game.format.freshNumbers && game.numbers) {
     return `${freshNumbersInfo(game).label} locks once the numbers are drawn. You can still change amounts and notes.`;
   }
+  // The Venue add-on was charged (or covered, or the draw was free) for the board as it was: venue mode stays as it was.
+  if (!!next.venue !== !!game.format.venue && (game.paid || game.numbers)) return VENUE_LOCKED_ERROR;
   return null;
 }
 
@@ -884,21 +888,25 @@ api.post("/games/:id/lock", requireClient, async (c) => {
     if (game.status !== "open" && game.status !== "draft") fail(409, "Numbers are already drawn");
     const now = Date.now();
     const writes: D1PreparedStatement[] = [];
-    // The host fee is due at the draw (a legacy draft hasn't paid either;
-    // paying opens it). A board held by FREE_PLAYER_LIMIT or fewer players
-    // draws for free: marked paid (provider "free") in the same batch as the
-    // draw, the holders counted again inside it. Otherwise a Host Pass may
-    // cover it: the one of whoever's drawing (this request's canonical
-    // clientId: the host's identity holding the admin token, or a co-host's)
-    // or the board's host's; then the board is marked paid through the pass
-    // in the same write as the draw. Otherwise 402.
+    // What the board costs is due at the draw (a legacy draft hasn't paid
+    // either; paying opens it). A board held by FREE_PLAYER_LIMIT or fewer
+    // players draws for free: marked paid (provider "free") in the same batch
+    // as the draw, the holders counted again inside it. Otherwise an Annual
+    // Pass may cover it (shared/pricing.ts feeDue): the one of whoever's
+    // drawing (this request's canonical clientId: the host's identity holding
+    // the admin token, or a co-host's) or the board's host's, with the Venue
+    // add-on for a venue board; then the board is marked paid through the
+    // pass in the same write as the draw. A season board without a pass asks
+    // for one (402 PASS_REQUIRED_CODE); anything else still due is a 402.
     const free = !game.paid && isFreeDraw(state);
     if (free) {
       writes.push(db.markFreeDraw(c.env.DB, id, FREE_PLAYER_LIMIT, now));
     } else if (!game.paid) {
       const host = await db.hostClientIdOf(c.env.DB, id);
-      const pass = await activePass(c.env.DB, [c.get("clientId"), host ?? ""], now);
-      if (!pass) return c.json({ error: DRAW_NEEDS_PAYMENT, code: PAYMENT_REQUIRED_CODE }, 402);
+      const { cover, pass } = await passCover(c.env.DB, [c.get("clientId"), host ?? ""], now);
+      const due = feeDue(game, boardPrices(c.env), cover);
+      if (due.needsPass) return c.json({ error: SEASON_NEEDS_PASS, code: PASS_REQUIRED_CODE }, 402);
+      if (due.cents > 0 || !pass) return c.json({ error: DRAW_NEEDS_PAYMENT, code: PAYMENT_REQUIRED_CODE }, 402);
       writes.push(db.markPaid(c.env.DB, id, { provider: "pass", reference: pass.id, amountCents: 0 }, now));
     }
     const me = c.get("playerId");
@@ -1075,7 +1083,7 @@ api.post("/games/:id/final", requireClient, async (c) => {
 });
 
 // ---- Co-hosts (shared/cohosts.ts; docs/ARCHITECTURE.md "Co-hosts") ----
-// The host invites up to MAX_COHOSTS players (CLUB_MAX_COHOSTS on a Club Pass
+// The host invites up to MAX_COHOSTS players (CLUB_MAX_COHOSTS on an Annual Pass + Venue
 // holder's board: cohostLimitOf) with single-use links; a co-host
 // runs the board with them (every route behind hostState) by their canonical
 // clientId, never the admin token. Host only: inviting co-hosts, removing one,
@@ -1184,7 +1192,7 @@ api.delete("/games/:id/cohosts/:playerId", requireClient, async (c) => {
 });
 
 /**
- * A Club Pass board's players as a CSV (worker/clubs/csv.ts), for its host
+ * A venue's board's players as a CSV (worker/clubs/csv.ts; hasVenueFeatures), for its host
  * and co-hosts: name, how many squares, which ones, their numbers once drawn,
  * when they joined. Never a payment column, an email or a clientId. `?tz=`
  * (an IANA zone) sets the joined time's zone (UTC otherwise).
@@ -1192,7 +1200,7 @@ api.delete("/games/:id/cohosts/:playerId", requireClient, async (c) => {
 api.get("/games/:id/export.csv", requireClient, async (c) => {
   const id = gameIdParam(c);
   const state = await hostState(c, id);
-  if (!state.game.club) fail(403, "Downloading the players list comes with the Club Pass.");
+  if (!hasVenueFeatures(state.game)) fail(403, "The players list comes with the Venue add-on.");
   const limited = await deviceLimited(c, RATE_LIMITS.clubExport, RATE_LIMITS.clubExportIp);
   if (limited) return limited;
   return new Response(playersCsv(state, { timeZone: c.req.query("tz") }), {
@@ -1367,14 +1375,17 @@ async function wakeLinkedGames(env: Env, now: number): Promise<void> {
  * "Kickoff soon, draw the numbers" to the host of each linked board kicking
  * off within the hour with its host fee unpaid. Once per board (claimed in
  * SQL). Neither a free board (FREE_PLAYER_LIMIT or fewer players hold
- * squares; left out in SQL) nor a host whose Host Pass covers the board is
+ * squares; left out in SQL) nor a host whose Annual Pass covers the board is
  * reminded: Jax draws those at kickoff.
  */
 async function remindUnpaidHosts(env: Env, now: number): Promise<void> {
   const due = await db.claimDrawReminders(env.DB, now, DRAW_REMINDER_LEAD_MS, DRAW_REMINDER_MIN_AGE_MS, FREE_PLAYER_LIMIT);
   if (due.length === 0) return;
-  const covered = await holdersOfActivePass(env.DB, due.map((d) => d.hostClientId), now);
-  await Promise.all(due.filter((d) => !covered.has(d.hostClientId)).map((d) => notifyAll(env, d.id, [{ kind: "draw-reminder" }])));
+  // A host whose Annual Pass covers all of the board (a venue board only with the Venue add-on) isn't reminded.
+  const covers = new Map<string, PassCover>();
+  for (const host of new Set(due.map((d) => d.hostClientId))) covers.set(host, (await passCover(env.DB, [host], now)).cover);
+  const remind = due.filter((d) => !coversBoard({ format: { venue: d.venue } }, covers.get(d.hostClientId) ?? "none"));
+  await Promise.all(remind.map((d) => notifyAll(env, d.id, [{ kind: "draw-reminder" }])));
 }
 
 /** Hourly cleanup; a leftover draft it opens gets its new state pushed like any change. */

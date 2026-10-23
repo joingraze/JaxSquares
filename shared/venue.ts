@@ -92,6 +92,15 @@ export function cleanHouseRules(input: unknown): string[] {
     .map((v) => Array.from(v).slice(0, HOUSE_RULE_MAX_LENGTH).join(""));
 }
 
+/**
+ * A board with the venue's staff features (up to 10 co-hosts, the players
+ * list): a venue board, whose Venue add-on is paid at the draw, or any board
+ * of a host whose Annual Pass has the Venue add-on (`Game.club`).
+ */
+export function hasVenueFeatures(game: { club?: unknown; format?: Pick<GameFormat, "venue"> }): boolean {
+  return !!game.club || game.format?.venue === true;
+}
+
 /** A venue board with a square price: venue boards are free to play. */
 export const VENUE_PRICE_ERROR = "A venue board is free to play: no square price.";
 
@@ -145,7 +154,7 @@ export function venueFields(f: Partial<Record<keyof GameFormat, unknown>>): Pick
 
 /**
  * What a board says about itself as a venue's: a venue board, or a club
- * board (a Club Pass holder's, with its name), with no square price is free
+ * board (an Annual Pass + Venue holder's, with its name), with no square price is free
  * to play, and a club's prizes are the club's. Nothing for other boards.
  */
 export function venueLines(game: { format: GameFormat; club?: ClubBrand | null }): string[] {

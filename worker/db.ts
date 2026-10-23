@@ -389,7 +389,7 @@ async function stateFrom(db: D1Database, results: D1Result[]): Promise<GameState
     playerIdMap([row.host_client_id, ...playerRows.map((p) => p.client_id), ...squareRows.map((s) => s.client_id), ...cohosts, ...claimRows.map((r) => r.client_id)]),
     // Only a board in a group (migration 0012) reads its siblings: one more indexed query.
     row.board_group ? siblingsOf(db, row.id, row.board_group) : null,
-    // The host's club while their Club Pass is active (worker/clubs, cached per isolate): its public branding only.
+    // The host's club while their Annual Pass + Venue is active (worker/clubs, cached per isolate): its public branding only.
     clubBrandOf(db, row.host_client_id),
     // A season's game board (migration 0017): where it sits in its season, one more round trip.
     row.season_id ? seasonPositionFor(db, row.id, row.season_id) : null,
@@ -1212,7 +1212,7 @@ const MARK_PAID = `UPDATE games SET paid_at = ?1, payment_provider = ?2, payment
 /**
  * Records the board's host fee: stamps paid_at with the purchase that paid
  * it (the ledger, worker/payments/store.ts, decides which one that is), or
- * with the Host Pass that covered it (provider "pass", reference = the pass
+ * with the Annual Pass that covered it (provider "pass", reference = the pass
  * id, amount 0). A legacy draft opens too. No-op once the board is paid.
  */
 export function markPaid(
@@ -1640,7 +1640,7 @@ export async function hostTokensFor(db: D1Database, clientId: string): Promise<R
   return Object.fromEntries(results.map((r) => [r.id, r.admin_token]));
 }
 
-// ---- The Club Pass (worker/clubs): a holder's boards ----
+// ---- The Annual Pass + Venue (worker/clubs): a holder's boards ----
 
 /** A board that hasn't moved in this long, with its kickoff past (or none), no longer goes round on the club's TV. */
 const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
@@ -1648,7 +1648,7 @@ const CLUB_BOARD_STALE_MS = 14 * 24 * 60 * 60_000;
 const CLUB_SEASON_SOON_MS = 6 * 60 * 60_000;
 
 /**
- * The open and live boards `clientId` (a Club Pass holder's canonical
+ * The open and live boards `clientId` (an Annual Pass + Venue holder's canonical
  * clientId: the caller's own, or the owner of a club whose TV link checked
  * out) hosts, as their club settings list them and their TV goes round:
  * live games first, then drawn boards, then boards being picked, each by
@@ -1734,19 +1734,20 @@ export async function claimDrawReminders(
   leadMs: number,
   minAgeMs: number,
   freeHolders: number,
-): Promise<{ id: string; hostClientId: string }[]> {
+): Promise<{ id: string; hostClientId: string; venue: boolean }[]> {
   const { results } = await db
     .prepare(
       `UPDATE games SET draw_reminder_at = ?1
        WHERE linked_event IS NOT NULL AND starts_at IS NOT NULL AND starts_at > ?1 AND starts_at <= ?2
          AND status = 'open' AND paid_at IS NULL AND draw_reminder_at IS NULL AND created_at <= ?3
          AND (SELECT COUNT(DISTINCT s.client_id) FROM squares s WHERE s.game_id = games.id) > ?4
-       RETURNING id, host_client_id`,
+       RETURNING id, host_client_id, json_extract(format, '$.venue') AS venue`,
     )
     .bind(now, now + leadMs, now - minAgeMs, freeHolders)
-    .all<{ id: string; host_client_id: string }>();
-  // Server-only: the cron skips hosts whose Host Pass covers the board (worker/payments).
-  return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id }));
+    .all<{ id: string; host_client_id: string; venue: number | null }>();
+  // Server-only: the cron skips hosts whose Annual Pass covers the board (worker/payments; a venue
+  // board only with the Venue add-on).
+  return results.map((r) => ({ id: r.id, hostClientId: r.host_client_id, venue: r.venue === 1 }));
 }
 
 // ---- Housekeeping (cron) ----

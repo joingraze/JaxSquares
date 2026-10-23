@@ -1,5 +1,5 @@
-// Clubs module: what the Club Pass turns on for its holder's club (docs/payments.md
-// "Club Pass"): the club's name and logo on the holder's boards, the club TV
+// Clubs module: what the Annual Pass + Venue turns on for its holder's club (docs/payments.md
+// "Annual Pass + Venue"): the club's name and logo on the holder's boards, the club TV
 // that rotates their open and live boards, and the players CSV. The pass itself
 // (selling it, keeping it current, what "active" means) is the payments
 // module's; this module owns the clubs table (worker/clubs/store.ts).

@@ -347,9 +347,12 @@ export function detailsSummary(maxPerPlayer: number): string {
  * app, never the web price there); null leaves the amount out. A season
  * board's one fee covers the whole season.
  */
-export function createFeeLine(price: string | null, season = false): string {
+export function createFeeLine(price: string | null, board: { season?: boolean; venue?: boolean; covered?: boolean } = {}): string {
   const free = `Free to set up and invite. Free to draw with up to ${FREE_PLAYER_LIMIT} players`;
-  if (season) return price ? `${free}, ${price} for the whole season with more.` : `${free}; bigger seasons have one host fee when you draw.`;
+  if (board.covered) return "Free to set up and invite. Your Annual Pass covers drawing the numbers.";
+  // A season board comes with the Annual Pass (shared/pricing.ts): no per-board price.
+  if (board.season) return `${free}; bigger seasons come with the Annual Pass.`;
+  if (board.venue) return price ? `${free}, ${price} with the Venue add-on for bigger boards.` : `${free}; bigger boards have a host fee and the Venue add-on when you draw.`;
   return price ? `${free}, ${price} for bigger boards.` : `${free}; bigger boards have a host fee when you draw.`;
 }
 

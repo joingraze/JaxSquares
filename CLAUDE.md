@@ -105,27 +105,38 @@ the overview and docs/ARCHITECTURE.md for the API/module contract.
   (`amountIsRest`) or `restSoFar(state)`, never from the rule. Suggested
   amounts (`suggestPrizes`) fill the create flow until the host types one.
   Read amounts through `PeriodResult` / `prizeAmount`, not `rule.square.amount`.
-- The only payment is the host fee for a board, due when the host draws the
-  numbers: creating, inviting and picking squares are free, so is drawing a
-  board 5 or fewer players hold squares on (`isFreeDraw`, `shared/hostFee.ts`;
-  marked paid `"free"` in the draw's batch), and `POST /lock` answers 402
-  (`PAYMENT_REQUIRED_CODE`) until `Game.paid`. Boards made before
-  that count as paid; a linked board draws itself at kickoff only once paid
-  (`docs/payments.md`). The yearly Host Pass covers the fee: an active pass
-  (`activePass`, keyed by the canonical clientId) marks the board paid through
-  it at the draw or at kickoff, as does the web-only Club Pass (`plan` 'club',
-  never offered or linked in the iOS app), which adds the club features. Its
-  tables join the sign-in merge, and buying it on the web needs a sign-in.
+- The only payments are the host's, for a board, due when the host draws the
+  numbers. Two products (`shared/pricing.ts` `feeDue`, docs/payments.md
+  "Pricing"): per game, the host fee (`BOARD_PRICE_CENTS`) plus the Venue
+  add-on (`VENUE_PRICE_CENTS`, web only) on a venue board; or the yearly
+  Annual Pass, which covers every board's host fee, and with the Venue add-on
+  (`plan` 'club', web only, never offered or linked in the iOS app) venue
+  boards and the venue features too. Read what a board costs through `feeDue`
+  / `coversBoard`, never from one price. Creating, inviting and picking squares
+  are free, so is drawing a board 5 or fewer players hold squares on
+  (`isFreeDraw`, `shared/hostFee.ts`; marked paid `"free"` in the draw's
+  batch), and `POST /lock` answers 402 (`PAYMENT_REQUIRED_CODE`) until
+  `Game.paid`. Boards made before that count as paid; a linked board draws
+  itself at kickoff only once paid or covered (`docs/payments.md`). An active
+  pass (`passCover`, keyed by the canonical clientId) marks the board paid
+  through it at the draw or at kickoff when it covers all of it. Its tables
+  join the sign-in merge, and buying it on the web needs a sign-in; a web
+  Annual Pass gets the Venue add-on added (`POST /payments/pass/stripe/venue`),
+  never a second subscription.
 - Venue boards (`shared/venue.ts`, docs/ARCHITECTURE.md "Venue boards"):
   venue mode (`format.venue`) is free to play, so never a square price
-  (400); house rules never ask anyone to buy anything or talk money (400);
+  (400); it adds the Venue add-on at the draw, and can't change once the
+  board is paid for or drawn (409, `VENUE_LOCKED_ERROR`); a venue board takes
+  the venue co-host limit and the players list (`hasVenueFeatures`); house
+  rules never ask anyone to buy anything or talk money (400);
   a claim code (`worker/claims.ts`) is only ever in `GET /api/games/:id/claims`
   for its winner and the host or co-hosts: never in public state, the TV, a
   push or share text. Collected prizes (`prize_claims`) join the sign-in merge.
 - Season boards (`Game.kind` "season", `shared/season.ts`, docs/ARCHITECTURE.md
-  "Season boards"): squares are picked once, on the season board, which pays
-  one fee (`SEASON_BOARD_PRICE_CENTS`) at its draw and sends one numbers-drawn
-  notice. Each game's board (`Game.seasonId`) is made at the draw or by the
+  "Season boards"): squares are picked once, on the season board, which comes
+  with the Annual Pass (no per-game fee: its draw answers 402
+  `PASS_REQUIRED_CODE` without one, unless 5 or fewer players hold squares)
+  and sends one numbers-drawn notice. Each game's board (`Game.seasonId`) is made at the draw or by the
   cron, locked and paid through the season (provider `season`), and never
   takes claims, joins or edits (409); its host and co-hosts are the season's.
 

@@ -2,7 +2,7 @@
 // Co-hosts end to end against real SQL (node:sqlite, every migration applied):
 // the single-use invite link (expiry, used once, the 3 co-host limit), what a
 // co-host can and can't do (they authorize by clientId, never the admin
-// token), removing one and stepping down, a co-host's own Host Pass covering
+// token), removing one and stepping down, a co-host's own Annual Pass covering
 // the draw, the payment routes, and that no clientId or token leaks.
 // The sign-in merge keeping co-host rights is in worker/auth/routes.test.ts.
 // Only the GameRoom (sockets) and push delivery are faked.
@@ -428,7 +428,7 @@ describe("removing a co-host and stepping down", () => {
   });
 });
 
-/** Six friends join and pick a square each: past the free tier, so the draw needs the fee or a Host Pass. */
+/** Six friends join and pick a square each: past the free tier, so the draw needs the fee or an Annual Pass. */
 async function crowd(id: string): Promise<void> {
   for (let i = 0; i <= FREE_PLAYER_LIMIT; i++) {
     const client = `crowd-player-${i}-of-${id}`;
@@ -476,7 +476,7 @@ describe("the host fee when a co-host draws", () => {
     expectNoSecrets(admin);
   });
 
-  it("is covered by the co-host's own Host Pass (the caller's canonical clientId)", async () => {
+  it("is covered by the co-host's own Annual Pass (the caller's canonical clientId)", async () => {
     const { id } = await withCohost();
     await crowd(id);
     const pass = insertPass(ANA);
@@ -486,7 +486,7 @@ describe("the host fee when a co-host draws", () => {
     expect(paidVia(id)).toEqual({ payment_provider: "pass", payment_reference: pass });
   });
 
-  it("is covered by the host's Host Pass too, and never by a player's", async () => {
+  it("is covered by the host's Annual Pass too, and never by a player's", async () => {
     const { id } = await withCohost([
       [ANA, "Ana"],
       [BEN, "Ben"],

@@ -579,7 +579,7 @@ describe("HostControls", () => {
       });
     });
 
-    describe("with the Host Pass", () => {
+    describe("with the Annual Pass", () => {
       const OFFER = { priceCents: 1999, currency: "usd", iapProductId: "com.jaxsquares.app.hostpass.yearly", web: true };
       const ACTIVE = { active: true, status: "active" as const, provider: "test" as const, renewsAt: null, endsAt: Date.now() + 300 * 86_400_000, autoRenew: false };
       const passServer = (pass: typeof ACTIVE | null) =>
@@ -598,12 +598,12 @@ describe("HostControls", () => {
         const { apply } = renderHost(unpaidFull());
         const action = screen.getByTestId("host-bar-action");
         await waitFor(() => expect(action).toHaveTextContent(/^Draw the numbers$/));
-        expect(screen.getByTestId("host-pass-note")).toHaveTextContent("Included with your Host Pass");
+        expect(screen.getByTestId("host-pass-note")).toHaveTextContent("Included with your Annual Pass");
         expect(screen.queryByText(/\$4\.99/)).toBeNull();
         fireEvent.click(action);
         const confirm = await screen.findByTestId("host-lock-confirm");
         expect(confirm).toHaveTextContent(/^Draw the numbers$/);
-        expect(screen.getByText("Included with your Host Pass.")).toBeInTheDocument();
+        expect(screen.getByText("Included with your Annual Pass.")).toBeInTheDocument();
         expect(screen.queryByText(/host fee, once for this board/)).toBeNull();
         fireEvent.click(confirm);
         await waitFor(() => expect(lock).toHaveBeenCalledWith("hst123"));
@@ -620,7 +620,7 @@ describe("HostControls", () => {
         fireEvent.click(screen.getByTestId("host-open"));
         await waitFor(() => expect(screen.getByTestId("host-lock")).toHaveTextContent(/^Draw the numbers$/));
         expect(screen.getByTestId("host-pass-note")).toBeInTheDocument();
-        expect(screen.queryByTestId("host-pass-note")).toHaveTextContent("Included with your Host Pass");
+        expect(screen.queryByTestId("host-pass-note")).toHaveTextContent("Included with your Annual Pass");
         expect(screen.queryByTestId("host-pay-ahead")).toBeNull();
         expect(screen.getByText(/Jax draws the numbers at kickoff/)).toBeInTheDocument();
       });

@@ -24,8 +24,9 @@
 // board" to "You're live!" with confetti, then /g/<id>?invite=1 with its
 // invite sheet up). Setting up, inviting and picking squares cost nothing;
 // drawing is free with up to 5 players, and bigger boards pay the host fee
-// when the host draws the numbers (Review says so, createFeeLine, with the
-// price this device shows: the App Store's in the iOS app). Opening the board
+// (plus the Venue add-on on a venue board; a season comes with the Annual
+// Pass) when the host draws the numbers (Review says so, createFeeLine, with
+// the price this device shows: the App Store's in the iOS app). Opening the board
 // first rewinds the flow's steps, so Back from the board goes where the host
 // started, not into a finished flow.
 //
@@ -46,6 +47,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { defaultFormat, isPrizeNoteError, rulesOf, withRules } from "../../shared/formats";
+import { coversBoard } from "../../shared/pricing";
 import { MAX_SEASON_GAMES, seasonReviewLine } from "../../shared/season";
 import { fitRules, SPORT_LEAGUES, type BoardSport } from "../../shared/sports";
 import { ACCOUNT_REQUIRED_CODE, type Game, type GameFormat, type GameState, type ScheduleEvent, type SeasonNumbers, type SeasonScope, type SeasonTeam } from "../../shared/types";
@@ -76,6 +78,7 @@ import { NAME_MAX_LENGTH, setProfile, useAccount, useProfile } from "../lib/iden
 import { peekGame, primeGame } from "../lib/live";
 import { haptic } from "../lib/native";
 import { useHostFee } from "../lib/useHostFee";
+import { useHostPass } from "../lib/useHostPass";
 import { useNow } from "../features/board/useNow";
 import { CUSTOM_X_COLOR, CUSTOM_Y_COLOR, TEAM_INPUT_ID } from "../features/create/CustomMatchup";
 import { AudiencePicker } from "../features/create/AudiencePicker";
@@ -294,8 +297,11 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
   const teamSeason = useTeamSeason(teamScope, seasonTeam?.id ?? null, seasonAttempt);
 
   // ---- create ----
-  // The host fee, for Review's line (due at the draw of a board of 6 or more, not now; a season's once for the season).
-  const { price } = useHostFee(true, seasonMode ? "season" : "board");
+  // What drawing costs, for Review's line (due at the draw of a board of 6 or more, not now): the host fee,
+  // plus the Venue add-on on a venue board, less what the host's Annual Pass covers; a season comes with the pass.
+  const hostPass = useHostPass();
+  const pricedBoard = { kind: seasonMode ? ("season" as const) : ("board" as const), format: { venue: format.venue === true } };
+  const { price } = useHostFee(true, pricedBoard, hostPass.cover);
   const [phase, setPhase] = useState<Phase>("idle");
   // Hosts sign in to make a board, at Create (so they've seen what they're making first). Players never do.
   const account = useAccount();
@@ -1010,7 +1016,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
         )}
         {step === "review" && (
           <p data-testid="create-fee" className={cx("text-center text-caption text-ink-subtle", mustSignIn ? "mt-0.5" : "mt-2")}>
-            {createFeeLine(price, seasonMode)}
+            {createFeeLine(price, { season: seasonMode, venue: format.venue === true, covered: coversBoard(pricedBoard, hostPass.cover) })}
           </p>
         )}
       </ActionBar>
@@ -1020,7 +1026,7 @@ function CreateFlow({ sibling }: { sibling: SiblingSeed | null }) {
             open
             onClose={() => setSigningIn(false)}
             title={seasonMode ? "Sign in to create your season board" : "Sign in to create your board"}
-            description="Hosts sign in so the board, its host controls and any Host Pass stay with you on every device. Players never need an account."
+            description="Hosts sign in so the board, its host controls and any Annual Pass stay with you on every device. Players never need an account."
             onSignedIn={() => void submit(true)}
           />
         </Suspense>

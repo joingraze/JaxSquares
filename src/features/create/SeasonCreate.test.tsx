@@ -27,7 +27,6 @@ const CONFIG: PaymentConfig = {
   currency: "usd",
   stripePublishableKey: null,
   iapProductId: "com.jaxsquares.app.board",
-  season: { priceCents: 1499, iapProductId: "com.jaxsquares.app.seasonboard" },
 };
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -131,7 +130,7 @@ async function wholeSeason() {
 }
 
 describe("making a season board", () => {
-  it("follows a team's season: the team grid, its games left, new numbers each game, Review's line and the season's fee", async () => {
+  it("follows a team's season: the team grid, its games left, new numbers each game, Review's line and that it comes with the Annual Pass", async () => {
     const router = renderFlow();
     await wholeSeason();
     expect(screen.getByRole("heading", { name: "Pick the season" })).toBeInTheDocument();
@@ -168,7 +167,7 @@ describe("making a season board", () => {
     expect(screen.getByTestId("review-season-line")).toHaveTextContent("Jaguars 2026 season · 3 games so far");
     expect(screen.getByTestId("review-season")).toHaveTextContent("New numbers every game");
     expect(screen.getByTestId("review-season")).toHaveTextContent("Next vs MIA");
-    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("$14.99 for the whole season"));
+    await waitFor(() => expect(screen.getByTestId("create-fee")).toHaveTextContent("bigger seasons come with the Annual Pass"));
     expect(screen.getByTestId("create-submit")).toHaveTextContent("Create season board");
 
     fireEvent.click(screen.getByTestId("create-submit"));

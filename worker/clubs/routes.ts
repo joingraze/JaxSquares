@@ -1,8 +1,8 @@
-// The Club Pass's club routes (mounted under /api by worker/index.ts, which
-// also applies CORS). See docs/payments.md "Club Pass" and
-// docs/ARCHITECTURE.md "The Club Pass".
+// The Annual Pass + Venue's club routes (mounted under /api by worker/index.ts, which
+// also applies CORS). See docs/payments.md "Annual Pass + Venue" and
+// docs/ARCHITECTURE.md "The Annual Pass + Venue".
 //
-//   GET    /clubs/mine         ClubSettings (the holder's club; 404 without an active Club Pass)
+//   GET    /clubs/mine         ClubSettings (the holder's club; 404 without an active Annual Pass + Venue)
 //   PATCH  /clubs/mine         { name } -> ClubSettings
 //   PUT    /clubs/mine/logo    the logo's bytes (image/webp or image/png) -> ClubSettings
 //   DELETE /clubs/mine/logo    ClubSettings
@@ -11,7 +11,7 @@
 //   GET    /clubs/:id/tv       ClubTvState with the link's token in x-club-tv-token; 404 for a wrong one
 //
 // The "mine" routes act as the request's canonical clientId (the account's
-// when signed in), like every other route, and need that identity's Club Pass
+// when signed in), like every other route, and need that identity's Annual Pass + Venue
 // to be active. Nothing here answers with a clientId: a club is named by its
 // own random id, and its TV shows only the boards' public states. The players
 // CSV is a board route (GET /api/games/:id/export.csv in worker/index.ts).
@@ -36,7 +36,7 @@ type Ctx = Context<{ Bindings: Env }>;
 export const clubRoutes = new Hono<{ Bindings: Env }>();
 
 const NO_STORE = { "cache-control": "no-store" };
-const NO_CLUB = "There's no Club Pass on this account.";
+const NO_CLUB = "There's no Annual Pass with the Venue add-on on this account.";
 const NOT_FOUND = "This TV link doesn't work anymore. Ask the club for its new link.";
 /** The logo's request body, at most: the logo's limit plus room for nothing else. */
 const MAX_LOGO_BODY = 64 * 1024;
@@ -76,7 +76,7 @@ interface Holder {
 }
 
 /**
- * Runs a "mine" route as the request's identity, once its Club Pass is active
+ * Runs a "mine" route as the request's identity, once its Annual Pass + Venue is active
  * (404 otherwise): its club is made on first need.
  */
 async function asHolder(c: Ctx, run: (h: Holder) => Promise<Response>): Promise<Response> {

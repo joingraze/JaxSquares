@@ -1,7 +1,7 @@
 // The host fee's free tier, shared so the Worker and the app agree on it.
 // Pure: no IO. A board whose squares are held by FREE_PLAYER_LIMIT or fewer
 // distinct players when the numbers are drawn costs nothing to draw; bigger
-// boards pay the host fee (or a Host Pass covers it). Only players holding at
+// boards pay the host fee (or an Annual Pass covers it). Only players holding at
 // least one square count: someone who joined but picked nothing doesn't, and
 // the host counts like anyone else once they hold a square.
 //

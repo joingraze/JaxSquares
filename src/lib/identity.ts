@@ -42,7 +42,7 @@ export const STORAGE_KEYS = {
   account: "jaxsquares.account",
   /** Ids of the boards this identity co-hosts (a hint for loading host tools; no token). */
   cohosts: "jaxsquares.cohosts",
-  /** The Club Pass holder's club TV link, as made on this device (src/lib/club.ts): only its token's hash is on the server. */
+  /** The Annual Pass + Venue holder's club TV link, as made on this device (src/lib/club.ts): only its token's hash is on the server. */
   clubTv: "jaxsquares.clubTv",
 } as const;
 

@@ -11,12 +11,12 @@
 //
 // The host fee is due when the numbers are drawn: on a board whose fee isn't
 // paid the draw reads "Draw the numbers · $4.99" and opens the checkout sheet
-// first (this board, or the yearly Host Pass), then draws. A linked board can
+// first (this board, or the yearly Annual Pass), then draws. A linked board can
 // be paid ahead ("Pay now and Jax draws the numbers at kickoff"). A board with
 // 5 or fewer players holding squares is free: "Draw the numbers · Free", "Free
 // for up to 5 players", and it just draws (no pay-ahead: Jax draws a free
-// linked board at kickoff anyway). With an active Host Pass a bigger board's
-// draw reads "Draw the numbers", "Included with your Host Pass", and just
+// linked board at kickoff anyway). With an active Annual Pass a bigger board's
+// draw reads "Draw the numbers", "Included with your Annual Pass", and just
 // draws. Setting up, inviting and picking squares are free. A co-host's draw
 // is covered by their own pass or the host's: this device only knows its own,
 // so a co-host whose fee looks due tries the draw first and pays on the 402.
@@ -32,6 +32,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { periodPhrase } from "../../../shared/formats";
+import { coverOf, coversBoard } from "../../../shared/pricing";
 import { freshNumbersInfo, wordsFor } from "../../../shared/sports";
 import type { GameState, HostPassState, MeResponse, NumberDraw } from "../../../shared/types";
 import { ChevronRightIcon, CrownIcon, LockIcon, PencilIcon, ShuffleIcon, TrophyIcon, UsersIcon } from "../../components/icons";
@@ -80,7 +81,7 @@ export function HostControls(props: HostControlsProps) {
 const SHEET_EXIT_MS = 320;
 
 // The checkout sheet only matters while a board's host fee is due, so it loads on demand;
-// so does the sign-in sheet the Host Pass needs first on the web.
+// so does the sign-in sheet the Annual Pass needs first on the web.
 const CheckoutSheet = lazy(() => import("../create/CheckoutSheet").then((m) => ({ default: m.CheckoutSheet })));
 const SignInSheet = lazy(() => import("../account/SignInSheet").then((m) => ({ default: m.SignInSheet })));
 
@@ -115,10 +116,10 @@ function HostPanel({
   const [payOpen, setPayOpen] = useState(false);
   // Kept after the sheet closes so its copy doesn't flip while it slides away.
   const [purpose, setPurpose] = useState<CheckoutPurpose>("draw");
-  /** The checkout's starting choice: this board, or the Host Pass after signing in for it. */
+  /** The checkout's starting choice: this board, or the Annual Pass after signing in for it. */
   const [plan, setPlan] = useState<CheckoutPlan>("board");
   const [signInOpen, setSignInOpen] = useState(false);
-  /** What the sign-in is for: buying the Host Pass, or running this board from any device. */
+  /** What the sign-in is for: buying the Annual Pass, or running this board from any device. */
   const [signInFor, setSignInFor] = useState<"pass" | "host">("pass");
   /** The sign-in sheet loads only once it's needed (it reads the sign-in setup). */
   const [signInUsed, setSignInUsed] = useState(false);
@@ -130,19 +131,21 @@ function HostPanel({
 
   // The host's key; a co-host has none (their checkout and calls go by clientId).
   const adminToken = getAdminToken(game.id);
-  // The host fee is due at the draw, unless 5 or fewer players hold squares
-  // (free: the server marks the board paid "free" as it draws) or the host's
-  // Host Pass covers it (the server marks it paid through the pass). Either
-  // way drawing just draws; a 402 meanwhile (a 6th player got in, the pass
-  // ended) opens the checkout.
+  // What the board costs is due at the draw (shared/pricing.ts: its host fee,
+  // plus the Venue add-on on a venue board), unless 5 or fewer players hold
+  // squares (free: the server marks the board paid "free" as it draws) or the
+  // host's Annual Pass covers all of it (the server marks it paid through the
+  // pass). Either way drawing just draws; a 402 meanwhile (a 6th player got
+  // in, the pass ended) opens the checkout. A season board without the pass
+  // opens the checkout on the pass.
   const unpaid = needsHostFee(game);
   const free = drawIsFree(state);
   const hostPass = useHostPass(unpaid);
-  const covered = unpaid && !free && hostPass.active;
+  const covered = unpaid && !free && coversBoard(game, hostPass.cover);
   const fee = unpaid && !free && !covered;
-  // Have the price (and the checkout config) ready while the fee is due: a season board's one fee is its own.
-  const { price, payments } = useHostFee(fee, game.kind ?? "board");
-  const summary = hostSummary(state, price, Date.now(), hostPass.active);
+  // Have the price (and the checkout config) ready while something is due.
+  const { price, payments } = useHostFee(fee, game, hostPass.cover);
+  const summary = hostSummary(state, price, Date.now(), covered);
 
   // No confetti over the host's own controls: bursts (a win on the board, a
   // claim) are hidden while the host sheet is up.
@@ -220,18 +223,24 @@ function HostPanel({
     setPayOpen(true);
   }, []);
 
-  /** The Host Pass is bought (or turned out to be on the account): this board needs no fee now. */
+  /** The Annual Pass is bought (or turned out to be on the account): this board needs nothing more, unless its Venue add-on is still due. */
   const passBought = (next: HostPassState | null) => {
     setPayOpen(false);
-    if (!next?.pass?.active) {
-      toast.show({ id: "host-saved", tone: "neutral", title: "Payment received", description: "Your Host Pass is still confirming. Draw the numbers again in a moment." });
+    const cover = coverOf(next?.pass, next?.club);
+    if (cover === "none") {
+      toast.show({ id: "host-saved", tone: "neutral", title: "Payment received", description: "Your Annual Pass is still confirming. Draw the numbers again in a moment." });
+      return;
+    }
+    if (!coversBoard(game, cover)) {
+      // The pass without the Venue add-on, on a venue board: the add-on for this board is next.
+      later(() => openCheckout(purpose === "ahead" ? "ahead" : "draw"), SHEET_EXIT_MS);
       return;
     }
     if (purpose === "ahead") {
-      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: `Your Host Pass covers this board. Jax draws the numbers at ${wordsFor(state.game).startLower}.` });
+      toast.show({ id: "host-saved", tone: "success", title: "You're all set", description: `Your Annual Pass covers this board. Jax draws the numbers at ${wordsFor(state.game).startLower}.` });
       return;
     }
-    // The host tapped "Draw the numbers": draw right away; the pass covers the fee.
+    // The host tapped "Draw the numbers": draw right away; the pass covers it.
     later(() => void draw(state), SHEET_EXIT_MS);
   };
 
@@ -256,13 +265,14 @@ function HostPanel({
   };
 
   const signedInForPass = (me: MeResponse) => {
-    // The account already had a pass: nothing to buy.
-    if (me.hostPass?.active) {
-      toast.show({ id: "host-saved", tone: "success", title: "Your Host Pass is on this account", description: "Drawing the numbers is included." });
+    // The account already had a pass that covers this board: nothing to buy.
+    const cover = coverOf(me.hostPass, me.clubPass);
+    if (coversBoard(game, cover)) {
+      toast.show({ id: "host-saved", tone: "success", title: "Your Annual Pass is on this account", description: "Drawing the numbers is included." });
       if (purpose === "draw") later(() => void draw(state), SHEET_EXIT_MS);
       return;
     }
-    later(() => openCheckout(purpose, "pass"), SHEET_EXIT_MS);
+    later(() => openCheckout(purpose, cover === "none" ? "pass" : "board"), SHEET_EXIT_MS);
   };
 
   const paid = async (_gameId: string, next: GameState | null) => {
@@ -302,9 +312,9 @@ function HostPanel({
 
   // ---- lock + reveal ----
   /**
-   * The confirm's "Draw the numbers": pay the host fee first when it's due. A
-   * co-host asks the server first (the host's Host Pass may cover it; a 402
-   * opens the checkout), with the reveal waiting for its answer.
+   * The confirm's "Draw the numbers": pay what's due first. A co-host asks the
+   * server first (the host's Annual Pass may cover it; a 402 opens the
+   * checkout), with the reveal waiting for its answer.
    */
   const lock = () => {
     if (fee && role === "host") openCheckout("draw");
@@ -320,7 +330,7 @@ function HostPanel({
     const next = await actions.lock();
     if (next === PAY_FIRST) {
       // The fee turned out to be due (an older copy of the board said paid, or
-      // the Host Pass ended meanwhile): pay, then draw.
+      // the Annual Pass ended meanwhile): pay, then draw.
       setReveal(null);
       void hostPass.refresh();
       openCheckout("draw");
@@ -471,8 +481,8 @@ function HostPanel({
             onClose={() => setSignInOpen(false)}
             {...(signInFor === "pass"
               ? {
-                  title: "Sign in to get the Host Pass",
-                  description: "Your Host Pass stays with your account, so every board you host on any device is covered.",
+                  title: "Sign in to get the Annual Pass",
+                  description: "Your Annual Pass stays with your account, so every board you host on any device is covered.",
                   onSignedIn: signedInForPass,
                 }
               : {
@@ -530,7 +540,7 @@ function HostBar({ summary, onOpen, onAction }: { summary: HostSummary; onOpen: 
 
   // Time to draw and the host fee is due (or the board is free, or the Host
   // Pass covers it): the draw, with its price, "Free for up to 5 players" or
-  // "Included with your Host Pass", gets the full width.
+  // "Included with your Annual Pass", gets the full width.
   if (kind === "lock" && (summary.fee || summary.free || summary.covered)) {
     return (
       <div className="hx-bar hx-bar-fee flex flex-col gap-2.5 rounded-card p-3">

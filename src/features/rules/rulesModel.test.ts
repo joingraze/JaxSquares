@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultFormat, ruleFor, rulesForPreset, suggestPrizes, withRules } from "../../../shared/formats";
+import { VENUE_LOCKED_ERROR } from "../../../shared/pricing";
 import type { Game, GameFormat, MomentRule } from "../../../shared/types";
 import {
   PRICE_CHIPS,
@@ -202,15 +203,19 @@ describe("the host's rules edit", () => {
     expect(formatOf(game().format, { ...d, choice: "pts" }).unit).toBe("pts");
   });
 
-  it("locks who wins once a score or pick is in, and fresh numbers once drawn", () => {
+  it("locks who wins once a score or pick is in, fresh numbers once drawn, and venue mode once paid for", () => {
     const g = game();
-    expect(rulesLock({ game: g as unknown as Game, scores: [], manualWinners: [] })).toEqual({ scoring: null, fresh: null });
+    expect(rulesLock({ game: g as unknown as Game, scores: [], manualWinners: [] })).toEqual({ scoring: null, fresh: null, venue: null });
     const lock = rulesLock({ game: { ...g, numbers: { "*": { x: [], y: [] } } } as unknown as Game, scores: [{ periodKey: "s1", scoreX: 7, scoreY: 0, source: "host", updatedAt: 0 }], manualWinners: [] });
-    expect(lock).toEqual({ scoring: SCORING_LOCKED, fresh: FRESH_LOCKED });
+    expect(lock).toEqual({ scoring: SCORING_LOCKED, fresh: FRESH_LOCKED, venue: VENUE_LOCKED_ERROR });
     const d = draftOf(g.format);
     expect(lockViolation(g, { ...d, rules: setPrize(d.rules, "q1", "reverse", { amount: 1 }) }, lock)).toBeNull();
     expect(lockViolation(g, { ...d, rules: setSides(d.rules, "q1", "both") }, lock)).toBe(SCORING_LOCKED);
     expect(lockViolation(g, { ...d, freshNumbers: true }, lock)).toBe(FRESH_LOCKED);
+    // Paid for (its Venue add-on charged or not) before the draw: venue mode stays as it was.
+    const paid = rulesLock({ game: { ...g, paid: true } as unknown as Game, scores: [], manualWinners: [] });
+    expect(paid).toEqual({ scoring: null, fresh: null, venue: VENUE_LOCKED_ERROR });
+    expect(lockViolation(g, { ...d, venue: true }, paid)).toBe(VENUE_LOCKED_ERROR);
   });
 });
 

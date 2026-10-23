@@ -390,7 +390,7 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
-  it("merges its Host Pass rows into the account, keeping the account's too, so either device is covered", async () => {
+  it("merges its Annual Pass rows into the account, keeping the account's too, so either device is covered", async () => {
     // The phone (the account) has an ended pass, the laptop a test pass bought before signing in.
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const now = Date.now();
@@ -421,10 +421,10 @@ describe("a second device", () => {
     expectNoSecrets();
   });
 
-  it("moves its Club Pass and its club into the account, so the account's boards carry the club", async () => {
+  it("moves its Annual Pass + Venue and its club into the account, so the account's boards carry the club", async () => {
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const a = await boardBy(PHONE, "Board A");
-    // The laptop, before signing in: a Club Pass, a named club and a TV link.
+    // The laptop, before signing in: an Annual Pass + Venue, a named club and a TV link.
     expect((await call<HostPassState>("POST", "/payments/pass/test", { client: LAPTOP, body: { plan: "club" } })).body.club?.active).toBe(true);
     const named = await call<ClubSettings>("PATCH", "/clubs/mine", { client: LAPTOP, body: { name: "Laptop Lounge" } });
     expect(named.status).toBe(200);
@@ -752,7 +752,7 @@ describe("DELETE /api/account", () => {
     expectNoSecrets();
   });
 
-  it("stops a web Host Pass from renewing first, and deletes nothing if Stripe can't be reached", async () => {
+  it("stops a web Annual Pass from renewing first, and deletes nothing if Stripe can't be reached", async () => {
     env = { ...env, STRIPE_SECRET_KEY: "sk_test_1" };
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     const now = Date.now();
@@ -787,7 +787,7 @@ describe("DELETE /api/account", () => {
     expect(rows("SELECT * FROM accounts")).toEqual([]);
   });
 
-  it("deletes a Club Pass holder's club (its name, logo and TV link) with the account", async () => {
+  it("deletes an Annual Pass + Venue holder's club (its name, logo and TV link) with the account", async () => {
     expect((await signIn("google", PHONE, "g-1")).status).toBe(200);
     await call("POST", "/payments/pass/test", { client: PHONE, body: { plan: "club" } });
     await call("PATCH", "/clubs/mine", { client: PHONE, body: { name: "The Rusty Anchor" } });

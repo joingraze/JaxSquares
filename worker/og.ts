@@ -12,7 +12,7 @@
 // Never an amount: the status line is squares left, numbers drawn or the
 // final score. A finished board's preview is its recap: "See who won <board>"
 // with "Final: Chiefs 27, Bills 24 · 4 winners" (how many players won). A
-// Club Pass holder's board leads with "Hosted by <club>" (the name only; the
+// Annual Pass + Venue holder's board leads with "Hosted by <club>" (the name only; the
 // image stays the app's).
 
 import { hostedByLine, shownClub } from "../shared/clubs";

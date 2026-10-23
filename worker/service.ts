@@ -3,6 +3,7 @@
 
 import { everyScoreIndex, hasScoreMoment, rulesOf } from "../shared/formats";
 import { FREE_PLAYER_LIMIT, isFreeDraw } from "../shared/hostFee";
+import { feeDue } from "../shared/pricing";
 import {
   drawNumbers,
   liveChanged,
@@ -21,7 +22,8 @@ import { canonicalClientId } from "./auth/canonical";
 import * as db from "./db";
 import { emailNotices } from "./email/notices";
 import type { Env } from "./env";
-import { activePass } from "./payments/pass";
+import { boardPrices } from "./payments/config";
+import { passCover } from "./payments/pass";
 import { notify, type NotifyEvent } from "./push";
 
 export type Deliver = (state: GameState, activities: Activity[]) => Promise<void>;
@@ -215,7 +217,7 @@ function upsertScores(scores: Score[], changed: PeriodScore[], now: number): Sco
  * poll as two entries, see nextEveryScoreEntries) and drop the feed's entries
  * when it's corrected down, lock at kickoff if the host hasn't (only once the
  * host fee is paid, the board is free (5 or fewer players hold squares), or
- * the host's Host Pass covers it: an unpaid board stays open, still taking the
+ * the host's Annual Pass covers it: an unpaid board stays open, still taking the
  * feed's scores, until its host pays and draws), and mark the board final
  * when the game ends. Pushes the new state and sends pushes.
  *
@@ -278,8 +280,9 @@ export async function applyLiveUpdate(
   }
 
   // Boards linked to a real game lock at kickoff so every period can be decided,
-  // once their host fee is paid, or the host's Host Pass covers it (the board
-  // is marked paid through the pass in the same write); until then the host
+  // once what they cost is paid, or the host's Annual Pass covers all of it
+  // (with the Venue add-on on a venue board: shared/pricing.ts; the board is
+  // marked paid through the pass in the same write); until then the host
   // draws when they pay. (Not on a "post" that isn't final: that's a
   // postponed/canceled game.)
   let numbers = game.numbers;
@@ -287,7 +290,9 @@ export async function applyLiveUpdate(
   let pass: { id: string } | null = null;
   if (status === "open" && !game.paid && kickoff) {
     const host = await db.hostClientIdOf(env.DB, gameId);
-    pass = host ? await activePass(env.DB, [host], now) : null;
+    const held = host ? await passCover(env.DB, [host], now) : null;
+    const due = held ? feeDue(game, boardPrices(env), held.cover) : null;
+    if (held?.pass && due && due.cents === 0 && !due.needsPass) pass = held.pass;
   }
   if (status === "open" && (game.paid || pass) && kickoff) {
     numbers = drawNumbers(game.format);

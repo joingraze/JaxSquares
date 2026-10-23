@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The Host Pass routes end to end (the real Worker, real SQL with every
+// The Annual Pass routes end to end (the real Worker, real SQL with every
 // migration): the web subscription (Stripe Billing, behind a mocked fetch) with
 // its account gate, confirm, webhooks and Manage; the App Store subscription
 // (the App Store Server API behind a mocked fetch) with purchase, restore and
@@ -360,7 +360,7 @@ describe("the Stripe webhook keeps a web pass current", () => {
     expect((await call<HostPassState>("GET", "/payments/pass")).body.pass).toMatchObject({ active: false, status: "past_due" });
   });
 
-  it("ignores subscriptions that aren't the Host Pass, and refuses a bad signature", async () => {
+  it("ignores subscriptions that aren't the Annual Pass, and refuses a bad signature", async () => {
     const state = await activePass();
     fetchMock.mockClear();
     const sub = changeTo(state, { status: "canceled", metadata: {} });

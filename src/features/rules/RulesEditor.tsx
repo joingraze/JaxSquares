@@ -75,6 +75,8 @@ export interface RulesEditorProps {
   kind?: GameKind;
   /** The "Venue mode" switch at the top (the create flow asks who's playing on its first step instead). */
   venueSwitch?: boolean;
+  /** Why venue mode can't change any more (the board is paid for or drawn): the switch is shown off-limits. */
+  venueLocked?: string | null;
 }
 
 /** Fun ideas for notes, one per moment; none of them are money. */
@@ -106,7 +108,7 @@ const WHEN: Record<Moment, string> = {
 
 const SIDE_LABEL: Record<Side, string> = { square: "Square", reverse: "Reverse" };
 
-export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind, venueSwitch = true }: RulesEditorProps) {
+export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares(boardSize), locked = null, kind, venueSwitch = true, venueLocked = null }: RulesEditorProps) {
   const set = (patch: Partial<RulesDraft>) => onChange({ ...draft, ...patch });
   const setRules = (rules: MomentRule[]) => set({ rules });
   const amounts = draft.choice === "$" || draft.choice === "pts";
@@ -118,7 +120,7 @@ export function RulesEditor({ draft, onChange, boardSize, squares = totalSquares
 
   return (
     <div data-testid="rules-editor" data-venue={draft.venue ? "true" : undefined} className="flex flex-col gap-5">
-      {venueSwitch && <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} />}
+      {venueSwitch && <VenueMode on={!!draft.venue} onChange={(on) => onChange(setVenue(draft, on))} locked={venueLocked} />}
 
       {draft.venue ? (
         // A venue leads with its prizes; what each is worth is optional, in dollars.

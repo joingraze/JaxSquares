@@ -1,4 +1,4 @@
-// A club's branding as the app shows it (docs/payments.md "Club Pass"): its
+// A club's branding as the app shows it (docs/payments.md "Annual Pass + Venue"): its
 // logo (or its initial on gold when it has none) and "Hosted by <club>". Only
 // for a named club (shownClub): a holder who hasn't named theirs shows nothing.
 
@@ -38,7 +38,7 @@ export function ClubMark({ club, size = 32, className }: { club: ClubBrand; size
   );
 }
 
-/** "Hosted by <club>" with its logo, at the top of a Club Pass holder's board (and its invite view). */
+/** "Hosted by <club>" with its logo, at the top of an Annual Pass + Venue holder's board (and its invite view). */
 export function ClubBanner({ game, className }: { game: Pick<Game, "club">; className?: string }) {
   const club = shownClub(game.club);
   if (!club) return null;

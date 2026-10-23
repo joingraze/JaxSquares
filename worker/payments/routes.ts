@@ -1,24 +1,30 @@
-// Host fee checkout endpoints (mounted under /api by worker/index.ts). The fee
-// is due when the host draws the numbers (POST /lock answers 402 until it's
-// paid); the purchase is tied to the board then. Three rails, one outcome:
-// markPaid() stamps the board as paid, and the host can draw.
+// Host fee checkout endpoints (mounted under /api by worker/index.ts). What a
+// board costs (its host fee, plus the Venue add-on on a venue board, less what
+// the payer's or host's Annual Pass covers: shared/pricing.ts feeDue) is due
+// when the host draws the numbers (POST /lock answers 402 until it's paid); the
+// purchase is tied to the board then. A season board comes with the Annual
+// Pass: these routes answer 402 PASS_REQUIRED_CODE for one without it. Three
+// rails, one outcome: markPaid() stamps the board as paid, and the host can draw.
 //   test   – no-charge checkout while PAYMENTS_MODE isn't live
 //   stripe – Apple Pay / Google Pay / card on the web, confirmed by webhook
 //   iap    – Apple In-App Purchase in the iOS app (App Store guideline 3.1.1)
-// The Host Pass (a yearly subscription that covers the fee on every board its
+// The Annual Pass (a yearly subscription that covers the fee on every board its
 // holder hosts) has its own routes in passRoutes.ts, mounted here; its Stripe
 // events arrive at the same webhook.
 
 import { Hono, type Context } from "hono";
+import { isClientId } from "../../shared/playerId";
+import { PASS_REQUIRED_CODE, SEASON_NEEDS_PASS, feeDue, type FeeDue } from "../../shared/pricing";
 import type { Game } from "../../shared/types";
-import { getGame } from "../db";
+import { getGame, hostClientIdOf } from "../db";
 import type { Env } from "../env";
-import { SIGNED_IN_HEADER, signedInHint } from "../auth/canonical";
+import { SIGNED_IN_HEADER, canonicalClientId, signedInHint } from "../auth/canonical";
 import { isHostOrCohost, loadState, markPaid } from "../service";
 import { fetchAppStoreTransaction, transactionProblem, type AppStoreTransaction } from "./apple";
 import { gameIdFromAccountToken } from "./boardToken";
-import { CURRENCY, boardFeeFor, boardPriceCents, getPaymentConfig, iapProductId, iapSeasonProductId, seasonPriceCents } from "./config";
+import { CURRENCY, boardPriceCents, boardPrices, getPaymentConfig, iapProductId } from "./config";
 import { milliunitsToMinor } from "./encoding";
+import { passCover } from "./pass";
 import { appStoreCredentials } from "./passApple";
 import { passRoutes } from "./passRoutes";
 import { handleStripePassEvent } from "./passStripe";
@@ -75,6 +81,26 @@ async function paid(c: Ctx, purchase: store.Purchase): Promise<Response> {
 }
 
 const ALREADY_PAID = "This board is already paid for";
+const COVERED = "Your Annual Pass covers this board. Draw the numbers.";
+
+/**
+ * What this board costs whoever's paying now: the passes of the caller (their
+ * canonical clientId) and of the board's host count, like at the draw.
+ */
+async function dueFor(c: Ctx, game: Game): Promise<FeeDue> {
+  const device = c.req.header("x-client-id");
+  const caller = isClientId(device) ? await canonicalClientId(c.env.DB, device, { signedIn: signedInHint(c.req.header(SIGNED_IN_HEADER)) }) : "";
+  const host = (await hostClientIdOf(c.env.DB, game.id)) ?? "";
+  const { cover } = await passCover(c.env.DB, [caller, host].filter(Boolean));
+  return feeDue(game, boardPrices(c.env), cover);
+}
+
+/** Nothing to pay here: a season board without the Annual Pass (402), or one a pass covers already (409). */
+function nothingToPay(c: Ctx, due: FeeDue): Response | null {
+  if (due.needsPass) return c.json({ error: SEASON_NEEDS_PASS, code: PASS_REQUIRED_CODE }, 402);
+  if (due.cents === 0) return c.json({ error: COVERED }, 409);
+  return null;
+}
 
 async function alreadyPaid(c: Ctx, gameId: string): Promise<Response> {
   return c.json({ error: ALREADY_PAID, state: await loadState(c.env, gameId) }, 409);
@@ -88,6 +114,8 @@ paymentsRoutes.post("/games/:id/pay/test", async (c) => {
   const game = await hostedGame(c, gameId);
   if (game instanceof Response) return game;
   if (game.paid) return c.json({ state: await loadState(c.env, gameId) });
+  const blocked = nothingToPay(c, await dueFor(c, game));
+  if (blocked) return blocked;
 
   const purchase = await store.recordPaid(
     c.env.DB,
@@ -143,8 +171,11 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
   if (!secretKey) return c.json({ error: "Checkout isn't set up yet" }, 503);
   if (game.paid) return alreadyPaid(c, gameId);
 
-  // A season board's one fee covers every game of the season.
-  const amountCents = boardFeeFor(c.env, game).amountCents;
+  // The board's host fee and Venue add-on, less what a pass covers (a changed price replaces the open intent below).
+  const due = await dueFor(c, game);
+  const blocked = nothingToPay(c, due);
+  if (blocked) return blocked;
+  const amountCents = due.cents;
   try {
     // Reuse the board's open intent so retries and reloads never create a second charge.
     const pending = await store.latestPending(c.env.DB, gameId, "stripe");
@@ -173,7 +204,7 @@ paymentsRoutes.post("/games/:id/pay/stripe", async (c) => {
         amountCents,
         currency: CURRENCY,
         idempotencyKey: boardIdempotencyKey(gameId, amountCents, CURRENCY, replacing),
-        ...(game.kind === "season" ? { season: true } : {}),
+        parts: { hostFee: due.boardCents > 0, venue: due.venueCents > 0 },
       });
       await store.recordPending(c.env.DB, {
         reference: intent.id,
@@ -213,7 +244,7 @@ paymentsRoutes.post("/stripe/webhook", async (c) => {
   } catch {
     return c.json({ error: "Invalid JSON" }, 400);
   }
-  // The Host Pass: subscription and invoice events (passStripe.ts).
+  // The Annual Pass: subscription and invoice events (passStripe.ts).
   if (await handleStripePassEvent(c.env, event as unknown as StripeEvent<Record<string, unknown>>)) return c.json({ received: true });
   const intent = event.data?.object;
   const gameId = intent?.object === "payment_intent" && intent.metadata?.product === BOARD_PRODUCT ? intent.metadata.game_id : null;
@@ -269,6 +300,13 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
   }
   const creds = appStoreCredentials(c.env);
   if (!creds) return c.json({ error: "In-app purchase isn't set up yet" }, 503);
+  // The app sells one board's host fee and nothing else: a season board needs the
+  // Annual Pass, and the Venue add-on isn't sold in the app.
+  if (game && !game.paid) {
+    const due = await dueFor(c, game);
+    if (due.needsPass) return c.json({ error: SEASON_NEEDS_PASS, code: PASS_REQUIRED_CODE }, 402);
+    if (due.venueCents > 0) return c.json({ error: "The Venue add-on isn't sold in the app." }, 409);
+  }
 
   const body = (await c.req.json().catch(() => null)) as { transactionId?: unknown } | null;
   const transactionId = String(body?.transactionId ?? "").trim();
@@ -288,9 +326,7 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     return c.json({ error: "Couldn't reach the App Store. Try again." }, 502);
   }
   if (!tx) return c.json({ error: "Apple has no record of that purchase" }, 400);
-  // A season board's fee is its own product; a deleted board's purchase may be either.
-  const seasonProduct = iapSeasonProductId(c.env);
-  const productId = game ? boardFeeFor(c.env, game).iapProductId : tx.productId === seasonProduct ? seasonProduct : iapProductId(c.env);
+  const productId = iapProductId(c.env);
   const problem = transactionProblem(tx, { transactionId, bundleId: creds.bundleId, productId, gameId });
   if (problem) return c.json({ error: problem }, 400);
   if (!game && gameIdFromAccountToken(tx.appAccountToken ?? "") !== gameId) return c.json({ error: "Game not found" }, 404);
@@ -301,7 +337,7 @@ paymentsRoutes.post("/games/:id/pay/iap", async (c) => {
     gameId,
     provider: "iap",
     // Apple leaves price off some older transactions; fall back to the list price.
-    amountCents: typeof tx.price === "number" ? milliunitsToMinor(tx.price, currency) : productId === seasonProduct ? seasonPriceCents(c.env) : boardPriceCents(c.env),
+    amountCents: typeof tx.price === "number" ? milliunitsToMinor(tx.price, currency) : boardPriceCents(c.env),
     currency,
     livemode: tx.environment === "Production",
   };

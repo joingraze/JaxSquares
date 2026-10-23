@@ -2,7 +2,7 @@
 // them, claiming/releasing squares, co-host links, signing in, the Host
 // Pass checkout (each call there can reach Stripe or Apple), email
 // notices (each sign-up sends an email to an address someone typed) and the
-// Club Pass's logo uploads, TV links and players CSV. Fixed windows counted in D1
+// Annual Pass + Venue's logo uploads, TV links and players CSV. Fixed windows counted in D1
 // (rate_limits, migrations/0005_housekeeping.sql), keyed by
 // "<rule>:<public player id>" (or "<rule>:<game id>" for per-board rules, or
 // "<rule>:<hashed address>" for per-address rules) so the table never holds a
@@ -99,7 +99,7 @@ export const RATE_LIMITS = {
     windowMs: HOUR,
     message: TOO_MANY.signIn,
   },
-  /** The Host Pass (worker/payments): starting, confirming or restoring a purchase, the test pass and Manage, per device. */
+  /** The Annual Pass (worker/payments): starting, confirming or restoring a purchase, the test pass and Manage, per device. */
   pass: {
     name: "pass",
     limit: 30,
@@ -179,7 +179,7 @@ export const RATE_LIMITS = {
     windowMs: MINUTE,
     message: "That's a lot of clicks. Give it a minute and try again.",
   },
-  /** The Club Pass (worker/clubs): the club's name and logo (uploading or removing it), per device. */
+  /** The Annual Pass + Venue (worker/clubs): the club's name and logo (uploading or removing it), per device. */
   clubBrand: {
     name: "club-brand",
     limit: 30,
@@ -218,7 +218,7 @@ export const RATE_LIMITS = {
     windowMs: MINUTE,
     message: "That's a lot of requests. Give it a minute and try again.",
   },
-  /** GET /api/games/:id/export.csv (a Club Pass board's players), per device. */
+  /** GET /api/games/:id/export.csv (an Annual Pass + Venue board's players), per device. */
   clubExport: {
     name: "club-export",
     limit: 30,

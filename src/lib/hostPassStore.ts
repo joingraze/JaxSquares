@@ -1,4 +1,4 @@
-// The Host Pass state this device knows (src/lib/useHostPass.ts is the React
+// The Annual Pass state this device knows (src/lib/useHostPass.ts is the React
 // side). Kept apart from the checkout code so startup (GET /api/me primes it,
 // sign-out clears it) doesn't load the checkout bundle.
 
@@ -7,7 +7,7 @@ import type { ClubPassOffer, HostPass, HostPassOffer, HostPassState } from "../.
 export interface HostPassSnapshot {
   pass: HostPass | null;
   offer: HostPassOffer | null;
-  /** The Club Pass (docs/payments.md "Club Pass"): it covers the host fee too, and turns on the club features. */
+  /** The Annual Pass + Venue (docs/payments.md "Annual Pass + Venue"): it covers the host fee too, and turns on the club features. */
   club: HostPass | null;
   clubOffer: ClubPassOffer | null;
   /** The server has answered at least once for this identity. */
@@ -68,7 +68,7 @@ export function resetHostPass(): void {
   set(EMPTY);
 }
 
-/** Whether the identity's pass (the Host Pass or the Club Pass) covers the host fee right now. */
+/** Whether the identity's pass (the Annual Pass or the Annual Pass + Venue) covers the host fee right now. */
 export function hasActivePass(): boolean {
   return snapshot.pass?.active === true || snapshot.club?.active === true;
 }

@@ -28,7 +28,7 @@ export function tvPairAddress(origin: string): string {
   return `${new URL(origin).host}/tv`;
 }
 
-/** A Club Pass holder's TV, /club/:clubId/tv (src/pages/ClubTvView.tsx): TV mode's own theme, like /g/:id/tv. */
+/** An Annual Pass + Venue holder's TV, /club/:clubId/tv (src/pages/ClubTvView.tsx): TV mode's own theme, like /g/:id/tv. */
 export function isClubTvPath(pathname: string): boolean {
   return /^\/club\/[^/]+\/tv\/?$/i.test(pathname);
 }

@@ -14,7 +14,9 @@ import { signStripePayload } from "./stripe";
 import { createTestD1, type TestD1 } from "./testD1";
 
 vi.mock("../service", () => ({ isHostOrCohost: vi.fn(), markPaid: vi.fn(), loadState: vi.fn() }));
-vi.mock("../db", () => ({ getGame: vi.fn() }));
+vi.mock("../db", () => ({ getGame: vi.fn(), hostClientIdOf: vi.fn(async () => "host-client") }));
+// No account links here: a device is its own identity.
+vi.mock("../auth/canonical", async (orig) => ({ ...(await orig<typeof import("../auth/canonical")>()), canonicalClientId: vi.fn(async (_db: unknown, id: string) => id) }));
 
 const ADMIN = "admin-token-1";
 const WEBHOOK_SECRET = "whsec_test";
@@ -29,7 +31,7 @@ const stateOf = (game: Game) => ({ game, version: 1 }) as unknown as GameState;
 
 /** A new board: open (friends picking squares), its host fee not paid yet. */
 function unpaid(id: string): Game {
-  return { id, name: "Big Game", status: "open", paid: false, createdAt: 0 } as Game;
+  return { id, name: "Big Game", status: "open", paid: false, createdAt: 0, format: {} } as Game;
 }
 
 async function testPem(): Promise<string> {
@@ -157,17 +159,28 @@ describe("POST /games/:id/pay/stripe", () => {
     ]);
   });
 
-  it("charges a season board's one fee for the season, with its own receipt line", async () => {
-    games.set("s1", { ...unpaid("s1"), kind: "season" });
-    fetchMock.mockResolvedValueOnce(Response.json(intent({ id: "pi_s", amount: 1499, metadata: { game_id: "s1", product: "board" } })));
-    const res = await call("/games/s1/pay/stripe", { env: makeEnv({ SEASON_BOARD_PRICE_CENTS: "1499" }) });
+  it("charges a venue board its host fee and the Venue add-on, on one receipt line", async () => {
+    games.set("v1", { ...unpaid("v1"), format: { venue: true } } as Game);
+    fetchMock.mockResolvedValueOnce(Response.json(intent({ id: "pi_v", amount: 1499, metadata: { game_id: "v1", product: "board" } })));
+    const res = await call("/games/v1/pay/stripe", { env: makeEnv({ VENUE_PRICE_CENTS: "1000" }) });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ amountCents: 1499 });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const params = new URLSearchParams(init.body as string);
     expect(params.get("amount")).toBe("1499");
-    expect(params.get("description")).toBe("JaxSquares host fee (season board)");
-    expect((init.headers as Record<string, string>)["idempotency-key"]).toBe("board-s1-1499usd");
+    expect(params.get("description")).toBe("JaxSquares host fee + Venue add-on (one board)");
+    expect((init.headers as Record<string, string>)["idempotency-key"]).toBe("board-v1-1499usd");
+  });
+
+  it("sells no season board: it comes with the Annual Pass (402 pass_required), on every rail", async () => {
+    games.set("s1", { ...unpaid("s1"), kind: "season" });
+    for (const rail of ["stripe", "test"]) {
+      const res = await call(`/games/s1/pay/${rail}`, { env: makeEnv(rail === "test" ? { STRIPE_SECRET_KEY: undefined } : {}) });
+      expect(res.status, rail).toBe(402);
+      expect(await res.json(), rail).toMatchObject({ code: "pass_required" });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(purchases()).toEqual([]);
   });
 
   it("reuses the open intent on retry instead of creating another", async () => {
@@ -405,20 +418,18 @@ describe("POST /games/:id/pay/iap", () => {
     expect(purchases()).toEqual([]);
   });
 
-  it("takes a season board's fee only with the season product, and the board's only with the board product", async () => {
-    const SEASON = "com.jaxsquares.app.seasonboard";
+  it("sells one board's host fee and nothing else: no season board (the Annual Pass) and no Venue add-on", async () => {
     games.set("s1", { ...unpaid("s1"), kind: "season" });
-    fetchMock.mockResolvedValueOnce(Response.json(signedTransaction({ appAccountToken: boardAccountToken("s1") })));
-    expect((await call("/games/s1/pay/iap", { body: { transactionId: TX } })).status).toBe(400);
-    fetchMock.mockResolvedValueOnce(Response.json(signedTransaction({ productId: SEASON, transactionId: "2000000812345679" })));
-    expect((await call("/games/g1/pay/iap", { body: { transactionId: "2000000812345679" } })).status).toBe(400);
-    fetchMock.mockResolvedValueOnce(
-      Response.json(signedTransaction({ productId: SEASON, transactionId: "2000000812345680", appAccountToken: boardAccountToken("s1"), price: undefined })),
-    );
-    const res = await call("/games/s1/pay/iap", { body: { transactionId: "2000000812345680" } });
-    expect(res.status).toBe(200);
-    // Without a price from Apple, the season's list price is recorded.
-    expect(service.markPaid).toHaveBeenCalledWith(expect.anything(), "s1", { provider: "iap", reference: "2000000812345680", amountCents: 1499 });
+    games.set("v1", { ...unpaid("v1"), format: { venue: true } } as Game);
+    const season = await call("/games/s1/pay/iap", { body: { transactionId: TX } });
+    expect(season.status).toBe(402);
+    expect(await season.json()).toMatchObject({ code: "pass_required" });
+    const venue = await call("/games/v1/pay/iap", { body: { transactionId: TX } });
+    expect(venue.status).toBe(409);
+    expect(await venue.json()).toMatchObject({ error: "The Venue add-on isn't sold in the app." });
+    // Refused before asking Apple: nothing to verify, nothing recorded.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(service.markPaid).not.toHaveBeenCalled();
   });
 
   it("rejects the wrong product, the wrong app, and refunds", async () => {
